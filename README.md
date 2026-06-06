@@ -32,6 +32,4 @@ Open:
 - Demo user after `seed_demo`: `demo` / `password`
 
 ## Notes
-- The block editor is a lightweight JSON block system, not a full Notion clone.
-- Quill image uploads use `/api/uploads/`.
 - File manager shows uploaded files from the media folder.
