@@ -1,4 +1,4 @@
-# Django Notes Pro
+# Notes Pro
 
 Features:
 - Multiple workspaces
