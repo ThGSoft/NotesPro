@@ -1,0 +1,12 @@
+Hello,
+
+{{ inviter_name }} invited you to join the workspace "{{ workspace_name }}" on {{ site_name }}.
+
+Your access level: {{ role }}
+
+Open this link to accept the invitation (login required):
+{{ accept_url }}
+
+If you did not expect this email, you can ignore it.
+
+— {{ site_name }}

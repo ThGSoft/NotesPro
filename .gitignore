@@ -1,0 +1,11 @@
+/.venv
+/dashboard/__pycache__
+/notes/__pycache__
+/project/__pycache__
+/notes/migrations/__pycache__
+/staticfiles/admin/css
+/staticfiles/admin/img
+/staticfiles/admin/js
+/staticfiles/notes
+5.1
+6.2

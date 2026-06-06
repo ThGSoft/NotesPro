@@ -1,0 +1,9 @@
+asgiref==3.11.1
+bleach==6.3.0
+Django==5.1.15
+django-extensions==4.1
+sqlparse==0.5.5
+typing_extensions==4.15.0
+tzdata==2026.2
+webencodings==0.5.1
+slugify==0.0.1

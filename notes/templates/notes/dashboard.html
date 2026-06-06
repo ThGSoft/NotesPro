@@ -1,0 +1,277 @@
+{% load static %}
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Django Notes Pro</title>
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jstree@3.3.17/dist/themes/default/style.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.css">
+  <link rel="shortcut icon" type="image/png" href="{% static 'images/favicon.ico' %}"/>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror/addon/dialog/dialog.css">
+  <link rel="stylesheet" href="{% static 'notes/dashboard.css' %}">
+</head>
+<body>
+  <!-- Farbwähler für Text -->
+<input type="color" id="text-color-picker" style="display:none;">
+<!-- Farbwähler für Hintergrund -->
+<input type="color" id="bg-color-picker" style="display:none;">
+<div class="app-shell">
+  <header class="topbar">
+    <div class="title-wrap d-flex align-items-center gap-4">
+      <button id="toggle-left" class="btn btn-sm btn-outline-light">☰</button>
+      <strong>Notes Pro</strong>: {{ user.username }}
+
+      <div class="flex-grow-1">
+        <div id="page-title-preview" class="page-title-preview"></div>
+        <input id="page-title" class="form-control hidden-edit" placeholder="Page title">
+      </div>
+    </div>
+    
+    <div class="topbar-actions">
+      <button id="edit-toggle" class="btn btn-primary btn-sm">Edit</button>
+      <button id="toggle-right" class="btn btn-sm btn-outline-light" type="button" title="Chat &amp; Mail">💬</button>
+      <form action="{% url 'logout' %}" method="post">
+        {% csrf_token %}
+        <button class="btn btn-sm btn-outline-light">Logout</button>
+      </form>
+      <div class="slug-box hidden-edit">Slug: <span id="page-slug"></span></div>
+    </div>
+  </header>
+
+  <aside class="sidebar" id="left-panel">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+    </div>
+    <div class="panel-card">
+      <div class="panel-header">
+        <span class="panel-title">Folder /Pages</span>
+        <i class="bi bi-chevron-down toggle-icon"></i>
+      </div>
+
+      <div class="panel-body expanded">
+        <div class="workspace-row d-flex align-items-center ">
+          <select id="workspace-select" class="form-select form-select-sm" style="width: 80%; min-width: max-content;">
+            {% for ws in workspaces %}
+            <option value="{{ ws.id }}" {% if ws.id == current_workspace.id %}selected{% endif %}>
+              {% if ws.owner == user %}
+                {{ ws.name }}
+              {% else %}
+                {{ ws.owner.username }}: {{ ws.name }}
+              {% endif %}
+            </option>
+            {% endfor %}
+          </select>
+          <!-- <button id="new-workspace" class="btn btn-sm btn-primary">+</button> -->
+          <div class="btn-group btn-group-sm" style="width: 20%; min-width: max-content;">
+            <button id="ws-add-btn" class="btn btn btn-sm btn-primary" title="Add Workspace">+</button>
+            <button id="ws-rename-btn" class="btn btn btn-sm btn-outline-secondary" title="Rename Workspace">✏️</button>
+            <button id="ws-delete-btn" class="btn btn btn-sm btn-outline-danger" title="Delete Workspace">🗑️</button>
+          </div>
+          <!-- Inline Rename Input (Hidden by default) -->
+          <div id="ws-rename-box" class="d-none d-flex gap-1">
+            <input type="text" id="ws-rename-input" class="form-control form-control-sm" placeholder="New name">
+            <button id="ws-save-btn" class="btn btn-sm btn-success">Save</button>
+            <button id="ws-cancel-btn" class="btn btn-sm btn-light">X</button>
+          </div>
+        </div>
+    
+        <input id="tree-search" class="form-control form-control-sm mt-2" placeholder="Search tree...">
+    
+        <div class="tree-actions">
+          <button id="create-page" class="btn btn-sm btn-primary">New Page</button>
+          <button id="create-folder" class="btn btn-sm btn-outline-light">Folder</button>
+          <button id="delete-page" class="btn btn-sm btn-outline-danger">Delete</button>
+        </div>
+        <div id="tree" ></div>
+      </div>
+    </div>
+    <div class="panel-card"> 
+      <div class="panel-header">
+        <span class="panel-title">Worksheet Members</span>
+        <i class="bi bi-chevron-down toggle-icon"></i>
+      </div>
+      <div class="panel-body expanded">
+        <div class="card shadow-sm mt-3" style="max-width: 350px;">
+          <div class="card-header bg-light py-2 d-flex justify-content-between align-items-center">
+            <h6 class="mb-0 text-secondary" style="font-size: 0.85rem; fw-bold;">Workspace Members</h6>
+            <span class="badge bg-primary rounded-pill" id="user-count">0</span>
+          </div>
+          
+          <div class="card-body p-2">
+            <!-- Suchbereich mit integriertem Spinner -->
+            <div class="position-relative mb-2">
+              <div class="input-group input-group-sm">
+                <span class="input-group-text bg-white border-end-0 text-muted">🔍</span>
+                <input type="text" id="user-search-input" class="form-control border-start-0 ps-0" placeholder="Search  Members..." autocomplete="off">
+                
+                <!-- Das Ladesymbol (Standardmäßig unsichtbar durch d-none) -->
+                <span class="input-group-text bg-white border-start-0 d-none" id="search-spinner-container">
+                  <div class="spinner-border spinner-border-sm text-primary" role="status">
+                    <span class="visually-hidden">Load...</span>
+                  </div>
+                </span>
+              </div>
+              
+              <!-- Schwebendes Dropdown für Suchergebnisse -->
+              <ul id="search-results-dropdown" class="list-group position-absolute w-100 shadow d-none" style="z-index: 1000; max-height: 200px; overflow-y: auto;">
+              </ul>
+            </div>
+            
+            <div id="invite-email-box" class="border-top pt-2 mt-2 d-none">
+              <label class="form-label small text-muted mb-1">Invite by email</label>
+              <div class="input-group input-group-sm mb-1">
+                <input type="email" id="invite-email-input" class="form-control" placeholder="name@example.com">
+                <select id="invite-email-role" class="form-select" style="max-width: 6rem;">
+                  <option value="read">Read</option>
+                  <option value="write">Write</option>
+                </select>
+              </div>
+              <button type="button" id="invite-email-btn" class="btn btn-sm btn-outline-primary w-100">Send invitation</button>
+            </div>
+
+            <!-- Liste der aktiven Mitglieder -->
+            <ul class="list-group list-group-flush overflow-auto" id="worksheet-users" style="max-height: 250px; font-size: 0.85rem;">
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel-card">
+      <div class="panel-header">
+        <span class="panel-title">File manager</span>
+        <i class="bi bi-chevron-down toggle-icon"></i>
+      </div>
+
+      <div class="panel-body expanded">
+        <div class="dropzone" id="dropzone">Drop files/images here</div>
+        <input type="file" id="file-input" multiple class="form-control form-control-sm mt-2">
+        <div id="file-list" class="file-list"></div>
+      </div>
+    </div>
+
+    <div class="panel-card">
+      <div class="panel-header">
+        <span class="panel-title">Status</span>
+        <i class="bi bi-chevron-down toggle-icon"></i>
+      </div>
+
+      <div class="panel-body expanded">
+        <div id="save-status">Ready</div>
+      </div>
+    </div>
+  </aside>
+
+  <div class="panel-gap panel-gap--left" aria-hidden="true"></div>
+
+  <main class="main-pane">
+    
+    <section class="editor-wrap">
+      <div id="markdown-wrap" class="editor-panel hidden">
+        <textarea id="markdown-editor"></textarea>
+      </div>
+      <button id="toc-toggle" class="mobile-toc-btn">
+        <span>content</span>
+      </button>
+      
+      <div id="preview-wrap" class="editor-panel">
+        <div class="preview-layout">
+
+          <aside id="floating-toc" class="floating-toc">
+            <div class="floating-toc-title">Contents</div>
+            <div id="floating-toc-list"></div>
+          </aside>
+          <div id="preview-content" class="preview-content"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <aside class="right-panel" id="right-panel">
+    <ul class="nav nav-tabs nav-fill comm-tabs mb-2" role="tablist">
+      <li class="nav-item"><button class="nav-link active" type="button" data-comm-tab="chat">Chat</button></li>
+      <li class="nav-item"><button class="nav-link" type="button" data-comm-tab="mail">Mail <span id="mail-unread-badge" class="badge bg-danger d-none">0</span></button></li>
+    </ul>
+
+    <div id="comm-chat-pane" class="comm-pane">
+      <div id="chat-messages" class="chat-messages"></div>
+      <form id="chat-form" class="chat-form mt-2">
+        <div class="input-group input-group-sm">
+          <input type="text" id="chat-input" class="form-control" placeholder="Message…" maxlength="4000" autocomplete="off">
+          <button type="submit" class="btn btn-primary">Send</button>
+        </div>
+      </form>
+    </div>
+
+    <div id="comm-mail-pane" class="comm-pane d-none">
+      <ul class="nav nav-pills nav-fill mb-2 small">
+        <li class="nav-item"><button class="nav-link active py-1" type="button" data-mail-box="inbox">Inbox</button></li>
+        <li class="nav-item"><button class="nav-link py-1" type="button" data-mail-box="sent">Sent</button></li>
+        <li class="nav-item"><button class="nav-link py-1" type="button" data-mail-box="compose">Compose</button></li>
+      </ul>
+      <div id="mail-list-view">
+        <div id="mail-list" class="mail-list"></div>
+      </div>
+      <div id="mail-read-view" class="d-none">
+        <button type="button" id="mail-back-btn" class="btn btn-sm btn-link px-0 mb-2">← Back</button>
+        <h6 id="mail-read-subject" class="fw-bold"></h6>
+        <p class="small text-muted mb-1" id="mail-read-meta"></p>
+        <div id="mail-read-body" class="mail-read-body small"></div>
+      </div>
+      <div id="mail-compose-view" class="d-none">
+        <input type="text" id="mail-compose-subject" class="form-control form-control-sm mb-2" placeholder="Subject">
+        <textarea id="mail-compose-body" class="form-control form-control-sm mb-2" rows="5" placeholder="Message"></textarea>
+        <p id="mail-recipients-hint" class="small text-muted mb-1 d-none"></p>
+        <select id="mail-compose-recipients" class="form-select form-select-sm mb-2" multiple size="4"></select>
+        <button type="button" id="mail-send-btn" class="btn btn-sm btn-primary w-100">Send mail</button>
+      </div>
+    </div>
+  </aside>
+
+</div>
+<script>
+    window.APP_BOOT = {
+        // Nutze die ID, falls vorhanden, sonst null
+        workspaceId: {% if current_workspace %}{{ current_workspace.id }}{% else %}null{% endif %},
+        pageId: {% if page %}{{ page.id }}{% else %}null{% endif %},
+               // Neu: Aktuell eingeloggter Benutzer
+        {% if user.is_authenticated %}
+            userId: {{ user.id }},
+            username: "{{ user.username|escapejs }}" // escapejs schützt vor JavaScript-Injections
+        {% else %}
+            userId: null,
+            username: null
+        {% endif %}
+    };
+
+    // Falls gar nichts existiert, Fehlermeldung oder Default-Handling
+    if (!window.APP_BOOT.workspaceId) {
+        console.warn("Kein Workspace gefunden. Bitte erstellen Sie zuerst einen.");
+    }
+  //  window.APP_BASE = "/DjangoNotesPro";
+</script> 
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jstree@3.3.17/dist/jstree.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="{% static 'notes/dashboard.js' %}"></script>
+
+
+<!-- Toast-Container (Fest positioniert) -->
+<div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 1055;">
+  <div id="action-toast" class="toast align-items-center text-white border-0 shadow" role="alert" aria-live="assertive" aria-atomic="true">
+    <div class="d-flex">
+      <div class="toast-body" id="toast-message">
+        <!-- Nachricht wird dynamisch via JS eingefügt -->
+      </div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
