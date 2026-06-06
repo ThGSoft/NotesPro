@@ -1,5 +1,11 @@
 # Notes Pro
-
+* Organize your Markup Notes with a tree.
+* Share you Workspace with different users.
+* You can invite users with read or read / write access
+* You can use Notes Pro for private or buisiness use, or both together
+* Paste Images easyly into Markdown text
+* Add sheets and charts inside MarkupNotes, calculates inside sheets.
+* Integrated Chat and Mail Feature
 Features:
 - Multiple workspaces
 - jsTree with search
