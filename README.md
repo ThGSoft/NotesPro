@@ -6,7 +6,9 @@
 * Paste Images easyly into Markdown text
 * Add sheets and charts inside MarkupNotes, calculates inside sheets.
 * Integrated Chat and Mail Feature
-Features:
+
+## Features
+
 - Multiple workspaces
 - jsTree with search
 - Inline rename
