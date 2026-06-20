@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Notes Pro — Screenshot mock</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.css">
+  <link rel="stylesheet" href="../../notes/static/notes/dashboard.css">
+  <style>
+    body.editing .editor-panel { display: flex !important; }
+    body.editing #preview-pane { display: block !important; }
+    .mock-tree .tree-item { padding: 4px 8px 4px 20px; font-size: 0.9rem; color: var(--text); }
+    .mock-tree .tree-item.active { background: rgba(37, 99, 235, 0.25); border-radius: 4px; }
+    .mock-editor {
+      min-height: 280px;
+      padding: 12px;
+      font-family: monospace;
+      font-size: 13px;
+      line-height: 1.5;
+      color: #e5e7eb;
+      background: #0b1220;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      white-space: pre-wrap;
+    }
+    .mock-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      padding: 8px;
+      background: #1e293b;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      margin-bottom: 8px;
+    }
+    .mock-toolbar button {
+      background: transparent;
+      border: 1px solid #475569;
+      color: #e5e7eb;
+      border-radius: 4px;
+      padding: 4px 8px;
+      font-size: 12px;
+    }
+    .mock-toolbar .row-break { flex-basis: 100%; height: 0; }
+    .mock-preview h1 { font-size: 1.6rem; margin-bottom: 0.75rem; }
+    .mock-preview .md-panel { border-left: 4px solid #0d6efd; padding: 12px 16px; margin: 12px 0; background: rgba(13, 110, 253, 0.12); border-radius: 6px; }
+    .mock-preview table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 0.9rem; }
+    .mock-preview th, .mock-preview td { border: 1px solid var(--line); padding: 6px 10px; }
+    .mock-preview th { background: #1e293b; }
+    .mock-chat-msg { font-size: 0.85rem; margin-bottom: 10px; }
+    .mock-chat-msg.mine { text-align: right; }
+    .mock-chat-bubble {
+      display: inline-block;
+      max-width: 85%;
+      padding: 8px 12px;
+      border-radius: 12px;
+      background: #1e293b;
+      text-align: left;
+    }
+    .mock-chat-msg.mine .mock-chat-bubble { background: #2563eb; }
+    #shot-chat .right-panel { display: flex !important; }
+    #shot-chat.app-shell { grid-template-columns: 0 0 minmax(0, 1fr) 6px 320px; }
+    #shot-chat .sidebar { display: none; }
+    #shot-chat #left-splitter { display: none; }
+    #shot-editor .main-pane { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    #shot-editor .mock-preview { display: none; }
+    #shot-preview body, #shot-preview { }
+    #shot-preview .editor-panel { display: none !important; }
+    #shot-preview .mock-preview-only { display: block; }
+    .shot-section { min-height: 720px; }
+    body[data-shot] .shot-section { display: none !important; }
+    body[data-shot="overview"] #shot-overview,
+    body[data-shot="editor"] #shot-editor,
+    body[data-shot="preview"] #shot-preview,
+    body[data-shot="chat"] #shot-chat { display: block !important; }
+    body[data-shot] .shot-label { display: none; }
+  </style>
+</head>
+<body class="editing">
+<div class="shot-label">Screenshot mock</div>
+
+<section id="shot-overview" class="shot-section">
+<div class="app-shell">
+  <header class="topbar">
+    <div class="title-wrap d-flex align-items-center gap-4">
+      <button class="btn btn-sm btn-outline-light">☰</button>
+      <strong>Notes Pro</strong>: demo
+      <div class="flex-grow-1">
+        <div class="page-title-preview">Quarterly Report</div>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <button class="btn btn-primary btn-sm">Edit</button>
+      <button class="btn btn-sm btn-outline-light">💬</button>
+      <button class="btn btn-sm btn-outline-light">2FA</button>
+      <button class="btn btn-sm btn-outline-light">Logout</button>
+    </div>
+  </header>
+
+  <aside class="sidebar" id="left-panel">
+    <div class="panel-card">
+      <div class="panel-header"><span class="panel-title">Folder /Pages</span></div>
+      <div class="panel-body expanded">
+        <select class="form-select form-select-sm mb-2"><option>Demo Workspace</option></select>
+        <input class="form-control form-control-sm mb-2" placeholder="Search tree..." value="">
+        <div class="tree-actions mb-2">
+          <button class="btn btn-sm btn-primary">New Page</button>
+          <button class="btn btn-sm btn-outline-light">Folder</button>
+        </div>
+        <div class="mock-tree">
+          <div class="tree-item">📁 Projects</div>
+          <div class="tree-item active">📄 Quarterly Report</div>
+          <div class="tree-item">📄 Meeting Notes</div>
+          <div class="tree-item">📁 Archive</div>
+        </div>
+      </div>
+    </div>
+    <div class="panel-card">
+      <div class="panel-header"><span class="panel-title">File manager</span></div>
+      <div class="panel-body expanded">
+        <div class="dropzone">Drop files/images here</div>
+      </div>
+    </div>
+  </aside>
+
+  <div id="left-splitter" class="panel-splitter"></div>
+
+  <main class="main-pane">
+    <section class="editor-wrap">
+      <div class="editor-panel" style="display:flex; flex-direction:column; flex:1;">
+        <div class="mock-toolbar">
+          <button>Code</button><button><b>B</b></button><button><i>I</i></button>
+          <button>Link</button><button>Table</button><button>Sheet</button><button>Chart</button>
+          <span class="row-break"></span>
+          <button>Find</button><button>Colors</button><button>Size</button>
+        </div>
+        <div class="mock-editor"># Quarterly Report
+
+```panel info
+# Summary
+Sales are up **12%** this quarter.
+```
+
+```sheet
+`id=quarterly
+Month	Sales	Costs
+Jan	100	80
+Feb	150	90
+```</div>
+      </div>
+      <div id="preview-pane" class="preview-pane">
+        <div class="mock-preview p-3">
+          <h1>Quarterly Report</h1>
+          <div class="md-panel"><strong>Summary</strong><br>Sales are up <strong>12%</strong> this quarter.</div>
+          <table><thead><tr><th>Month</th><th>Sales</th><th>Costs</th></tr></thead>
+          <tbody><tr><td>Jan</td><td>100</td><td>80</td></tr><tr><td>Feb</td><td>150</td><td>90</td></tr></tbody></table>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+</section>
+
+<section id="shot-editor" class="shot-section">
+<div class="app-shell">
+  <header class="topbar">
+    <div class="title-wrap d-flex align-items-center gap-4">
+      <button class="btn btn-sm btn-outline-light">☰</button>
+      <strong>Notes Pro</strong>: demo
+      <div class="flex-grow-1"><div class="page-title-preview">Quarterly Report</div></div>
+    </div>
+    <div class="topbar-actions">
+      <button class="btn btn-primary btn-sm">Edit</button>
+      <button class="btn btn-sm btn-outline-light">💬</button>
+    </div>
+  </header>
+  <aside class="sidebar collapsed" style="width:0; overflow:hidden;"></aside>
+  <div id="left-splitter" class="panel-splitter" style="width:0;"></div>
+  <main class="main-pane">
+    <section class="editor-wrap" style="display:block;">
+      <div class="editor-panel" style="display:flex; flex-direction:column;">
+        <div class="mock-toolbar">
+          <button>Code</button><button><b>B</b></button><button><i>I</i></button><button>|</button>
+          <button>Sheet</button><button>Chart</button><button>Panel</button><button>Snippets</button>
+          <span class="row-break"></span>
+          <button>Find</button><button>Replace</button><button>|</button>
+          <button>Indent</button><button>Font</button><button>Brush</button><button>Size</button>
+        </div>
+        <div class="editor-find-bar" style="display:block; margin-bottom:8px;">
+          <div class="editor-find-bar-row">
+            <label class="editor-find-label">Find</label>
+            <input class="editor-find-input" value="Sales">
+            <button class="editor-find-btn">↑</button><button class="editor-find-btn">↓</button>
+          </div>
+        </div>
+        <div class="mock-editor" style="min-height:420px;"># Quarterly Report
+
+<span style="color:#0d6efd">Highlighted text</span> with <span style="background-color:#ffc107">background</span>.
+
+```panel success
+# Done
+Migrated all pages to the new workspace.
+```</div>
+      </div>
+    </section>
+  </main>
+</div>
+</section>
+
+<section id="shot-preview" class="shot-section">
+<div class="app-shell sidebar-collapsed">
+  <header class="topbar">
+    <div class="title-wrap d-flex align-items-center gap-4">
+      <button class="btn btn-sm btn-outline-light">☰</button>
+      <strong>Notes Pro</strong>: demo
+      <div class="flex-grow-1"><div class="page-title-preview">Quarterly Report</div></div>
+    </div>
+    <div class="topbar-actions">
+      <button class="btn btn-sm btn-outline-light">Preview</button>
+    </div>
+  </header>
+  <aside class="sidebar collapsed"></aside>
+  <div id="left-splitter" class="panel-splitter"></div>
+  <main class="main-pane">
+    <section class="editor-wrap">
+      <div class="mock-preview p-4" style="max-width:900px; margin:0 auto;">
+        <h1>Quarterly Report</h1>
+        <p>Overview of Q1 performance with embedded data and charts.</p>
+        <div class="md-panel" style="border-left-color:#198754; background:rgba(25,135,84,.12);"><strong>Done</strong><br>Migrated all pages to the new workspace.</div>
+        <table><thead><tr><th>Month</th><th>Sales</th><th>Costs</th></tr></thead>
+        <tbody><tr><td>Jan</td><td>100</td><td>80</td></tr><tr><td>Feb</td><td>150</td><td>90</td></tr></tbody></table>
+        <div style="height:180px; background:linear-gradient(180deg,#1e293b 60%,#2563eb 60%,#2563eb 75%,#20c997 75%); border-radius:8px; display:flex; align-items:flex-end; justify-content:center; color:#94a3b8; padding:12px;">Bar chart (D3)</div>
+        <p class="text-muted mt-3">#quarterly #report</p>
+      </div>
+    </section>
+  </main>
+</div>
+</section>
+
+<section id="shot-chat" class="shot-section">
+<div class="app-shell" id="shot-chat-shell">
+  <header class="topbar">
+    <div class="title-wrap d-flex align-items-center gap-4">
+      <strong>Notes Pro</strong>: demo
+      <div class="flex-grow-1"><div class="page-title-preview">Quarterly Report</div></div>
+    </div>
+    <div class="topbar-actions">
+      <button class="btn btn-primary btn-sm">Edit</button>
+      <button class="btn btn-sm btn-outline-light">💬</button>
+    </div>
+  </header>
+  <aside class="sidebar collapsed"></aside>
+  <div id="left-splitter" class="panel-splitter"></div>
+  <main class="main-pane"><div class="p-4 text-muted">Page content…</div></main>
+  <div class="panel-splitter"></div>
+  <aside class="right-panel" style="display:flex; flex-direction:column; background:var(--panel); border-left:1px solid var(--line);">
+    <ul class="nav nav-tabs nav-fill px-2 pt-2" style="border-color:var(--line);">
+      <li class="nav-item"><a class="nav-link active" href="#">Private</a></li>
+      <li class="nav-item"><a class="nav-link" href="#">Group</a></li>
+      <li class="nav-item"><a class="nav-link" href="#">Mail</a></li>
+    </ul>
+    <div class="p-2 flex-grow-1 overflow-auto">
+      <div class="mock-chat-msg"><div class="mock-chat-bubble">Can you review the quarterly sheet?</div></div>
+      <div class="mock-chat-msg mine"><div class="mock-chat-bubble">Updated — chart links to the sheet now.</div></div>
+      <div class="mock-chat-msg"><div class="mock-chat-bubble">Direct · encrypted</div></div>
+    </div>
+    <div class="p-2 border-top" style="border-color:var(--line)!important;">
+      <input class="form-control form-control-sm" placeholder="Message…" value="">
+    </div>
+  </aside>
+</div>
+</section>
+
+<script>
+  const params = new URLSearchParams(location.search);
+  const shot = params.get('shot') || 'overview';
+  document.body.dataset.shot = shot;
+</script>
+</body>
+</html>
