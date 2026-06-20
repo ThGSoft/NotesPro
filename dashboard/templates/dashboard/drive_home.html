@@ -1,0 +1,27 @@
+{% extends 'dashboard/base.html' %}
+{% block title %}My Drive{% endblock %}
+{% block heading %}My Drive{% endblock %}
+{% block content %}
+<div class="card drive-toolbar">
+  <div>
+    <h2>Shared folders</h2>
+    <p class="muted">Folders shown here are owned by you or shared with one of your groups.</p>
+  </div>
+  <a class="btn" href="{% url 'create_folder' %}">+ New folder</a>
+</div>
+
+<div class="drive-grid">
+  {% for folder in folders %}
+    <a class="drive-folder" href="{% url 'folder_detail' folder.id %}">
+      <div class="folder-icon">📁</div>
+      <strong>{{ folder.name }}</strong>
+      <span>Owner: {{ folder.owner.username }}</span>
+      <small>
+        {% for group in folder.groups.all %}{{ group.name }}{% if not forloop.last %}, {% endif %}{% empty %}Private{% endfor %}
+      </small>
+    </a>
+  {% empty %}
+    <div class="card">No folders yet. Create one and share it with a group.</div>
+  {% endfor %}
+</div>
+{% endblock %}

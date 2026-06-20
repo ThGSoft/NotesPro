@@ -9,7 +9,13 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 
-from .email_utils import send_workspace_invite_email
+from .email_urls import build_absolute_link
+from .email_utils import (
+    delivery_hint,
+    email_delivery_mode,
+    send_workspace_added_email,
+    send_workspace_invite_email,
+)
 from .models import (
     WorkspaceChatMessage,
     WorkspaceInvite,
@@ -79,6 +85,8 @@ def _chat_to_dict(message):
     return {
         'id': message.id,
         'body': message.body,
+        'attachment_url': message.attachment_url,
+        'attachment_name': message.attachment_name,
         'sender': message.sender.username,
         'sender_id': message.sender_id,
         'created_at': message.created_at.isoformat(),
@@ -117,10 +125,32 @@ def workspace_invite_email(request, workspace_id):
         WorkspaceInvite.objects.filter(
             workspace=workspace, email__iexact=email, accepted=False,
         ).update(accepted=True)
+        dashboard_url = build_absolute_link(request, 'dashboard')
+        email_sent = False
+        email_error = None
+        try:
+            send_workspace_added_email(
+                user=existing_user,
+                workspace=workspace,
+                inviter_name=request.user.get_username(),
+                accept_url=dashboard_url,
+            )
+            email_sent = True
+        except Exception as exc:
+            email_error = str(exc)
+        message = f'{existing_user.username} was added to the workspace.'
+        if email_sent:
+            message += f' {delivery_hint()}'
+        elif email_error:
+            message += f' (Notification email failed: {email_error})'
+        else:
+            message += ' (No email on file for that user.)'
         return JsonResponse({
             'status': 'success',
-            'message': f'{existing_user.username} was added to the workspace.',
+            'message': message,
             'added_existing_user': True,
+            'email_sent': email_sent,
+            'delivery': email_delivery_mode(),
         })
 
     invite, created = WorkspaceInvite.objects.get_or_create(
@@ -135,7 +165,7 @@ def workspace_invite_email(request, workspace_id):
         invite.token = _invite_token()
         invite.save(update_fields=['role', 'invited_by', 'token'])
 
-    accept_url = request.build_absolute_uri(reverse('accept_workspace_invite', args=[invite.token]))
+    accept_url = build_absolute_link(request, 'accept_workspace_invite', invite.token)
     try:
         send_workspace_invite_email(
             invite=invite,
@@ -146,10 +176,14 @@ def workspace_invite_email(request, workspace_id):
     except Exception as exc:
         return JsonResponse({'status': 'error', 'message': f'Could not send email: {exc}'}, status=500)
 
+    hint = delivery_hint()
     return JsonResponse({
         'status': 'success',
-        'message': f'Invitation sent to {email}.',
+        'message': f'Invitation sent to {email}. {hint}',
         'added_existing_user': False,
+        'email_sent': True,
+        'delivery': email_delivery_mode(),
+        'invite_link': accept_url,
     })
 
 
@@ -304,14 +338,20 @@ def workspace_chat_send(request, workspace_id):
         return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
 
     body = (payload.get('body') or '').strip()
-    if not body:
+    attachment_url = (payload.get('attachment_url') or '').strip()
+    attachment_name = (payload.get('attachment_name') or '').strip()
+    if not body and not attachment_url:
         return JsonResponse({'status': 'error', 'message': 'Message cannot be empty.'}, status=400)
     if len(body) > 4000:
         return JsonResponse({'status': 'error', 'message': 'Message is too long.'}, status=400)
+    if attachment_url and len(attachment_url) > 500:
+        return JsonResponse({'status': 'error', 'message': 'Attachment URL is too long.'}, status=400)
 
     message = WorkspaceChatMessage.objects.create(
         workspace=workspace,
         sender=request.user,
         body=body,
+        attachment_url=attachment_url,
+        attachment_name=attachment_name,
     )
     return JsonResponse({'status': 'success', 'message': _chat_to_dict(message)})

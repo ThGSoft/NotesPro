@@ -1,0 +1,13 @@
+{% extends 'dashboard/base.html' %}
+{% block title %}New Folder{% endblock %}
+{% block heading %}New Folder{% endblock %}
+{% block content %}
+<div class="card">
+  <form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button class="btn" type="submit">Create folder</button>
+    <a class="btn btn-light" href="{% url 'drive_home' %}">Cancel</a>
+  </form>
+</div>
+{% endblock %}

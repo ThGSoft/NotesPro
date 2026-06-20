@@ -1,0 +1,15 @@
+{% extends 'dashboard/base.html' %}
+{% block title %}Settings{% endblock %}
+{% block heading %}Dashboard Settings{% endblock %}
+{% block content %}
+  <div class="card">
+    <form method="post">
+      {% csrf_token %}
+      <h2>Account</h2>
+      {{ user_form.as_p }}
+      <h2>Preferences</h2>
+      {{ profile_form.as_p }}
+      <button class="btn" type="submit">Save Settings</button>
+    </form>
+  </div>
+{% endblock %}

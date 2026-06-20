@@ -1,0 +1,35 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+<h1>{{ title }}</h1>
+<p>Upload a pages export ZIP into an existing workspace.</p>
+<form method="post" enctype="multipart/form-data">
+  {% csrf_token %}
+  <p>
+    <label for="import_file"><strong>ZIP file</strong></label><br>
+    <input type="file" name="import_file" id="import_file" accept=".zip,application/zip" required>
+  </p>
+  <p>
+    <label for="workspace"><strong>Target workspace</strong></label><br>
+    <select name="workspace" id="workspace" required>
+      <option value="">---------</option>
+      {% for ws in workspaces %}
+      <option value="{{ ws.pk }}">{{ ws.name }} ({{ ws.owner.username }})</option>
+      {% endfor %}
+    </select>
+  </p>
+  <p>
+    <label for="parent"><strong>Parent folder</strong> (optional)</label><br>
+    <select name="parent" id="parent">
+      <option value="">— workspace root —</option>
+      {% for folder in folders %}
+      <option value="{{ folder.pk }}">{{ folder.workspace.name }} / {{ folder.title }}</option>
+      {% endfor %}
+    </select>
+  </p>
+  <p>
+    <input type="submit" value="Import pages" class="default">
+    <a href="{% url 'admin:notes_page_changelist' %}">Cancel</a>
+  </p>
+</form>
+{% endblock %}

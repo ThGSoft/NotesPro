@@ -4,21 +4,16 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Django Notes Pro</title>
+  <title>Notes Pro</title>
   <meta name="csrf-token" content="{{ csrf_token }}">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jstree@3.3.17/dist/themes/default/style.min.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.css">
   <link rel="shortcut icon" type="image/png" href="{% static 'images/favicon.ico' %}"/>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror/addon/dialog/dialog.css">
   <link rel="stylesheet" href="{% static 'notes/dashboard.css' %}">
 </head>
 <body>
-  <!-- Farbwähler für Text -->
-<input type="color" id="text-color-picker" style="display:none;">
-<!-- Farbwähler für Hintergrund -->
-<input type="color" id="bg-color-picker" style="display:none;">
 <div class="app-shell">
   <header class="topbar">
     <div class="title-wrap d-flex align-items-center gap-4">
@@ -33,7 +28,11 @@
     
     <div class="topbar-actions">
       <button id="edit-toggle" class="btn btn-primary btn-sm">Edit</button>
+      {% if user.is_staff %}
+      <a id="admin-link" href="{% url 'admin:index' %}" class="btn btn-sm btn-outline-light d-none" target="_blank" rel="noopener noreferrer" title="Django Admin">Admin</a>
+      {% endif %}
       <button id="toggle-right" class="btn btn-sm btn-outline-light" type="button" title="Chat &amp; Mail">💬</button>
+      <a href="{% url 'setup_2fa' %}" class="btn btn-sm btn-outline-light" title="Two-factor authentication">2FA</a>
       <form action="{% url 'logout' %}" method="post">
         {% csrf_token %}
         <button class="btn btn-sm btn-outline-light">Logout</button>
@@ -52,20 +51,14 @@
       </div>
 
       <div class="panel-body expanded">
-        <div class="workspace-row d-flex align-items-center ">
-          <select id="workspace-select" class="form-select form-select-sm" style="width: 80%; min-width: max-content;">
+        <div class="workspace-row">
+          <select id="workspace-select" class="form-select form-select-sm">
             {% for ws in workspaces %}
-            <option value="{{ ws.id }}" {% if ws.id == current_workspace.id %}selected{% endif %}>
-              {% if ws.owner == user %}
-                {{ ws.name }}
-              {% else %}
-                {{ ws.owner.username }}: {{ ws.name }}
-              {% endif %}
-            </option>
+            <option value="{{ ws.id }}" data-owner-id="{{ ws.owner_id }}" {% if ws.id == current_workspace.id %}selected{% endif %}>{% if ws.owner == user %}{{ ws.name }}{% else %}{{ ws.owner.username }}: {{ ws.name }}{% endif %}</option>
             {% endfor %}
           </select>
           <!-- <button id="new-workspace" class="btn btn-sm btn-primary">+</button> -->
-          <div class="btn-group btn-group-sm" style="width: 20%; min-width: max-content;">
+          <div class="btn-group btn-group-sm">
             <button id="ws-add-btn" class="btn btn btn-sm btn-primary" title="Add Workspace">+</button>
             <button id="ws-rename-btn" class="btn btn btn-sm btn-outline-secondary" title="Rename Workspace">✏️</button>
             <button id="ws-delete-btn" class="btn btn btn-sm btn-outline-danger" title="Delete Workspace">🗑️</button>
@@ -79,64 +72,27 @@
         </div>
     
         <input id="tree-search" class="form-control form-control-sm mt-2" placeholder="Search tree...">
+        <input id="tag-search" class="form-control form-control-sm mt-2" placeholder="Search tags..." autocomplete="off">
+        <div id="tag-search-results" class="tag-search-results"></div>
+        <div id="tag-suggestions" class="tag-suggestions d-none"></div>
     
         <div class="tree-actions">
-          <button id="create-page" class="btn btn-sm btn-primary">New Page</button>
-          <button id="create-folder" class="btn btn-sm btn-outline-light">Folder</button>
-          <button id="delete-page" class="btn btn-sm btn-outline-danger">Delete</button>
+          <button type="button" id="create-page" class="btn btn-sm btn-primary">New Page</button>
+          <button type="button" id="create-folder" class="btn btn-sm btn-outline-light">Folder</button>
+          <button type="button" id="delete-page" class="btn btn-sm btn-outline-danger">Delete</button>
         </div>
         <div id="tree" ></div>
       </div>
     </div>
-    <div class="panel-card"> 
+
+    <div class="panel-card">
       <div class="panel-header">
-        <span class="panel-title">Worksheet Members</span>
+        <span class="panel-title">Snippets</span>
         <i class="bi bi-chevron-down toggle-icon"></i>
       </div>
       <div class="panel-body expanded">
-        <div class="card shadow-sm mt-3" style="max-width: 350px;">
-          <div class="card-header bg-light py-2 d-flex justify-content-between align-items-center">
-            <h6 class="mb-0 text-secondary" style="font-size: 0.85rem; fw-bold;">Workspace Members</h6>
-            <span class="badge bg-primary rounded-pill" id="user-count">0</span>
-          </div>
-          
-          <div class="card-body p-2">
-            <!-- Suchbereich mit integriertem Spinner -->
-            <div class="position-relative mb-2">
-              <div class="input-group input-group-sm">
-                <span class="input-group-text bg-white border-end-0 text-muted">🔍</span>
-                <input type="text" id="user-search-input" class="form-control border-start-0 ps-0" placeholder="Search  Members..." autocomplete="off">
-                
-                <!-- Das Ladesymbol (Standardmäßig unsichtbar durch d-none) -->
-                <span class="input-group-text bg-white border-start-0 d-none" id="search-spinner-container">
-                  <div class="spinner-border spinner-border-sm text-primary" role="status">
-                    <span class="visually-hidden">Load...</span>
-                  </div>
-                </span>
-              </div>
-              
-              <!-- Schwebendes Dropdown für Suchergebnisse -->
-              <ul id="search-results-dropdown" class="list-group position-absolute w-100 shadow d-none" style="z-index: 1000; max-height: 200px; overflow-y: auto;">
-              </ul>
-            </div>
-            
-            <div id="invite-email-box" class="border-top pt-2 mt-2 d-none">
-              <label class="form-label small text-muted mb-1">Invite by email</label>
-              <div class="input-group input-group-sm mb-1">
-                <input type="email" id="invite-email-input" class="form-control" placeholder="name@example.com">
-                <select id="invite-email-role" class="form-select" style="max-width: 6rem;">
-                  <option value="read">Read</option>
-                  <option value="write">Write</option>
-                </select>
-              </div>
-              <button type="button" id="invite-email-btn" class="btn btn-sm btn-outline-primary w-100">Send invitation</button>
-            </div>
-
-            <!-- Liste der aktiven Mitglieder -->
-            <ul class="list-group list-group-flush overflow-auto" id="worksheet-users" style="max-height: 250px; font-size: 0.85rem;">
-            </ul>
-          </div>
-        </div>
+        <button type="button" id="snippets-manage-btn" class="btn btn-sm btn-outline-light w-100 mb-2">Manage snippets…</button>
+        <div id="snippets-quick-list" class="snippets-quick-list"></div>
       </div>
     </div>
 
@@ -149,6 +105,8 @@
       <div class="panel-body expanded">
         <div class="dropzone" id="dropzone">Drop files/images here</div>
         <input type="file" id="file-input" multiple class="form-control form-control-sm mt-2">
+        <button type="button" id="insert-local-file-link-btn" class="btn btn-sm btn-outline-light w-100 mt-2">Link local file…</button>
+        <input type="file" id="local-file-link-picker" class="visually-hidden-file-input" tabindex="-1" aria-hidden="true">
         <div id="file-list" class="file-list"></div>
       </div>
     </div>
@@ -165,14 +123,34 @@
     </div>
   </aside>
 
-  <div class="panel-gap panel-gap--left" aria-hidden="true"></div>
+  <div id="left-splitter" class="panel-splitter" role="separator" aria-orientation="vertical" aria-label="Resize sidebar" tabindex="0"></div>
 
   <main class="main-pane">
     
     <section class="editor-wrap">
       <div id="markdown-wrap" class="editor-panel hidden">
+        <div id="editor-find-bar" class="editor-find-bar d-none" aria-label="Find and replace">
+          <div class="editor-find-bar-row">
+            <label class="editor-find-label" for="editor-find-input">Find</label>
+            <input id="editor-find-input" class="editor-find-input" type="text" placeholder="Search…" autocomplete="off" spellcheck="false">
+            <button type="button" id="editor-find-prev" class="editor-find-btn" title="Previous (Shift+F3)">↑</button>
+            <button type="button" id="editor-find-next" class="editor-find-btn" title="Next (F3)">↓</button>
+            <span id="editor-find-status" class="editor-find-status" aria-live="polite"></span>
+          </div>
+          <div class="editor-find-bar-row">
+            <label class="editor-find-label" for="editor-replace-input">Replace</label>
+            <input id="editor-replace-input" class="editor-find-input" type="text" placeholder="Replace with…" autocomplete="off" spellcheck="false">
+            <button type="button" id="editor-replace-one" class="editor-find-btn editor-find-btn--action" title="Replace selected match">Replace</button>
+            <button type="button" id="editor-replace-all" class="editor-find-btn editor-find-btn--action" title="Replace all matches">All</button>
+          </div>
+          <label class="editor-find-case">
+            <input type="checkbox" id="editor-find-case"> Match case
+          </label>
+          <button type="button" id="editor-find-close" class="editor-find-close" title="Close (Esc)">×</button>
+        </div>
         <textarea id="markdown-editor"></textarea>
       </div>
+      <div id="editor-splitter" class="panel-splitter panel-splitter--editor" role="separator" aria-orientation="vertical" aria-label="Resize editor and preview" tabindex="0"></div>
       <button id="toc-toggle" class="mobile-toc-btn">
         <span>content</span>
       </button>
@@ -190,18 +168,55 @@
     </section>
   </main>
 
+  <div id="right-splitter" class="panel-splitter panel-splitter--right" role="separator" aria-orientation="vertical" aria-label="Resize chat panel" tabindex="0"></div>
+
   <aside class="right-panel" id="right-panel">
+    <div class="right-panel-comm">
     <ul class="nav nav-tabs nav-fill comm-tabs mb-2" role="tablist">
-      <li class="nav-item"><button class="nav-link active" type="button" data-comm-tab="chat">Chat</button></li>
+      <li class="nav-item"><button class="nav-link active" type="button" data-comm-tab="chat">Chat <span id="chat-unread-badge" class="badge bg-success d-none">0</span></button></li>
       <li class="nav-item"><button class="nav-link" type="button" data-comm-tab="mail">Mail <span id="mail-unread-badge" class="badge bg-danger d-none">0</span></button></li>
     </ul>
 
-    <div id="comm-chat-pane" class="comm-pane">
+    <div id="comm-chat-pane" class="comm-pane private-chat-pane" data-pane-mode="private">
+      <ul class="nav nav-pills nav-fill mb-2 small" id="chat-mode-tabs" role="tablist">
+        <li class="nav-item"><button class="nav-link py-1" type="button" data-chat-mode="workspace">Group</button></li>
+        <li class="nav-item"><button class="nav-link active py-1" type="button" data-chat-mode="private">Private <span class="text-muted">🔒</span> <span id="dm-unread-badge" class="badge bg-success d-none">0</span></button></li>
+      </ul>
+
+      <div id="dm-list-view" class="dm-list-view">
+        <div class="dm-list-header">
+          <span class="dm-list-title">Private chats</span>
+          <span class="dm-list-subtitle">End-to-end encrypted</span>
+        </div>
+        <input type="text" id="dm-new-search" class="form-control form-control-sm mb-2" placeholder="Search name or email…" autocomplete="off">
+        <div id="dm-search-results" class="dm-search-results mb-2"></div>
+        <div id="dm-conversation-list" class="dm-conversation-list"></div>
+        <div id="dm-empty-state" class="dm-empty-state d-none">
+          <div class="dm-empty-icon">🔒</div>
+          <p class="mb-1 fw-semibold">Your private messages</p>
+          <p class="small text-muted mb-0">Search for a user above or message a workspace member.</p>
+        </div>
+      </div>
+
+      <div id="dm-thread-header" class="dm-thread-header d-none">
+        <button type="button" id="dm-back-btn" class="btn btn-sm btn-link px-0 dm-back-btn" aria-label="Back to chats">←</button>
+        <div id="dm-peer-avatar" class="dm-thread-avatar"></div>
+        <div class="dm-thread-title">
+          <strong id="dm-peer-name"></strong>
+          <span id="dm-p2p-status" class="dm-p2p-status">Encrypted</span>
+        </div>
+      </div>
+
+      <div id="dm-typing-indicator" class="dm-typing d-none"><span class="dm-typing-dots">typing</span></div>
+
       <div id="chat-messages" class="chat-messages"></div>
       <form id="chat-form" class="chat-form mt-2">
-        <div class="input-group input-group-sm">
-          <input type="text" id="chat-input" class="form-control" placeholder="Message…" maxlength="4000" autocomplete="off">
-          <button type="submit" class="btn btn-primary">Send</button>
+        <div id="chat-attachment-preview" class="chat-attachment-preview d-none"></div>
+        <div class="chat-composer">
+          <input type="file" id="chat-file-input" class="d-none" accept="image/*,.pdf,.zip,.doc,.docx,.xls,.xlsx,.txt">
+          <button type="button" id="chat-attach-btn" class="btn btn-sm btn-outline-secondary chat-attach-btn" title="Attach file">📎</button>
+          <textarea id="chat-input" class="form-control chat-input" rows="1" placeholder="Type a private message…" maxlength="4000"></textarea>
+          <button type="submit" class="btn btn-sm btn-success chat-send-btn" title="Send">➤</button>
         </div>
       </form>
     </div>
@@ -229,10 +244,54 @@
         <button type="button" id="mail-send-btn" class="btn btn-sm btn-primary w-100">Send mail</button>
       </div>
     </div>
+    </div>
+
+    <section class="right-panel-members workspace-members-card" id="right-panel-members" aria-label="Workspace members">
+      <div class="workspace-members-card-header">
+        <h6 class="workspace-members-title">Workspace Members</h6>
+        <span class="badge bg-primary rounded-pill" id="user-count">0</span>
+      </div>
+
+      <div class="workspace-members-card-body">
+        <div class="position-relative mb-2">
+          <div class="input-group input-group-sm workspace-members-search">
+            <span class="input-group-text">🔍</span>
+            <input type="text" id="user-search-input" class="form-control" placeholder="Search members…" autocomplete="off">
+
+            <span class="input-group-text d-none" id="search-spinner-container">
+              <div class="spinner-border spinner-border-sm text-primary" role="status">
+                <span class="visually-hidden">Load...</span>
+              </div>
+            </span>
+          </div>
+
+          <ul id="search-results-dropdown" class="list-group workspace-members-dropdown position-absolute w-100 shadow d-none"></ul>
+        </div>
+
+        <div id="invite-email-box" class="workspace-members-invite d-none">
+          <label class="form-label small mb-1" for="invite-email-input">Invite by email</label>
+          <div class="input-group input-group-sm mb-1">
+            <input type="email" id="invite-email-input" class="form-control" placeholder="name@example.com">
+            <select id="invite-email-role" class="form-select" style="max-width: 6rem;">
+              <option value="read">Read</option>
+              <option value="write">Write</option>
+            </select>
+          </div>
+          <button type="button" id="invite-email-btn" class="btn btn-sm btn-outline-primary w-100">Send invitation</button>
+          <p class="small workspace-members-hint mt-1 mb-0" id="invite-email-hint">Dev: emails appear in the runserver terminal unless SMTP is configured.</p>
+        </div>
+
+        <ul class="list-group list-group-flush overflow-auto workspace-members-list" id="worksheet-users"></ul>
+      </div>
+    </section>
   </aside>
 
 </div>
+{{ user_settings.extra_configs|json_script:"app-extra-configs" }}
+{{ user_settings.workspace_pages|json_script:"app-workspace-pages" }}
 <script>
+    const appExtraConfigs = JSON.parse(document.getElementById('app-extra-configs').textContent);
+    const appWorkspacePages = JSON.parse(document.getElementById('app-workspace-pages').textContent);
     window.APP_BOOT = {
         // Nutze die ID, falls vorhanden, sonst null
         workspaceId: {% if current_workspace %}{{ current_workspace.id }}{% else %}null{% endif %},
@@ -244,20 +303,174 @@
         {% else %}
             userId: null,
             username: null
-        {% endif %}
+        {% endif %},
+        sidebarWidth: {% if user_settings.sidebar_width %}{{ user_settings.sidebar_width }}{% else %}null{% endif %},
+        leftPanelExpanded: {{ user_settings.left_panel_expanded|yesno:"true,false" }},
+        rightPanelWidth: {% if user_settings.right_panel_width %}{{ user_settings.right_panel_width }}{% else %}null{% endif %},
+        rightPanelExpanded: {{ user_settings.right_panel_expanded|yesno:"true,false" }},
+        extraConfigs: appExtraConfigs,
+        workspacePages: appWorkspacePages,
+        isStaff: {% if user.is_staff %}true{% else %}false{% endif %},
+        localFileOpenEnabled: {{ local_file_open_enabled|yesno:"true,false" }},
     };
 
     // Falls gar nichts existiert, Fehlermeldung oder Default-Handling
     if (!window.APP_BOOT.workspaceId) {
         console.warn("Kein Workspace gefunden. Bitte erstellen Sie zuerst einen.");
     }
-  //  window.APP_BASE = "/DjangoNotesPro";
+    window.APP_BASE = "{{ app_base|escapejs }}";
 </script> 
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jstree@3.3.17/dist/jstree.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/search/searchcursor.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+<!-- Panel insert dialog -->
+<div class="modal fade dashboard-modal-root" id="panel-insert-modal" tabindex="-1" aria-labelledby="panel-insert-modal-title" aria-hidden="true" data-bs-theme="dark">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content dashboard-modal">
+      <div class="modal-header">
+        <h5 class="modal-title" id="panel-insert-modal-title">Insert colored panel</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">Panel type</label>
+          <div id="panel-type-buttons" class="panel-type-buttons"></div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-semibold" for="panel-insert-title">Title</label>
+          <input type="text" id="panel-insert-title" class="form-control form-control-sm" placeholder="Optional title">
+        </div>
+        <div class="mb-2">
+          <label class="form-label small fw-semibold" for="panel-insert-body">Content</label>
+          <textarea id="panel-insert-body" class="form-control form-control-sm" rows="5" placeholder="Panel content (markdown supported)"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-sm btn-outline-light" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-sm btn-primary" id="panel-insert-confirm">Insert</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Snippets dialog -->
+<div class="modal fade dashboard-modal-root" id="snippets-modal" tabindex="-1" aria-labelledby="snippets-modal-title" aria-hidden="true" data-bs-theme="dark">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content dashboard-modal">
+      <div class="modal-header">
+        <h5 class="modal-title" id="snippets-modal-title">Snippets</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-3">
+          <div class="col-md-4">
+            <div class="d-flex gap-2 mb-2">
+              <button type="button" class="btn btn-sm btn-primary flex-grow-1" id="snippet-new-btn">New</button>
+            </div>
+            <div id="snippets-list" class="snippets-list"></div>
+          </div>
+          <div class="col-md-8">
+            <div class="mb-2">
+              <label class="form-label small fw-semibold" for="snippet-edit-name">Name</label>
+              <input type="text" id="snippet-edit-name" class="form-control form-control-sm" placeholder="Snippet name">
+            </div>
+            <div class="mb-2">
+              <label class="form-label small fw-semibold" for="snippet-edit-body">Content</label>
+              <textarea id="snippet-edit-body" class="form-control form-control-sm font-monospace" rows="10" placeholder="Text to insert into the editor"></textarea>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-sm btn-outline-danger" id="snippet-delete-btn">Delete</button>
+        <button type="button" class="btn btn-sm btn-outline-light" data-bs-dismiss="modal">Close</button>
+        <button type="button" class="btn btn-sm btn-outline-primary" id="snippet-insert-btn">Insert</button>
+        <button type="button" class="btn btn-sm btn-primary" id="snippet-save-btn">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Chart insert dialog -->
+<div class="modal fade dashboard-modal-root" id="chart-insert-modal" tabindex="-1" aria-labelledby="chart-insert-modal-title" aria-hidden="true" data-bs-theme="dark">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content dashboard-modal">
+      <div class="modal-header">
+        <h5 class="modal-title" id="chart-insert-modal-title">Insert chart</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="small dashboard-modal-hint mb-3 d-none" id="chart-insert-hint">No sheet blocks in this page. Enter a sheet id or add a <code>```sheet</code> block first.</p>
+        <div class="mb-3">
+          <label class="form-label small fw-semibold" for="chart-insert-sheet">Sheet</label>
+          <select id="chart-insert-sheet" class="form-select form-select-sm"></select>
+          <input type="text" id="chart-insert-sheet-manual" class="form-control form-control-sm d-none mt-0" placeholder="Sheet id (e.g. quarterly)">
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-semibold" for="chart-insert-type">Chart type</label>
+          <select id="chart-insert-type" class="form-select form-select-sm">
+            <option value="bar">Bar</option>
+            <option value="line">Line</option>
+            <option value="scatter">Scatter</option>
+            <option value="pie">Pie</option>
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">Bottom axis (X)</label>
+          <div id="chart-insert-x-buttons" class="chart-axis-buttons"></div>
+        </div>
+        <div class="mb-2">
+          <label class="form-label small fw-semibold">Left axis (Y values)</label>
+          <p class="small text-muted mb-1">Click to toggle multiple series.</p>
+          <div id="chart-insert-y-buttons" class="chart-axis-buttons"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-sm btn-outline-light" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-sm btn-primary" id="chart-insert-confirm">Insert</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Local file link dialog -->
+<div class="modal fade dashboard-modal-root" id="file-link-modal" tabindex="-1" aria-labelledby="file-link-modal-title" aria-hidden="true" data-bs-theme="dark">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content dashboard-modal">
+      <div class="modal-header">
+        <h5 class="modal-title" id="file-link-modal-title">Local file</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="small dashboard-modal-hint mb-2" id="file-link-modal-hint">Local file links open in Explorer / Finder when you click them in preview.</p>
+        <div id="file-link-insert-row" class="d-none mb-3">
+          <label class="form-label small fw-semibold" for="file-link-modal-label">Link text</label>
+          <input type="text" class="form-control form-control-sm" id="file-link-modal-label">
+        </div>
+        <label class="form-label small fw-semibold" for="file-link-modal-path" id="file-link-modal-path-label">File path</label>
+        <input type="text" class="form-control form-control-sm font-monospace mb-3" id="file-link-modal-path" placeholder="C:\Users\you\Documents\file.pdf" autocomplete="off" spellcheck="false">
+        <label class="form-label small fw-semibold" for="file-link-modal-url">File URL</label>
+        <input type="text" class="form-control form-control-sm font-monospace" id="file-link-modal-url" readonly>
+      </div>
+      <div class="modal-footer">
+        <input type="file" id="file-link-modal-picker" class="visually-hidden-file-input" tabindex="-1" aria-hidden="true">
+        <button type="button" class="btn btn-sm btn-outline-light" data-bs-dismiss="modal">Close</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary d-none" id="file-link-browse-btn">Browse…</button>
+        <button type="button" class="btn btn-sm btn-outline-success d-none" id="file-link-insert-btn">Insert link</button>
+        <button type="button" class="btn btn-sm btn-outline-primary d-none" id="file-link-open-btn">Open in Explorer</button>
+        <button type="button" class="btn btn-sm btn-outline-primary" id="file-link-copy-url-btn">Copy URL</button>
+        <button type="button" class="btn btn-sm btn-primary" id="file-link-copy-path-btn">Copy path</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="{% static 'notes/dm-p2p.js' %}"></script>
 <script src="{% static 'notes/dashboard.js' %}"></script>
 
 
@@ -270,6 +483,20 @@
       </div>
       <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
     </div>
+  </div>
+</div>
+
+<div id="editor-color-picker" class="editor-color-picker d-none" role="dialog" aria-labelledby="editor-color-picker-title">
+  <div class="editor-color-picker-header">
+    <span id="editor-color-picker-title" class="editor-color-picker-title">Text color</span>
+    <button type="button" id="editor-color-picker-close" class="btn-close btn-close-sm" aria-label="Close"></button>
+  </div>
+  <p class="editor-color-picker-hint">Click to preview, double-click a swatch to apply.</p>
+  <div id="editor-color-picker-grid" class="editor-color-picker-grid"></div>
+  <div class="editor-color-picker-custom">
+    <label class="editor-color-picker-custom-label" for="editor-color-picker-input">Custom</label>
+    <input type="color" id="editor-color-picker-input" class="editor-color-picker-input" value="#0d6efd">
+    <button type="button" id="editor-color-picker-apply" class="btn btn-sm btn-outline-primary">Apply</button>
   </div>
 </div>
 

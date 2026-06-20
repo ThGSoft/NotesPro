@@ -1,0 +1,10 @@
+{% extends 'dashboard/base.html' %}
+{% block title %}Access denied{% endblock %}
+{% block heading %}Access denied{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>You do not have access to this item.</h2>
+  <p class="muted">Ask a Group Admin to add your group to the folder.</p>
+  <a class="btn" href="{% url 'drive_home' %}">Back to My Drive</a>
+</div>
+{% endblock %}

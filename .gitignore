@@ -7,5 +7,15 @@
 /staticfiles/admin/img
 /staticfiles/admin/js
 /staticfiles/notes
-5.1
-6.2
+/notes/management/__pycache__
+dashboard/migrations/__pycache__/0001_initial.cpython-314.pyc
+dashboard/migrations/__pycache__/0002_invite.cpython-314.pyc
+notes/management/commands/__pycache__/__init__.cpython-310.pyc
+notes/management/commands/__pycache__/__init__.cpython-314.pyc
+notes/management/commands/__pycache__/fix_md5.cpython-310.pyc
+notes/management/commands/__pycache__/fix_md5.cpython-314.pyc
+notes/management/commands/__pycache__/printMembers.cpython-314.pyc
+dashboard/migrations/__pycache__/__init__.cpython-314.pyc
+notes/tests/__pycache__/test_mail_api.cpython-314.pyc
+notes/tests/__pycache__/test_local_files.cpython-310.pyc
+notes/tests/__pycache__/test_tags.cpython-310.pyc

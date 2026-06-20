@@ -1,0 +1,14 @@
+{% extends 'dashboard/base.html' %}
+{% block title %}User Dashboard{% endblock %}
+{% block heading %}User Dashboard{% endblock %}
+{% block content %}
+  <div class="card">
+    <h2>Welcome, {{ request.user.first_name|default:request.user.username }}</h2>
+    <p>This is your personal dashboard. Use settings to update profile preferences and theme.</p>
+  </div>
+  <div class="grid">
+    <div class="card"><h3>Profile</h3><p>{{ request.user.profile.bio|default:'No bio yet.' }}</p></div>
+    <div class="card"><h3>Theme</h3><p>{{ request.user.profile.theme|title }}</p></div>
+    <div class="card"><h3>Notifications</h3><p>{% if request.user.profile.notifications_enabled %}Enabled{% else %}Disabled{% endif %}</p></div>
+  </div>
+{% endblock %}

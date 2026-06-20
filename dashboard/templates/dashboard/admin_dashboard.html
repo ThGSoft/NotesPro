@@ -1,0 +1,15 @@
+{% extends 'dashboard/base.html' %}
+{% block title %}Admin Dashboard{% endblock %}
+{% block heading %}Admin Dashboard{% endblock %}
+{% block content %}
+  <div class="grid">
+    <div class="card"><h3>Total Users</h3><p style="font-size:32px;">{{ total_users }}</p></div>
+    <div class="card"><h3>Active Users</h3><p style="font-size:32px;">{{ active_users }}</p></div>
+    <div class="card"><h3>Staff Users</h3><p style="font-size:32px;">{{ staff_users }}</p></div>
+  </div>
+  <div class="card">
+    <h2>Admin Tools</h2>
+    <p>Use the sidebar to manage users and admin settings.</p>
+    <a class="btn" href="{% url 'admin_users' %}">View Users</a>
+  </div>
+{% endblock %}

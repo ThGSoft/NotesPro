@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Dashboard{% endblock %}</title>
+  <style>
+    :root { --bg: #f5f7fb; --panel: #ffffff; --text: #172033; --muted: #6b7280; --brand: #2563eb; --border: #e5e7eb; }
+    body.dark { --bg: #111827; --panel: #1f2937; --text: #f9fafb; --muted: #d1d5db; --brand: #60a5fa; --border: #374151; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: Arial, sans-serif; background: var(--bg); color: var(--text); }
+    .layout { display: grid; grid-template-columns: 260px 1fr; min-height: 100vh; }
+    .sidebar { background: var(--panel); border-right: 1px solid var(--border); padding: 24px; }
+    .brand { font-size: 22px; font-weight: 700; margin-bottom: 28px; }
+    .nav { display: flex; flex-direction: column; gap: 8px; }
+    .nav a { color: var(--text); text-decoration: none; padding: 12px 14px; border-radius: 12px; display: flex; gap: 10px; align-items: center; }
+    .nav a:hover { background: var(--bg); color: var(--brand); }
+    .role { margin-top: 24px; color: var(--muted); font-size: 14px; }
+    .main { padding: 28px; }
+    .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 18px; padding: 22px; box-shadow: 0 8px 30px rgba(0,0,0,.04); margin-bottom: 18px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 18px; }
+    .btn { border: 0; background: var(--brand); color: white; padding: 10px 14px; border-radius: 10px; cursor: pointer; text-decoration: none; display: inline-block; }
+    .btn-light { background: var(--bg); color: var(--text); border: 1px solid var(--border); }
+    input, textarea, select { width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); color: var(--text); }
+    label { display: block; margin: 12px 0 6px; color: var(--muted); }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; border-bottom: 1px solid var(--border); padding: 12px; }
+    .messages { margin-bottom: 16px; }
+    .message { padding: 12px; border-radius: 10px; background: #dcfce7; color: #166534; }
+
+    .muted { color: var(--muted); }
+    .drive-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 18px; }
+    .drive-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px; }
+    .drive-folder { background: var(--panel); border: 1px solid var(--border); border-radius: 18px; padding: 18px; color: var(--text); text-decoration: none; display: grid; gap: 7px; min-height: 150px; box-shadow: 0 8px 30px rgba(0,0,0,.04); }
+    .drive-folder:hover { transform: translateY(-2px); border-color: var(--brand); }
+    .folder-icon { font-size: 36px; }
+    .upload-card h2 { margin-top: 0; }
+    .drop-zone { border: 2px dashed var(--border); border-radius: 18px; padding: 34px; display: grid; gap: 8px; place-items: center; text-align: center; cursor: pointer; background: var(--bg); }
+    .drop-zone.dragover { border-color: var(--brand); background: rgba(37,99,235,.08); }
+    .drop-icon { font-size: 34px; }
+    .file-list { display: grid; gap: 10px; }
+    .file-row { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 14px; display: grid; grid-template-columns: 1fr 120px 140px auto; gap: 12px; align-items: center; }
+    .file-row a { color: var(--text); text-decoration: none; display: flex; align-items: center; gap: 10px; }
+    .file-badge { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 6px 8px; font-size: 12px; font-weight: 700; }
+    .link-danger { background: none; border: 0; color: #dc2626; cursor: pointer; }
+    @media (max-width: 760px) { .layout { grid-template-columns: 1fr; } .sidebar { border-right: 0; border-bottom: 1px solid var(--border); } .file-row { grid-template-columns: 1fr; } .drive-toolbar { align-items: flex-start; flex-direction: column; } }
+  </style>
+</head>
+<body class="{% if request.user.profile.theme == 'dark' %}dark{% endif %}">
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">Group Dashboard</div>
+      <nav class="nav">
+        {% for item in sidebar_menu %}
+          <a href="{{ item.url }}"><span>{{ item.icon }}</span><span>{{ item.label }}</span></a>
+        {% endfor %}
+      </nav>
+      <div class="role">
+        Signed in as <strong>{{ request.user.username }}</strong><br>
+        Role: {% if is_group_admin %}Group Admin{% else %}User{% endif %}
+      </div>
+      <form method="post" action="{% url 'logout' %}" style="margin-top: 18px;">
+        {% csrf_token %}
+        <button class="btn btn-light" type="submit">Logout</button>
+      </form>
+    </aside>
+
+    <main class="main">
+      <div class="topbar">
+        <h1>{% block heading %}Dashboard{% endblock %}</h1>
+        <a class="btn" href="{% url 'settings' %}">Settings</a>
+      </div>
+      {% if messages %}
+        <div class="messages">
+          {% for message in messages %}<div class="message">{{ message }}</div>{% endfor %}
+        </div>
+      {% endif %}
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</body>
+</html>

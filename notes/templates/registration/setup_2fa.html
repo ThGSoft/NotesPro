@@ -1,0 +1,63 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Two-factor authentication</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+  <style>
+    body { background:#0f172a; color:#e5e7eb; }
+    .auth-box { max-width:520px; margin:40px auto; background:#111827; padding:24px; border-radius:18px; box-shadow:0 20px 60px rgba(0,0,0,.35); }
+    a { color:#93c5fd; }
+    .qr-wrap { text-align:center; margin:16px 0; }
+    .qr-wrap img { background:#fff; padding:8px; border-radius:8px; }
+    code { color:#fbbf24; }
+  </style>
+</head>
+<body>
+  <div class="auth-box">
+    <h2 class="mb-3">Two-factor authentication</h2>
+    {% if messages %}
+      {% for message in messages %}
+        <div class="alert alert-{{ message.tags|default:'info' }} py-2">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+
+    {% if enabled %}
+      <p class="text-success mb-3">Two-factor authentication is <strong>enabled</strong> on your account.</p>
+      <p class="text-secondary">Enter a current code from your authenticator app to disable 2FA.</p>
+      <form method="post" class="mt-3">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="disable">
+        <div class="mb-3">
+          <label for="token" class="form-label">Verification code</label>
+          <input type="text" class="form-control" id="token" name="token" inputmode="numeric" maxlength="8" required>
+        </div>
+        <button class="btn btn-outline-danger" type="submit">Disable 2FA</button>
+      </form>
+    {% else %}
+      <p class="text-secondary">Scan this QR code with Google Authenticator, Authy, or another TOTP app.</p>
+      {% if qr_data_uri %}
+      <div class="qr-wrap">
+        <img src="{{ qr_data_uri }}" alt="QR code for 2FA setup" width="200" height="200">
+      </div>
+      {% else %}
+      <p class="text-warning small">QR image unavailable — use the manual secret below.</p>
+      {% endif %}
+      <p class="small text-secondary mb-1">Manual entry secret:</p>
+      <p><code>{{ secret }}</code></p>
+      <p class="small text-secondary">URI: <code class="small">{{ provisioning_uri }}</code></p>
+      <form method="post" class="mt-3">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="enable">
+        <div class="mb-3">
+          <label for="token" class="form-label">Enter code from app to confirm</label>
+          <input type="text" class="form-control" id="token" name="token" inputmode="numeric" maxlength="8" required>
+        </div>
+        <button class="btn btn-primary" type="submit">Enable 2FA</button>
+      </form>
+    {% endif %}
+
+    <p class="mt-4 mb-0"><a href="{% url 'dashboard' %}">Back to dashboard</a></p>
+  </div>
+</body>
+</html>
