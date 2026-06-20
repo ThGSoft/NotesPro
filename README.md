@@ -3,14 +3,13 @@
 Collaborative notes app with workspaces, markdown editing, embedded spreadsheets and charts, team chat, and encrypted messaging.
 
 ## Screenshots
+```sheet
+Dashboard (edit + preview) | Editor toolbar & find/replace 
+![Dashboard overview](/media/uploads/2026/06/dashboard-overview.png) ![Editor toolbar](/media/uploads/2026/06/dashboard-editor.png)
 
-| Dashboard (edit + preview) | Editor toolbar & find/replace |
-|:---:|:---:|
-| ![Dashboard overview](docs/screenshots/dashboard-overview.png) | ![Editor toolbar](docs/screenshots/dashboard-editor.png) |
+Preview mode (sheets & charts) | Chat panel (private / group / mail) |
 
-| Preview mode (sheets & charts) | Chat panel (private / group / mail) |
-|:---:|:---:|
-| ![Preview mode](docs/screenshots/dashboard-preview.png) | ![Chat panel](docs/screenshots/dashboard-chat.png) |
+![Preview mode](/media/uploads/2026/06/dashboard-editor.png) ![Chat panel](/media/uploads/2026/06/dashboard-chat.png)
 
 Screenshots are generated from `docs/screenshots/dashboard-mock.html` (static mock using the app stylesheet). After UI changes, refresh them by opening that file via a local server and capturing each `?shot=` view (`overview`, `editor`, `preview`, `chat`).
 
@@ -105,7 +104,7 @@ python manage.py encrypt_db_fields
 
 Open the **Chat** panel (💬 in the top bar).
 
-![Chat panel](docs/screenshots/dashboard-chat.png)
+![Chat panel](/media/uploads/2026/06/dashboard-chat.png)
 
 | Tab | Purpose |
 |-----|---------|
@@ -177,7 +176,7 @@ Set default **column width** on the fence (semicolon-separated attributes):
 ~~~
 ```sheet{width=25%; id=screenshots}
 Overview	Editor	Preview	Chat
-![Overview](docs/screenshots/dashboard-overview.png)	![Editor](docs/screenshots/dashboard-editor.png)	![Preview](docs/screenshots/dashboard-preview.png)	![Chat](docs/screenshots/dashboard-chat.png)
+![Overview](/media/uploads/2026/06/dashboard-overview.png)	![Editor](/media/uploads/2026/06/dashboard-editor.png)	![Preview](/media/uploads/2026/06/dashboard-editor.png)	![Chat](/media/uploads/2026/06/dashboard-chat.png)
 ```
 ~~~
 
@@ -399,7 +398,7 @@ In preview, use the chart **settings** (gear) to switch type, toggle data points
 
 ## Markdown editor
 
-![Edit mode with toolbar and find bar](docs/screenshots/dashboard-editor.png)
+![Edit mode with toolbar and find bar](/media/uploads/2026/06/dashboard-editor.png)
 
 ### Edit vs preview
 
