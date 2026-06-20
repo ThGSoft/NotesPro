@@ -5,11 +5,11 @@ Collaborative notes app with workspaces, markdown editing, embedded spreadsheets
 ## Screenshots
 ```sheet
 Dashboard (edit + preview) | Editor toolbar & find/replace 
-![Dashboard overview](/media/uploads/2026/06/dashboard-overview.png) ![Editor toolbar](/media/uploads/2026/06/dashboard-editor.png)
+![Dashboard overview](/docs/screenshots/dashboard-overview.png) ![Editor toolbar](/docs/screenshots/dashboard-editor.png)
 
 Preview mode (sheets & charts) | Chat panel (private / group / mail) |
 
-![Preview mode](/media/uploads/2026/06/dashboard-editor.png) ![Chat panel](/media/uploads/2026/06/dashboard-chat.png)
+![Preview mode](/docs/screenshots/dashboard-editor.png) ![Chat panel](/docs/screenshots/dashboard-chat.png)
 
 Screenshots are generated from `docs/screenshots/dashboard-mock.html` (static mock using the app stylesheet). After UI changes, refresh them by opening that file via a local server and capturing each `?shot=` view (`overview`, `editor`, `preview`, `chat`).
 
