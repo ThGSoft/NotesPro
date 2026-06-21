@@ -3,12 +3,11 @@
 Collaborative notes app with workspaces, markdown editing, embedded spreadsheets and charts, team chat, and encrypted messaging.
 
 ## Screenshots
-```sheet
+
 Dashboard (edit + preview) | Editor toolbar & find/replace 
-![Dashboard overview](/docs/screenshots/dashboard-overview.png) ![Editor toolbar](/docs/screenshots/dashboard-editor.png)
+![Dashboard overview](docs/screenshots/dashboard-overview.png) ![Editor toolbar](docs/screenshots/dashboard-editor.png)
 
-Preview mode (sheets & charts) | Chat panel (private / group / mail) |
-
+Preview mode (sheets & charts) | Chat panel (private / group / mail) 
 ![Preview mode](/docs/screenshots/dashboard-editor.png) ![Chat panel](/docs/screenshots/dashboard-chat.png)
 
 Screenshots are generated from `docs/screenshots/dashboard-mock.html` (static mock using the app stylesheet). After UI changes, refresh them by opening that file via a local server and capturing each `?shot=` view (`overview`, `editor`, `preview`, `chat`).
@@ -104,7 +103,7 @@ python manage.py encrypt_db_fields
 
 Open the **Chat** panel (💬 in the top bar).
 
-![Chat panel](/media/uploads/2026/06/dashboard-chat.png)
+![Chat panel](/docs/screenshots/dashboard-chat.png)
 
 | Tab | Purpose |
 |-----|---------|
@@ -176,7 +175,7 @@ Set default **column width** on the fence (semicolon-separated attributes):
 ~~~
 ```sheet{width=25%; id=screenshots}
 Overview	Editor	Preview	Chat
-![Overview](/media/uploads/2026/06/dashboard-overview.png)	![Editor](/media/uploads/2026/06/dashboard-editor.png)	![Preview](/media/uploads/2026/06/dashboard-editor.png)	![Chat](/media/uploads/2026/06/dashboard-chat.png)
+![Overview](docs/screenshots/dashboard-overview.png)	![Editor](docs/screenshots/dashboard-editor.png)	![Preview](docs/screenshots/dashboard-editor.png)	![Chat](/docs/screenshots/dashboard-chat.png)
 ```
 ~~~
 
@@ -398,7 +397,7 @@ In preview, use the chart **settings** (gear) to switch type, toggle data points
 
 ## Markdown editor
 
-![Edit mode with toolbar and find bar](/media/uploads/2026/06/dashboard-editor.png)
+![Edit mode with toolbar and find bar](docs/screenshots/dashboard-editor.png)
 
 ### Edit vs preview
 
@@ -529,7 +528,7 @@ You can also use the toolbar **hashtag** button on selected text.
 
 ## Notes
 
-- Markdown images support optional size and alignment: `![alt](/media/uploads/photo.png){width=50%}` or `{width=120px; align=center}`. Pasted screenshots default to `{width=100%}`.
+- Markdown images support optional size and alignment: `![alt](docs/screenshots/photo.png){width=50%}` or `{width=120px; align=center}`. Pasted screenshots default to `{width=100%}`.
 - Markdown images and attachments use `/api/uploads/`; preview and chat images open in a new browser tab when clicked.
 - File manager lists uploads for the current workspace.
 - Workspace export/import and soft-delete are available via the API and admin tools.
