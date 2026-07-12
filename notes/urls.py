@@ -4,6 +4,8 @@ from django.conf import settings
 from . import views
 from . import views_messaging
 from . import views_dm
+from . import views_incoming
+from . import views_quicknotes
 
 urlpatterns = [
     path('', views.dashboard, name='dashboard'),
@@ -12,6 +14,14 @@ urlpatterns = [
     path('register/', views.register_view, name='register'),
     path('api/workspaces/', views.workspace_list_create, name='api_workspaces'),
     path('api/workspaces/<int:workspace_id>/tree/', views.tree_data, name='api_tree'),
+    path('api/workspaces/<int:workspace_id>/tags/', views.workspace_tags_list, name='api_workspace_tags'),
+    path('api/workspaces/<int:workspace_id>/tags/search/', views.workspace_tags_search, name='api_workspace_tags_search'),
+    path('api/workspaces/<int:workspace_id>/tags/rebuild/', views.workspace_tags_rebuild, name='api_workspace_tags_rebuild'),
+    path('api/workspaces/<int:workspace_id>/quick-notes/', views_quicknotes.quick_note_list, name='api_quick_notes'),
+    path('api/workspaces/<int:workspace_id>/quick-notes/create/', views_quicknotes.quick_note_create, name='api_quick_note_create'),
+    path('api/quick-notes/<int:pk>/', views_quicknotes.quick_note_detail, name='api_quick_note_detail'),
+    path('api/quick-notes/<int:pk>/update/', views_quicknotes.quick_note_update, name='api_quick_note_update'),
+    path('api/quick-notes/<int:pk>/delete/', views_quicknotes.quick_note_delete, name='api_quick_note_delete'),
     path('api/workspaces/<int:workspace_id>/updateUserSettings/', views.updateUserSettings, name='updateUserSettings'),
     path('api/workspaces/create/', views.workspace_create, name='workspace_create'),
     path('api/workspaces/<int:workspace_id>/files/', views.file_manager, name='api_files'),
@@ -54,5 +64,14 @@ urlpatterns = [
     path('api/pages/reorder/', views.page_reorder, name='api_page_reorder'),
     path('api/pages/<int:pk>/move/', views.page_move_workspace, name='api_page_move'),
     path('api/upload_pasted_image/', views.upload_pasted_image, name='upload_pasted_image'),
+
+    path('api/incoming/', views_incoming.incoming_mail_list, name='incoming_mail_list'),
+    path('api/incoming/fetch/', views_incoming.incoming_mail_fetch, name='incoming_mail_fetch'),
+    path('api/incoming/<int:mail_id>/dismiss/', views_incoming.incoming_mail_dismiss, name='incoming_mail_dismiss'),
+    path('api/incoming/<int:mail_id>/distribute/', views_incoming.incoming_mail_distribute, name='incoming_mail_distribute'),
+    path('api/incoming/<int:mail_id>/eml/', views_incoming.incoming_mail_eml, name='incoming_mail_eml'),
+    path('api/incoming/<int:mail_id>/pdf/', views_incoming.incoming_mail_pdf, name='incoming_mail_pdf'),
+    path('api/incoming/<int:mail_id>/resolve-route/', views_incoming.incoming_mail_resolve_route, name='incoming_mail_resolve_route'),
+    path('api/incoming/<int:mail_id>/suggest-workspace/', views_incoming.incoming_mail_suggest_workspace, name='incoming_mail_suggest_workspace'),
     path("debug/", views.debug)
 ]

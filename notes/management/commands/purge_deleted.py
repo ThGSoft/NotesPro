@@ -101,3 +101,4 @@ class Command(BaseCommand):
                         self.stdout.write(f'  {model}: {count}')
 
         self.stdout.write(self.style.SUCCESS('Purge complete.'))
+            

@@ -21,7 +21,19 @@ from django.contrib.auth.models import User
 from django.db.models import Q
 from django.utils.text import slugify
 from .workspace_io import export_workspace_archive, import_workspace_archive
-from .tags import page_tag_names, sync_page_tags
+from .tags import (
+    list_workspace_tag_names,
+    page_tag_names,
+    search_workspace_pages_by_tag,
+    sync_page_tags,
+)
+from .models import WorkspaceInvite
+from .workspace_members import (
+    accept_pending_invites_for_user,
+    add_existing_user_to_workspace,
+    invite_or_add_by_email,
+    notify_owners_user_registered,
+)
 
 
 def _workspace_qs(user):
@@ -106,6 +118,31 @@ def _user_has_write_access(user, workspace):
     ).exists()
 
 
+def _reindex_page_siblings(workspace, parent):
+    siblings = list(
+        _active_pages(workspace).filter(parent=parent).order_by('sort_order', 'id'),
+    )
+    for idx, sibling in enumerate(siblings):
+        if sibling.sort_order != idx:
+            sibling.sort_order = idx
+            sibling.save(update_fields=['sort_order'])
+
+
+def _insert_page_among_siblings(workspace, parent, page, position):
+    siblings = list(
+        _active_pages(workspace)
+        .filter(parent=parent)
+        .exclude(pk=page.pk)
+        .order_by('sort_order', 'id'),
+    )
+    position = max(0, min(int(position), len(siblings)))
+    siblings.insert(position, page)
+    for idx, sibling in enumerate(siblings):
+        if sibling.sort_order != idx:
+            sibling.sort_order = idx
+            sibling.save(update_fields=['sort_order'])
+
+
 def _move_page_subtree_to_workspace(root_page, target_workspace, target_parent=None):
     if target_parent is not None and (
         target_parent.workspace_id != target_workspace.id or not target_parent.is_folder
@@ -184,7 +221,11 @@ def _workspace_display_name(ws, user):
 
 
 def _sort_workspaces(workspaces, user):
-    return sorted(workspaces, key=lambda ws: _workspace_display_name(ws, user).casefold())
+    def sort_key(ws):
+        owned = ws.owner_id == user.id
+        return (0 if owned else 1, _workspace_display_name(ws, user).casefold())
+
+    return sorted(workspaces, key=sort_key)
 
 
 def _tree_data(user, workspace):
@@ -195,7 +236,7 @@ def _tree_data(user, workspace):
         children_by_parent.setdefault(page.parent_id, []).append(page)
 
     def sibling_sort_key(page):
-        return (0 if page.is_folder else 1, page.sort_order, page.id)
+        return (page.sort_order, page.id)
 
     for siblings in children_by_parent.values():
         siblings.sort(key=sibling_sort_key)
@@ -224,13 +265,18 @@ def _tree_data(user, workspace):
 def register_view(request):
     if request.user.is_authenticated:
         return redirect('dashboard')
-    form = RegisterForm(request.POST or None)
+    initial = {}
+    email = (request.GET.get('email') or '').strip()
+    if email:
+        initial['email'] = email
+    form = RegisterForm(request.POST or None, initial=initial)
     if request.method == 'POST' and form.is_valid():
         user = form.save()
+        accepted_invites = accept_pending_invites_for_user(user)
+        notify_owners_user_registered(user, accepted_invites)
         login(request, user)
-        Workspace.objects.get_or_create(
-            owner=user, slug='main', deleted=False, defaults={'name': 'Main'},
-        )
+        if not _workspace_qs(user).exists():
+            Workspace.objects.create(owner=user, name='Main', slug='main')
         return redirect('dashboard')
     return render(request, 'registration/register.html', {'form': form})
 
@@ -240,7 +286,9 @@ def dashboard(request):
     workspaces = _workspace_qs(request.user).select_related('owner')
     if not workspaces.exists():
         Workspace.objects.create(owner=request.user, name='Main', slug='main')
-        workspaces = _workspace_qs(request.user)
+        workspaces = _workspace_qs(request.user).select_related('owner')
+
+    workspaces_list = _sort_workspaces(list(workspaces), request.user)
 
     # 2. UserSettings abrufen (get_or_create verhindert "User has no settings")
     settings, _ = UserSettings.objects.get_or_create(user=request.user)
@@ -248,10 +296,13 @@ def dashboard(request):
     # 3. Workspace ermitteln: Entweder der letzte aus den Settings oder der erste verfügbare
     current_workspace = None
     if settings.last_workspace_id:
-        current_workspace = workspaces.filter(id=settings.last_workspace_id).first()
+        current_workspace = next(
+            (ws for ws in workspaces_list if ws.id == settings.last_workspace_id),
+            None,
+        )
     
     if not current_workspace:
-        current_workspace = workspaces.first()
+        current_workspace = workspaces_list[0] if workspaces_list else None
 
     # 4. Seite ermitteln: zuletzt geöffnete Seite dieses Workspaces
     page = _saved_page_for_workspace(settings, current_workspace)
@@ -270,12 +321,13 @@ def dashboard(request):
         settings.save()
 
     return render(request, 'notes/dashboard.html', {
-        'workspaces': _sort_workspaces(workspaces, request.user),
+        'workspaces': workspaces_list,
         'current_workspace': current_workspace,
         'page': page,
         'user_settings': settings,
         'app_base': (getattr(django_settings, 'FORCE_SCRIPT_NAME', None) or request.META.get('SCRIPT_NAME') or '').rstrip('/'),
         'local_file_open_enabled': getattr(django_settings, 'LOCAL_FILE_OPEN_ENABLED', False),
+        'tag_websocket_enabled': getattr(django_settings, 'ENABLE_TAG_WEBSOCKET', False),
     })
 
 @login_required
@@ -360,52 +412,61 @@ def workspace_restore(request, pk):
 
 @login_required
 def add_workspace_member(request):
-    if request.method == 'POST':
-        print("add_workspace_member")
-        try:
-            data = json.loads(request.body)
-            print("add_workspace_member data:", data)
-            
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST required'}, status=405)
 
-            user = get_object_or_404(User, username=data.get('username'))
-            print("owner_user found:", user)
-            print("owner_user id:", user.id)
+    try:
+        data = json.loads(request.body or '{}')
+    except json.JSONDecodeError:
+        return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
 
+    workspace_id = data.get('workspace_id')
+    username = (data.get('username') or '').strip()
+    email = (data.get('email') or '').strip().lower()
+    role = data.get('role', 'read')
 
-            # 1. Workspace anhand des Besitzers (owner) finden
-            # 'owner' matched dein DB-Schema, 'request.user' ist das aktuelle User-Objekt
-            workspace = get_object_or_404(Workspace, id=data.get('workspace_id'), owner=data.get('owner'))
-            print("add_workspace found:", workspace)
-            
-            # 2. Den einzuladenden User anhand seines Usernamens in der DB finden
-            # Erstes Argument MUSS die Klasse 'User' sein, das Feld heisst 'username'
-            target_user = get_object_or_404(User, username=data.get('username'))
-            print("target_user found:", target_user)
-            
-            isMember = WorkspaceMembership.objects.filter(workspace=workspace, user_id=target_user).exists();
-            # 3. Sicherheits-Check: Ist der User schon im Workspace?
-            if isMember:
-                return JsonResponse({'status': 'error', 'message': 'User ist already member'}, status=400)
-            
-            # 4. Hinzufügen und Erfolg zurückgeben
+    workspace = get_object_or_404(Workspace, id=workspace_id, owner=request.user, deleted=False)
 
-            membership, created = WorkspaceMembership.objects.get_or_create(
-                workspace=workspace,
-                user=target_user,
-                defaults={'role': 'read'} # Standardrolle, falls neu erstellt
-)
+    if not username and not email:
+        return JsonResponse({'status': 'error', 'message': 'Username or email required.'}, status=400)
 
-            return JsonResponse({
-                'status': 'success', 
-                'id': target_user.id, 
-                'username': target_user.username
-            })
-            
-        except json.JSONDecodeError:
-            return JsonResponse({'status': 'error', 'message': 'Ungültiges JSON-Format'}, status=400)
-            
+    target_user = None
+    if username:
+        target_user = User.objects.filter(username__iexact=username).first()
+    if not target_user and email:
+        target_user = User.objects.filter(email__iexact=email).first()
+    if not target_user and username and '@' in username:
+        email = username.lower()
+        username = ''
+        target_user = User.objects.filter(email__iexact=email).first()
 
+    if target_user:
+        result = add_existing_user_to_workspace(
+            request=request,
+            workspace=workspace,
+            inviter=request.user,
+            user=target_user,
+            role=role,
+        )
+        status = result.pop('http_status', 200)
+        return JsonResponse(result, status=status)
 
+    invite_email = email or (username if '@' in username else '')
+    if invite_email:
+        result = invite_or_add_by_email(
+            request=request,
+            workspace=workspace,
+            inviter=request.user,
+            email=invite_email,
+            role=role,
+        )
+        status = result.pop('http_status', 200)
+        return JsonResponse(result, status=status)
+
+    return JsonResponse({
+        'status': 'error',
+        'message': 'User not found. Send an email address to invite someone who is not registered yet.',
+    }, status=404)
 
 
 @login_required
@@ -471,13 +532,27 @@ def get_workspace_members(request, workspace_id):
             'id': ms.user.id,
             'username': ms.user.username,
             'is_owner': False,
-            'role': ms.role  # Gibt 'read' oder 'write' an das Frontend weiter
+            'role': ms.role,
         })
-        
+
+    pending_invites = []
+    if is_owner:
+        pending_invites = [
+            {
+                'email': invite.email,
+                'role': invite.role,
+            }
+            for invite in WorkspaceInvite.objects.filter(
+                workspace=workspace,
+                accepted=False,
+            ).order_by('email')
+        ]
+
     return JsonResponse({
-        'status': 'success', 
+        'status': 'success',
         'members': members_list,
-        'is_current_user_owner': is_owner
+        'pending_invites': pending_invites,
+        'is_current_user_owner': is_owner,
     })
 
 
@@ -533,64 +608,49 @@ def user_search_lookup(request):
 
 
 @login_required
-def add_workspace_member(request):
-    if request.method != 'POST':
-        return JsonResponse({'status': 'error', 'message': 'Methode nicht erlaubt'}, status=405)
-        
-    try:
-        print("add_workspace_member")
-        data = json.loads(request.body)
-        workspace_id = data.get('workspace_id')
-        username = data.get('username')
-        # Standardmässig 'read' (Nur Lesen), falls keine Rolle übergeben wird
-        role = data.get('role', 'read') 
-        
-        # 1. Sicherstellen, dass nur der Besitzer (owner) Personen hinzufügen darf
-        workspace = get_object_or_404(Workspace, id=workspace_id, owner=request.user, deleted=False)
-        
-        # 2. Den einzuladenden Benutzer in der Django-Datenbank finden
-        target_user = get_object_or_404(User, username=username)
-        
-        print(workspace_id, username, data, role, workspace.id, target_user)
-        # 3. Sicherheits-Check: Ist der Benutzer schon in der Zwischentabelle registriert?
-        membership_exists = WorkspaceMembership.objects.filter(
-            workspace=workspace, 
-            user=target_user
-        ).exists()
-        
-        if membership_exists:
-            return JsonResponse({
-                'status': 'error', 
-                'message': f'{username} ist bereits Mitglied in diesem Workspace.'
-            }, status=400)
-            
-        # 4. NEU: Eintrag direkt in der WorkspaceMembership-Tabelle erstellen
-        new_membership = WorkspaceMembership.objects.create(
-            workspace=workspace,
-            user=target_user,
-            role=role
-        )
-        
-        # 5. Erfolg ans Frontend melden (inklusive ID, Name und zugewiesener Rolle)
-        return JsonResponse({
-            'status': 'success',
-            'id': target_user.id,
-            'username': target_user.username,
-            'role': new_membership.role
-        })
-        
-    except json.JSONDecodeError:
-        return JsonResponse({'status': 'error', 'message': 'Ungültiges JSON-Format'}, status=400)
-
-
-
-
-
-@login_required
 def tree_data(request, workspace_id):
     print('tree_data')
     workspace = get_object_or_404(_workspace_qs(request.user), pk=workspace_id)
     return JsonResponse( _tree_data(request.user, workspace), safe=False)
+
+
+@login_required
+@require_GET
+def workspace_tags_list(request, workspace_id):
+    get_object_or_404(_workspace_qs(request.user), pk=workspace_id)
+    query = (request.GET.get('q') or '').strip().lower()
+    tags = list_workspace_tag_names(workspace_id, query)
+    return JsonResponse({'tags': tags})
+
+
+@login_required
+@require_GET
+def workspace_tags_search(request, workspace_id):
+    get_object_or_404(_workspace_qs(request.user), pk=workspace_id)
+    tag = (request.GET.get('tag') or '').strip()
+    query = (request.GET.get('q') or '').strip()
+    pages = search_workspace_pages_by_tag(workspace_id, tag, query)
+    return JsonResponse({'pages': pages})
+
+
+@login_required
+@require_POST
+def workspace_tags_rebuild(request, workspace_id):
+    workspace = get_object_or_404(_workspace_qs(request.user), pk=workspace_id)
+    if not _user_has_write_access(request.user, workspace):
+        return JsonResponse(
+            {'status': 'error', 'message': 'You do not have write access to this workspace.'},
+            status=403,
+        )
+
+    pages = _active_pages(workspace).only('id', 'is_folder', 'markdown_content', 'workspace_id')
+    count = 0
+    for page in pages.iterator():
+        sync_page_tags(page)
+        count += 1
+
+    _broadcast_tags_updated(workspace.id, None)
+    return JsonResponse({'success': True, 'pages_scanned': count})
 
 @login_required
 def _page_tree_for(workspace):
@@ -694,15 +754,32 @@ def page_reorder(request):
     parent = None if parent_id in [None, '', '#'] else get_object_or_404(
         _page_qs(request.user), pk=parent_id, workspace=page.workspace,
     )
-    page.parent = parent
-    page.sort_order = position
-    page.save(update_fields=['parent', 'sort_order'])
-    siblings = _active_pages(page.workspace).filter(parent=parent).order_by('sort_order', 'id')
-    for idx, sibling in enumerate(siblings):
-        if sibling.sort_order != idx:
-            sibling.sort_order = idx
-            sibling.save(update_fields=['sort_order'])
-    return JsonResponse({'success': True})
+    if parent is not None:
+        if not parent.is_folder:
+            return JsonResponse(
+                {'status': 'error', 'message': 'Pages can only be moved into folders or the workspace root.'},
+                status=400,
+            )
+        subtree_ids = set(_page_subtree_ids(page))
+        if parent.id == page.id or parent.id in subtree_ids:
+            return JsonResponse(
+                {'status': 'error', 'message': 'Cannot move a folder into itself or its descendants.'},
+                status=400,
+            )
+
+    with transaction.atomic():
+        old_parent_id = page.parent_id
+        page.parent = parent
+        page.save(update_fields=['parent'])
+        _insert_page_among_siblings(page.workspace, parent, page, position)
+        new_parent_id = parent.id if parent else None
+        if old_parent_id != new_parent_id:
+            old_parent = None
+            if old_parent_id is not None:
+                old_parent = Page.objects.filter(pk=old_parent_id).first()
+            _reindex_page_siblings(page.workspace, old_parent)
+
+    return JsonResponse({'status': 'success', 'success': True})
 
 
 @login_required
@@ -904,6 +981,11 @@ def updateUserSettings(request, workspace_id):
                     settings.right_panel_width = max(240, min(640, int(w)))
             if 'right_panel_expanded' in data:
                 settings.right_panel_expanded = bool(data['right_panel_expanded'])
+            if 'font_size' in data:
+                try:
+                    settings.font_size = max(11, min(24, int(data['font_size'])))
+                except (TypeError, ValueError):
+                    pass
             if 'extra_configs' in data:
                 incoming = data['extra_configs']
                 if isinstance(incoming, dict):

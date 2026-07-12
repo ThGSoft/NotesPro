@@ -4,7 +4,7 @@ from . import consumers
 
 websocket_urlpatterns = [
     re_path(
-        r'ws/workspaces/(?P<workspace_id>\d+)/tags/$',
+        r'^/?ws/workspaces/(?P<workspace_id>\d+)/tags/$',
         consumers.WorkspaceTagsConsumer.as_asgi(),
     ),
 ]

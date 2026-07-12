@@ -30,7 +30,9 @@
             </form>
           {% else %}
             <p>Log in with <strong>{{ invite.email }}</strong> to accept.</p>
-            <a href="{{ login_url }}" class="btn btn-primary w-100">Log in</a>
+            <a href="{{ login_url }}" class="btn btn-primary w-100 mb-2">Log in</a>
+            <p class="small text-muted mb-2">No account yet? Register with the invited email address.</p>
+            <a href="{{ register_url }}" class="btn btn-outline-primary w-100">Create account</a>
           {% endif %}
         {% endif %}
       </div>

@@ -285,6 +285,40 @@ class PageTag(models.Model):
         return f'{self.page_id} → #{self.tag.name}'
 
 
+class QuickNote(models.Model):
+    COLOR_DEFAULT = 'default'
+    COLOR_CHOICES = [
+        (COLOR_DEFAULT, 'Default'),
+        ('coral', 'Coral'),
+        ('peach', 'Peach'),
+        ('sand', 'Sand'),
+        ('mint', 'Mint'),
+        ('sage', 'Sage'),
+        ('fog', 'Fog'),
+        ('storm', 'Storm'),
+        ('dark', 'Dark'),
+    ]
+    VALID_COLORS = {c[0] for c in COLOR_CHOICES}
+
+    workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE, related_name='quick_notes')
+    title = EncryptedTextField(blank=True, default='')
+    body = EncryptedTextField(blank=True, default='')
+    color = models.CharField(max_length=16, choices=COLOR_CHOICES, default=COLOR_DEFAULT)
+    pinned = models.BooleanField(default=False)
+    checklist = models.JSONField(default=list, blank=True)
+    archived = models.BooleanField(default=False, db_index=True)
+    deleted = models.BooleanField(default=False, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-pinned', '-updated_at', '-id']
+
+    def __str__(self):
+        label = (self.title or self.body or '')[:40]
+        return label or f'Quick note {self.pk}'
+
+
 class Page(models.Model):
     workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE, related_name='pages')
     parent = models.ForeignKey('self', null=True, blank=True, related_name='children', on_delete=models.CASCADE)
@@ -355,6 +389,52 @@ class PastedFile(models.Model):
                 name='notes_pastedfile_workspace_md5',
             ),
         ]
+
+
+class IncomingMail(models.Model):
+    STATUS_PENDING = 'pending'
+    STATUS_DISTRIBUTED = 'distributed'
+    STATUS_DISMISSED = 'dismissed'
+    STATUS_CHOICES = [
+        (STATUS_PENDING, 'Pending'),
+        (STATUS_DISTRIBUTED, 'Distributed'),
+        (STATUS_DISMISSED, 'Dismissed'),
+    ]
+
+    recipient = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='incoming_mails',
+    )
+    sender_email = models.CharField(max_length=255, blank=True, default='')
+    subject = EncryptedTextField()
+    body = EncryptedTextField(blank=True, default='')
+    external_id = models.CharField(max_length=255, unique=True)
+
+    parsed_user = models.CharField(max_length=150, blank=True, default='')
+    parsed_workspace = models.CharField(max_length=255, blank=True, default='')
+    parsed_folder = models.CharField(max_length=500, blank=True, default='')
+    parsed_page = models.CharField(max_length=255, blank=True, default='')
+
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_PENDING, db_index=True)
+    distributed_page = models.ForeignKey(
+        'Page',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='source_incoming_mails',
+    )
+    received_at = models.DateTimeField(auto_now_add=True)
+    distributed_at = models.DateTimeField(null=True, blank=True)
+    pdf_file = models.FileField(upload_to='incoming_mail/%Y/%m/', blank=True, null=True)
+    eml_file = models.FileField(upload_to='incoming_mail/%Y/%m/', blank=True, null=True)
+
+    class Meta:
+        ordering = ['-received_at']
+
+    def __str__(self):
+        return f'IncomingMail #{self.id} → {self.recipient.username}'
+
 
 # class UserTreeState(models.Model):
 #     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)

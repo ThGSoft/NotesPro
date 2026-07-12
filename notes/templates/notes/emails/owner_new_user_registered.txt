@@ -1,0 +1,8 @@
+Hello {{ owner_username }},
+
+{{ new_username }} ({{ new_email }}) has registered on {{ site_name }} and joined your workspace "{{ workspace_name }}" using the invitation you sent.
+
+They can open the workspace here:
+{{ dashboard_url }}
+
+— {{ site_name }}

@@ -18,7 +18,7 @@
   <header class="topbar">
     <div class="title-wrap d-flex align-items-center gap-4">
       <button id="toggle-left" class="btn btn-sm btn-outline-light">☰</button>
-      <strong>Notes Pro</strong>: {{ user.username }}
+      <span class="topbar-app-label"><strong>Notes Pro</strong>: {{ user.username }}</span>
 
       <div class="flex-grow-1">
         <div id="page-title-preview" class="page-title-preview"></div>
@@ -27,17 +27,25 @@
     </div>
     
     <div class="topbar-actions">
-      <button id="edit-toggle" class="btn btn-primary btn-sm">Edit</button>
-      {% if user.is_staff %}
-      <a id="admin-link" href="{% url 'admin:index' %}" class="btn btn-sm btn-outline-light d-none" target="_blank" rel="noopener noreferrer" title="Django Admin">Admin</a>
-      {% endif %}
-      <button id="toggle-right" class="btn btn-sm btn-outline-light" type="button" title="Chat &amp; Mail">💬</button>
-      <a href="{% url 'setup_2fa' %}" class="btn btn-sm btn-outline-light" title="Two-factor authentication">2FA</a>
-      <form action="{% url 'logout' %}" method="post">
-        {% csrf_token %}
-        <button class="btn btn-sm btn-outline-light">Logout</button>
-      </form>
-      <div class="slug-box hidden-edit">Slug: <span id="page-slug"></span></div>
+      <button id="mobile-topbar-menu-toggle" class="btn btn-sm btn-outline-light mobile-topbar-menu-btn" type="button" aria-label="App menu" aria-expanded="false" aria-controls="mobile-topbar-menu">
+        <span aria-hidden="true">⋮</span>
+      </button>
+      <div id="mobile-topbar-menu-backdrop" class="mobile-topbar-menu-backdrop d-none" aria-hidden="true"></div>
+      <nav id="mobile-topbar-menu" class="topbar-actions-menu" aria-label="App menu">
+        <div class="mobile-topbar-menu-title">Menu</div>
+        <button id="view-keep-toggle" class="btn btn-sm btn-outline-light" type="button" title="Quick notes (Keep)">Keep</button>
+        <button id="edit-toggle" class="btn btn-primary btn-sm">Edit</button>
+        {% if user.is_staff %}
+        <a id="admin-link" href="{% url 'admin:index' %}" class="btn btn-sm btn-outline-light d-none" target="_blank" rel="noopener noreferrer" title="Django Admin">Admin</a>
+        {% endif %}
+        <button id="toggle-right" class="btn btn-sm btn-outline-light" type="button" title="Chat &amp; Mail">Chat &amp; Mail</button>
+        <a href="{% url 'setup_2fa' %}" class="btn btn-sm btn-outline-light" title="Two-factor authentication">2FA</a>
+        <form action="{% url 'logout' %}" method="post">
+          {% csrf_token %}
+          <button class="btn btn-sm btn-outline-light">Logout</button>
+        </form>
+        <div class="slug-box hidden-edit">Slug: <span id="page-slug"></span></div>
+      </nav>
     </div>
   </header>
 
@@ -72,7 +80,10 @@
         </div>
     
         <input id="tree-search" class="form-control form-control-sm mt-2" placeholder="Search tree...">
-        <input id="tag-search" class="form-control form-control-sm mt-2" placeholder="Search tags..." autocomplete="off">
+        <div class="d-flex gap-2 mt-2">
+          <input id="tag-search" class="form-control form-control-sm" placeholder="Search tags ({tag: …})" autocomplete="off">
+          <button type="button" id="tag-rebuild-btn" class="btn btn-sm btn-outline-light flex-shrink-0" title="Rescan all pages and rebuild tag index">Rebuild</button>
+        </div>
         <div id="tag-search-results" class="tag-search-results"></div>
         <div id="tag-suggestions" class="tag-suggestions d-none"></div>
     
@@ -93,6 +104,38 @@
       <div class="panel-body expanded">
         <button type="button" id="snippets-manage-btn" class="btn btn-sm btn-outline-light w-100 mb-2">Manage snippets…</button>
         <div id="snippets-quick-list" class="snippets-quick-list"></div>
+      </div>
+    </div>
+
+    <div class="panel-card" id="incomes-panel">
+      <div class="panel-header">
+        <span class="panel-title">Incomes <span id="incomes-badge" class="badge bg-warning text-dark d-none">0</span></span>
+        <i class="bi bi-chevron-down toggle-icon"></i>
+      </div>
+      <div class="panel-body expanded">
+        <p class="small text-muted mb-2">Put <code>NotesPro:user:workspace</code> in the subject or first body line (optional <code>:folder:page</code>).</p>
+        <button type="button" id="incomes-fetch-btn" class="btn btn-sm btn-outline-light w-100 mb-2">Fetch from mailbox</button>
+        <div id="incomes-list" class="incomes-list"></div>
+        <div id="incomes-detail" class="incomes-detail d-none">
+          <button type="button" id="incomes-back-btn" class="btn btn-sm btn-link px-0 mb-2">← Back</button>
+          <div id="incomes-detail-meta" class="small text-muted mb-2"></div>
+          <div id="incomes-detail-route" class="small mb-2"></div>
+          <div id="incomes-attachments" class="incomes-attachments mb-2 d-none"></div>
+          <pre id="incomes-detail-body" class="incomes-detail-body"></pre>
+          <div id="incomes-route-warnings" class="incomes-route-warnings d-none"></div>
+          <label class="form-label small mb-0" for="incomes-distribute-workspace">Workspace <span id="incomes-ws-required" class="text-warning d-none">*</span></label>
+          <select id="incomes-distribute-workspace" class="form-select form-select-sm mb-2"></select>
+          <label class="form-label small mb-0" for="incomes-distribute-folder">Folder <span id="incomes-folder-required" class="text-warning d-none">*</span></label>
+          <select id="incomes-distribute-folder" class="form-select form-select-sm mb-2">
+            <option value="">— workspace root —</option>
+          </select>
+          <label class="form-label small mb-0" for="incomes-distribute-title">Page title</label>
+          <input id="incomes-distribute-title" class="form-control form-control-sm mb-2" type="text">
+          <div class="d-flex gap-1">
+            <button type="button" id="incomes-distribute-btn" class="btn btn-sm btn-primary flex-grow-1">Distribute</button>
+            <button type="button" id="incomes-dismiss-btn" class="btn btn-sm btn-outline-danger">Dismiss</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -126,7 +169,34 @@
   <div id="left-splitter" class="panel-splitter" role="separator" aria-orientation="vertical" aria-label="Resize sidebar" tabindex="0"></div>
 
   <main class="main-pane">
-    
+    <section id="quick-notes-wrap" class="keep-wrap d-none" aria-label="Quick notes">
+      <div class="keep-toolbar">
+        <input type="search" id="keep-search" class="form-control form-control-sm keep-search" placeholder="Search notes…" autocomplete="off">
+        <label class="keep-archived-toggle">
+          <input type="checkbox" id="keep-show-archived"> Show archived
+        </label>
+      </div>
+
+      <div id="keep-composer" class="keep-composer keep-card keep-card--default">
+        <div class="keep-composer-collapsed" id="keep-composer-collapsed">
+          <span class="keep-composer-placeholder">Take a note…</span>
+        </div>
+        <div class="keep-composer-expanded d-none" id="keep-composer-expanded">
+          <input type="text" id="keep-composer-title" class="keep-input keep-input-title" placeholder="Title">
+          <textarea id="keep-composer-body" class="keep-input keep-input-body" placeholder="Take a note…" rows="3"></textarea>
+          <div id="keep-composer-checklist" class="keep-checklist d-none"></div>
+          <div class="keep-composer-actions">
+            <button type="button" id="keep-composer-checklist-btn" class="keep-icon-btn" title="Checklist">☑</button>
+            <div class="keep-color-picker" id="keep-composer-colors"></div>
+            <button type="button" id="keep-composer-close" class="btn btn-sm btn-light ms-auto">Close</button>
+            <button type="button" id="keep-composer-save" class="btn btn-sm btn-primary">Save</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="keep-grid" class="keep-grid"></div>
+    </section>
+
     <section class="editor-wrap">
       <div id="markdown-wrap" class="editor-panel hidden">
         <div id="editor-find-bar" class="editor-find-bar d-none" aria-label="Find and replace">
@@ -151,17 +221,17 @@
         <textarea id="markdown-editor"></textarea>
       </div>
       <div id="editor-splitter" class="panel-splitter panel-splitter--editor" role="separator" aria-orientation="vertical" aria-label="Resize editor and preview" tabindex="0"></div>
-      <button id="toc-toggle" class="mobile-toc-btn">
-        <span>content</span>
+      <button id="toc-toggle" class="mobile-toc-btn" type="button" aria-label="Contents menu" aria-expanded="false">
+        <span>Contents</span>
       </button>
-      
+      <div id="mobile-toc-backdrop" class="mobile-toc-backdrop d-none" aria-hidden="true"></div>
+      <aside id="floating-toc" class="floating-toc" aria-label="Page contents">
+        <div class="floating-toc-title">Contents</div>
+        <div id="floating-toc-list"></div>
+      </aside>
+
       <div id="preview-wrap" class="editor-panel">
         <div class="preview-layout">
-
-          <aside id="floating-toc" class="floating-toc">
-            <div class="floating-toc-title">Contents</div>
-            <div id="floating-toc-list"></div>
-          </aside>
           <div id="preview-content" class="preview-content"></div>
         </div>
       </div>
@@ -249,11 +319,13 @@
     <section class="right-panel-members workspace-members-card" id="right-panel-members" aria-label="Workspace members">
       <div class="workspace-members-card-header">
         <h6 class="workspace-members-title">Workspace Members</h6>
-        <span class="badge bg-primary rounded-pill" id="user-count">0</span>
+        <button type="button" class="workspace-members-count-btn" id="user-count-btn" title="View all members" aria-label="View all members">
+          <span class="badge bg-primary rounded-pill" id="user-count">0</span>
+        </button>
       </div>
 
       <div class="workspace-members-card-body">
-        <div class="position-relative mb-2">
+        <div class="workspace-members-search-wrap position-relative mb-2">
           <div class="input-group input-group-sm workspace-members-search">
             <span class="input-group-text">🔍</span>
             <input type="text" id="user-search-input" class="form-control" placeholder="Search members…" autocomplete="off">
@@ -281,7 +353,7 @@
           <p class="small workspace-members-hint mt-1 mb-0" id="invite-email-hint">Dev: emails appear in the runserver terminal unless SMTP is configured.</p>
         </div>
 
-        <ul class="list-group list-group-flush overflow-auto workspace-members-list" id="worksheet-users"></ul>
+        <ul class="list-group list-group-flush overflow-auto workspace-members-list d-none" id="worksheet-users" aria-hidden="true"></ul>
       </div>
     </section>
   </aside>
@@ -308,10 +380,12 @@
         leftPanelExpanded: {{ user_settings.left_panel_expanded|yesno:"true,false" }},
         rightPanelWidth: {% if user_settings.right_panel_width %}{{ user_settings.right_panel_width }}{% else %}null{% endif %},
         rightPanelExpanded: {{ user_settings.right_panel_expanded|yesno:"true,false" }},
+        fontSize: {{ user_settings.font_size|default:14 }},
         extraConfigs: appExtraConfigs,
         workspacePages: appWorkspacePages,
         isStaff: {% if user.is_staff %}true{% else %}false{% endif %},
         localFileOpenEnabled: {{ local_file_open_enabled|yesno:"true,false" }},
+        tagWebSocketEnabled: {{ tag_websocket_enabled|yesno:"true,false" }},
     };
 
     // Falls gar nichts existiert, Fehlermeldung oder Default-Handling
@@ -438,6 +512,248 @@
   </div>
 </div>
 
+<!-- Calendar note dialog -->
+<div class="modal fade dashboard-modal-root" id="calendar-note-modal" tabindex="-1" aria-labelledby="calendar-note-modal-title" aria-hidden="true" data-bs-theme="dark">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content dashboard-modal">
+      <div class="modal-header">
+        <h5 class="modal-title" id="calendar-note-modal-title">Calendar note</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="small dashboard-modal-hint mb-2" id="calendar-note-modal-hint">One note per line (same day/week/month/year). Optional image attaches to the first line.</p>
+        <fieldset class="mb-3">
+          <legend class="form-label small fw-semibold mb-2">When</legend>
+          <div class="d-flex flex-wrap gap-3 align-items-center mb-2">
+            <label class="form-check form-check-inline mb-0">
+              <input type="radio" name="calendar-note-when" id="calendar-note-allday" value="allday" class="form-check-input" checked>
+              <span class="form-check-label">All day</span>
+            </label>
+            <label class="form-check form-check-inline mb-0">
+              <input type="radio" name="calendar-note-when" id="calendar-note-timed" value="timed" class="form-check-input">
+              <span class="form-check-label">Time range</span>
+            </label>
+          </div>
+          <div id="calendar-note-time-range" class="row g-2 d-none">
+            <div class="col-6">
+              <label class="form-label small mb-1" for="calendar-note-time-from">From</label>
+              <input type="time" id="calendar-note-time-from" class="form-control form-control-sm">
+            </div>
+            <div class="col-6">
+              <label class="form-label small mb-1" for="calendar-note-time-to">To</label>
+              <input type="time" id="calendar-note-time-to" class="form-control form-control-sm">
+            </div>
+          </div>
+        </fieldset>
+        <label class="form-label small fw-semibold" for="calendar-note-text">Markdown text</label>
+        <textarea id="calendar-note-text" class="form-control form-control-sm mb-3" rows="4" placeholder="**bold**, _italic_, lists…"></textarea>
+        <label class="form-label small fw-semibold" for="calendar-note-image">Image URL / markdown path</label>
+        <div class="d-flex gap-2 mb-2">
+          <input type="text" class="form-control form-control-sm font-monospace" id="calendar-note-image" placeholder="/media/uploads/photo.png" autocomplete="off" spellcheck="false">
+          <button type="button" class="btn btn-sm btn-outline-light flex-shrink-0" id="calendar-note-upload-btn">Upload</button>
+        </div>
+        <input type="file" id="calendar-note-file" class="visually-hidden-file-input" accept="image/*" tabindex="-1" aria-hidden="true">
+        <div id="calendar-note-preview" class="calendar-note-preview d-none"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-sm btn-outline-danger me-auto" id="calendar-note-clear-btn">Clear</button>
+        <button type="button" class="btn btn-sm btn-outline-light" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-sm btn-primary" id="calendar-note-save-btn">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Gantt title dialog -->
+<div class="modal fade dashboard-modal-root" id="gantt-title-modal" tabindex="-1" aria-labelledby="gantt-title-modal-title" aria-hidden="true" data-bs-theme="dark">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content dashboard-modal">
+      <div class="modal-header">
+        <h5 class="modal-title" id="gantt-title-modal-title">Gantt title</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="small dashboard-modal-hint mb-2">Edit the chart title and date range.</p>
+        <label class="form-label small fw-semibold" for="gantt-title-input">Title</label>
+        <input type="text" class="form-control form-control-sm mb-3" id="gantt-title-input" placeholder="Griechenland" autocomplete="off">
+        <div class="row g-2">
+          <div class="col">
+            <label class="form-label small fw-semibold" for="gantt-title-from">From</label>
+            <input type="date" class="form-control form-control-sm" id="gantt-title-from">
+          </div>
+          <div class="col">
+            <label class="form-label small fw-semibold" for="gantt-title-to">To</label>
+            <input type="date" class="form-control form-control-sm" id="gantt-title-to">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-sm btn-outline-danger me-auto" id="gantt-title-clear-btn">Clear title</button>
+        <button type="button" class="btn btn-sm btn-outline-light" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-sm btn-primary" id="gantt-title-save-btn">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Gantt task dialog -->
+<div class="modal fade dashboard-modal-root" id="gantt-note-modal" tabindex="-1" aria-labelledby="gantt-note-modal-title" aria-hidden="true" data-bs-theme="dark">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content dashboard-modal">
+      <div class="modal-header">
+        <h5 class="modal-title" id="gantt-note-modal-title">Gantt task</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="small dashboard-modal-hint mb-2">Edit label, dates, markdown note, and optional image for this task.</p>
+        <label class="form-label small fw-semibold" for="gantt-note-label">Label</label>
+        <input type="text" class="form-control form-control-sm mb-2" id="gantt-note-label" placeholder="Phase A" autocomplete="off">
+        <div class="row g-2 mb-3">
+          <div class="col">
+            <label class="form-label small fw-semibold" for="gantt-note-from">From</label>
+            <input type="date" class="form-control form-control-sm" id="gantt-note-from">
+          </div>
+          <div class="col">
+            <label class="form-label small fw-semibold" for="gantt-note-to">To</label>
+            <input type="date" class="form-control form-control-sm" id="gantt-note-to">
+          </div>
+        </div>
+        <label class="form-label small fw-semibold" for="gantt-note-text">Markdown text</label>
+        <textarea id="gantt-note-text" class="form-control form-control-sm mb-3" rows="3" placeholder="**bold**, _italic_…"></textarea>
+        <label class="form-label small fw-semibold" for="gantt-note-image">Image URL / markdown path</label>
+        <div class="d-flex gap-2 mb-2">
+          <input type="text" class="form-control form-control-sm font-monospace" id="gantt-note-image" placeholder="/media/uploads/photo.png" autocomplete="off" spellcheck="false">
+          <button type="button" class="btn btn-sm btn-outline-light flex-shrink-0" id="gantt-note-upload-btn">Upload</button>
+        </div>
+        <input type="file" id="gantt-note-file" class="visually-hidden-file-input" accept="image/*" tabindex="-1" aria-hidden="true">
+        <div id="gantt-note-preview" class="calendar-note-preview d-none"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-sm btn-outline-danger me-auto" id="gantt-note-clear-btn">Clear note</button>
+        <button type="button" class="btn btn-sm btn-outline-light" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-sm btn-primary" id="gantt-note-save-btn">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Kanban title dialog -->
+<div class="modal fade dashboard-modal-root" id="kanban-title-modal" tabindex="-1" aria-labelledby="kanban-title-modal-title" aria-hidden="true" data-bs-theme="dark">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content dashboard-modal">
+      <div class="modal-header">
+        <h5 class="modal-title" id="kanban-title-modal-title">Kanban board</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="small dashboard-modal-hint mb-2">Edit the board title and columns (comma-separated).</p>
+        <label class="form-label small fw-semibold" for="kanban-title-input">Title</label>
+        <input type="text" class="form-control form-control-sm mb-3" id="kanban-title-input" placeholder="Board" autocomplete="off">
+        <label class="form-label small fw-semibold" for="kanban-title-cols">Columns</label>
+        <input type="text" class="form-control form-control-sm font-monospace" id="kanban-title-cols" placeholder="Todo,Doing,Done" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-sm btn-outline-danger me-auto" id="kanban-title-clear-btn">Clear title</button>
+        <button type="button" class="btn btn-sm btn-outline-light" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-sm btn-primary" id="kanban-title-save-btn">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Kanban card dialog -->
+<div class="modal fade dashboard-modal-root" id="kanban-card-modal" tabindex="-1" aria-labelledby="kanban-card-modal-title" aria-hidden="true" data-bs-theme="dark">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content dashboard-modal">
+      <div class="modal-header">
+        <h5 class="modal-title" id="kanban-card-modal-title">Kanban card</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="small dashboard-modal-hint mb-2">Edit label, column, markdown note, and optional image. Drag cards between columns in the preview.</p>
+        <label class="form-label small fw-semibold" for="kanban-card-label">Label</label>
+        <input type="text" class="form-control form-control-sm mb-2" id="kanban-card-label" placeholder="Task name" autocomplete="off">
+        <label class="form-label small fw-semibold" for="kanban-card-col">Column</label>
+        <select class="form-select form-select-sm mb-3" id="kanban-card-col"></select>
+        <label class="form-label small fw-semibold" for="kanban-card-text">Markdown text</label>
+        <textarea id="kanban-card-text" class="form-control form-control-sm mb-3" rows="3" placeholder="**bold**, _italic_…"></textarea>
+        <label class="form-label small fw-semibold" for="kanban-card-image">Image URL / markdown path</label>
+        <div class="d-flex gap-2 mb-2">
+          <input type="text" class="form-control form-control-sm font-monospace" id="kanban-card-image" placeholder="/media/uploads/photo.png" autocomplete="off" spellcheck="false">
+          <button type="button" class="btn btn-sm btn-outline-light flex-shrink-0" id="kanban-card-upload-btn">Upload</button>
+        </div>
+        <input type="file" id="kanban-card-file" class="visually-hidden-file-input" accept="image/*" tabindex="-1" aria-hidden="true">
+        <div id="kanban-card-preview" class="calendar-note-preview d-none"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-sm btn-outline-danger me-auto" id="kanban-card-clear-btn">Clear note</button>
+        <button type="button" class="btn btn-sm btn-outline-light" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-sm btn-primary" id="kanban-card-save-btn">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Mindmap title dialog -->
+<div class="modal fade dashboard-modal-root" id="mindmap-title-modal" tabindex="-1" aria-labelledby="mindmap-title-modal-title" aria-hidden="true" data-bs-theme="dark">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content dashboard-modal">
+      <div class="modal-header">
+        <h5 class="modal-title" id="mindmap-title-modal-title">Mindmap</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="small dashboard-modal-hint mb-2">Edit the mindmap title and layout direction.</p>
+        <label class="form-label small fw-semibold" for="mindmap-title-input">Title</label>
+        <input type="text" class="form-control form-control-sm mb-3" id="mindmap-title-input" placeholder="Ideas" autocomplete="off">
+        <label class="form-label small fw-semibold" for="mindmap-title-dir">Direction</label>
+        <select class="form-select form-select-sm" id="mindmap-title-dir">
+          <option value="right">Right (horizontal tree)</option>
+          <option value="down">Down (vertical tree)</option>
+        </select>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-sm btn-outline-danger me-auto" id="mindmap-title-clear-btn">Clear title</button>
+        <button type="button" class="btn btn-sm btn-outline-light" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-sm btn-primary" id="mindmap-title-save-btn">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Mindmap node dialog -->
+<div class="modal fade dashboard-modal-root" id="mindmap-node-modal" tabindex="-1" aria-labelledby="mindmap-node-modal-title" aria-hidden="true" data-bs-theme="dark">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content dashboard-modal">
+      <div class="modal-header">
+        <h5 class="modal-title" id="mindmap-node-modal-title">Mindmap node</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="small dashboard-modal-hint mb-2">Edit label, markdown note, and optional image. Indent lines (2 spaces) for children in markdown.</p>
+        <label class="form-label small fw-semibold" for="mindmap-node-label">Label</label>
+        <input type="text" class="form-control form-control-sm mb-3" id="mindmap-node-label" placeholder="Node title" autocomplete="off">
+        <label class="form-label small fw-semibold" for="mindmap-node-text">Markdown text</label>
+        <textarea id="mindmap-node-text" class="form-control form-control-sm mb-3" rows="3" placeholder="**bold**, _italic_…"></textarea>
+        <label class="form-label small fw-semibold" for="mindmap-node-image">Image URL / markdown path</label>
+        <div class="d-flex gap-2 mb-2">
+          <input type="text" class="form-control form-control-sm font-monospace" id="mindmap-node-image" placeholder="/media/uploads/photo.png" autocomplete="off" spellcheck="false">
+          <button type="button" class="btn btn-sm btn-outline-light flex-shrink-0" id="mindmap-node-upload-btn">Upload</button>
+        </div>
+        <input type="file" id="mindmap-node-file" class="visually-hidden-file-input" accept="image/*" tabindex="-1" aria-hidden="true">
+        <div id="mindmap-node-preview" class="calendar-note-preview d-none"></div>
+      </div>
+      <div class="modal-footer flex-wrap gap-1">
+        <button type="button" class="btn btn-sm btn-outline-danger me-auto" id="mindmap-node-delete-btn">Delete</button>
+        <button type="button" class="btn btn-sm btn-outline-light" id="mindmap-node-add-child-btn">+ Child</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="mindmap-node-clear-btn">Clear note</button>
+        <button type="button" class="btn btn-sm btn-outline-light" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-sm btn-primary" id="mindmap-node-save-btn">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Local file link dialog -->
 <div class="modal fade dashboard-modal-root" id="file-link-modal" tabindex="-1" aria-labelledby="file-link-modal-title" aria-hidden="true" data-bs-theme="dark">
   <div class="modal-dialog modal-dialog-centered modal-lg">
@@ -470,8 +786,43 @@
   </div>
 </div>
 
+<div class="modal fade dashboard-modal-root" id="workspace-members-modal" tabindex="-1" aria-labelledby="workspace-members-modal-title" aria-hidden="true" data-bs-theme="dark">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content dashboard-modal">
+      <div class="modal-header">
+        <h5 class="modal-title" id="workspace-members-modal-title">Workspace Members</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body p-0">
+        <p class="small workspace-members-hint px-3 pt-3 mb-2 d-none" id="workspace-members-modal-hint">As owner you can remove members with ✕ or change roles by clicking the badge.</p>
+        <ul class="list-group list-group-flush workspace-members-modal-list" id="workspace-members-modal-list"></ul>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-sm btn-outline-light" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade dashboard-modal-root" id="tree-move-confirm-modal" tabindex="-1" aria-labelledby="tree-move-confirm-modal-title" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false" data-bs-theme="dark">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content dashboard-modal">
+      <div class="modal-header">
+        <h5 class="modal-title" id="tree-move-confirm-modal-title">Confirm tree move</h5>
+      </div>
+      <div class="modal-body">
+        <p class="mb-0" id="tree-move-confirm-message"></p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-sm btn-outline-light" id="tree-move-confirm-cancel">Undo move</button>
+        <button type="button" class="btn btn-sm btn-primary" id="tree-move-confirm-ok">Keep move</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script src="{% static 'notes/dm-p2p.js' %}"></script>
-<script src="{% static 'notes/dashboard.js' %}"></script>
+<script src="{% static 'notes/dashboard.js' %}?v={% now 'YmdHis' %}"></script>
 
 
 <!-- Toast-Container (Fest positioniert) -->

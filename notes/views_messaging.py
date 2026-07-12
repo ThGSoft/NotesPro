@@ -1,4 +1,5 @@
 import json
+from urllib.parse import quote
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -9,21 +10,14 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 
-from .email_urls import build_absolute_link
-from .email_utils import (
-    delivery_hint,
-    email_delivery_mode,
-    send_workspace_added_email,
-    send_workspace_invite_email,
-)
 from .models import (
     WorkspaceChatMessage,
     WorkspaceInvite,
     WorkspaceMailMessage,
     WorkspaceMailRecipient,
     WorkspaceMembership,
-    _invite_token,
 )
+from .workspace_members import invite_or_add_by_email, workspace_member_ids
 from .views import _workspace_qs
 
 User = get_user_model()
@@ -38,11 +32,7 @@ def _is_workspace_owner(user, workspace):
 
 
 def _workspace_member_ids(workspace):
-    member_ids = set(
-        WorkspaceMembership.objects.filter(workspace=workspace).values_list('user_id', flat=True)
-    )
-    member_ids.add(workspace.owner_id)
-    return member_ids
+    return workspace_member_ids(workspace)
 
 
 def _parse_recipient_ids(raw):
@@ -112,79 +102,15 @@ def workspace_invite_email(request, workspace_id):
     if not email:
         return JsonResponse({'status': 'error', 'message': 'Email is required.'}, status=400)
 
-    existing_user = User.objects.filter(email__iexact=email).first()
-    if existing_user and existing_user.id in _workspace_member_ids(workspace):
-        return JsonResponse({'status': 'error', 'message': 'User is already a member.'}, status=400)
-
-    if existing_user:
-        WorkspaceMembership.objects.get_or_create(
-            workspace=workspace,
-            user=existing_user,
-            defaults={'role': role},
-        )
-        WorkspaceInvite.objects.filter(
-            workspace=workspace, email__iexact=email, accepted=False,
-        ).update(accepted=True)
-        dashboard_url = build_absolute_link(request, 'dashboard')
-        email_sent = False
-        email_error = None
-        try:
-            send_workspace_added_email(
-                user=existing_user,
-                workspace=workspace,
-                inviter_name=request.user.get_username(),
-                accept_url=dashboard_url,
-            )
-            email_sent = True
-        except Exception as exc:
-            email_error = str(exc)
-        message = f'{existing_user.username} was added to the workspace.'
-        if email_sent:
-            message += f' {delivery_hint()}'
-        elif email_error:
-            message += f' (Notification email failed: {email_error})'
-        else:
-            message += ' (No email on file for that user.)'
-        return JsonResponse({
-            'status': 'success',
-            'message': message,
-            'added_existing_user': True,
-            'email_sent': email_sent,
-            'delivery': email_delivery_mode(),
-        })
-
-    invite, created = WorkspaceInvite.objects.get_or_create(
+    result = invite_or_add_by_email(
+        request=request,
         workspace=workspace,
+        inviter=request.user,
         email=email,
-        accepted=False,
-        defaults={'role': role, 'invited_by': request.user},
+        role=role,
     )
-    if not created:
-        invite.role = role
-        invite.invited_by = request.user
-        invite.token = _invite_token()
-        invite.save(update_fields=['role', 'invited_by', 'token'])
-
-    accept_url = build_absolute_link(request, 'accept_workspace_invite', invite.token)
-    try:
-        send_workspace_invite_email(
-            invite=invite,
-            accept_url=accept_url,
-            inviter_name=request.user.get_username(),
-            workspace_name=workspace.name,
-        )
-    except Exception as exc:
-        return JsonResponse({'status': 'error', 'message': f'Could not send email: {exc}'}, status=500)
-
-    hint = delivery_hint()
-    return JsonResponse({
-        'status': 'success',
-        'message': f'Invitation sent to {email}. {hint}',
-        'added_existing_user': False,
-        'email_sent': True,
-        'delivery': email_delivery_mode(),
-        'invite_link': accept_url,
-    })
+    status = result.pop('http_status', 200)
+    return JsonResponse(result, status=status)
 
 
 def accept_workspace_invite(request, token):
@@ -217,9 +143,11 @@ def accept_workspace_invite(request, token):
         })
 
     login_url = f"{reverse('login')}?next={request.path}"
+    register_url = f"{reverse('register')}?email={quote(invite.email)}"
     return render(request, 'notes/invite_accept.html', {
         'invite': invite,
         'login_url': login_url,
+        'register_url': register_url,
         'site_name': getattr(settings, 'SITE_NAME', 'Django Notes Pro'),
     })
 

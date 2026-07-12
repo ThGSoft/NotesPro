@@ -6,6 +6,7 @@ from django.template.response import TemplateResponse
 from django.urls import path, reverse
 
 from .models import (
+    IncomingMail,
     Page,
     PageTag,
     Tag,
@@ -104,6 +105,17 @@ admin.site.register(WorkspaceChatMessage)
 admin.site.register(UserDirectMessageKey)
 admin.site.register(DirectConversation)
 admin.site.register(DirectMessage)
+
+
+@admin.register(IncomingMail)
+class IncomingMailAdmin(admin.ModelAdmin):
+    list_display = (
+        'id', 'recipient', 'sender_email', 'parsed_workspace', 'parsed_page',
+        'status', 'received_at',
+    )
+    list_filter = ('status',)
+    search_fields = ('recipient__username', 'sender_email', 'parsed_workspace', 'parsed_page')
+    readonly_fields = ('received_at', 'distributed_at', 'external_id')
 
 
 @admin.register(UserSettings)

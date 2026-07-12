@@ -68,3 +68,29 @@ def send_workspace_added_email(*, user, workspace, inviter_name, accept_url=None
         fail_silently=False,
     )
     logger.info('Added-to-workspace email sent to %s', user.email)
+
+
+def send_owner_new_user_registered_email(*, owner, new_user, workspace):
+    from django.conf import settings as django_settings
+    from .email_urls import build_absolute_link_from_settings
+
+    dashboard_url = build_absolute_link_from_settings('dashboard')
+    subject = f'{new_user.username} joined "{workspace.name}" on {django_settings.SITE_NAME}'
+    body = render_to_string('notes/emails/owner_new_user_registered.txt', {
+        'owner_username': owner.get_username(),
+        'new_username': new_user.get_username(),
+        'new_email': new_user.email or '(no email)',
+        'workspace_name': workspace.name,
+        'dashboard_url': dashboard_url,
+        'site_name': django_settings.SITE_NAME,
+    })
+    if not owner.email:
+        raise ValueError('Owner has no email address on file.')
+    send_mail(
+        subject,
+        body,
+        django_settings.DEFAULT_FROM_EMAIL,
+        [owner.email],
+        fail_silently=False,
+    )
+    logger.info('Owner notified: %s registered for workspace %s', new_user.username, workspace.id)
