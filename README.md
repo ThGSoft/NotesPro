@@ -4,17 +4,17 @@ Collaborative notes app with workspaces, markdown editing, embedded spreadsheets
 
 ## Screenshots
 
-Dashboard (edit + preview) | Editor toolbar & find/replace 
-![Dashboard overview](docs/screenshots/dashboard-overview.png) ![Editor toolbar](docs/screenshots/dashboard-editor.png)
+| Dashboard (edit + preview) | Editor toolbar & find/replace |
+|:---:|:---:|
+| ![Dashboard overview](docs/screenshots/dashboard-overview.png) | ![Editor toolbar](docs/screenshots/dashboard-editor.png) |
 
-Preview mode (sheets & charts) | Chat panel (private / group / mail) 
-![Preview mode](/docs/screenshots/dashboard-editor.png) ![Chat panel](/docs/screenshots/dashboard-chat.png)
+| Preview mode (sheets & charts) | Chat panel (private / group / mail) |
+|:---:|:---:|
+| ![Preview mode](docs/screenshots/dashboard-preview.png) | ![Chat panel](docs/screenshots/dashboard-chat.png) |
 
 Screenshots are generated from `docs/screenshots/dashboard-mock.html` (static mock using the app stylesheet). After UI changes, refresh them by opening that file via a local server and capturing each `?shot=` view (`overview`, `editor`, `preview`, `chat`).
 
 ## Features
-
-### Notes & workspaces
 - Multiple workspaces with members, roles, and email invites
 - jsTree page/folder tree with search, drag-and-drop reorder, inline rename
 - **Per-workspace page memory** — last opened page is restored when you switch workspaces
@@ -24,10 +24,13 @@ Screenshots are generated from `docs/screenshots/dashboard-mock.html` (static mo
 - **Snippets** — reusable text blocks (toolbar + sidebar); stored in your user settings
 - **Colored panels** — info / success / warning / danger / note callout blocks in markdown
 - Tab-separated `sheet` blocks (formulas) and D3 `chart` blocks linked by sheet id
+- **Calendar** blocks — list days, weeks, months, or years for a `from`/`to` range
+- **Gantt** / **Kanban** / **Mindmap** blocks — project timelines, boards, and indented idea trees
 - File manager with drag-and-drop uploads; click images to open in a new tab
 - **Local file links** — paste Windows paths or insert via toolbar; click in preview to reveal in Explorer (local dev server)
 - Resizable dashboard panels (sidebar, editor, chat/mail)
 - Dark dashboard UI
+- **Keep** — Google Keep–style quick notes per workspace (pin, colors, checklists, archive)
 
 ### Chat & mail
 - **Private chat** — WhatsApp-style 1:1 messages, end-to-end encrypted in the browser (ECDH + AES-GCM)
@@ -103,7 +106,7 @@ python manage.py encrypt_db_fields
 
 Open the **Chat** panel (💬 in the top bar).
 
-![Chat panel](/docs/screenshots/dashboard-chat.png)
+![Chat panel](docs/screenshots/dashboard-chat.png)
 
 | Tab | Purpose |
 |-----|---------|
@@ -153,6 +156,10 @@ python manage.py send_test_email someone@example.com
 
 **Note:** If the invitee already has an account with that email, they are added directly and get a “you were added” notification instead of a signup invite link.
 
+**Unregistered users:** In the members panel, type an email address in the search box (or use **Invite by email**). If no matching account exists, choose **Invite … (not registered)** to send an invitation email. Pending invites appear in the member list until accepted.
+
+**Owner notification:** When someone registers with the invited email address, workspace owners receive an email that the new user joined their workspace.
+
 ## Sheets
 
 Sheets are tab-separated tables embedded in markdown as fenced `sheet` blocks. Tables render at **≤ 100%** page width. They support formulas, per-cell styling, **markdown images in cells**, and can be linked from `chart` blocks by sheet id.
@@ -175,7 +182,7 @@ Set default **column width** on the fence (semicolon-separated attributes):
 ~~~
 ```sheet{width=25%; id=screenshots}
 Overview	Editor	Preview	Chat
-![Overview](docs/screenshots/dashboard-overview.png)	![Editor](docs/screenshots/dashboard-editor.png)	![Preview](docs/screenshots/dashboard-editor.png)	![Chat](/docs/screenshots/dashboard-chat.png)
+![Overview](docs/screenshots/dashboard-overview.png)	![Editor](docs/screenshots/dashboard-editor.png)	![Preview](docs/screenshots/dashboard-preview.png)	![Chat](docs/screenshots/dashboard-chat.png)
 ```
 ~~~
 
@@ -512,23 +519,162 @@ Or paste a path from Explorer (**Shift+Right click → Copy as path**) into the 
 - **Insert** — toolbar folder icon or sidebar **Link local file…**
 - **Preview click** — opens the file in Explorer / Finder when Django runs on the same machine (`LOCAL_FILE_OPEN_ENABLED`, on by default in dev)
 
+### Keep
+
+Quick notes are separate from the page tree — lightweight sticky notes for each workspace.
+
+- Open from the top bar **Keep** button (toggle back with the same button or by clicking a page/folder in the tree).
+- **Composer** at the top: title, body, optional checklist, and card color.
+- **Cards** in a grid: pin, recolor, checklist, archive, or delete from the card footer on hover.
+- **Search** filters title and body; **Show archived** lists archived notes.
+- Pinned notes stay at the top; your last view (**Pages** vs **Keep**) is saved in user settings.
+- Writers can create and edit notes; read-only members can view them.
+
 ### Tags
 
-Tags are indexed per page and shown in a tag bar below the preview. Use any of these forms:
+Tags are indexed per page and shown in a tag bar below the preview. Use brace syntax only:
 
 | Syntax | Example |
 |--------|---------|
-| Hashtag | `#wlan` |
-| Bracket | `[tag:WLAN]` |
 | Brace | `{tag: WLAN}` |
 
-Brace and bracket forms support spaces and mixed case (`{tag: Haefely}`). `{tag: …}` and `[tag: …]` markers are hidden in preview; hashtags stay visible in the text.
+Spaces and mixed case are supported (`{tag: Haefely}`). Markers are hidden in preview; tags appear in the tag bar as `{tag: …}`.
 
-You can also use the toolbar **hashtag** button on selected text.
+You can also use the toolbar **tag** button on selected text.
+
+### Calendar
+
+Embed a calendar for a date range with a fenced `calendar` block (also accepts the typo `calender`):
+
+~~~markdown
+```calendar{from=1.1.26;to=1.7.26;mode=day}
+```
+~~~
+
+| Option | Description |
+|--------|-------------|
+| `from` / `to` | Range bounds as `D.M.YY`, `D.M.YYYY`, or `YYYY-MM-DD` |
+| `mode` | `day` · `week` · `month` · `year` — only that unit is listed |
+| `col` | Background theme: panel colors `info` / `success` / `warning` / `danger` / `note`, or a CSS color (`#eee`, `yellow`) |
+| `title` | Optional title (otherwise the date range is shown) |
+
+Examples:
+
+~~~markdown
+```calendar{from=1.1.26;to=1.7.26;mode=day;col=info}
+```
+~~~
+
+- `mode=day` — days in week rows (Mon–Sun), grouped under each month  
+- `mode=week` — weeks grouped per month  
+- `mode=month` — months grouped per year  
+- `mode=year` — separate years  
+- `col=success` — green panel-style background (same palette as colored panels)  
+
+Use the toolbar **calendar** button to insert a day-mode block for the current month. Preview and edit split view both render it.
+
+In **Edit** mode, click a day / week / month / year chip in the preview to add **markdown text** and an optional **image**. Notes are stored inside the fence. Multiple lines with the same key are all shown on that unit.
+
+Day notes can be **all-day** or timed (`HH:MM` or `HH:MM-HH:MM` after the key). Set **Start** and **Until** in the note dialog (or write a date range in the key) for a **multi-day period**:
+
+~~~markdown
+```calendar{from=1.1.26;to=1.7.26;mode=day}
+@d:15.01.26 | **Meeting** with _Team_ | ![](/media/uploads/photo.png)
+@d:15.01.26 | Follow-up call
+@d:20.01.26-25.01.26 | Vacation
+@d:10.02.26-12.02.26 | 09:00-17:00 | Conference
+```
+~~~
+
+Multi-day keys use `@d:from-to` (same `D.M.YY` dates; `..` also works as separator). In preview, a **colored line** runs along the **bottom** of the covered days; overlapping periods stack with the **newest line above** older ones. **Times** stay visible on the day (time only for daily timed notes; title in the tooltip); period **titles** stay on the **start** day bar. Click a time or line to edit.
+
+~~~markdown
+```calendar{from=1.1.26;to=1.7.26;mode=year;col=danger}
+@y:2026 | Geburtstage: **Thomas** _xx.xx.xx_
+@y:2026 | Geburtstage: **Eva** _1.2.2000_
+```
+~~~
+
+### Gantt
+
+Embed a simple Gantt chart with a fenced `gantt` block (also accepts `gant`):
+
+~~~markdown
+```gantt{from=1.1.26;to=31.1.26;col=info}
+# Project plan
+Phase A | 1.1.26 | 15.1.26 | **Start**
+Phase B | 15.1.26 | 31.1.26 | Delivery | ![](/media/uploads/photo.png)
+```
+~~~
+
+| Option | Description |
+|--------|-------------|
+| `from` / `to` | Chart range (`D.M.YY`, `D.M.YYYY`, or `YYYY-MM-DD`). Inferred from tasks if omitted |
+| `col` | Theme: `info` / `success` / `warning` / `danger` / `note`, or a CSS color |
+| `title` | Optional title via fence `title=…`, body `# Title`, or `title: …` (otherwise the date range is shown) |
+
+Each task line is:
+
+`Label | from | to | optional markdown | optional ![](image)`
+
+Use the toolbar **gantt** button to insert a sample block for the current month. In **Edit** mode, click the **title** to edit name and range, or click a **task row** to edit label, dates, note, and image.
+
+### Kanban
+
+Embed a Kanban board with a fenced `kanban` block (also accepts `kanb`):
+
+~~~markdown
+```kanban{cols=Todo,Doing,Done;col=info}
+# Board
+Todo | Design wireframes | **First draft**
+Doing | Build API
+Done | Kickoff | ![](/media/uploads/photo.png)
+```
+~~~
+
+| Option | Description |
+|--------|-------------|
+| `cols` | Comma-separated column names (default `Todo,Doing,Done`) |
+| `col` | Theme: `info` / `success` / `warning` / `danger` / `note`, or a CSS color |
+| `title` | Optional title via fence `title=…`, body `# Title`, or `title: …` |
+
+Each card line is:
+
+`Column | Label | optional markdown | optional ![](image)`
+
+You can also group with `## Column` headings and write `Label | note` under each.
+
+Use the toolbar **kanban** button to insert a sample board. In **Edit** mode, **drag cards** between columns (or reorder within a column), click the **title** to edit name/columns, or click a **card** to edit label, column, note, and image.
+
+### Mindmap
+
+Embed a mindmap with a fenced `mindmap` block (also accepts `mmap` / `mind`):
+
+~~~markdown
+```mindmap{dir=right;col=info}
+# Ideas
+Central topic
+  Branch A | **Key p
+  Branch B
+    Detail B1 | note
+```
+~~~
+
+| Option | Description |
+|--------|-------------|
+| `dir` | `right` (horizontal tree, default) or `down` (vertical) |
+| `col` | Theme: `info` / `success` / `warning` / `danger` / `note`, or a CSS color |
+| `title` | Optional title via fence `title=…`, body `# Title`, or `title: …` |
+
+Tree structure uses **indentation** (2 spaces or a tab per level). Each line is:
+
+`Label | optional markdown | optional ![](image)`
+
+Use the toolbar **mindmap** (sitemap) button to insert a sample. In **Edit** mode, click the **title** to change name/direction, or click a **node** to edit label/note/image, add a child, or delete the node.
 
 ## Notes
 
-- Markdown images support optional size and alignment: `![alt](docs/screenshots/photo.png){width=50%}` or `{width=120px; align=center}`. Pasted screenshots default to `{width=100%}`.
+- Markdown images support optional size and alignment: `![alt](/media/uploads/photo.png){width=50%}` or `{width=120px; align=center}`. Pasted screenshots default to `{width=100%}`.
 - Markdown images and attachments use `/api/uploads/`; preview and chat images open in a new browser tab when clicked.
 - File manager lists uploads for the current workspace.
 - Workspace export/import and soft-delete are available via the API and admin tools.

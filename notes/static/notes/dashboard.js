@@ -1907,10 +1907,116 @@
     return '';
   }
 
+  function calendarPeriodBarColor(key) {
+    const palette = ['#2563eb', '#16a34a', '#d97706', '#dc2626', '#7c3aed', '#0891b2', '#db2777', '#0d9488'];
+    const s = String(key || '');
+    let hash = 0;
+    for (let i = 0; i < s.length; i += 1) hash = (hash * 31 + s.charCodeAt(i)) >>> 0;
+    return palette[hash % palette.length];
+  }
+
+  function calendarPeriodRole(dateFrom, dateTo, viewDate) {
+    if (!dateFrom || !dateTo || !viewDate) return null;
+    const from = startOfDay(dateFrom).getTime();
+    const to = startOfDay(dateTo).getTime();
+    const day = startOfDay(viewDate).getTime();
+    if (from === to) return null;
+    if (day === from) return 'start';
+    if (day === to) return 'end';
+    if (day > from && day < to) return 'middle';
+    return null;
+  }
+
+  function formatCalendarPeriodBar(entry, { showTitle = false, titleText = '' } = {}) {
+    const role = entry?.periodRole;
+    if (!role) return '';
+    const color = calendarPeriodBarColor(entry.key);
+    const title = showTitle ? String(titleText || calendarEntryPlainTitle(entry) || '').trim() : '';
+    const label = title
+      ? `<span class="calendar-unit-period-bar-label">${escapeHtml(title)}</span>`
+      : '';
+    return `<div class="calendar-unit-period-bar calendar-unit-period-bar--${escapeHtml(role)}${title ? ' calendar-unit-period-bar--labeled' : ''}" style="--period-color:${escapeHtml(color)}">${label}</div>`;
+  }
+
+  function calendarEntryPlainTitle(entry) {
+    let text = String(entry?.text || '').trim();
+    if (!text) return '';
+    text = text.replace(/!\[[^\]]*\]\([^)]*\)/g, ' ').trim();
+    text = text.replace(/\[([^\]]+)\]\([^)]*\)/g, '$1');
+    text = text.replace(/[*_`~#>]+/g, '');
+    text = text.replace(/\s+/g, ' ').trim();
+    return text;
+  }
+
+  function calendarPeriodTooltipText(entry, dayEntries = []) {
+    if (!entry) return '';
+    const related = (dayEntries.length ? dayEntries : [entry]).filter(e => e?.key === entry.key);
+    const titles = [];
+    related.forEach(e => {
+      const title = calendarEntryPlainTitle(e);
+      const time = formatCalendarTimeToken(e);
+      if (title && time) titles.push(`${title} (${time})`);
+      else if (title) titles.push(title);
+      else if (time) titles.push(time);
+    });
+    const uniqueTitles = [...new Set(titles.filter(Boolean))];
+    const range = (entry.dateFrom && entry.dateTo)
+      ? `${formatCalendarDate(entry.dateFrom)} – ${formatCalendarDate(entry.dateTo)}`
+      : '';
+    if (uniqueTitles.length && range) return `${uniqueTitles.join('\n')}\n${range}`;
+    if (uniqueTitles.length) return uniqueTitles.join('\n');
+    return range;
+  }
+
+  function parseCalendarDayKeyPayload(payload) {
+    const raw = String(payload || '').trim();
+    if (!raw) return null;
+    const rangeMatch = raw.match(
+      /^(\d{1,2}[./-]\d{1,2}[./-](?:\d{2}|\d{4}))\s*(?:-|–|\.\.)\s*(\d{1,2}[./-]\d{1,2}[./-](?:\d{2}|\d{4}))$/,
+    );
+    if (rangeMatch) {
+      let from = parseCalendarDate(rangeMatch[1]);
+      let to = parseCalendarDate(rangeMatch[2]);
+      if (!from || !to) return null;
+      if (to < from) {
+        const tmp = from;
+        from = to;
+        to = tmp;
+      }
+      return { from, to };
+    }
+    const from = parseCalendarDate(raw);
+    if (!from) return null;
+    return { from, to: from };
+  }
+
+  function parseCalendarDayKey(key) {
+    const m = String(key || '').trim().match(/^@d:(.+)$/i);
+    if (!m) return null;
+    return parseCalendarDayKeyPayload(m[1]);
+  }
+
+  function calendarDayKeyFromDates(from, to) {
+    if (!from) return '';
+    const start = startOfDay(from);
+    const end = to ? startOfDay(to) : start;
+    const a = formatCalendarDate(start);
+    const b = formatCalendarDate(end < start ? start : end);
+    if (a === b) return calendarEntryKey('day', a);
+    return calendarEntryKey('day', `${a}-${b}`);
+  }
+
+  function normalizeCalendarStorageKey(key) {
+    const dayRange = parseCalendarDayKey(key);
+    if (dayRange) return calendarDayKeyFromDates(dayRange.from, dayRange.to);
+    return String(key || '').toLowerCase();
+  }
+
   function parseCalendarEntryLine(trimmed) {
     const keyMatch = String(trimmed || '').trim().match(/^(@(?:d|w|m|y):[^\s|]+)/i);
     if (!keyMatch) return null;
-    const key = keyMatch[0].toLowerCase();
+    const key = normalizeCalendarStorageKey(keyMatch[0]);
+    const dayRange = parseCalendarDayKey(key);
     const tail = trimmed.slice(keyMatch[0].length).trim();
     const parts = tail ? tail.split('|').map(p => p.trim()) : [];
     let allday = true;
@@ -1934,7 +2040,16 @@
       image = imgMatch[1];
       text = rest.replace(imgMatch[0], '').trim();
     }
-    return { key, text, image, allday, timeFrom, timeTo };
+    return {
+      key,
+      text,
+      image,
+      allday,
+      timeFrom,
+      timeTo,
+      dateFrom: dayRange?.from || null,
+      dateTo: dayRange?.to || null,
+    };
   }
 
   function getCalendarBlockSpec(markdown, calendarIndex) {
@@ -1961,12 +2076,17 @@
       const entry = parseCalendarEntryLine(trimmed);
       if (entry) {
         if (!entries[entry.key]) entries[entry.key] = [];
+        const sourceIndex = Object.values(entries).reduce((n, list) => n + list.length, 0);
         entries[entry.key].push({
           text: entry.text,
           image: entry.image,
           allday: entry.allday,
           timeFrom: entry.timeFrom,
           timeTo: entry.timeTo,
+          key: entry.key,
+          dateFrom: entry.dateFrom,
+          dateTo: entry.dateTo,
+          sourceIndex,
         });
         return;
       }
@@ -2013,8 +2133,58 @@
     return Array.isArray(entryOrList) ? entryOrList.filter(Boolean) : [entryOrList];
   }
 
+  function entriesForCalendarDay(entries, date) {
+    const day = startOfDay(date).getTime();
+    const result = [];
+    Object.keys(entries || {}).forEach(key => {
+      const dayRange = parseCalendarDayKey(key);
+      if (!dayRange) return;
+      const from = startOfDay(dayRange.from).getTime();
+      const to = startOfDay(dayRange.to || dayRange.from).getTime();
+      if (day < from || day > to) return;
+      const periodRole = calendarPeriodRole(dayRange.from, dayRange.to || dayRange.from, date);
+      normalizeCalendarEntryList(entries[key]).forEach(entry => {
+        result.push({
+          ...entry,
+          key,
+          dateFrom: dayRange.from,
+          dateTo: dayRange.to || dayRange.from,
+          periodRole,
+          viewDate: date,
+          sourceIndex: Number.isFinite(entry.sourceIndex) ? entry.sourceIndex : 0,
+        });
+      });
+    });
+    return result;
+  }
+
+  function nextCalendarSourceIndex(entries) {
+    let max = -1;
+    Object.values(entries || {}).forEach(list => {
+      normalizeCalendarEntryList(list).forEach(entry => {
+        if (Number.isFinite(entry?.sourceIndex) && entry.sourceIndex > max) max = entry.sourceIndex;
+      });
+    });
+    return max + 1;
+  }
+
+  function uniquePeriodEntriesForDay(dayEntries) {
+    const byKey = new Map();
+    dayEntries.forEach(entry => {
+      if (!entry?.periodRole || !entry.key) return;
+      const prev = byKey.get(entry.key);
+      if (!prev || (entry.sourceIndex ?? 0) < (prev.sourceIndex ?? 0)) byKey.set(entry.key, entry);
+    });
+    return [...byKey.values()].sort((a, b) => (a.sourceIndex ?? 0) - (b.sourceIndex ?? 0));
+  }
+
   function calendarEntryHasContent(entryOrList) {
-    return normalizeCalendarEntryList(entryOrList).some(e => e?.text || e?.image || (e?.allday === false && e?.timeFrom));
+    return normalizeCalendarEntryList(entryOrList).some(e => (
+      e?.text
+      || e?.image
+      || (e?.allday === false && e?.timeFrom)
+      || !!e?.periodRole
+    ));
   }
 
   function calendarEntriesMarkdown(entryOrList) {
@@ -2033,6 +2203,7 @@
     const allday = timeOpts.allday !== false;
     const timeFrom = allday ? null : (timeOpts.timeFrom || null);
     const timeTo = allday ? null : (timeOpts.timeTo || null);
+    const sourceIndex = Number.isFinite(timeOpts.sourceIndex) ? timeOpts.sourceIndex : undefined;
     if (!lines.length) {
       if (!cleanImage && allday) return [];
       return [{
@@ -2041,6 +2212,7 @@
         allday,
         timeFrom,
         timeTo,
+        ...(sourceIndex !== undefined ? { sourceIndex } : {}),
       }];
     }
     return lines.map((line, i) => ({
@@ -2049,11 +2221,108 @@
       allday,
       timeFrom,
       timeTo,
+      ...(sourceIndex !== undefined ? { sourceIndex: sourceIndex + i } : {}),
     }));
+  }
+
+  function calendarEntryTooltipText(entry) {
+    if (!entry) return '';
+    const title = calendarEntryPlainTitle(entry);
+    const time = formatCalendarTimeToken(entry);
+    if (title && time) return `${time}\n${title}`;
+    if (title && entry.allday !== false) return title;
+    if (title) return title;
+    if (time) return time;
+    if (entry.allday !== false) return 'All day';
+    return '';
+  }
+
+  function formatCalendarPeriodBarWrap(entry, dayEntries = [], { showTitle = null } = {}) {
+    const related = (dayEntries.length ? dayEntries : [entry]).filter(e => e?.key === entry.key);
+    const titles = [...new Set(related.map(calendarEntryPlainTitle).filter(Boolean))];
+    const time = related.map(formatCalendarTimeToken).find(Boolean) || '';
+    const titleCore = titles.join(' · ');
+    const titleText = [time, titleCore].filter(Boolean).join(' ');
+    const labeled = showTitle == null
+      ? (entry.periodRole === 'start' || entry.periodRole === 'end')
+      : !!showTitle;
+    const bar = formatCalendarPeriodBar(entry, { showTitle: labeled, titleText });
+    if (!bar) return '';
+    const noteKey = entry.key ? ` data-calendar-key="${escapeHtml(entry.key)}"` : '';
+    const tip = calendarPeriodTooltipText(entry, dayEntries);
+    const tipAttr = tip ? ` data-calendar-tooltip="${escapeHtml(tip)}"` : '';
+    return `<div class="calendar-unit-period-bar-wrap${labeled && titleText ? ' calendar-unit-period-bar-wrap--labeled' : ''}"${noteKey}${tipAttr}>${bar}</div>`;
+  }
+
+  function sortCalendarDaySingles(singles) {
+    return [...singles].sort((a, b) => {
+      const aAll = a.allday !== false;
+      const bAll = b.allday !== false;
+      if (aAll !== bAll) return aAll ? -1 : 1;
+      const at = a.timeFrom || '';
+      const bt = b.timeFrom || '';
+      if (at !== bt) return at.localeCompare(bt);
+      return (a.sourceIndex ?? 0) - (b.sourceIndex ?? 0);
+    });
+  }
+
+  function calendarEntryPointMarkup(entry) {
+    const tip = calendarEntryTooltipText(entry);
+    const tipAttr = tip ? ` data-calendar-tooltip="${escapeHtml(tip)}"` : '';
+    const noteKey = entry.key ? ` data-calendar-key="${escapeHtml(entry.key)}"` : '';
+    const timed = entry.allday === false && entry.timeFrom;
+    const timeText = timed
+      ? (entry.timeTo ? `${entry.timeFrom}–${entry.timeTo}` : entry.timeFrom)
+      : '';
+    // Daily events in preview: show only time (title stays in tooltip).
+    if (timed) {
+      return `<div class="calendar-unit-event-point-row calendar-unit-event-point-row--time-only"${noteKey}${tipAttr}>`
+        + `<span class="calendar-unit-event-time">${escapeHtml(timeText)}</span>`
+        + `</div>`;
+    }
+    return `<div class="calendar-unit-event-point-row"${noteKey}${tipAttr}>`
+      + `<span class="calendar-unit-event-point calendar-unit-event-point--allday" aria-hidden="true"></span>`
+      + `</div>`;
+  }
+
+  function calendarEntryPointsMarkup(entryOrList) {
+    const list = sortCalendarDaySingles(normalizeCalendarEntryList(entryOrList).filter(e => !e.periodRole));
+    if (!list.length) return '';
+    return `<div class="calendar-unit-event-points">${list.map(calendarEntryPointMarkup).join('')}</div>`;
+  }
+
+  function calendarDayEntriesMarkup(dayEntries) {
+    const singles = [];
+    const periodItems = [];
+    normalizeCalendarEntryList(dayEntries).forEach(entry => {
+      if (entry.periodRole) periodItems.push(entry);
+      else singles.push(entry);
+    });
+
+    const periods = uniquePeriodEntriesForDay(periodItems);
+    const compact = (singles.length + periods.length) > 1;
+    const timedSingles = singles.filter(e => e.allday === false && e.timeFrom);
+    const otherSingles = singles.filter(e => !(e.allday === false && e.timeFrom));
+
+    // Daily timed events: only time in preview (text in tooltip).
+    const timedHtml = calendarEntryPointsMarkup(timedSingles);
+    const otherHtml = (compact || timedSingles.length || otherSingles.length > 1)
+      ? calendarEntryPointsMarkup(otherSingles)
+      : calendarEntryMarkup(otherSingles);
+    const singleHtml = `${timedHtml}${otherHtml}`;
+
+    const stackHtml = periods.length
+      ? `<div class="calendar-unit-period-stack">${periods.map(entry => formatCalendarPeriodBarWrap(entry, periodItems, {
+        showTitle: entry.periodRole === 'start' || (!compact && entry.periodRole === 'end'),
+      })).join('')}</div>`
+      : '';
+
+    return `${singleHtml}${stackHtml}`;
   }
 
   function calendarEntryMarkup(entryOrList) {
     return normalizeCalendarEntryList(entryOrList).map(entry => {
+      if (entry.periodRole) return '';
       const raw = String(entry.text || '');
       let textHtml = '';
       if (raw) {
@@ -2067,8 +2336,12 @@
         ? `<img class="calendar-unit-image md-image" src="${escapeHtml(entry.image)}" alt="">`
         : '';
       const timeLabel = formatCalendarEntryTimeLabel(entry);
+      const tip = calendarEntryTooltipText(entry);
+      const tipAttr = tip ? ` data-calendar-tooltip="${escapeHtml(tip)}"` : '';
       if (!textHtml && !image && !timeLabel) return '';
-      return `<div class="calendar-unit-note${entry.allday !== false ? ' calendar-unit-note--allday' : ''}">${timeLabel}${image}${textHtml ? `<div class="calendar-unit-text">${textHtml}</div>` : ''}</div>`;
+      const noteKey = entry.key ? ` data-calendar-key="${escapeHtml(entry.key)}"` : '';
+      const alldayClass = entry.allday !== false ? ' calendar-unit-note--allday' : '';
+      return `<div class="calendar-unit-note${alldayClass}"${noteKey}${tipAttr}>${timeLabel}${image}${textHtml ? `<div class="calendar-unit-text">${textHtml}</div>` : ''}</div>`;
     }).join('');
   }
 
@@ -2145,33 +2418,77 @@
     return thursday.getFullYear() === year && thursday.getMonth() === month;
   }
 
+  function renderCalendarDayUnit(date, from, to, entries, editable, today) {
+    const rangeFrom = startOfDay(from);
+    const rangeTo = startOfDay(to);
+    const day = startOfDay(date);
+    if (day < rangeFrom || day > rangeTo) {
+      return '<div class="calendar-unit calendar-unit--day calendar-unit--pad" aria-hidden="true"></div>';
+    }
+    const key = calendarEntryKey('day', formatCalendarDate(day));
+    const dayOwn = normalizeCalendarEntryList(entries[key]);
+    const entry = entriesForCalendarDay(entries, day);
+    const isToday = day.getTime() === today.getTime();
+    const classes = [
+      'calendar-unit',
+      'calendar-unit--day',
+      isToday ? 'calendar-unit--today' : '',
+      calendarEntryHasContent(entry) ? 'calendar-unit--has-note' : '',
+      editable ? 'calendar-unit--editable' : '',
+    ].filter(Boolean).join(' ');
+    return `<div class="${classes}"${calendarUnitAttrs(key, editable, dayOwn)}>`
+      + `<span class="calendar-unit-primary">${day.getDate()}</span>`
+      + calendarDayEntriesMarkup(entry)
+      + `</div>`;
+  }
+
   function renderCalendarUnitsDay(from, to, entries = {}, editable = false) {
     const today = startOfDay(new Date());
-    const days = collectCalendarDays(from, to);
+    const rangeFrom = startOfDay(from);
+    const rangeTo = startOfDay(to);
     const months = collectCalendarMonths(from, to);
+    const weekdayHeader = WEEKDAY_LABELS
+      .map(label => `<div class="calendar-weekday-label">${escapeHtml(label)}</div>`)
+      .join('');
+
     return months.map(({ year, month }) => {
-      const unitHtml = days
-        .filter(date => date.getFullYear() === year && date.getMonth() === month)
-        .map(date => {
-          const key = calendarEntryKey('day', formatCalendarDate(date));
-          const entry = entries[key];
-          const isToday = date.getTime() === today.getTime();
-          const classes = [
-            'calendar-unit',
-            'calendar-unit--day',
-            isToday ? 'calendar-unit--today' : '',
-            calendarEntryHasContent(entry) ? 'calendar-unit--has-note' : '',
-            editable ? 'calendar-unit--editable' : '',
-          ].filter(Boolean).join(' ');
-          const weekday = WEEKDAY_LABELS[(date.getDay() + 6) % 7];
-          return `<div class="${classes}"${calendarUnitAttrs(key, editable, entry)}>`
-            + `<span class="calendar-unit-primary">${date.getDate()}</span>`
-            + `<span class="calendar-unit-secondary">${weekday}</span>`
-            + calendarEntryMarkup(entry)
-            + `</div>`;
-        }).join('');
-      if (!unitHtml) return '';
-      return renderCalendarGroup(`${MONTH_LABELS_SHORT[month]} ${year}`, unitHtml);
+      const monthStart = new Date(year, month, 1);
+      const monthEnd = new Date(year, month + 1, 0);
+      const first = rangeFrom > monthStart ? rangeFrom : monthStart;
+      const last = rangeTo < monthEnd ? rangeTo : monthEnd;
+      if (first > last) return '';
+
+      const gridStart = startOfWeek(first);
+      const gridEnd = startOfWeek(last);
+      gridEnd.setDate(gridEnd.getDate() + 6);
+
+      const weekRows = [];
+      const cursor = new Date(gridStart);
+      let guard = 0;
+      while (cursor <= gridEnd && guard < 60) {
+        const cells = [];
+        for (let i = 0; i < 7; i += 1) {
+          const cellDate = new Date(cursor);
+          if (cellDate.getFullYear() !== year || cellDate.getMonth() !== month) {
+            cells.push('<div class="calendar-unit calendar-unit--day calendar-unit--pad" aria-hidden="true"></div>');
+          } else {
+            cells.push(renderCalendarDayUnit(cellDate, from, to, entries, editable, today));
+          }
+          cursor.setDate(cursor.getDate() + 1);
+        }
+        weekRows.push(`<div class="calendar-week-row">${cells.join('')}</div>`);
+        guard += 1;
+      }
+
+      return [
+        `<div class="calendar-group">`,
+        `<div class="calendar-group-title">${escapeHtml(`${MONTH_LABELS_SHORT[month]} ${year}`)}</div>`,
+        `<div class="calendar-units calendar-units--weeks">`,
+        `<div class="calendar-week-row calendar-week-row--header">${weekdayHeader}</div>`,
+        weekRows.join(''),
+        `</div>`,
+        `</div>`,
+      ].join('');
     }).join('');
   }
 
@@ -2275,23 +2592,29 @@
   }
 
   function serializeCalendarEntries(entries) {
-    return Object.keys(entries || {})
-      .sort()
-      .flatMap(key => normalizeCalendarEntryList(entries[key]).map(entry => {
+    const rows = [];
+    Object.keys(entries || {}).forEach(key => {
+      normalizeCalendarEntryList(entries[key]).forEach(entry => {
+        rows.push({ key, entry, sourceIndex: Number.isFinite(entry.sourceIndex) ? entry.sourceIndex : 1e9 });
+      });
+    });
+    rows.sort((a, b) => a.sourceIndex - b.sourceIndex || String(a.key).localeCompare(String(b.key)));
+    return rows
+      .map(({ key, entry }) => {
         const parts = [key];
         const timeToken = formatCalendarTimeToken(entry);
         if (timeToken) parts.push(timeToken);
         if (entry.text) parts.push(String(entry.text).replace(/\r?\n/g, ' ').trim());
         if (entry.image) parts.push(`![](${entry.image})`);
         return parts.filter(Boolean).join(' | ');
-      }))
+      })
       .filter(line => {
         const rest = line.replace(/^@[dwmy]:[^\s|]+\s*(?:\|\s*)?/i, '');
         return !!rest;
       });
   }
 
-  function updateCalendarEntryInMarkdown(markdown, calendarIndex, key, text, image, timeOpts = {}) {
+  function updateCalendarEntryInMarkdown(markdown, calendarIndex, key, text, image, timeOpts = {}, options = {}) {
     let idx = 0;
     const re = /```(?:calendar|calender)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
     return String(markdown || '').replace(re, (match, fenceAttrs, content = '') => {
@@ -2300,9 +2623,15 @@
       if (thisIndex !== calendarIndex) return match;
       const spec = parseCalendarSpec(fenceAttrs, content);
       const entries = { ...(spec.entries || {}) };
-      const notes = calendarNotesFromModalFields(text, image, timeOpts);
-      if (!notes.length) delete entries[key];
-      else entries[key] = notes;
+      const oldKey = normalizeCalendarStorageKey(options.oldKey || key);
+      const targetKey = normalizeCalendarStorageKey(key);
+      const previous = normalizeCalendarEntryList(entries[oldKey] || entries[targetKey]);
+      let sourceIndex = previous[0]?.sourceIndex;
+      if (!Number.isFinite(sourceIndex)) sourceIndex = nextCalendarSourceIndex(entries);
+      const notes = calendarNotesFromModalFields(text, image, { ...timeOpts, sourceIndex });
+      if (oldKey && oldKey !== targetKey) delete entries[oldKey];
+      if (!notes.length) delete entries[targetKey];
+      else entries[targetKey] = notes;
       const entryLines = serializeCalendarEntries(entries);
       const body = entryLines.length ? `\n${entryLines.join('\n')}\n` : '\n';
       const fence = fenceAttrs != null && String(fenceAttrs).length
@@ -4481,12 +4810,31 @@ function formatTextWithMarkup(rawText) {
       md = replaceRichBlocksWithPlaceholders(md);
     }
     md = parseMarkdownImages(md);
-    return { markdown: md, tagsHtml: buildTagsHtml(tags) };
+    const styled = materializeMarkdownInStyledSpans(md);
+    return {
+      markdown: styled.markdown,
+      tagsHtml: buildTagsHtml(tags),
+      styledSpanHtml: styled.rendered,
+    };
+  }
+
+  function renderMarkdownToHtml(markdown, options = {}) {
+    const processed = preprocessMarkdown(markdown, options);
+    let html = marked.parse(processed.markdown) + processed.tagsHtml;
+    html = restoreStyledSpanTokens(html, processed.styledSpanHtml);
+    // Tokens can remain wrapped in <p> after marked.
+    html = html.replace(/<p>\s*(<div class="md-styled-block"[\s\S]*?<\/div>)\s*<\/p>/gi, '$1');
+    html = html.replace(/@@MDSTYLE(\d+)@@/g, (_, id) => {
+      const idx = Number(id);
+      return Number.isFinite(idx) && processed.styledSpanHtml?.[idx] != null
+        ? processed.styledSpanHtml[idx]
+        : '';
+    });
+    return html;
   }
 
   function renderMarkdownPreviewHtml(markdown, options = {}) {
-    const processed = preprocessMarkdown(markdown, options);
-    return marked.parse(processed.markdown) + processed.tagsHtml;
+    return renderMarkdownToHtml(markdown, options);
   }
 
   function isEditorPreviewSplit() {
@@ -4746,15 +5094,21 @@ function formatTextWithMarkup(rawText) {
     if (floatingToc) {
       const splitEdit = isEditing && document.querySelector('.editor-wrap')?.classList.contains('editor-wrap--split');
       if (isMobileLayout()) {
-        floatingToc.style.display = '';
+        floatingToc.style.display = 'flex';
+        floatingToc.classList.remove('is-hidden');
       } else if (splitEdit) {
         floatingToc.style.display = 'none';
+        floatingToc.classList.add('is-hidden');
       } else {
-        floatingToc.style.display = (!hasToc && !hasHeader) ? 'none' : '';
+        const show = hasToc || hasHeader;
+        floatingToc.style.display = show ? 'flex' : 'none';
+        floatingToc.classList.toggle('is-hidden', !show);
       }
     }
     const editorWrap = document.querySelector('.editor-wrap');
-    const tocShown = floatingToc && floatingToc.style.display !== 'none';
+    const tocShown = floatingToc
+      && floatingToc.style.display !== 'none'
+      && !floatingToc.classList.contains('is-hidden');
     editorWrap?.classList.toggle('has-page-toc', tocShown);
 
     const sheetRegistry = buildSheetRegistry(raw);
@@ -4763,7 +5117,10 @@ function formatTextWithMarkup(rawText) {
       richBlocks: true,
     });
     const savedScrollLine = isEditorPreviewSplit() ? getEditorScrollLine() : null;
-    preview.innerHTML = marked.parse(processed.markdown) + processed.tagsHtml;
+    let html = marked.parse(processed.markdown) + processed.tagsHtml;
+    html = restoreStyledSpanTokens(html, processed.styledSpanHtml);
+    html = html.replace(/<p>\s*(<div class="md-styled-block"[\s\S]*?<\/div>)\s*<\/p>/gi, '$1');
+    preview.innerHTML = html;
     applyPreviewImageStyles(preview);
     preview.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(h => { h.id = slugifyHeading(h.textContent); });
     markFileLinks(preview);
@@ -5734,6 +6091,89 @@ function formatTextWithMarkup(rawText) {
     return cleaned;
   }
 
+  function stripInlineStyleMarkup(text, styleProp) {
+    const prop = String(styleProp || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(
+      `<span([^>]*?)\\sstyle="([^"]*?)\\b${prop}\\s*:\\s*[^";]+;?([^"]*)"([^>]*)>([\\s\\S]*?)<\\/span>`,
+      'gi',
+    );
+    let cleaned = String(text || '');
+    let prev;
+    do {
+      prev = cleaned;
+      cleaned = cleaned.replace(re, (_, before, styleBefore, styleAfter, after, inner) => {
+        const style = `${styleBefore || ''}${styleAfter || ''}`.replace(/;\s*;/g, ';').trim().replace(/^;|;$/g, '');
+        if (!style) return inner;
+        return `<span${before || ''} style="${style}"${after || ''}>${inner}</span>`;
+      });
+    } while (cleaned !== prev);
+    return cleaned;
+  }
+
+  function styledSpanNeedsBlockWrapper(inner) {
+    const text = String(inner || '');
+    const trimmed = text.trim();
+    if (!trimmed) return false;
+    if (/\n/.test(text)) return true;
+    if (/^```/m.test(trimmed)) return true;
+    if (/^#{1,6}\s/m.test(trimmed)) return true;
+    if (/^([-*+]|\d+\.)\s/m.test(trimmed)) return true;
+    if (/^(-{3,}|\*{3,}|_{3,})\s*$/m.test(trimmed)) return true;
+    if (/^>/m.test(trimmed)) return true;
+    if (/<\/?(div|p|ul|ol|li|pre|table|h[1-6]|hr|blockquote)\b/i.test(trimmed)) return true;
+    return false;
+  }
+
+  function renderStyledSpanHtml(attrs, inner) {
+    const blocky = styledSpanNeedsBlockWrapper(inner);
+    let content = '';
+    try {
+      content = blocky
+        ? marked.parse(String(inner || '').replace(/^\n+|\n+$/g, ''), { async: false })
+        : marked.parseInline(String(inner || ''));
+    } catch (_) {
+      content = escapeHtml(inner);
+    }
+    if (blocky) {
+      return `<div class="md-styled-block"${attrs || ''}>${content}</div>`;
+    }
+    return `<span${attrs || ''}>${content}</span>`;
+  }
+
+  /** Parse markdown inside <span style="...">…</span> (innermost first). */
+  function materializeMarkdownInStyledSpans(markdown) {
+    let md = String(markdown || '');
+    const rendered = [];
+    // Innermost styled spans only (no nested <span ...> inside).
+    const re = /<span(\s[^>]*?\bstyle\s*=\s*(?:"[^"]*"|'[^']*')[^>]*)>((?:(?!<span[\s>])[\s\S])*?)<\/span>/i;
+    let guard = 0;
+    while (guard++ < 100) {
+      const match = md.match(re);
+      if (!match) break;
+      const token = `@@MDSTYLE${rendered.length}@@`;
+      let inner = match[2] || '';
+      // Nested spans were already turned into tokens — expand those before parsing.
+      inner = inner.replace(/@@MDSTYLE(\d+)@@/g, (_, id) => {
+        const idx = Number(id);
+        return Number.isFinite(idx) && rendered[idx] != null ? rendered[idx] : '';
+      });
+      rendered.push(renderStyledSpanHtml(match[1] || '', inner));
+      md = `${md.slice(0, match.index)}${token}${md.slice(match.index + match[0].length)}`;
+    }
+    return { markdown: md, rendered };
+  }
+
+  function restoreStyledSpanTokens(html, rendered) {
+    if (!rendered?.length) return html;
+    let out = String(html || '');
+    out = out.replace(/<p>\s*(@@MDSTYLE\d+@@)\s*<\/p>/gi, '$1');
+    out = out.replace(/@@MDSTYLE(\d+)@@/g, (_, id) => {
+      const idx = Number(id);
+      return Number.isFinite(idx) && rendered[idx] != null ? rendered[idx] : '';
+    });
+    return out;
+  }
+
   function applyEditorFontSize(editor, sizeKey) {
     const cm = editor?.codemirror;
     if (!cm) return;
@@ -5756,9 +6196,11 @@ function formatTextWithMarkup(rawText) {
 
     if (!text) return;
 
+    // Multi-line: one outer span so markdown (fences, lists, etc.) can live inside.
+    const cleaned = stripFontSizeMarkup(text);
     const next = cssSize
-      ? `<span style="font-size:${cssSize}">${text}</span>`
-      : stripFontSizeMarkup(text);
+      ? `<span style="font-size:${cssSize}">${cleaned}</span>`
+      : cleaned;
 
     if (cm.somethingSelected()) {
       cm.replaceSelection(next, 'around');
@@ -6016,7 +6458,9 @@ function formatTextWithMarkup(rawText) {
 
     if (!text) return;
 
-    const wrapped = `<span style="${styleProp}:${color}">${text}</span>`;
+    const cleaned = stripInlineStyleMarkup(text, styleProp);
+    const wrapped = `<span style="${styleProp}:${color}">${cleaned}</span>`;
+
     if (cm.somethingSelected()) {
       cm.replaceSelection(wrapped, 'around');
     } else {
@@ -6379,6 +6823,33 @@ function formatTextWithMarkup(rawText) {
     document.getElementById('calendar-note-time-range')?.classList.toggle('d-none', !timed);
   }
 
+  function setCalendarNotePeriodFields(startDate, untilDate, { showPeriod = false } = {}) {
+    const wrap = document.getElementById('calendar-note-period-range');
+    const fromInput = document.getElementById('calendar-note-date-from');
+    const untilInput = document.getElementById('calendar-note-date-until');
+    wrap?.classList.toggle('d-none', !showPeriod);
+    setDateInputValue(fromInput, startDate || null);
+    setDateInputValue(untilInput, untilDate || startDate || null);
+  }
+
+  function readCalendarNotePeriodUntil() {
+    let until = readDateInputValue(document.getElementById('calendar-note-date-until'));
+    let start = readDateInputValue(document.getElementById('calendar-note-date-from'));
+    if (!start) {
+      showToast('Choose a start date.', 'warning');
+      return null;
+    }
+    if (!until) until = start;
+    if (until < start) {
+      const tmp = start;
+      start = until;
+      until = tmp;
+      setDateInputValue(document.getElementById('calendar-note-date-from'), start);
+      setDateInputValue(document.getElementById('calendar-note-date-until'), until);
+    }
+    return { start, until };
+  }
+
   function setCalendarNoteTimeFields(entry = {}) {
     const allday = entry.allday !== false;
     const alldayEl = document.getElementById('calendar-note-allday');
@@ -6421,36 +6892,65 @@ function formatTextWithMarkup(rawText) {
     wrap.innerHTML = `<img src="${escapeHtml(image)}" alt="" class="calendar-note-preview-img">`;
   }
 
-  function openCalendarNoteModal(unitEl) {
+  function openCalendarNoteModal(unitEl, preferredKey = null) {
     if (!isPreviewInteractionEnabled()) return;
     const block = unitEl.closest('.calendar-block');
-    const key = unitEl.dataset.calendarKey;
-    if (!block || !key) return;
+    const dayKey = unitEl.dataset.calendarKey;
+    if (!block || !dayKey) return;
     const calendarIndex = parseInt(block.dataset.calendarIndex, 10);
     if (!Number.isFinite(calendarIndex)) return;
 
-    const noteEls = [...unitEl.querySelectorAll('.calendar-unit-note')];
-    const text = unitEl.dataset.calendarMarkdown
+    const key = normalizeCalendarStorageKey(preferredKey || dayKey);
+    const dayRange = parseCalendarDayKey(key);
+    const isDayMode = !!dayRange || String(key).startsWith('@d:');
+
+    const noteEls = preferredKey
+      ? [...unitEl.querySelectorAll('.calendar-unit-note')].filter(n => n.dataset.calendarKey === key)
+      : [...unitEl.querySelectorAll('.calendar-unit-note')].filter(n => {
+          const noteKey = n.dataset.calendarKey;
+          return !noteKey || noteKey === dayKey;
+        });
+
+    const text = (!preferredKey && unitEl.dataset.calendarMarkdown)
       || noteEls.map(noteEl => noteEl.querySelector('.calendar-unit-text')?.textContent?.trim() || '').filter(Boolean).join('\n')
       || '';
     const image = noteEls.map(n => n.querySelector('img')?.getAttribute('src') || '').find(Boolean) || '';
 
-    calendarNoteContext = { calendarIndex, key };
+    calendarNoteContext = {
+      calendarIndex,
+      key,
+      oldKey: key,
+      isDayMode,
+    };
     const spec = easyMDE ? getCalendarBlockSpec(easyMDE.value(), calendarIndex) : null;
     const storedEntries = normalizeCalendarEntryList(spec?.entries?.[key]);
     const firstEntry = storedEntries[0] || {};
 
     const title = document.getElementById('calendar-note-modal-title');
-    if (title) title.textContent = `Calendar note · ${key.replace(/^@[dwmy]:/i, '')}`;
+    if (title) {
+      const label = dayRange
+        ? (startOfDay(dayRange.from).getTime() === startOfDay(dayRange.to).getTime()
+          ? formatCalendarDate(dayRange.from)
+          : `${formatCalendarDate(dayRange.from)} – ${formatCalendarDate(dayRange.to)}`)
+        : key.replace(/^@[dwmy]:/i, '');
+      title.textContent = `Calendar note · ${label}`;
+    }
     const hint = document.getElementById('calendar-note-modal-hint');
     if (hint) {
-      hint.textContent = 'All day or a time range. One note per line for the same slot; image attaches to the first line.';
+      hint.textContent = isDayMode
+        ? 'All day or a time range. Edit Start / Until for a multi-day period. One note per line; image attaches to the first line.'
+        : 'All day or a time range. One note per line for the same slot; image attaches to the first line.';
     }
     const textInput = document.getElementById('calendar-note-text');
     const imageInput = document.getElementById('calendar-note-image');
-    if (textInput) textInput.value = text;
-    if (imageInput) imageInput.value = image;
+    if (textInput) textInput.value = text || calendarEntriesMarkdown(storedEntries);
+    if (imageInput) imageInput.value = image || (firstEntry.image || '');
     setCalendarNoteTimeFields(firstEntry);
+    setCalendarNotePeriodFields(
+      dayRange?.from || null,
+      dayRange?.to || dayRange?.from || null,
+      { showPeriod: isDayMode },
+    );
     refreshCalendarNoteImagePreview();
     const modalEl = document.getElementById('calendar-note-modal');
     if (modalEl) openDashboardModal(modalEl);
@@ -6462,14 +6962,24 @@ function formatTextWithMarkup(rawText) {
     const image = clear ? '' : (document.getElementById('calendar-note-image')?.value || '');
     const timeOpts = clear ? { allday: true, timeFrom: null, timeTo: null } : readCalendarNoteTimeOptions();
     if (!clear && timeOpts === null) return;
+
+    let targetKey = calendarNoteContext.key;
+    const oldKey = calendarNoteContext.oldKey || calendarNoteContext.key;
+    if (!clear && calendarNoteContext.isDayMode) {
+      const period = readCalendarNotePeriodUntil();
+      if (period === null) return;
+      if (period.start) targetKey = calendarDayKeyFromDates(period.start, period.until);
+    }
+
     const oldMarkdown = easyMDE.value();
     const updated = updateCalendarEntryInMarkdown(
       oldMarkdown,
       calendarNoteContext.calendarIndex,
-      calendarNoteContext.key,
+      clear ? oldKey : targetKey,
       text,
       image,
       timeOpts,
+      clear ? {} : { oldKey },
     );
     if (updated !== oldMarkdown) {
       easyMDE.value(updated);
@@ -6500,6 +7010,43 @@ function formatTextWithMarkup(rawText) {
     }
   }
 
+  function ensureCalendarHoverTooltip() {
+    let tip = document.getElementById('calendar-hover-tooltip');
+    if (!tip) {
+      tip = document.createElement('div');
+      tip.id = 'calendar-hover-tooltip';
+      tip.className = 'calendar-hover-tooltip';
+      tip.setAttribute('role', 'tooltip');
+      document.body.appendChild(tip);
+    }
+    return tip;
+  }
+
+  function moveCalendarHoverTooltip(event) {
+    const tip = ensureCalendarHoverTooltip();
+    const pad = 14;
+    tip.style.left = `${event.clientX + pad}px`;
+    tip.style.top = `${event.clientY + pad}px`;
+    const rect = tip.getBoundingClientRect();
+    if (rect.right > window.innerWidth - 8) {
+      tip.style.left = `${Math.max(8, event.clientX - rect.width - pad)}px`;
+    }
+    if (rect.bottom > window.innerHeight - 8) {
+      tip.style.top = `${Math.max(8, event.clientY - rect.height - pad)}px`;
+    }
+  }
+
+  function showCalendarHoverTooltip(event, text) {
+    const tip = ensureCalendarHoverTooltip();
+    tip.textContent = text;
+    tip.classList.add('visible');
+    moveCalendarHoverTooltip(event);
+  }
+
+  function hideCalendarHoverTooltip() {
+    document.getElementById('calendar-hover-tooltip')?.classList.remove('visible');
+  }
+
   function initCalendarNoteEditors() {
     const preview = document.getElementById('preview-content');
     if (!preview || preview.dataset.calendarEditBound === '1') return;
@@ -6512,8 +7059,35 @@ function formatTextWithMarkup(rawText) {
       if (e.target.closest('a, button, input, textarea, img.md-image-link')) return;
       e.preventDefault();
       e.stopPropagation();
-      openCalendarNoteModal(unit);
+      hideCalendarHoverTooltip();
+      const note = e.target.closest?.('.calendar-unit-note, .calendar-unit-period-bar-wrap, .calendar-unit-event-point-row');
+      const noteKey = note?.dataset?.calendarKey || null;
+      openCalendarNoteModal(unit, noteKey);
     });
+
+    preview.addEventListener('pointerover', e => {
+      const hit = e.target.closest?.('[data-calendar-tooltip]');
+      if (!hit || !preview.contains(hit)) return;
+      const text = hit.getAttribute('data-calendar-tooltip') || '';
+      if (!text) return;
+      showCalendarHoverTooltip(e, text);
+    });
+    preview.addEventListener('pointermove', e => {
+      const hit = e.target.closest?.('[data-calendar-tooltip]');
+      if (!hit || !preview.contains(hit)) {
+        hideCalendarHoverTooltip();
+        return;
+      }
+      if (document.getElementById('calendar-hover-tooltip')?.classList.contains('visible')) {
+        moveCalendarHoverTooltip(e);
+      }
+    });
+    preview.addEventListener('pointerout', e => {
+      const from = e.target.closest?.('[data-calendar-tooltip]');
+      const to = e.relatedTarget?.closest?.('[data-calendar-tooltip]');
+      if (from && from !== to) hideCalendarHoverTooltip();
+    });
+    preview.addEventListener('scroll', hideCalendarHoverTooltip, true);
 
     document.getElementById('calendar-note-save-btn')?.addEventListener('click', () => {
       saveCalendarNoteFromModal();
@@ -7709,7 +8283,9 @@ function formatTextWithMarkup(rawText) {
         ],
         previewRender: function(plainText) {
           const processed = preprocessMarkdown(plainText, { sheetEditable: false, richBlocks: false });
-          const html = this.parent.markdown(processed.markdown);
+          let html = this.parent.markdown(processed.markdown);
+          html = restoreStyledSpanTokens(html, processed.styledSpanHtml);
+          html = html.replace(/<p>\s*(<div class="md-styled-block"[\s\S]*?<\/div>)\s*<\/p>/gi, '$1');
           const wrap = document.createElement('div');
           wrap.innerHTML = html;
           markFileLinks(wrap);
@@ -9774,6 +10350,12 @@ function formatTextWithMarkup(rawText) {
 
   document.getElementById('toc-toggle')?.addEventListener('click', toggleFloatingToc);
   document.getElementById('mobile-toc-backdrop')?.addEventListener('click', closeFloatingToc);
+  document.getElementById('floating-toc-list')?.addEventListener('wheel', (event) => {
+    event.stopPropagation();
+  }, { passive: true });
+  document.getElementById('floating-toc-list')?.addEventListener('touchmove', (event) => {
+    event.stopPropagation();
+  }, { passive: true });
   document.getElementById('mobile-topbar-menu-toggle')?.addEventListener('click', toggleMobileTopbarMenu);
   document.getElementById('mobile-topbar-menu-backdrop')?.addEventListener('click', closeMobileTopbarMenu);
   document.getElementById('mobile-topbar-menu')?.addEventListener('click', event => {

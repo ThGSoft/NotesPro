@@ -521,17 +521,19 @@
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <p class="small dashboard-modal-hint mb-2" id="calendar-note-modal-hint">One note per line (same day/week/month/year). Optional image attaches to the first line.</p>
+        <p class="small dashboard-modal-hint mb-2" id="calendar-note-modal-hint">All day or a time range. Edit Start / Until for a multi-day period. One note per line; image attaches to the first line.</p>
         <fieldset class="mb-3">
           <legend class="form-label small fw-semibold mb-2">When</legend>
-          <div class="d-flex flex-wrap gap-3 align-items-center mb-2">
-            <label class="form-check form-check-inline mb-0">
-              <input type="radio" name="calendar-note-when" id="calendar-note-allday" value="allday" class="form-check-input" checked>
-              <span class="form-check-label">All day</span>
+          <div class="d-flex flex-wrap gap-3 align-items-center mb-2 calendar-note-when-options">
+            <label class="calendar-note-when-option">
+              <input type="radio" name="calendar-note-when" id="calendar-note-allday" value="allday" class="calendar-note-when-input" checked>
+              <span class="calendar-note-when-mark" aria-hidden="true"></span>
+              <span class="calendar-note-when-label">All day</span>
             </label>
-            <label class="form-check form-check-inline mb-0">
-              <input type="radio" name="calendar-note-when" id="calendar-note-timed" value="timed" class="form-check-input">
-              <span class="form-check-label">Time range</span>
+            <label class="calendar-note-when-option">
+              <input type="radio" name="calendar-note-when" id="calendar-note-timed" value="timed" class="calendar-note-when-input">
+              <span class="calendar-note-when-mark" aria-hidden="true"></span>
+              <span class="calendar-note-when-label">Time range</span>
             </label>
           </div>
           <div id="calendar-note-time-range" class="row g-2 d-none">
@@ -542,6 +544,16 @@
             <div class="col-6">
               <label class="form-label small mb-1" for="calendar-note-time-to">To</label>
               <input type="time" id="calendar-note-time-to" class="form-control form-control-sm">
+            </div>
+          </div>
+          <div id="calendar-note-period-range" class="row g-2 mt-2 d-none">
+            <div class="col-6">
+              <label class="form-label small mb-1" for="calendar-note-date-from">Start</label>
+              <input type="date" id="calendar-note-date-from" class="form-control form-control-sm">
+            </div>
+            <div class="col-6">
+              <label class="form-label small mb-1" for="calendar-note-date-until">Until</label>
+              <input type="date" id="calendar-note-date-until" class="form-control form-control-sm">
             </div>
           </div>
         </fieldset>
