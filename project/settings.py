@@ -52,6 +52,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'notes.middleware.ApiLoginRequiredJsonMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
 ]
 
@@ -82,18 +83,29 @@ TIME_ZONE = 'UTC'
 USE_I18N = True
 USE_TZ = True
 
-FORCE_SCRIPT_NAME = ""
+FORCE_SCRIPT_NAME = os.environ.get('FORCE_SCRIPT_NAME', '').rstrip('/') or ''
 STATIC_URL = '/static/'
-STATIC_ROOT = BASE_DIR / 'staticfiles'
 MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
+if FORCE_SCRIPT_NAME:
+    STATIC_URL = f'{FORCE_SCRIPT_NAME}/static/'
+    MEDIA_URL = f'{FORCE_SCRIPT_NAME}/media/'
 LOGIN_URL = '/login/'
 LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = '/login/'
-DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+if FORCE_SCRIPT_NAME:
+    LOGIN_URL = f'{FORCE_SCRIPT_NAME}/login/'
+    LOGIN_REDIRECT_URL = f'{FORCE_SCRIPT_NAME}/'
+    LOGOUT_REDIRECT_URL = f'{FORCE_SCRIPT_NAME}/login/'
+
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+MEDIA_ROOT = BASE_DIR / 'media'
+
+# When Apache/nginx terminates TLS, trust X-Forwarded-Proto (set SECURE_SSL_REDIRECT=false on backend).
+USE_X_FORWARDED_HOST = _env_bool('USE_X_FORWARDED_HOST', bool(FORCE_SCRIPT_NAME))
+if _env_bool('USE_X_FORWARDED_PROTO', bool(FORCE_SCRIPT_NAME)):
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 # At-rest encryption for sensitive DB fields (pages, mail, chat, DMs, TOTP secrets).
-# Generate: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 DB_ENCRYPTION_KEY = os.environ.get('DB_ENCRYPTION_KEY', '').strip()
 
 SITE_NAME = os.environ.get('SITE_NAME', 'Django Notes Pro')
@@ -117,3 +129,16 @@ elif _email_mode == 'file':
     EMAIL_FILE_PATH.mkdir(parents=True, exist_ok=True)
 else:
     EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+
+# Incoming IMAP (external mail → Incomes inbox). Optional; used by fetch_incoming_mail command and dashboard.
+INCOMING_MAIL_IMAP_HOST = os.environ.get('INCOMING_MAIL_IMAP_HOST', '').strip()
+INCOMING_MAIL_IMAP_PORT = int(os.environ.get('INCOMING_MAIL_IMAP_PORT', '993'))
+INCOMING_MAIL_IMAP_USER = os.environ.get('INCOMING_MAIL_IMAP_USER', '').strip()
+INCOMING_MAIL_IMAP_PASSWORD = os.environ.get('INCOMING_MAIL_IMAP_PASSWORD', '').strip()
+INCOMING_MAIL_IMAP_FOLDER = os.environ.get('INCOMING_MAIL_IMAP_FOLDER', 'INBOX').strip()
+INCOMING_MAIL_IMAP_SSL = _env_bool('INCOMING_MAIL_IMAP_SSL', True)
+
+# Tag search WebSocket (Channels/Daphne). Off by default in production — Gunicorn/WSGI cannot serve /ws/.
+ENABLE_TAG_WEBSOCKET = _env_bool('ENABLE_TAG_WEBSOCKET', DEBUG)
+
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

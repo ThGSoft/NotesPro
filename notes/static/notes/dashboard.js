@@ -147,11 +147,12 @@
     const options = {
       method,
       headers: isForm
-        ? { 'X-CSRFToken': csrfToken }
-        : { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken }
+        ? { 'X-CSRFToken': csrfToken, 'Accept': 'application/json' }
+        : { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken, 'Accept': 'application/json' }
     };
     if (data) options.body = isForm ? data : JSON.stringify(data);
 
+    const requestPath = String(url || '').replace(/^\/+/, '');
     let response;
     try {
       response = await fetch(apiUrl(url), options);
@@ -175,8 +176,12 @@
         } catch (_) { /* keep text */ }
       }
       message = sanitizeApiErrorMessage(message, response.status);
+      if (response.status === 404 && requestPath && message === 'Not found') {
+        message = `Not found (${requestPath})`;
+      }
       const error = new Error(message);
       error.status = response.status;
+      error.url = requestPath;
       throw error;
     }
 
@@ -11035,7 +11040,7 @@ function formatTextWithMarkup(rawText) {
     if (chatMode === 'private') {
       if (activeDmConversationId) startDmPolling();
       else {
-        loadDmConversations().catch(() => {});
+        loadDmConversations({ quiet: true });
         startDmListPolling();
       }
     } else {
@@ -11076,7 +11081,7 @@ function formatTextWithMarkup(rawText) {
     stopDmListPolling();
     dmListPollTimer = setInterval(() => {
       if (chatMode !== 'private' || activeDmConversationId) return;
-      loadDmConversations().catch(() => {});
+      loadDmConversations({ quiet: true });
     }, 5000);
   }
 
@@ -11091,7 +11096,7 @@ function formatTextWithMarkup(rawText) {
     document.getElementById('comm-chat-pane')?.classList.remove('d-none');
     document.getElementById('comm-mail-pane')?.classList.add('d-none');
     if (chatMode !== 'private') setChatMode('private');
-    else loadDmConversations().catch(() => {});
+    else loadDmConversations({ quiet: true });
   }
 
   async function openPrivateChatWithUser(userId, username) {
@@ -11488,7 +11493,7 @@ function formatTextWithMarkup(rawText) {
     }
   }
 
-  async function loadDmConversations() {
+  async function loadDmConversations({ quiet = false } = {}) {
     try {
       await ensureDmKeyPair();
       const data = await api('api/dm/conversations/');
@@ -11525,7 +11530,8 @@ function formatTextWithMarkup(rawText) {
       }
       updateDmUnreadBadge();
     } catch (e) {
-      showToast(e.message || 'Could not load private chats.', 'danger');
+      console.warn('dm conversations load', e);
+      if (!quiet) showToast(e.message || 'Could not load private chats.', 'danger');
     }
   }
 
@@ -11557,7 +11563,7 @@ function formatTextWithMarkup(rawText) {
     document.getElementById('dm-list-view')?.classList.remove('d-none');
     stopDmPolling();
     startDmListPolling();
-    loadDmConversations();
+    loadDmConversations({ quiet: true });
   }
 
   function setChatMode(mode) {
@@ -11590,8 +11596,8 @@ function formatTextWithMarkup(rawText) {
       document.getElementById('dm-list-view')?.classList.remove('d-none');
       document.getElementById('chat-messages').innerHTML = '';
       ensureDmKeyPair()
-        .then(() => loadDmConversations())
-        .catch(e => showToast(e.message, 'danger'));
+        .then(() => loadDmConversations({ quiet: true }))
+        .catch(e => console.warn('private chat init', e));
       startDmListPolling();
     }
   }
