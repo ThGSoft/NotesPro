@@ -123,6 +123,26 @@
     if (el) el.textContent = text;
   }
 
+  function sanitizeApiErrorMessage(raw, status) {
+    let text = String(raw || '').trim();
+    if (!text) {
+      if (status === 404) return 'Not found';
+      if (status === 403) return 'Access denied';
+      if (status === 401) return 'Please sign in again';
+      return status ? `Request failed (${status})` : 'Request failed';
+    }
+    // Never surface Apache/nginx/HTML error documents (e.g. "Port 443 … not found on this server").
+    if (/<!DOCTYPE|<html[\s>]|<body[\s>]/i.test(text) || /not found on this server/i.test(text) || /\bPort\s+443\b/i.test(text)) {
+      if (status === 404) return 'Not found';
+      if (status === 403) return 'Access denied';
+      if (status === 401) return 'Please sign in again';
+      if (status === 502 || status === 503 || status === 504) return 'Server temporarily unavailable';
+      return status ? `Request failed (${status})` : 'Unexpected server response';
+    }
+    if (text.length > 240) text = `${text.slice(0, 237)}…`;
+    return text;
+  }
+
   async function api(url, method = 'GET', data = null, isForm = false) {
     const options = {
       method,
@@ -154,9 +174,8 @@
           message = err.message || err.error || err.detail || message;
         } catch (_) { /* keep text */ }
       }
-      if (response.status === 404) message = message || 'Not found';
-      if (response.status === 403) message = message || 'Access denied';
-      const error = new Error(message || `Request failed (${response.status})`);
+      message = sanitizeApiErrorMessage(message, response.status);
+      const error = new Error(message);
       error.status = response.status;
       throw error;
     }
@@ -2274,14 +2293,19 @@
     const timeText = timed
       ? (entry.timeTo ? `${entry.timeFrom}–${entry.timeTo}` : entry.timeFrom)
       : '';
-    // Daily events in preview: show only time (title stays in tooltip).
-    if (timed) {
+    const mobile = typeof isMobileLayout === 'function' && isMobileLayout();
+
+    // Mobile: points only. Desktop timed: time text only (title in tooltip).
+    if (timed && !mobile) {
       return `<div class="calendar-unit-event-point-row calendar-unit-event-point-row--time-only"${noteKey}${tipAttr}>`
         + `<span class="calendar-unit-event-time">${escapeHtml(timeText)}</span>`
         + `</div>`;
     }
+    const pointClass = timed
+      ? 'calendar-unit-event-point'
+      : 'calendar-unit-event-point calendar-unit-event-point--allday';
     return `<div class="calendar-unit-event-point-row"${noteKey}${tipAttr}>`
-      + `<span class="calendar-unit-event-point calendar-unit-event-point--allday" aria-hidden="true"></span>`
+      + `<span class="${pointClass}" aria-hidden="true"></span>`
       + `</div>`;
   }
 
@@ -2301,19 +2325,25 @@
 
     const periods = uniquePeriodEntriesForDay(periodItems);
     const compact = (singles.length + periods.length) > 1;
+    const mobile = typeof isMobileLayout === 'function' && isMobileLayout();
     const timedSingles = singles.filter(e => e.allday === false && e.timeFrom);
     const otherSingles = singles.filter(e => !(e.allday === false && e.timeFrom));
 
-    // Daily timed events: only time in preview (text in tooltip).
-    const timedHtml = calendarEntryPointsMarkup(timedSingles);
-    const otherHtml = (compact || timedSingles.length || otherSingles.length > 1)
-      ? calendarEntryPointsMarkup(otherSingles)
-      : calendarEntryMarkup(otherSingles);
-    const singleHtml = `${timedHtml}${otherHtml}`;
+    // Mobile: always points for day events. Desktop: time for timed; compact points otherwise.
+    let singleHtml = '';
+    if (mobile) {
+      singleHtml = calendarEntryPointsMarkup(singles);
+    } else {
+      const timedHtml = calendarEntryPointsMarkup(timedSingles);
+      const otherHtml = (compact || timedSingles.length || otherSingles.length > 1)
+        ? calendarEntryPointsMarkup(otherSingles)
+        : calendarEntryMarkup(otherSingles);
+      singleHtml = `${timedHtml}${otherHtml}`;
+    }
 
     const stackHtml = periods.length
       ? `<div class="calendar-unit-period-stack">${periods.map(entry => formatCalendarPeriodBarWrap(entry, periodItems, {
-        showTitle: entry.periodRole === 'start' || (!compact && entry.periodRole === 'end'),
+        showTitle: !mobile && (entry.periodRole === 'start' || (!compact && entry.periodRole === 'end')),
       })).join('')}</div>`
       : '';
 
@@ -8855,15 +8885,20 @@ function formatTextWithMarkup(rawText) {
       markdown_content: easyMDE ? easyMDE.value() : ''
     };
 
-    currentPage = await api(`api/pages/${currentPageId}/update/`, 'POST', payload);
+    try {
+      currentPage = await api(`api/pages/${currentPageId}/update/`, 'POST', payload);
 
-    if (slugEl) slugEl.textContent = currentPage.slug || '';
-    if (titlePreview) titlePreview.textContent = currentPage.title || 'Untitled';
+      if (slugEl) slugEl.textContent = currentPage.slug || '';
+      if (titlePreview) titlePreview.textContent = currentPage.title || 'Untitled';
 
-    const tree = $('#tree').jstree(true);
-    if (tree && currentPageId) tree.rename_node(String(currentPageId), currentPage.title);
+      const tree = $('#tree').jstree(true);
+      if (tree && currentPageId) tree.rename_node(String(currentPageId), currentPage.title);
 
-    setStatus('Saved');
+      setStatus('Saved');
+    } catch (err) {
+      console.warn('savePage failed:', err);
+      setStatus(err.network ? 'Server offline — not saved' : 'Save failed');
+    }
   }
 
   function scheduleSave() {
@@ -10362,9 +10397,16 @@ function formatTextWithMarkup(rawText) {
     if (event.target.closest('a, button')) closeMobileTopbarMenu();
   });
   window.addEventListener('resize', () => {
-    syncMobileLayoutClass();
-    if (isEditing) switchMode('markdown');
-    else switchMode('preview');
+    // Mobile browser chrome show/hide fires resize often — debounce mode switches.
+    clearTimeout(window.__notesproResizeTimer);
+    window.__notesproResizeTimer = setTimeout(() => {
+      const wasMobile = document.body.classList.contains('mobile-layout');
+      syncMobileLayoutClass();
+      const mobile = isMobileLayout();
+      if (wasMobile === mobile) return;
+      if (isEditing) switchMode('markdown');
+      else switchMode('preview');
+    }, 150);
   });
   document.addEventListener('keydown', event => {
     if (event.key === 'Escape' && document.getElementById('floating-toc')?.classList.contains('active')) {
@@ -10464,15 +10506,26 @@ function formatTextWithMarkup(rawText) {
       html2pdf().from(element).save('document.pdf');
   }
 
+  let lastToastKey = '';
+  let lastToastAt = 0;
+
   function showToast(message, type = 'success', delayMs = 4000) {
       const toastEl = document.getElementById('action-toast');
       const toastMessage = document.getElementById('toast-message');
       if (!toastEl || !toastMessage) return;
 
-      toastEl.classList.remove('bg-success', 'bg-danger', 'bg-warning');
+      const clean = sanitizeApiErrorMessage(message);
+      // Avoid toast spam (e.g. polling / resize loops with the same failure).
+      const key = `${type}:${clean}`;
+      const now = Date.now();
+      if (key === lastToastKey && now - lastToastAt < 4000) return;
+      lastToastKey = key;
+      lastToastAt = now;
+
+      toastEl.classList.remove('bg-success', 'bg-danger', 'bg-warning', 'text-dark');
       if (type === 'warning') toastEl.classList.add('bg-warning', 'text-dark');
       else toastEl.classList.add(type === 'success' ? 'bg-success' : 'bg-danger');
-      toastMessage.textContent = message;
+      toastMessage.textContent = clean;
 
       const toast = new bootstrap.Toast(toastEl, { delay: delayMs });
       toast.show();
@@ -11205,7 +11258,8 @@ function formatTextWithMarkup(rawText) {
     } catch (e) {
       console.warn('chat load', e);
       if (full && box) {
-        box.innerHTML = `<p class="small text-danger px-2 py-3">${escapeHtml(e.message || 'Could not load group chat.')}</p>`;
+        const msg = sanitizeApiErrorMessage(e.message || 'Could not load group chat.', e.status);
+        box.innerHTML = `<p class="small text-danger px-2 py-3">${escapeHtml(msg)}</p>`;
       }
     }
   }
