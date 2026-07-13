@@ -166,7 +166,7 @@ Sheets are tab-separated tables embedded in markdown as fenced `sheet` blocks. T
 
 Use the **Insert sheet** toolbar button in the markdown editor, or type a block manually:
 
-~~~
+
 ```sheet
 `id=quarterly; frLen=2; align=left
 Month	Sales	Costs
@@ -175,16 +175,16 @@ Feb	150	90
 Mar	200	110
 Apr	120	85
 ```
-~~~
+
 
 Set default **column width** on the fence (semicolon-separated attributes):
 
-~~~
+
 ```sheet{width=25%; id=screenshots}
 Overview	Editor	Preview	Chat
 ![Overview](docs/screenshots/dashboard-overview.png)	![Editor](docs/screenshots/dashboard-editor.png)	![Preview](docs/screenshots/dashboard-preview.png)	![Chat](docs/screenshots/dashboard-chat.png)
 ```
-~~~
+
 
 Column `%` widths are scaled down if their sum exceeds 100%.
 
@@ -205,10 +205,10 @@ Column `%` widths are scaled down if their sum exceeds 100%.
 
 The optional first line sets **sheet-wide** options (`id`, `header`, `frLen`, …). You can **chain a format block** on the same line so the header row gets that style:
 
-~~~
+
 `id=styled``bold;align=center;bg-col=yellow;frlen=0;font-size=48px`
 Month	Sales
-~~~
+
 
 First `` `id=styled` `` → sheet id for charts. Second `` `bold;align=center;…` `` → carry-forward format applied from the header row onward (no tab between the two blocks).
 
@@ -226,21 +226,21 @@ Sheet config keys (semicolon-separated inside one `` `…` `` block):
 
 Example without header row:
 
-~~~
+
 ```sheet
 `id=raw; header=0
 10	20	30
 40	50	60
 ```
-~~~
+
 
 ### Cell format (backtick, carry-forward)
 
 Set formatting by putting a **backtick-wrapped directive** in a cell. Syntax matches the sheet config line: semicolon-separated tokens inside backticks.
 
-~~~
+
 `bold;align=center;frlen=0;col=blue;bg-col=#eee`
-~~~
+
 
 That cell and **all following cells** (left-to-right, top-to-bottom) use the format until another format cell appears.
 
@@ -264,7 +264,7 @@ Only listed options change; others keep their previous value (including sheet de
 
 Example:
 
-~~~
+
 ```sheet
 `id=styled``bold;align=center;bg-col=yellow;frlen=0;font-size=48px`
 Month	Sales
@@ -274,7 +274,7 @@ Feb	150
 Mar	200
 `frlen=0;align=center;col=#2563eb`Total	`frlen=0;align=center`=sum(c[0, -2], c[0, 0])
 ```
-~~~
+
 
 - **Line 1** — sheet id + header format (yellow, bold, 48px) for Month/Sales  
 - **Line 3** — format-only row switches data rows to green / 12px  
@@ -298,23 +298,23 @@ Missing or non-numeric cells count as `0` in formulas.
 
 #### Sum of a rectangular area
 
-~~~
+
 =sum(c[col1, row1], c[col2, row2])
-~~~
+
 
 Sums all numeric cells in the inclusive rectangle between the two corners. Corner order does not matter. Case-insensitive: `SUM(...)` works too.
 
 Example — total of three cells in the same row:
 
-~~~
+
 =sum(c[-2, 0], c[0, 0])
-~~~
+
 
 #### Sum above (same column)
 
-~~~
+
 =SUM_ABOVE
-~~~
+
 
 Adds all numeric values above the current cell in the same column.
 
@@ -326,11 +326,11 @@ After `c[…]` and `sum(…)` are expanded, the rest is plain JavaScript math. A
 
 Examples:
 
-~~~
+
 =c[0, -1] + c[-1, 0]
 =sqrt(c[0, -1].2)
 =round(c[0,-1] * 1.19)
-~~~
+
 
 #### Decimal places
 
@@ -355,7 +355,7 @@ After `python manage.py seed_demo`, image paths in **Docs → README** are rewri
 
 ### Full example (data + format + formulas)
 
-~~~
+
 ```sheet
 `id=report; frLen=2
 `bold;align=center`Item	Q1	Q2	Q3	Total
@@ -363,7 +363,7 @@ Product A	10	20	30	=sum(c[-3, 0], c[-1, 0])
 Product B	5	15	25	=sum(c[-3, 0], c[-1, 0])
 `bold;frlen=0;align=right`Grand total	=sum(c[0, -2], c[0, -1])	=sum(c[1, -2], c[1, -1])	=sum(c[2, -2], c[2, -1])	=sum(c[-4, -2], c[0, -1])
 ```
-~~~
+
 
 ## Charts
 
@@ -371,7 +371,7 @@ Charts read data from a `sheet` block on the same page (matched by `id`). Use **
 
 Define data in a sheet block first:
 
-~~~
+
 ```sheet
 `id=quarterly
 Month	Sales	Costs
@@ -380,11 +380,11 @@ Feb	150	90
 Mar	200	110
 Apr	120	85
 ```
-~~~
+
 
 Render a D3 chart from that sheet:
 
-~~~
+
 ```chart
 quarterly
 bar
@@ -392,7 +392,7 @@ Month
 Sales
 Costs
 ```
-~~~
+
 
 Multiple Y columns produce **grouped bars** (or multiple lines). You can also use comma-separated names in one config line:
 
@@ -489,12 +489,12 @@ Reusable text blocks stored in your user settings (`extra_configs.snippets`).
 
 Insert via the toolbar **panel** button (square icon) or manually:
 
-~~~
+
 ```panel info
 # Optional title
 Panel content with **markdown**.
 ```
-~~~
+
 
 | Type | Use |
 |------|-----|
@@ -510,9 +510,9 @@ Optional title: first line `# Title` or `title: My title`.
 
 Link to files on your PC (paths with spaces are supported):
 
-~~~markdown
+markdown
 [Report](file:///C:/Users/you/My Documents/report.pdf)
-~~~
+
 
 Or paste a path from Explorer (**Shift+Right click → Copy as path**) into the editor.
 
@@ -546,10 +546,10 @@ You can also use the toolbar **tag** button on selected text.
 
 Embed a calendar for a date range with a fenced `calendar` block (also accepts the typo `calender`):
 
-~~~markdown
+markdown
 ```calendar{from=1.1.26;to=1.7.26;mode=day}
 ```
-~~~
+
 
 | Option | Description |
 |--------|-------------|
@@ -560,10 +560,10 @@ Embed a calendar for a date range with a fenced `calendar` block (also accepts t
 
 Examples:
 
-~~~markdown
+markdown
 ```calendar{from=1.1.26;to=1.7.26;mode=day;col=info}
 ```
-~~~
+
 
 - `mode=day` — days in week rows (Mon–Sun), grouped under each month  
 - `mode=week` — weeks grouped per month  
@@ -577,35 +577,35 @@ In **Edit** mode, click a day / week / month / year chip in the preview to add *
 
 Day notes can be **all-day** or timed (`HH:MM` or `HH:MM-HH:MM` after the key). Set **Start** and **Until** in the note dialog (or write a date range in the key) for a **multi-day period**:
 
-~~~markdown
+markdown
 ```calendar{from=1.1.26;to=1.7.26;mode=day}
 @d:15.01.26 | **Meeting** with _Team_ | ![](/media/uploads/photo.png)
 @d:15.01.26 | Follow-up call
 @d:20.01.26-25.01.26 | Vacation
 @d:10.02.26-12.02.26 | 09:00-17:00 | Conference
 ```
-~~~
+
 
 Multi-day keys use `@d:from-to` (same `D.M.YY` dates; `..` also works as separator). In preview, a **colored line** runs along the **bottom** of the covered days; overlapping periods stack with the **newest line above** older ones. **Times** stay visible on the day (time only for daily timed notes; title in the tooltip); period **titles** stay on the **start** day bar. Click a time or line to edit.
 
-~~~markdown
+markdown
 ```calendar{from=1.1.26;to=1.7.26;mode=year;col=danger}
 @y:2026 | Geburtstage: **Thomas** _xx.xx.xx_
 @y:2026 | Geburtstage: **Eva** _1.2.2000_
 ```
-~~~
+
 
 ### Gantt
 
 Embed a simple Gantt chart with a fenced `gantt` block (also accepts `gant`):
 
-~~~markdown
+markdown
 ```gantt{from=1.1.26;to=31.1.26;col=info}
 # Project plan
 Phase A | 1.1.26 | 15.1.26 | **Start**
 Phase B | 15.1.26 | 31.1.26 | Delivery | ![](/media/uploads/photo.png)
 ```
-~~~
+
 
 | Option | Description |
 |--------|-------------|
@@ -623,14 +623,14 @@ Use the toolbar **gantt** button to insert a sample block for the current month.
 
 Embed a Kanban board with a fenced `kanban` block (also accepts `kanb`):
 
-~~~markdown
+markdown
 ```kanban{cols=Todo,Doing,Done;col=info}
 # Board
 Todo | Design wireframes | **First draft**
 Doing | Build API
 Done | Kickoff | ![](/media/uploads/photo.png)
 ```
-~~~
+
 
 | Option | Description |
 |--------|-------------|
@@ -650,7 +650,7 @@ Use the toolbar **kanban** button to insert a sample board. In **Edit** mode, **
 
 Embed a mindmap with a fenced `mindmap` block (also accepts `mmap` / `mind`):
 
-~~~markdown
+markdown
 ```mindmap{dir=right;col=info}
 # Ideas
 Central topic
@@ -658,7 +658,7 @@ Central topic
   Branch B
     Detail B1 | note
 ```
-~~~
+
 
 | Option | Description |
 |--------|-------------|
