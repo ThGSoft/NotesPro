@@ -308,11 +308,12 @@ class QuickNote(models.Model):
     checklist = models.JSONField(default=list, blank=True)
     archived = models.BooleanField(default=False, db_index=True)
     deleted = models.BooleanField(default=False, db_index=True)
+    sort_order = models.IntegerField(default=0, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ['-pinned', '-updated_at', '-id']
+        ordering = ['-pinned', 'sort_order', '-updated_at', '-id']
 
     def __str__(self):
         label = (self.title or self.body or '')[:40]

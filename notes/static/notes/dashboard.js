@@ -58,6 +58,7 @@
   let previewRefreshTimer = null;
   let editorPreviewScrollLockUntil = 0;
   let previewScrollAnchors = [];
+  let preservedPreviewScrollTop = null;
   let editorPreviewResizeObserver = null;
   let tocSpyScrollHandler = null;
   let isEditing = false;
@@ -2981,8 +2982,38 @@
     });
   }
 
-  const KANBAN_BLOCK_RE = /```(?:kanban|kanb)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+  const KANBAN_BLOCK_RE = /```(?:kanban|kanb)(?![a-zA-Z])(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
   const KANBAN_DEFAULT_COLS = ['Todo', 'Doing', 'Done'];
+  const KANBANGANTT_DEFAULT_COLS = ['Todo', 'Doing', 'Suspended', 'Done'];
+  const KANBANGANTT_SUSPEND_COL = 'Suspended';
+  const KANBANGANTT_BLOCK_RE = /```(?:kanbangantt|kbgantt|kgantt)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+  const KANBANGANTT_STATUSES = ['idle', 'running', 'suspended', 'stopped'];
+
+  function kgColumnByName(columns, name) {
+    return (columns || []).find(c => String(c).trim().toLowerCase() === String(name).trim().toLowerCase()) || null;
+  }
+
+  function kgSuspendColumn(spec) {
+    return kgColumnByName(spec?.columns, KANBANGANTT_SUSPEND_COL) || KANBANGANTT_SUSPEND_COL;
+  }
+
+  function kgDoingColumn(spec) {
+    return kgColumnByName(spec?.columns, 'Doing')
+      || kgColumnByName(spec?.columns, 'Todo')
+      || (spec?.columns || []).find(c => String(c).toLowerCase() !== 'suspended' && String(c).toLowerCase() !== 'done')
+      || spec?.columns?.[0]
+      || 'Doing';
+  }
+
+  function kgEnsureSuspendColumn(spec) {
+    const suspendCol = kgSuspendColumn(spec);
+    if (!spec.columns.includes(suspendCol)) {
+      const doneIdx = spec.columns.findIndex(c => String(c).toLowerCase() === 'done');
+      if (doneIdx >= 0) spec.columns.splice(doneIdx, 0, suspendCol);
+      else spec.columns.push(suspendCol);
+    }
+    return suspendCol;
+  }
 
   function parseKanbanColumns(raw) {
     return String(raw || '')
@@ -3277,6 +3308,638 @@
       return wrapRichPreviewBlock(renderKanbanBlockHtml(spec, {
         editable: !!options.sheetEditable || !!options.kanbanEditable,
         kanbanIndex: idx,
+      }));
+    });
+  }
+
+  function parseKgRate(value, fallback = 0) {
+    const n = parseFloat(String(value ?? '').replace(',', '.'));
+    if (!Number.isFinite(n) || n < 0) return fallback;
+    return n;
+  }
+
+  function parseKgBool(value, fallback = true) {
+    if (value == null || value === '') return fallback;
+    const s = String(value).trim().toLowerCase();
+    if (['1', 'true', 'yes', 'on', 'y'].includes(s)) return true;
+    if (['0', 'false', 'no', 'off', 'n'].includes(s)) return false;
+    return fallback;
+  }
+
+  function parseKgElapsed(value) {
+    const n = parseInt(String(value ?? '').trim(), 10);
+    if (!Number.isFinite(n) || n < 0) return 0;
+    return n;
+  }
+
+  function parseKgStatus(value) {
+    const s = String(value || 'idle').trim().toLowerCase();
+    return KANBANGANTT_STATUSES.includes(s) ? s : 'idle';
+  }
+
+  function formatKgDateTime(date) {
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
+    const pad = n => String(n).padStart(2, '0');
+    const yy = String(date.getFullYear()).slice(-2);
+    return `${pad(date.getDate())}.${pad(date.getMonth() + 1)}.${yy} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  }
+
+  function parseKgDateTime(raw) {
+    const s = String(raw || '').trim();
+    if (!s) return null;
+    const m = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2}|\d{4})(?:[ T](\d{1,2}):(\d{2}))?$/);
+    if (m) {
+      let year = parseInt(m[3], 10);
+      if (year < 100) year += 2000;
+      const d = new Date(
+        year,
+        parseInt(m[2], 10) - 1,
+        parseInt(m[1], 10),
+        parseInt(m[4] || '0', 10),
+        parseInt(m[5] || '0', 10),
+        0,
+        0,
+      );
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
+    const iso = new Date(s);
+    return Number.isNaN(iso.getTime()) ? null : iso;
+  }
+
+  function parseKgMetaPart(part) {
+    const text = String(part || '').trim();
+    if (!text || !/^[A-Za-z_-]+\s*=/.test(text)) return null;
+    const meta = {};
+    text.split(';').forEach(pair => {
+      const [k, ...rest] = pair.split('=');
+      if (!k || !rest.length) return;
+      meta[k.trim().toLowerCase()] = rest.join('=').trim();
+    });
+    return Object.keys(meta).length ? meta : null;
+  }
+
+  function kgEffectiveElapsed(card, now = Date.now()) {
+    let elapsed = parseKgElapsed(card.elapsed);
+    if (card.status === 'running' && card.started) {
+      const started = card.started instanceof Date ? card.started : parseKgDateTime(card.started);
+      if (started) elapsed += Math.max(0, Math.floor((now - started.getTime()) / 1000));
+    }
+    return elapsed;
+  }
+
+  function kgCardCost(card, defaultRate = 0, now = Date.now()) {
+    const rate = Number.isFinite(card.rate) ? card.rate : defaultRate;
+    return (kgEffectiveElapsed(card, now) / 3600) * rate;
+  }
+
+  function formatKgMoney(amount, currency = 'EUR') {
+    const cur = String(currency || 'EUR').trim() || 'EUR';
+    const n = Number.isFinite(amount) ? amount : 0;
+    return `${n.toFixed(2)} ${cur}`;
+  }
+
+  function formatKgDuration(seconds) {
+    const s = Math.max(0, Math.floor(seconds || 0));
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    if (h > 0) return `${h}h ${String(m).padStart(2, '0')}m`;
+    if (m > 0) return `${m}m ${String(sec).padStart(2, '0')}s`;
+    return `${sec}s`;
+  }
+
+  function parseKanbanganttSpec(fenceAttrs, body = '') {
+    const config = { ...parseBacktickConfig(`\`${String(fenceAttrs || '').replace(/`/g, '')}\``) };
+    const cards = [];
+    const discoveredCols = [];
+    let bodyTitle = '';
+    let expectingTitle = true;
+    let currentCol = '';
+
+    String(body || '').split('\n').forEach(line => {
+      const trimmed = line.trim();
+      if (!trimmed) return;
+      if (expectingTitle) {
+        expectingTitle = false;
+        if (trimmed.match(/^#\s+(.+)/) && !trimmed.startsWith('##')) {
+          bodyTitle = trimmed.replace(/^#\s+/, '').trim();
+          return;
+        }
+        if (trimmed.match(/^title:\s*(.+)/i) && !trimmed.includes('|')) {
+          bodyTitle = trimmed.replace(/^title:\s*/i, '').trim();
+          return;
+        }
+      }
+      if (trimmed.match(/^##\s+(.+)/)) {
+        currentCol = trimmed.replace(/^##\s+/, '').trim();
+        if (currentCol && !discoveredCols.includes(currentCol)) discoveredCols.push(currentCol);
+        return;
+      }
+      if (trimmed.startsWith('#')) return;
+      if (trimmed.startsWith('`') && trimmed.endsWith('`')) {
+        Object.assign(config, parseBacktickConfig(trimmed));
+        return;
+      }
+      const kv = trimmed.match(/^([A-Za-z_-]+)\s*[:=]\s*(.+)$/);
+      if (kv && !trimmed.includes('|')) {
+        config[kv[1].toLowerCase()] = kv[2].trim();
+        return;
+      }
+
+      const parts = trimmed.split('|').map(p => p.trim());
+      if (!parts.length || !parts[0]) return;
+
+      let col = '';
+      let label = '';
+      let restParts = [];
+      if (currentCol) {
+        col = currentCol;
+        label = parts[0];
+        restParts = parts.slice(1);
+      } else if (parts.length === 1) {
+        col = KANBANGANTT_DEFAULT_COLS[0];
+        label = parts[0];
+      } else {
+        col = parts[0];
+        label = parts[1] || parts[0];
+        restParts = parts.slice(2);
+        if (!discoveredCols.includes(col)) discoveredCols.push(col);
+      }
+
+      let meta = {};
+      const noteParts = [];
+      restParts.forEach(part => {
+        const parsedMeta = parseKgMetaPart(part);
+        if (parsedMeta) Object.assign(meta, parsedMeta);
+        else noteParts.push(part);
+      });
+
+      let note = noteParts.join(' | ').trim();
+      let image = '';
+      const imgMatch = note.match(/!\[[^\]]*\]\(([^)\s]+)\)/);
+      if (imgMatch) {
+        image = imgMatch[1];
+        note = note.replace(imgMatch[0], '').trim();
+      }
+
+      const defaultRate = parseKgRate(config.rate || config.hourly || 0, 0);
+      cards.push({
+        id: `kg${cards.length + 1}`,
+        col,
+        label: label || `Task ${cards.length + 1}`,
+        text: note,
+        image,
+        status: parseKgStatus(meta.status || meta.state),
+        rate: meta.rate != null || meta.cost != null || meta.hourly != null
+          ? parseKgRate(meta.rate ?? meta.cost ?? meta.hourly, defaultRate)
+          : null,
+        elapsed: parseKgElapsed(meta.elapsed || meta.seconds || 0),
+        started: parseKgDateTime(meta.started || meta.start || ''),
+      });
+    });
+
+    const configuredCols = parseKanbanColumns(config.cols || config.columns || '');
+    const columns = configuredCols.length
+      ? configuredCols
+      : (discoveredCols.length ? discoveredCols : [...KANBANGANTT_DEFAULT_COLS]);
+    cards.forEach(card => {
+      if (card.col && !columns.includes(card.col)) columns.push(card.col);
+    });
+
+    const colRaw = String(config.col || config.bg || config.color || '').trim().toLowerCase();
+    const panelCols = ['info', 'success', 'warning', 'danger', 'note'];
+    let colTheme = '';
+    let colCss = '';
+    if (panelCols.includes(colRaw)) colTheme = colRaw;
+    else colCss = sanitizeSheetColor(config.col || config.bg || config.color || '');
+
+    return {
+      title: (config.title || config.name || bodyTitle || '').trim(),
+      columns,
+      cards,
+      rate: parseKgRate(config.rate || config.hourly || 0, 0),
+      currency: String(config.currency || config.cur || 'EUR').trim() || 'EUR',
+      withCost: parseKgBool(config.withcost ?? config.costs ?? config.showcost, true),
+      col: colTheme,
+      colCss,
+    };
+  }
+
+  function serializeKanbanganttCards(cards, defaultRate = 0) {
+    return (cards || []).map(card => {
+      const metaParts = [`status=${card.status || 'idle'}`];
+      const rate = card.rate != null ? card.rate : defaultRate;
+      if (rate > 0) metaParts.push(`rate=${rate}`);
+      const elapsed = parseKgElapsed(card.elapsed);
+      if (elapsed > 0) metaParts.push(`elapsed=${elapsed}`);
+      if (card.status === 'running' && card.started) {
+        const started = card.started instanceof Date ? card.started : parseKgDateTime(card.started);
+        if (started) metaParts.push(`started=${formatKgDateTime(started)}`);
+      }
+      const parts = [card.col, card.label, metaParts.join(';')];
+      if (card.text) parts.push(String(card.text).replace(/\r?\n/g, ' ').trim());
+      if (card.image) parts.push(`![](${card.image})`);
+      return parts.join(' | ');
+    });
+  }
+
+  function buildKanbanganttFenceBody(spec, fenceAttrs) {
+    const titleInFence = /(?:^|;)\s*title\s*=/i.test(String(fenceAttrs || ''));
+    const titleLine = spec.title && !titleInFence ? `# ${spec.title}` : '';
+    const cardLines = serializeKanbanganttCards(spec.cards || [], spec.rate || 0);
+    const bodyLines = [titleLine, ...cardLines].filter(Boolean);
+    return bodyLines.length ? `\n${bodyLines.join('\n')}\n` : '\n';
+  }
+
+  function setKanbanganttFenceAttr(fenceAttrs, key, value) {
+    return setGanttFenceAttr(fenceAttrs, key, value);
+  }
+
+  function kanbanganttCardMarkup(card, spec, now = Date.now(), options = {}) {
+    const editable = !!options.editable;
+    const withCost = spec.withCost !== false;
+    const defaultRate = spec.rate || 0;
+    const rate = card.rate != null ? card.rate : defaultRate;
+    const elapsed = kgEffectiveElapsed(card, now);
+    const cost = kgCardCost(card, defaultRate, now);
+    const currency = spec.currency || 'EUR';
+    const maxHours = Math.max(1, ...(spec.cards || []).map(c => kgEffectiveElapsed(c, now) / 3600), elapsed / 3600);
+    const barPct = Math.min(100, Math.round((elapsed / 3600 / maxHours) * 100));
+    const status = card.status || 'idle';
+
+    const raw = String(card.text || '');
+    let textHtml = '';
+    if (raw) {
+      try {
+        textHtml = typeof marked !== 'undefined' ? marked.parse(raw) : escapeHtml(raw);
+      } catch (_) {
+        textHtml = escapeHtml(raw);
+      }
+    }
+    const image = card.image
+      ? `<img class="kg-card-image md-image" src="${escapeHtml(card.image)}" alt="" draggable="false">`
+      : '';
+
+    const actions = [];
+    if (status === 'idle' || status === 'stopped' || status === 'suspended') {
+      actions.push(`<button type="button" class="kg-action-btn kg-action-start" data-kg-action="start" title="${status === 'suspended' ? 'Resume' : 'Start'}">${status === 'suspended' ? '▶ Resume' : '▶ Start'}</button>`);
+    }
+    if (status === 'running') {
+      actions.push(`<button type="button" class="kg-action-btn kg-action-suspend" data-kg-action="suspend" title="Suspend">❚❚ Suspend</button>`);
+      actions.push(`<button type="button" class="kg-action-btn kg-action-stop" data-kg-action="stop" title="Stop">■ Stop</button>`);
+    }
+    if (status === 'suspended') {
+      actions.push(`<button type="button" class="kg-action-btn kg-action-stop" data-kg-action="stop" title="Stop">■ Stop</button>`);
+    }
+
+    const handleHtml = editable
+      ? `<span class="kg-drag-handle" draggable="true" title="Drag task" aria-label="Drag task">⠿</span>`
+      : '';
+
+    const metrics = [
+      `<div class="kg-card-metrics">`,
+      `<span>${escapeHtml(formatKgDuration(elapsed))}</span>`,
+      withCost ? `<span class="kg-card-rate">${escapeHtml(String(rate))} /h</span>` : '',
+      withCost ? `<span class="kg-card-cost">${escapeHtml(formatKgMoney(cost, currency))}</span>` : '',
+      `</div>`,
+    ].join('');
+
+    return [
+      handleHtml,
+      image,
+      `<div class="kg-card-label">${escapeHtml(card.label)}</div>`,
+      `<div class="kg-card-status kg-card-status--${escapeHtml(status)}">${escapeHtml(status)}</div>`,
+      metrics,
+      `<div class="kg-card-bar" title="Time vs board"><span style="width:${barPct}%"></span></div>`,
+      textHtml ? `<div class="kg-card-text">${textHtml}</div>` : '',
+      actions.length ? `<div class="kg-card-actions">${actions.join('')}</div>` : '',
+    ].join('');
+  }
+
+  function renderKanbanganttBlockHtml(spec, options = {}) {
+    const editable = !!options.editable;
+    const now = Date.now();
+    const customTitle = String(spec.title || '').trim();
+    const title = customTitle || 'Kanban Gantt';
+    const withCost = spec.withCost !== false;
+    const colClass = [
+      spec.col ? ` kg-block--${escapeHtml(spec.col)}` : '',
+      withCost ? '' : ' kg-block--no-cost',
+      editable ? ' kg-block--editable' : '',
+    ].join('');
+    const colStyle = spec.colCss ? ` style="--kg-bg:${escapeHtml(spec.colCss)}"` : '';
+    const titleEditAttr = editable ? ' tabindex="0" role="button"' : '';
+    const columns = spec.columns || [];
+    const cards = spec.cards || [];
+    const currency = spec.currency || 'EUR';
+    const defaultRate = spec.rate || 0;
+    const totalCost = cards.reduce((sum, card) => sum + kgCardCost(card, defaultRate, now), 0);
+    const totalElapsed = cards.reduce((sum, card) => sum + kgEffectiveElapsed(card, now), 0);
+    const metaParts = [
+      `${cards.length} task(s)`,
+      formatKgDuration(totalElapsed),
+    ];
+    if (withCost) {
+      metaParts.push(formatKgMoney(totalCost, currency));
+      if (defaultRate > 0) metaParts.push(`default ${defaultRate}/h`);
+    }
+
+    const colsHtml = columns.map(column => {
+      const colCards = cards.filter(c => c.col === column);
+      const colCost = colCards.reduce((sum, card) => sum + kgCardCost(card, defaultRate, now), 0);
+      const cardsHtml = colCards.map(card => {
+        const hasNote = !!(card.text || card.image);
+        const mdAttr = card.text ? ` data-kg-markdown="${escapeHtml(card.text)}"` : '';
+        const editClass = editable ? ' kg-card--editable' : '';
+        const startedIso = card.started instanceof Date && !Number.isNaN(card.started.getTime())
+          ? card.started.toISOString()
+          : '';
+        const rate = card.rate != null ? card.rate : defaultRate;
+        return [
+          `<div class="kg-card kg-card--${escapeHtml(card.status || 'idle')}${hasNote ? ' kg-card--has-note' : ''}${editClass}"`,
+          ` data-kg-card-id="${escapeHtml(card.id)}"`,
+          ` data-kg-col="${escapeHtml(card.col)}"`,
+          ` data-kg-status="${escapeHtml(card.status || 'idle')}"`,
+          ` data-kg-rate="${escapeHtml(String(rate))}"`,
+          ` data-kg-elapsed="${escapeHtml(String(parseKgElapsed(card.elapsed)))}"`,
+          startedIso ? ` data-kg-started="${escapeHtml(startedIso)}"` : '',
+          mdAttr,
+          `>`,
+          kanbanganttCardMarkup(card, spec, now, { editable }),
+          `</div>`,
+        ].join('');
+      }).join('');
+      return [
+        `<div class="kg-column${column.toLowerCase() === 'suspended' ? ' kg-column--suspended' : ''}" data-kg-col="${escapeHtml(column)}">`,
+        `<div class="kg-column-header">`,
+        `<span class="kg-column-title">${escapeHtml(column)}</span>`,
+        `<span class="kg-column-count">${colCards.length}</span>`,
+        `</div>`,
+        withCost ? `<div class="kg-column-cost">${escapeHtml(formatKgMoney(colCost, currency))}</div>` : '',
+        `<div class="kg-column-cards">${cardsHtml || '<div class="kg-column-empty">Drop tasks here</div>'}</div>`,
+        `</div>`,
+      ].join('');
+    }).join('');
+
+    return [
+      `<div class="kg-block${colClass}"`,
+      ` data-kg-index="${options.kgIndex ?? 0}"`,
+      ` data-kg-title="${escapeHtml(customTitle)}"`,
+      ` data-kg-cols="${escapeHtml(columns.join(','))}"`,
+      ` data-kg-rate="${escapeHtml(String(defaultRate))}"`,
+      ` data-kg-currency="${escapeHtml(currency)}"`,
+      ` data-kg-withcost="${withCost ? '1' : '0'}"`,
+      colStyle,
+      `>`,
+      `<div class="kg-block-header">`,
+      `<div class="kg-block-title${editable ? ' kg-block-title--editable' : ''}"${titleEditAttr}>${escapeHtml(title)}</div>`,
+      `<div class="kg-block-meta">${escapeHtml(metaParts.join(' · '))}</div>`,
+      `</div>`,
+      `<div class="kg-board">${colsHtml}</div>`,
+      withCost
+        ? `<div class="kg-block-footer">Board cost: <strong>${escapeHtml(formatKgMoney(totalCost, currency))}</strong></div>`
+        : '',
+      `</div>`,
+    ].join('');
+  }
+
+  function parseKanbanganttBlockAt(markdown, kgIndex) {
+    let idx = 0;
+    let spec = null;
+    String(markdown || '').replace(KANBANGANTT_BLOCK_RE, (_, fenceAttrs, content) => {
+      if (idx === kgIndex) spec = parseKanbanganttSpec(fenceAttrs, content);
+      idx += 1;
+      return '';
+    });
+    return spec;
+  }
+
+  function refreshKgPreviewCard(cardId, kgIndex) {
+    const preview = document.getElementById('preview-content');
+    if (!preview || !easyMDE) return false;
+    const block = preview.querySelector(`.kg-block[data-kg-index="${kgIndex}"]`);
+    const cardEl = block?.querySelector(`.kg-card[data-kg-card-id="${cardId}"]`);
+    if (!block || !cardEl) return false;
+
+    const spec = parseKanbanganttBlockAt(easyMDE.value(), kgIndex);
+    const card = spec?.cards?.find(c => c.id === cardId);
+    if (!spec || !card) return false;
+
+    const editable = isPreviewInteractionEnabled();
+    const startedIso = card.started instanceof Date && !Number.isNaN(card.started.getTime())
+      ? card.started.toISOString()
+      : '';
+    const rate = card.rate != null ? card.rate : (spec.rate || 0);
+
+    cardEl.className = [
+      'kg-card',
+      `kg-card--${card.status || 'idle'}`,
+      (card.text || card.image) ? 'kg-card--has-note' : '',
+      editable ? 'kg-card--editable' : '',
+    ].filter(Boolean).join(' ');
+    cardEl.dataset.kgCol = card.col;
+    cardEl.dataset.kgStatus = card.status || 'idle';
+    cardEl.dataset.kgRate = String(rate);
+    cardEl.dataset.kgElapsed = String(parseKgElapsed(card.elapsed));
+    if (startedIso) cardEl.dataset.kgStarted = startedIso;
+    else delete cardEl.dataset.kgStarted;
+    if (card.text) cardEl.dataset.kgMarkdown = card.text;
+    else delete cardEl.dataset.kgMarkdown;
+
+    cardEl.innerHTML = kanbanganttCardMarkup(card, spec, Date.now(), { editable });
+
+    const column = [...block.querySelectorAll('.kg-column')].find(c => c.dataset.kgCol === card.col);
+    const cardsHost = column?.querySelector('.kg-column-cards');
+    if (cardsHost && !cardsHost.contains(cardEl)) {
+      cardsHost.appendChild(cardEl);
+      cardsHost.querySelector('.kg-column-empty')?.remove();
+    }
+
+    tickKgRunningCards();
+    return true;
+  }
+
+  function rewriteKanbanganttBlock(markdown, kgIndex, mutateFn) {
+    let idx = 0;
+    return String(markdown || '').replace(KANBANGANTT_BLOCK_RE, (match, fenceAttrs, content = '') => {
+      const thisIndex = idx;
+      idx += 1;
+      if (thisIndex !== kgIndex) return match;
+      const spec = parseKanbanganttSpec(fenceAttrs, content);
+      const next = mutateFn({
+        ...spec,
+        cards: (spec.cards || []).map(c => ({ ...c })),
+        columns: [...(spec.columns || [])],
+      }, fenceAttrs) || {};
+      const nextSpec = next.spec || spec;
+      const nextAttrs = next.fenceAttrs != null ? next.fenceAttrs : fenceAttrs;
+      const body = buildKanbanganttFenceBody(nextSpec, nextAttrs);
+      const fence = nextAttrs != null && String(nextAttrs).length
+        ? `kanbangantt{${nextAttrs}}`
+        : 'kanbangantt';
+      return `\`\`\`${fence}${body}\`\`\``;
+    });
+  }
+
+  function updateKanbanganttCardInMarkdown(markdown, kgIndex, cardId, patch = {}) {
+    return rewriteKanbanganttBlock(markdown, kgIndex, (spec) => {
+      const card = spec.cards.find(c => c.id === cardId);
+      if (!card) return { spec };
+      if (patch.label != null) card.label = String(patch.label).trim() || card.label;
+      if (patch.col != null && String(patch.col).trim()) {
+        card.col = String(patch.col).trim();
+        if (!spec.columns.includes(card.col)) spec.columns.push(card.col);
+      }
+      if (patch.text != null) card.text = String(patch.text || '').replace(/\r?\n/g, ' ').trim();
+      if (patch.image != null) card.image = String(patch.image || '').trim();
+      if (patch.status != null) card.status = parseKgStatus(patch.status);
+      if (patch.rate != null) {
+        const r = parseKgRate(patch.rate, spec.rate || 0);
+        card.rate = r === (spec.rate || 0) ? null : r;
+      }
+      if (patch.elapsed != null) card.elapsed = parseKgElapsed(patch.elapsed);
+      if (Object.prototype.hasOwnProperty.call(patch, 'started')) {
+        card.started = patch.started instanceof Date
+          ? patch.started
+          : parseKgDateTime(patch.started);
+      }
+      if (card.status === 'running' && !card.started) {
+        card.started = new Date();
+      }
+      if (card.status !== 'running') {
+        card.started = null;
+      }
+      if (card.status === 'suspended') {
+        card.col = kgEnsureSuspendColumn(spec);
+      } else if (card.status === 'running' && card.col === kgSuspendColumn(spec)) {
+        card.col = kgDoingColumn(spec);
+      }
+      return { spec };
+    });
+  }
+
+  function applyKanbanganttTimerInMarkdown(markdown, kgIndex, cardId, action) {
+    return rewriteKanbanganttBlock(markdown, kgIndex, (spec) => {
+      const card = spec.cards.find(c => c.id === cardId);
+      if (!card) return { spec };
+      const now = new Date();
+      const status = card.status || 'idle';
+
+      if (action === 'start') {
+        if (status === 'running') return { spec };
+        if (status === 'suspended' || card.col === kgSuspendColumn(spec)) {
+          card.col = kgDoingColumn(spec);
+        }
+        card.status = 'running';
+        card.started = now;
+        return { spec };
+      }
+
+      if (action === 'suspend') {
+        if (status !== 'running') return { spec };
+        card.elapsed = kgEffectiveElapsed(card, now.getTime());
+        card.started = null;
+        card.status = 'suspended';
+        card.col = kgEnsureSuspendColumn(spec);
+        return { spec };
+      }
+
+      if (action === 'stop') {
+        if (status === 'running') {
+          card.elapsed = kgEffectiveElapsed(card, now.getTime());
+        }
+        card.started = null;
+        card.status = 'stopped';
+        return { spec };
+      }
+
+      return { spec };
+    });
+  }
+
+  function moveKanbanganttCardInMarkdown(markdown, kgIndex, cardId, targetCol, placement = {}) {
+    const beforeCardId = placement.beforeCardId || null;
+    const afterCardId = placement.afterCardId || null;
+    return rewriteKanbanganttBlock(markdown, kgIndex, (spec) => {
+      const fromIdx = spec.cards.findIndex(c => c.id === cardId);
+      if (fromIdx < 0) return { spec };
+      const [card] = spec.cards.splice(fromIdx, 1);
+      card.col = targetCol;
+      if (!spec.columns.includes(targetCol)) spec.columns.push(targetCol);
+
+      let insertAt = spec.cards.length;
+      if (beforeCardId) {
+        const beforeIdx = spec.cards.findIndex(c => c.id === beforeCardId);
+        if (beforeIdx >= 0) insertAt = beforeIdx;
+      } else if (afterCardId) {
+        const afterIdx = spec.cards.findIndex(c => c.id === afterCardId);
+        if (afterIdx >= 0) insertAt = afterIdx + 1;
+      } else {
+        for (let i = spec.cards.length - 1; i >= 0; i -= 1) {
+          if (spec.cards[i].col === targetCol) {
+            insertAt = i + 1;
+            break;
+          }
+        }
+        if (!spec.cards.some(c => c.col === targetCol)) {
+          const colIdx = spec.columns.indexOf(targetCol);
+          insertAt = 0;
+          for (let i = 0; i < colIdx; i += 1) {
+            const cName = spec.columns[i];
+            const last = [...spec.cards].map((c, idx) => (c.col === cName ? idx : -1)).filter(n => n >= 0).pop();
+            if (last != null) insertAt = last + 1;
+          }
+        }
+      }
+      spec.cards.splice(insertAt, 0, card);
+      return { spec };
+    });
+  }
+
+  function updateKanbanganttMetaInMarkdown(markdown, kgIndex, { title, columns, rate, currency, withCost } = {}) {
+    return rewriteKanbanganttBlock(markdown, kgIndex, (spec, fenceAttrs) => {
+      const cleanTitle = String(title || '').trim();
+      spec.title = cleanTitle;
+      let nextAttrs = String(fenceAttrs || '');
+      if (columns != null) {
+        const cols = parseKanbanColumns(columns);
+        if (cols.length) {
+          spec.columns = cols;
+          nextAttrs = setKanbanganttFenceAttr(nextAttrs, 'cols', cols.join(','));
+          spec.cards.forEach(card => {
+            if (!cols.includes(card.col)) card.col = cols[0];
+          });
+        }
+      }
+      if (withCost != null) {
+        spec.withCost = Boolean(withCost);
+        nextAttrs = setKanbanganttFenceAttr(nextAttrs, 'withcost', spec.withCost ? '1' : '0');
+      }
+      if (rate != null) {
+        const r = parseKgRate(rate, 0);
+        spec.rate = r;
+        nextAttrs = setKanbanganttFenceAttr(nextAttrs, 'rate', r > 0 ? String(r) : '');
+      }
+      if (currency != null) {
+        const cur = String(currency || '').trim() || 'EUR';
+        spec.currency = cur;
+        nextAttrs = setKanbanganttFenceAttr(nextAttrs, 'currency', cur === 'EUR' ? '' : cur);
+      }
+      if (/(?:^|;)\s*title\s*=/i.test(nextAttrs)) {
+        nextAttrs = setKanbanganttFenceAttr(nextAttrs, 'title', '');
+      }
+      return { spec, fenceAttrs: nextAttrs };
+    });
+  }
+
+  function parseKanbanganttBlocks(text, options = {}) {
+    let kgIndex = 0;
+    return text.replace(KANBANGANTT_BLOCK_RE, (_, fenceAttrs, content) => {
+      const spec = parseKanbanganttSpec(fenceAttrs, content);
+      const idx = kgIndex++;
+      return wrapRichPreviewBlock(renderKanbanganttBlockHtml(spec, {
+        editable: !!options.sheetEditable || !!options.kanbanEditable,
+        kgIndex: idx,
       }));
     });
   }
@@ -4795,7 +5458,12 @@ function formatTextWithMarkup(rawText) {
         : 'Gantt';
       return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
     });
-    md = md.replace(/```(?:kanban|kanb)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+    md = md.replace(/```(?:kanbangantt|kbgantt|kgantt)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const spec = parseKanbanganttSpec(fenceAttrs, '');
+      const label = spec.title || 'Kanban Gantt';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
+    md = md.replace(/```(?:kanban|kanb)(?![a-zA-Z])(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
       const spec = parseKanbanSpec(fenceAttrs, '');
       const label = spec.title || 'Kanban';
       return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
@@ -4839,6 +5507,7 @@ function formatTextWithMarkup(rawText) {
       md = parsePanelBlocks(md);
       md = parseCalendarBlocks(md, options);
       md = parseGanttBlocks(md, options);
+      md = parseKanbanganttBlocks(md, options);
       md = parseKanbanBlocks(md, options);
       md = parseMindmapBlocks(md, options);
     } else {
@@ -4932,6 +5601,24 @@ function formatTextWithMarkup(rawText) {
 
   function lockEditorPreviewScroll(ms = 100) {
     editorPreviewScrollLockUntil = Date.now() + ms;
+  }
+
+  function capturePreviewScrollPosition() {
+    const preview = document.getElementById('preview-content');
+    if (preview) preservedPreviewScrollTop = preview.scrollTop;
+  }
+
+  function restorePreviewScrollPosition(preview) {
+    if (!preview || preservedPreviewScrollTop == null) return;
+    const top = preservedPreviewScrollTop;
+    preservedPreviewScrollTop = null;
+    lockEditorPreviewScroll(600);
+    const apply = () => {
+      const max = Math.max(0, preview.scrollHeight - preview.clientHeight);
+      preview.scrollTop = Math.min(top, max);
+    };
+    apply();
+    requestAnimationFrame(apply);
   }
 
   function rebuildPreviewScrollAnchors() {
@@ -5120,7 +5807,8 @@ function formatTextWithMarkup(rawText) {
       return;
     }
     const raw = easyMDE ? (easyMDE.value() || '') : '';
-    const savedPreviewScrollTop = preview.scrollTop;
+    const savedPreviewScrollTop = preservedPreviewScrollTop ?? preview.scrollTop;
+    preservedPreviewScrollTop = null;
 
     const hasToc = /\[toc\]/i.test(raw);
     const hasHeader = /^#{1,6}\s+/m.test(raw);
@@ -5151,7 +5839,6 @@ function formatTextWithMarkup(rawText) {
       sheetEditable: isPreviewInteractionEnabled(),
       richBlocks: true,
     });
-    const savedScrollLine = isEditorPreviewSplit() ? getEditorScrollLine() : null;
     let html = marked.parse(processed.markdown) + processed.tagsHtml;
     html = restoreStyledSpanTokens(html, processed.styledSpanHtml);
     html = html.replace(/<p>\s*(<div class="md-styled-block"[\s\S]*?<\/div>)\s*<\/p>/gi, '$1');
@@ -5166,27 +5853,13 @@ function formatTextWithMarkup(rawText) {
     else preview.removeAttribute('tabindex');
     rebuildPreviewScrollAnchors();
     syncMobileContentMenu();
-    if (isEditorPreviewSplit()) {
-      lockEditorPreviewScroll(120);
-      const line = savedScrollLine ?? getEditorScrollLine();
-      if (previewScrollAnchors.length >= 2) {
-        preview.scrollTop = interpolateScrollAnchors('line', 'top', line);
-      } else {
-        const cm = easyMDE?.codemirror;
-        const info = cm?.getScrollInfo();
-        if (cm && info) {
-          const editorMax = Math.max(1, info.height - info.clientHeight);
-          const previewMax = Math.max(0, preview.scrollHeight - preview.clientHeight);
-          preview.scrollTop = (info.top / editorMax) * previewMax;
-        } else {
-          preview.scrollTop = savedPreviewScrollTop;
-        }
-      }
-    } else {
-      // Keep the user's place after re-render (e.g. calendar note save).
+    lockEditorPreviewScroll(600);
+    const applyPreviewScroll = () => {
       const previewMax = Math.max(0, preview.scrollHeight - preview.clientHeight);
       preview.scrollTop = Math.min(savedPreviewScrollTop, previewMax);
-    }
+    };
+    applyPreviewScroll();
+    requestAnimationFrame(applyPreviewScroll);
   }
 
   function collectMarkdownHeadings(raw) {
@@ -7586,6 +8259,435 @@ function formatTextWithMarkup(rawText) {
     });
   }
 
+  let kgCardContext = null;
+  let kgTitleContext = null;
+  let kgDragState = null;
+  let kgTickTimer = null;
+
+  function clearKgDropTargets(preview) {
+    preview?.querySelectorAll('.kg-column--drop-target, .kg-card--drop-before, .kg-card--drop-after').forEach(el => {
+      el.classList.remove('kg-column--drop-target', 'kg-card--drop-before', 'kg-card--drop-after');
+    });
+  }
+
+  function refreshKgCardImagePreview() {
+    const wrap = document.getElementById('kg-card-preview');
+    const image = document.getElementById('kg-card-image')?.value?.trim() || '';
+    if (!wrap) return;
+    if (!image) {
+      wrap.classList.add('d-none');
+      wrap.innerHTML = '';
+      return;
+    }
+    wrap.classList.remove('d-none');
+    wrap.innerHTML = `<img src="${escapeHtml(image)}" alt="" class="calendar-note-preview-img">`;
+  }
+
+  function fillKgColumnSelect(selectEl, columns, selected) {
+    if (!selectEl) return;
+    const cols = columns?.length ? columns : [...KANBANGANTT_DEFAULT_COLS];
+    selectEl.innerHTML = cols.map(col => (
+      `<option value="${escapeHtml(col)}"${col === selected ? ' selected' : ''}>${escapeHtml(col)}</option>`
+    )).join('');
+  }
+
+  function syncKgTitleCostFields() {
+    const enabled = document.getElementById('kg-title-withcost')?.checked !== false;
+    document.getElementById('kg-title-cost-fields')?.classList.toggle('d-none', !enabled);
+  }
+
+  function openKgTitleModal(titleEl) {
+    if (!isPreviewInteractionEnabled()) return;
+    const block = titleEl.closest('.kg-block');
+    if (!block) return;
+    const kgIndex = parseInt(block.dataset.kgIndex, 10);
+    if (!Number.isFinite(kgIndex)) return;
+
+    kgTitleContext = { kgIndex };
+    const titleInput = document.getElementById('kg-title-input');
+    const colsInput = document.getElementById('kg-title-cols');
+    const withCostInput = document.getElementById('kg-title-withcost');
+    const rateInput = document.getElementById('kg-title-rate');
+    const currencyInput = document.getElementById('kg-title-currency');
+    if (titleInput) titleInput.value = block.dataset.kgTitle || '';
+    if (colsInput) colsInput.value = block.dataset.kgCols || '';
+    if (withCostInput) withCostInput.checked = block.dataset.kgWithcost !== '0';
+    if (rateInput) rateInput.value = block.dataset.kgRate || '0';
+    if (currencyInput) currencyInput.value = block.dataset.kgCurrency || 'EUR';
+    syncKgTitleCostFields();
+    const modalEl = document.getElementById('kg-title-modal');
+    if (modalEl) openDashboardModal(modalEl);
+  }
+
+  function saveKgTitleFromModal({ clear = false } = {}) {
+    if (!easyMDE || !kgTitleContext) return;
+    const title = clear ? '' : (document.getElementById('kg-title-input')?.value || '');
+    const columns = document.getElementById('kg-title-cols')?.value || '';
+    const withCost = document.getElementById('kg-title-withcost')?.checked !== false;
+    const currency = document.getElementById('kg-title-currency')?.value || 'EUR';
+    const patch = { title, columns, currency, withCost };
+    if (withCost) patch.rate = document.getElementById('kg-title-rate')?.value || '0';
+    const oldMarkdown = easyMDE.value();
+    const updated = updateKanbanganttMetaInMarkdown(
+      oldMarkdown,
+      kgTitleContext.kgIndex,
+      patch,
+    );
+    if (updated !== oldMarkdown) {
+      easyMDE.value(updated);
+      scheduleSave();
+      schedulePreviewRefresh();
+    }
+    bootstrap.Modal.getInstance(document.getElementById('kg-title-modal'))?.hide();
+    kgTitleContext = null;
+  }
+
+  function openKgCardModal(cardEl) {
+    if (!isPreviewInteractionEnabled()) return;
+    const block = cardEl.closest('.kg-block');
+    const cardId = cardEl.dataset.kgCardId;
+    if (!block || !cardId) return;
+    const kgIndex = parseInt(block.dataset.kgIndex, 10);
+    if (!Number.isFinite(kgIndex)) return;
+
+    const columns = parseKanbanColumns(block.dataset.kgCols || '');
+    const label = cardEl.querySelector('.kg-card-label')?.textContent || '';
+    const text = cardEl.dataset.kgMarkdown
+      || cardEl.querySelector('.kg-card-text')?.textContent
+      || '';
+    const image = cardEl.querySelector('.kg-card-image')?.getAttribute('src') || '';
+    const col = cardEl.dataset.kgCol || columns[0] || 'Todo';
+    const rate = cardEl.dataset.kgRate || block.dataset.kgRate || '0';
+    const status = cardEl.dataset.kgStatus || 'idle';
+    const elapsed = cardEl.dataset.kgElapsed || '0';
+    const withCost = block.dataset.kgWithcost !== '0';
+
+    kgCardContext = { kgIndex, cardId };
+    const title = document.getElementById('kg-card-modal-title');
+    if (title) title.textContent = `Task · ${label || cardId}`;
+    const labelInput = document.getElementById('kg-card-label');
+    const colSelect = document.getElementById('kg-card-col');
+    const rateInput = document.getElementById('kg-card-rate');
+    const rateField = document.getElementById('kg-card-rate-field');
+    const statusSelect = document.getElementById('kg-card-status');
+    const elapsedInput = document.getElementById('kg-card-elapsed');
+    const textInput = document.getElementById('kg-card-text');
+    const imageInput = document.getElementById('kg-card-image');
+    if (labelInput) labelInput.value = label;
+    fillKgColumnSelect(colSelect, columns, col);
+    rateField?.classList.toggle('d-none', !withCost);
+    if (rateInput) rateInput.value = rate;
+    if (statusSelect) statusSelect.value = parseKgStatus(status);
+    if (elapsedInput) elapsedInput.value = elapsed;
+    if (textInput) textInput.value = text;
+    if (imageInput) imageInput.value = image;
+    refreshKgCardImagePreview();
+    const modalEl = document.getElementById('kg-card-modal');
+    if (modalEl) openDashboardModal(modalEl);
+  }
+
+  function saveKgCardFromModal({ clear = false } = {}) {
+    if (!easyMDE || !kgCardContext) return;
+    const label = clear ? null : (document.getElementById('kg-card-label')?.value || '');
+    const col = clear ? null : (document.getElementById('kg-card-col')?.value || '');
+    const withCost = document.getElementById('preview-content')
+      ?.querySelector(`.kg-block[data-kg-index="${kgCardContext.kgIndex}"]`)
+      ?.dataset?.kgWithcost !== '0';
+    const rate = clear || !withCost ? null : (document.getElementById('kg-card-rate')?.value || '');
+    const status = clear ? null : (document.getElementById('kg-card-status')?.value || 'idle');
+    const elapsed = clear ? null : (document.getElementById('kg-card-elapsed')?.value || '0');
+    const text = clear ? '' : (document.getElementById('kg-card-text')?.value || '');
+    const image = clear ? '' : (document.getElementById('kg-card-image')?.value || '');
+    const patch = { label, col, status, elapsed, text, image };
+    if (rate != null) patch.rate = rate;
+    if (!clear && status && status !== 'running') patch.started = null;
+    const oldMarkdown = easyMDE.value();
+    const updated = updateKanbanganttCardInMarkdown(
+      oldMarkdown,
+      kgCardContext.kgIndex,
+      kgCardContext.cardId,
+      patch,
+    );
+    if (updated !== oldMarkdown) {
+      easyMDE.value(updated);
+      scheduleSave();
+      schedulePreviewRefresh();
+    }
+    bootstrap.Modal.getInstance(document.getElementById('kg-card-modal'))?.hide();
+    kgCardContext = null;
+  }
+
+  async function uploadKgCardImage(file) {
+    if (!file) return;
+    syncWorkspaceIdFromDom();
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('workspace', workspaceId);
+    try {
+      const data = await api('api/uploads/', 'POST', formData, true);
+      const mediaPath = mediaMarkdownPath(data.url || data.path || data.file?.url || data.file?.mediaName);
+      const imageInput = document.getElementById('kg-card-image');
+      if (imageInput && mediaPath) {
+        imageInput.value = mediaPath;
+        refreshKgCardImagePreview();
+      }
+    } catch (err) {
+      console.warn('kanbangantt image upload failed:', err);
+      showToast(err.message || 'Image upload failed.', 'danger');
+    }
+  }
+
+  function applyKgTimerAction(cardId, kgIndex, action) {
+    if (!easyMDE || !cardId || !Number.isFinite(kgIndex)) return;
+    capturePreviewScrollPosition();
+    lockEditorPreviewScroll(800);
+    const oldMarkdown = easyMDE.value();
+    const updated = applyKanbanganttTimerInMarkdown(oldMarkdown, kgIndex, cardId, action);
+    if (updated === oldMarkdown) return;
+    easyMDE.value(updated);
+    scheduleSave();
+    if (refreshKgPreviewCard(cardId, kgIndex)) {
+      restorePreviewScrollPosition(document.getElementById('preview-content'));
+    } else {
+      schedulePreviewRefresh();
+    }
+  }
+
+  function applyKgMove(cardId, kgIndex, targetCol, placement = {}) {
+    if (!easyMDE || !cardId || !targetCol) return;
+    capturePreviewScrollPosition();
+    lockEditorPreviewScroll(800);
+    const beforeCardId = placement.beforeCardId === cardId ? null : (placement.beforeCardId || null);
+    const afterCardId = placement.afterCardId === cardId ? null : (placement.afterCardId || null);
+    const oldMarkdown = easyMDE.value();
+    const updated = moveKanbanganttCardInMarkdown(oldMarkdown, kgIndex, cardId, targetCol, {
+      beforeCardId,
+      afterCardId,
+    });
+    if (updated === oldMarkdown) return;
+    easyMDE.value(updated);
+    scheduleSave();
+    if (refreshKgPreviewCard(cardId, kgIndex)) {
+      restorePreviewScrollPosition(document.getElementById('preview-content'));
+    } else {
+      schedulePreviewRefresh();
+    }
+  }
+
+  function tickKgRunningCards() {
+    const preview = document.getElementById('preview-content');
+    if (!preview) return;
+    const now = Date.now();
+    preview.querySelectorAll('.kg-card[data-kg-status="running"]').forEach(card => {
+      const elapsedBase = parseKgElapsed(card.dataset.kgElapsed);
+      const startedMs = Date.parse(card.dataset.kgStarted || '');
+      let elapsed = elapsedBase;
+      if (Number.isFinite(startedMs)) elapsed += Math.max(0, Math.floor((now - startedMs) / 1000));
+      const rate = parseKgRate(card.dataset.kgRate, 0);
+      const block = card.closest('.kg-block');
+      const withCost = block?.dataset?.kgWithcost !== '0';
+      const currency = block?.dataset?.kgCurrency || 'EUR';
+      const metrics = card.querySelector('.kg-card-metrics');
+      if (metrics) {
+        const durationEl = metrics.querySelector('span');
+        const costEl = metrics.querySelector('.kg-card-cost');
+        if (durationEl) durationEl.textContent = formatKgDuration(elapsed);
+        if (withCost && costEl) costEl.textContent = formatKgMoney((elapsed / 3600) * rate, currency);
+      }
+    });
+    preview.querySelectorAll('.kg-block').forEach(block => {
+      const withCost = block.dataset.kgWithcost !== '0';
+      const currency = block.dataset.kgCurrency || 'EUR';
+      let totalCost = 0;
+      let totalElapsed = 0;
+      block.querySelectorAll('.kg-card').forEach(card => {
+        const elapsedBase = parseKgElapsed(card.dataset.kgElapsed);
+        let elapsed = elapsedBase;
+        if (card.dataset.kgStatus === 'running') {
+          const startedMs = Date.parse(card.dataset.kgStarted || '');
+          if (Number.isFinite(startedMs)) elapsed += Math.max(0, Math.floor((now - startedMs) / 1000));
+        }
+        const rate = parseKgRate(card.dataset.kgRate, 0);
+        totalElapsed += elapsed;
+        totalCost += (elapsed / 3600) * rate;
+      });
+      const footer = block.querySelector('.kg-block-footer strong');
+      if (footer && withCost) footer.textContent = formatKgMoney(totalCost, currency);
+      const meta = block.querySelector('.kg-block-meta');
+      if (meta) {
+        const count = block.querySelectorAll('.kg-card').length;
+        const rate = block.dataset.kgRate || '0';
+        const parts = [`${count} task(s)`, formatKgDuration(totalElapsed)];
+        if (withCost) {
+          parts.push(formatKgMoney(totalCost, currency));
+          if (parseKgRate(rate) > 0) parts.push(`default ${rate}/h`);
+        }
+        meta.textContent = parts.join(' · ');
+      }
+      if (!withCost) return;
+      block.querySelectorAll('.kg-column').forEach(column => {
+        let colCost = 0;
+        column.querySelectorAll('.kg-card').forEach(card => {
+          const elapsedBase = parseKgElapsed(card.dataset.kgElapsed);
+          let elapsed = elapsedBase;
+          if (card.dataset.kgStatus === 'running') {
+            const startedMs = Date.parse(card.dataset.kgStarted || '');
+            if (Number.isFinite(startedMs)) elapsed += Math.max(0, Math.floor((now - startedMs) / 1000));
+          }
+          colCost += (elapsed / 3600) * parseKgRate(card.dataset.kgRate, 0);
+        });
+        const costEl = column.querySelector('.kg-column-cost');
+        if (costEl) costEl.textContent = formatKgMoney(colCost, currency);
+      });
+    });
+  }
+
+  function ensureKgTickTimer() {
+    if (kgTickTimer) return;
+    kgTickTimer = setInterval(() => {
+      const preview = document.getElementById('preview-content');
+      if (!preview?.querySelector('.kg-card[data-kg-status="running"]')) return;
+      tickKgRunningCards();
+    }, 1000);
+  }
+
+  function initKanbanganttEditors() {
+    const preview = document.getElementById('preview-content');
+    if (!preview || preview.dataset.kgEditBound === '1') return;
+    preview.dataset.kgEditBound = '1';
+    ensureKgTickTimer();
+
+    preview.addEventListener('click', e => {
+      if (!isPreviewInteractionEnabled()) return;
+      const actionBtn = e.target.closest?.('.kg-action-btn');
+      if (actionBtn && preview.contains(actionBtn)) {
+        e.preventDefault();
+        e.stopPropagation();
+        const card = actionBtn.closest('.kg-card');
+        const block = actionBtn.closest('.kg-block');
+        const cardId = card?.dataset?.kgCardId;
+        const kgIndex = parseInt(block?.dataset?.kgIndex, 10);
+        const action = actionBtn.dataset.kgAction;
+        if (cardId && Number.isFinite(kgIndex) && action) applyKgTimerAction(cardId, kgIndex, action);
+        return;
+      }
+      if (e.target.closest('a, button, input, textarea, img.md-image-link, .kg-drag-handle')) return;
+      const title = e.target.closest?.('.kg-block-title--editable');
+      if (title && preview.contains(title)) {
+        e.preventDefault();
+        e.stopPropagation();
+        openKgTitleModal(title);
+        return;
+      }
+      const card = e.target.closest?.('.kg-card--editable');
+      if (!card || !preview.contains(card)) return;
+      if (kgDragState?.moved) return;
+      e.preventDefault();
+      e.stopPropagation();
+      openKgCardModal(card);
+    });
+
+    preview.addEventListener('dragstart', e => {
+      if (!isPreviewInteractionEnabled()) return;
+      const handle = e.target.closest?.('.kg-drag-handle');
+      if (!handle || !preview.contains(handle)) return;
+      const card = handle.closest('.kg-card--editable');
+      if (!card || !preview.contains(card)) return;
+      const block = card.closest('.kg-block');
+      const kgIndex = parseInt(block?.dataset?.kgIndex, 10);
+      if (!Number.isFinite(kgIndex)) return;
+      e.stopPropagation();
+      kgDragState = {
+        cardId: card.dataset.kgCardId,
+        fromCol: card.dataset.kgCol,
+        kgIndex,
+        moved: false,
+      };
+      card.classList.add('kg-card--dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', card.dataset.kgCardId || '');
+      try {
+        e.dataTransfer.setData('application/x-kg-card', JSON.stringify(kgDragState));
+      } catch (_) { /* ignore */ }
+    });
+
+    preview.addEventListener('dragend', e => {
+      const card = e.target.closest?.('.kg-card');
+      card?.classList.remove('kg-card--dragging');
+      clearKgDropTargets(preview);
+      setTimeout(() => { kgDragState = null; }, 50);
+    });
+
+    preview.addEventListener('dragover', e => {
+      if (!kgDragState || !isPreviewInteractionEnabled()) return;
+      const column = e.target.closest?.('.kg-column');
+      if (!column || !preview.contains(column)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.dataTransfer.dropEffect = 'move';
+      clearKgDropTargets(preview);
+      column.classList.add('kg-column--drop-target');
+      const overCard = e.target.closest?.('.kg-card');
+      if (overCard && overCard.dataset.kgCardId !== kgDragState.cardId) {
+        const rect = overCard.getBoundingClientRect();
+        if (e.clientY < rect.top + rect.height / 2) {
+          overCard.classList.add('kg-card--drop-before');
+        } else {
+          overCard.classList.add('kg-card--drop-after');
+        }
+      }
+    });
+
+    preview.addEventListener('dragleave', e => {
+      const column = e.target.closest?.('.kg-column');
+      if (!column) return;
+      if (!column.contains(e.relatedTarget)) {
+        column.classList.remove('kg-column--drop-target');
+      }
+    });
+
+    preview.addEventListener('drop', e => {
+      if (!kgDragState || !isPreviewInteractionEnabled()) return;
+      const column = e.target.closest?.('.kg-column');
+      if (!column || !preview.contains(column)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const targetCol = column.dataset.kgCol;
+      const beforeEl = column.querySelector('.kg-card--drop-before');
+      const afterEl = column.querySelector('.kg-card--drop-after');
+      const beforeCardId = beforeEl?.dataset?.kgCardId || null;
+      const afterCardId = afterEl?.dataset?.kgCardId || null;
+      const { cardId, kgIndex } = kgDragState;
+      kgDragState.moved = true;
+      clearKgDropTargets(preview);
+      if (!targetCol || !cardId) return;
+      applyKgMove(cardId, kgIndex, targetCol, { beforeCardId, afterCardId });
+    });
+
+    document.getElementById('kg-card-save-btn')?.addEventListener('click', () => {
+      saveKgCardFromModal();
+    });
+    document.getElementById('kg-card-clear-btn')?.addEventListener('click', () => {
+      saveKgCardFromModal({ clear: true });
+    });
+    document.getElementById('kg-card-image')?.addEventListener('input', refreshKgCardImagePreview);
+    document.getElementById('kg-card-upload-btn')?.addEventListener('click', () => {
+      document.getElementById('kg-card-file')?.click();
+    });
+    document.getElementById('kg-card-file')?.addEventListener('change', async e => {
+      const file = e.target.files?.[0];
+      e.target.value = '';
+      if (file) await uploadKgCardImage(file);
+    });
+    document.getElementById('kg-title-save-btn')?.addEventListener('click', () => {
+      saveKgTitleFromModal();
+    });
+    document.getElementById('kg-title-clear-btn')?.addEventListener('click', () => {
+      saveKgTitleFromModal({ clear: true });
+    });
+    document.getElementById('kg-title-withcost')?.addEventListener('change', syncKgTitleCostFields);
+  }
+
   let mindmapNodeContext = null;
   let mindmapTitleContext = null;
 
@@ -8131,6 +9233,21 @@ function formatTextWithMarkup(rawText) {
           },
           className: 'fa fa-th-large',
           title: 'Insert kanban',
+        },
+        {
+          name: 'insert-kanbangantt',
+          action: (editor) => {
+            const body = [
+              '# Sprint board',
+              'Todo | Design wireframes | status=idle;rate=60',
+              'Doing | Build API | status=idle;rate=75',
+              'Suspended | On hold task | status=suspended;rate=75;elapsed=1800',
+              'Done | Kickoff | status=stopped;rate=50;elapsed=7200',
+            ].join('\n');
+            insertFenceBlock(editor, 'kanbangantt{cols=Todo,Doing,Suspended,Done;withcost=1;rate=50;currency=EUR;col=info}', body);
+          },
+          className: 'fa fa-clock-o',
+          title: 'Insert kanban gantt (time + cost)',
         },
         {
           name: 'insert-mindmap',
@@ -8917,6 +10034,7 @@ function formatTextWithMarkup(rawText) {
     if (!isPreviewInteractionEnabled()) return;
     const active = document.activeElement;
     if (active?.classList?.contains('sheet-cell-editable')) return;
+    capturePreviewScrollPosition();
     clearTimeout(previewRefreshTimer);
     if (isMobileLayout() && !isEditing) {
       previewRefreshTimer = setTimeout(() => {
@@ -9147,6 +10265,7 @@ function formatTextWithMarkup(rawText) {
   const quickNoteSaveTimers = new Map();
   const quickNotePendingPatch = new Map();
   let expandedKeepCardId = null;
+  let keepDragState = null;
 
   function keepCardClass(color) {
     const id = KEEP_COLORS.some(c => c.id === color) ? color : 'default';
@@ -9219,6 +10338,7 @@ function formatTextWithMarkup(rawText) {
         `api/workspaces/${workspaceId}/quick-notes/?archived=${archived}&q=${encodeURIComponent(q)}`,
       );
       quickNotesCache = data.notes || [];
+      sortQuickNotesCache();
       renderKeepGrid();
     } catch (err) {
       console.warn('loadQuickNotes failed:', err);
@@ -9255,13 +10375,50 @@ function formatTextWithMarkup(rawText) {
     })).filter(item => item.text.trim() || item.checked);
   }
 
+  function renderKeepMarkdown(body) {
+    const raw = String(body || '');
+    if (!raw.trim()) return '';
+    try {
+      initMarked();
+      if (typeof marked === 'undefined') return escapeHtml(raw);
+      return renderMarkdownToHtml(raw, { richBlocks: false });
+    } catch (_) {
+      return escapeHtml(raw);
+    }
+  }
+
+  function keepSearchActive() {
+    return Boolean(document.getElementById('keep-search')?.value?.trim());
+  }
+
+  function sortQuickNotesCache() {
+    quickNotesCache.sort((a, b) => {
+      if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+      const ao = Number.isFinite(a.sort_order) ? a.sort_order : 0;
+      const bo = Number.isFinite(b.sort_order) ? b.sort_order : 0;
+      if (ao !== bo) return ao - bo;
+      return String(b.updated_at).localeCompare(String(a.updated_at)) || b.id - a.id;
+    });
+  }
+
+  function clearKeepDropTargets(grid) {
+    grid?.querySelectorAll('.keep-card--drop-before, .keep-card--drop-after').forEach(el => {
+      el.classList.remove('keep-card--drop-before', 'keep-card--drop-after');
+    });
+  }
+
   function renderKeepGrid() {
     const grid = document.getElementById('keep-grid');
+    const keepWrap = document.getElementById('quick-notes-wrap');
     if (!grid) return;
+    const savedScrollTop = keepWrap?.scrollTop ?? 0;
+    const anchorNoteId = expandedKeepCardId;
+    clearKeepDropTargets(grid);
     if (!quickNotesCache.length) {
       grid.innerHTML = `<div class="keep-empty">${keepShowArchived ? 'No archived notes.' : 'No notes yet — take one above.'}</div>`;
       return;
     }
+    const canDrag = userCanEdit && !keepSearchActive();
     grid.innerHTML = quickNotesCache.map(note => {
       const expanded = expandedKeepCardId === note.id;
       const hasChecklist = Array.isArray(note.checklist) && note.checklist.length > 0;
@@ -9269,12 +10426,13 @@ function formatTextWithMarkup(rawText) {
       const checklistHtml = hasChecklist
         ? `<div class="keep-checklist">${renderKeepChecklistItems(note.checklist, { editable: expanded && userCanEdit, noteId: note.id })}</div>`
         : '';
+      const dragAttr = canDrag && !expanded ? ' draggable="true"' : '';
       if (expanded && userCanEdit) {
         return `
-          <article class="keep-card ${colorClass} keep-card--expanded" data-note-id="${note.id}">
+          <article class="keep-card ${colorClass} keep-card--expanded" data-note-id="${note.id}" data-pinned="${note.pinned ? '1' : '0'}">
             <div class="keep-card-inner">
               <input type="text" class="keep-input keep-input-title keep-note-title" value="${escapeHtml(note.title || '')}" placeholder="Title">
-              <textarea class="keep-input keep-input-body keep-note-body" placeholder="Take a note…" rows="4">${escapeHtml(note.body || '')}</textarea>
+              <textarea class="keep-input keep-input-body keep-note-body" placeholder="Note (markdown)…" rows="4">${escapeHtml(note.body || '')}</textarea>
               ${checklistHtml}
             </div>
             <div class="keep-card-footer">
@@ -9287,9 +10445,9 @@ function formatTextWithMarkup(rawText) {
           </article>`;
       }
       const titleHtml = note.title ? `<div class="keep-card-title">${escapeHtml(note.title)}</div>` : '';
-      const bodyHtml = note.body ? `<div class="keep-card-body">${escapeHtml(note.body)}</div>` : '';
+      const bodyHtml = note.body ? `<div class="keep-card-body keep-md">${renderKeepMarkdown(note.body)}</div>` : '';
       return `
-        <article class="keep-card ${colorClass}" data-note-id="${note.id}">
+        <article class="keep-card ${colorClass}${canDrag && !expanded ? ' keep-card--draggable' : ''}" data-note-id="${note.id}" data-pinned="${note.pinned ? '1' : '0'}"${dragAttr}>
           <div class="keep-card-inner keep-card-view">
             ${titleHtml}
             ${bodyHtml}
@@ -9313,19 +10471,60 @@ function formatTextWithMarkup(rawText) {
         patchQuickNote(noteId, { color });
       });
     });
+    applyPreviewImageStyles(grid);
+    requestAnimationFrame(() => {
+      if (keepWrap) keepWrap.scrollTop = savedScrollTop;
+      if (anchorNoteId != null) {
+        const card = grid.querySelector(`.keep-card[data-note-id="${anchorNoteId}"]`);
+        card?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      }
+    });
   }
 
   function mergeQuickNoteCache(updated) {
     const idx = quickNotesCache.findIndex(n => n.id === updated.id);
     if (idx >= 0) quickNotesCache[idx] = updated;
     else quickNotesCache.unshift(updated);
-    quickNotesCache.sort((a, b) => {
-      if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
-      return String(b.updated_at).localeCompare(String(a.updated_at)) || b.id - a.id;
-    });
+    sortQuickNotesCache();
     if (updated.archived !== keepShowArchived && mainView === 'keep') {
       quickNotesCache = quickNotesCache.filter(n => n.id !== updated.id);
     }
+  }
+
+  async function persistKeepOrder(orderedNotes) {
+    syncWorkspaceIdFromDom();
+    if (!workspaceId || !orderedNotes.length) return;
+    try {
+      const data = await api(`api/workspaces/${workspaceId}/quick-notes/reorder/`, 'POST', {
+        notes: orderedNotes.map(n => ({ id: n.id, pinned: Boolean(n.pinned) })),
+      });
+      const byId = new Map((data.notes || []).map(n => [n.id, n]));
+      quickNotesCache = quickNotesCache.map(n => byId.get(n.id) || n);
+      sortQuickNotesCache();
+    } catch (err) {
+      console.warn('persistKeepOrder failed:', err);
+      loadQuickNotes();
+    }
+  }
+
+  function applyKeepReorder(draggedId, targetId, placeAfter) {
+    const from = quickNotesCache.findIndex(n => n.id === draggedId);
+    const to = quickNotesCache.findIndex(n => n.id === targetId);
+    if (from < 0 || to < 0 || from === to) return false;
+    const target = quickNotesCache[to];
+    const [moved] = quickNotesCache.splice(from, 1);
+    moved.pinned = Boolean(target.pinned);
+    let insertAt = quickNotesCache.findIndex(n => n.id === targetId);
+    if (insertAt < 0) return false;
+    if (placeAfter) insertAt += 1;
+    quickNotesCache.splice(insertAt, 0, moved);
+
+    let pinnedOrder = 0;
+    let unpinnedOrder = 0;
+    quickNotesCache.forEach(note => {
+      note.sort_order = note.pinned ? pinnedOrder++ : unpinnedOrder++;
+    });
+    return true;
   }
 
   async function flushQuickNoteSave(noteId) {
@@ -9427,7 +10626,7 @@ function formatTextWithMarkup(rawText) {
     document.getElementById('keep-composer-expanded')?.classList.remove('d-none');
     document.getElementById('keep-composer')?.classList.add('keep-composer--editing');
     setKeepComposerColor(keepComposerColor);
-    document.getElementById('keep-composer-title')?.focus();
+    document.getElementById('keep-composer-title')?.focus({ preventScroll: true });
   }
 
   function setKeepComposerColor(color) {
@@ -9549,6 +10748,7 @@ function formatTextWithMarkup(rawText) {
     });
 
     document.getElementById('keep-grid')?.addEventListener('click', async e => {
+      if (keepDragState?.moved) return;
       const card = e.target.closest('.keep-card');
       if (!card) return;
       const noteId = parseInt(card.dataset.noteId, 10);
@@ -9585,6 +10785,7 @@ function formatTextWithMarkup(rawText) {
         return;
       }
       if (e.target.closest('.keep-card-footer') || e.target.closest('.keep-color-dot')) return;
+      if (e.target.closest('a, button, input, textarea, label, .md-image-link')) return;
       if (!userCanEdit) return;
       if (expandedKeepCardId !== noteId) {
         expandedKeepCardId = noteId;
@@ -9621,6 +10822,70 @@ function formatTextWithMarkup(rawText) {
       item.dataset.itemId = `c${Date.now()}`;
       item.innerHTML = '<input type="checkbox" class="keep-cl-check"><input type="text" class="keep-cl-text" placeholder="List item">';
       checklist.insertBefore(item, e.target);
+    });
+
+    const keepGrid = document.getElementById('keep-grid');
+    keepGrid?.addEventListener('dragstart', e => {
+      if (!userCanEdit || keepSearchActive()) return;
+      const card = e.target.closest?.('.keep-card');
+      if (!card || !keepGrid.contains(card) || card.classList.contains('keep-card--expanded')) return;
+      if (e.target.closest('button, input, textarea, a, .keep-color-dot')) {
+        e.preventDefault();
+        return;
+      }
+      const noteId = parseInt(card.dataset.noteId, 10);
+      if (!Number.isFinite(noteId)) return;
+      keepDragState = { noteId, moved: false };
+      card.classList.add('keep-card--dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', String(noteId));
+      try {
+        e.dataTransfer.setData('application/x-keep-note', String(noteId));
+      } catch (_) { /* ignore */ }
+    });
+
+    keepGrid?.addEventListener('dragend', e => {
+      const card = e.target.closest?.('.keep-card');
+      card?.classList.remove('keep-card--dragging');
+      clearKeepDropTargets(keepGrid);
+      setTimeout(() => { keepDragState = null; }, 50);
+    });
+
+    keepGrid?.addEventListener('dragover', e => {
+      if (!keepDragState || !userCanEdit) return;
+      const card = e.target.closest?.('.keep-card');
+      if (!card || !keepGrid.contains(card)) return;
+      const overId = parseInt(card.dataset.noteId, 10);
+      if (overId === keepDragState.noteId) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      clearKeepDropTargets(keepGrid);
+      const rect = card.getBoundingClientRect();
+      const placeAfter = e.clientX > rect.left + rect.width / 2;
+      card.classList.add(placeAfter ? 'keep-card--drop-after' : 'keep-card--drop-before');
+    });
+
+    keepGrid?.addEventListener('dragleave', e => {
+      const card = e.target.closest?.('.keep-card');
+      if (!card || card.contains(e.relatedTarget)) return;
+      card.classList.remove('keep-card--drop-before', 'keep-card--drop-after');
+    });
+
+    keepGrid?.addEventListener('drop', async e => {
+      if (!keepDragState || !userCanEdit) return;
+      const card = e.target.closest?.('.keep-card');
+      if (!card || !keepGrid.contains(card)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const targetId = parseInt(card.dataset.noteId, 10);
+      const placeAfter = card.classList.contains('keep-card--drop-after');
+      clearKeepDropTargets(keepGrid);
+      if (!Number.isFinite(targetId) || targetId === keepDragState.noteId) return;
+      const changed = applyKeepReorder(keepDragState.noteId, targetId, placeAfter);
+      keepDragState.moved = true;
+      if (!changed) return;
+      renderKeepGrid();
+      await persistKeepOrder(quickNotesCache);
     });
 
     if (mainView === 'keep') setMainView('keep');
@@ -10368,6 +11633,7 @@ function formatTextWithMarkup(rawText) {
   initCalendarNoteEditors();
   initGanttNoteEditors();
   initKanbanEditors();
+  initKanbanganttEditors();
   initMindmapEditors();
   initChartInsertModal();
   initPanelInsertModal();

@@ -183,7 +183,7 @@
         </div>
         <div class="keep-composer-expanded d-none" id="keep-composer-expanded">
           <input type="text" id="keep-composer-title" class="keep-input keep-input-title" placeholder="Title">
-          <textarea id="keep-composer-body" class="keep-input keep-input-body" placeholder="Take a note…" rows="3"></textarea>
+          <textarea id="keep-composer-body" class="keep-input keep-input-body" placeholder="Note (markdown)…" rows="3"></textarea>
           <div id="keep-composer-checklist" class="keep-checklist d-none"></div>
           <div class="keep-composer-actions">
             <button type="button" id="keep-composer-checklist-btn" class="keep-icon-btn" title="Checklist">☑</button>
@@ -701,6 +701,94 @@
         <button type="button" class="btn btn-sm btn-outline-danger me-auto" id="kanban-card-clear-btn">Clear note</button>
         <button type="button" class="btn btn-sm btn-outline-light" data-bs-dismiss="modal">Cancel</button>
         <button type="button" class="btn btn-sm btn-primary" id="kanban-card-save-btn">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Kanban Gantt title dialog -->
+<div class="modal fade dashboard-modal-root" id="kg-title-modal" tabindex="-1" aria-labelledby="kg-title-modal-title" aria-hidden="true" data-bs-theme="dark">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content dashboard-modal">
+      <div class="modal-header">
+        <h5 class="modal-title" id="kg-title-modal-title">Kanban Gantt board</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="small dashboard-modal-hint mb-2">Edit board title, columns, and optional cost tracking.</p>
+        <label class="form-label small fw-semibold" for="kg-title-input">Title</label>
+        <input type="text" class="form-control form-control-sm mb-3" id="kg-title-input" placeholder="Sprint board" autocomplete="off">
+        <label class="form-label small fw-semibold" for="kg-title-cols">Columns</label>
+        <input type="text" class="form-control form-control-sm font-monospace mb-3" id="kg-title-cols" placeholder="Todo,Doing,Suspended,Done" autocomplete="off" spellcheck="false">
+        <div class="form-check mb-3">
+          <input class="form-check-input" type="checkbox" id="kg-title-withcost" checked>
+          <label class="form-check-label" for="kg-title-withcost">With cost</label>
+        </div>
+        <div id="kg-title-cost-fields" class="row g-2">
+          <div class="col">
+            <label class="form-label small fw-semibold" for="kg-title-rate">Default / hour</label>
+            <input type="number" min="0" step="0.01" class="form-control form-control-sm" id="kg-title-rate" placeholder="50">
+          </div>
+          <div class="col">
+            <label class="form-label small fw-semibold" for="kg-title-currency">Currency</label>
+            <input type="text" class="form-control form-control-sm" id="kg-title-currency" placeholder="EUR" autocomplete="off">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-sm btn-outline-danger me-auto" id="kg-title-clear-btn">Clear title</button>
+        <button type="button" class="btn btn-sm btn-outline-light" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-sm btn-primary" id="kg-title-save-btn">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Kanban Gantt task dialog -->
+<div class="modal fade dashboard-modal-root" id="kg-card-modal" tabindex="-1" aria-labelledby="kg-card-modal-title" aria-hidden="true" data-bs-theme="dark">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content dashboard-modal">
+      <div class="modal-header">
+        <h5 class="modal-title" id="kg-card-modal-title">Kanban Gantt task</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="small dashboard-modal-hint mb-2">Edit task, rate, status, and note. Use Start / Suspend / Stop on the card for time tracking.</p>
+        <label class="form-label small fw-semibold" for="kg-card-label">Label</label>
+        <input type="text" class="form-control form-control-sm mb-2" id="kg-card-label" placeholder="Task name" autocomplete="off">
+        <label class="form-label small fw-semibold" for="kg-card-col">Column</label>
+        <select class="form-select form-select-sm mb-2" id="kg-card-col"></select>
+        <div class="row g-2 mb-2">
+          <div class="col" id="kg-card-rate-field">
+            <label class="form-label small fw-semibold" for="kg-card-rate">Cost / hour</label>
+            <input type="number" min="0" step="0.01" class="form-control form-control-sm" id="kg-card-rate" placeholder="50">
+          </div>
+          <div class="col">
+            <label class="form-label small fw-semibold" for="kg-card-status">Status</label>
+            <select class="form-select form-select-sm" id="kg-card-status">
+              <option value="idle">idle</option>
+              <option value="running">running</option>
+              <option value="suspended">suspended</option>
+              <option value="stopped">stopped</option>
+            </select>
+          </div>
+        </div>
+        <label class="form-label small fw-semibold" for="kg-card-elapsed">Elapsed seconds</label>
+        <input type="number" min="0" step="1" class="form-control form-control-sm mb-3" id="kg-card-elapsed" placeholder="0">
+        <label class="form-label small fw-semibold" for="kg-card-text">Markdown text</label>
+        <textarea id="kg-card-text" class="form-control form-control-sm mb-3" rows="3" placeholder="**bold**, _italic_…"></textarea>
+        <label class="form-label small fw-semibold" for="kg-card-image">Image URL / markdown path</label>
+        <div class="d-flex gap-2 mb-2">
+          <input type="text" class="form-control form-control-sm font-monospace" id="kg-card-image" placeholder="/media/uploads/photo.png" autocomplete="off" spellcheck="false">
+          <button type="button" class="btn btn-sm btn-outline-light flex-shrink-0" id="kg-card-upload-btn">Upload</button>
+        </div>
+        <input type="file" id="kg-card-file" class="visually-hidden-file-input" accept="image/*" tabindex="-1" aria-hidden="true">
+        <div id="kg-card-preview" class="calendar-note-preview d-none"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-sm btn-outline-danger me-auto" id="kg-card-clear-btn">Clear note</button>
+        <button type="button" class="btn btn-sm btn-outline-light" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-sm btn-primary" id="kg-card-save-btn">Save</button>
       </div>
     </div>
   </div>

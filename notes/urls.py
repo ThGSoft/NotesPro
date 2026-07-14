@@ -19,6 +19,7 @@ urlpatterns = [
     path('api/workspaces/<int:workspace_id>/tags/rebuild/', views.workspace_tags_rebuild, name='api_workspace_tags_rebuild'),
     path('api/workspaces/<int:workspace_id>/quick-notes/', views_quicknotes.quick_note_list, name='api_quick_notes'),
     path('api/workspaces/<int:workspace_id>/quick-notes/create/', views_quicknotes.quick_note_create, name='api_quick_note_create'),
+    path('api/workspaces/<int:workspace_id>/quick-notes/reorder/', views_quicknotes.quick_note_reorder, name='api_quick_note_reorder'),
     path('api/quick-notes/<int:pk>/', views_quicknotes.quick_note_detail, name='api_quick_note_detail'),
     path('api/quick-notes/<int:pk>/update/', views_quicknotes.quick_note_update, name='api_quick_note_update'),
     path('api/quick-notes/<int:pk>/delete/', views_quicknotes.quick_note_delete, name='api_quick_note_delete'),

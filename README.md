@@ -25,12 +25,12 @@ Screenshots are generated from `docs/screenshots/dashboard-mock.html` (static mo
 - **Colored panels** — info / success / warning / danger / note callout blocks in markdown
 - Tab-separated `sheet` blocks (formulas) and D3 `chart` blocks linked by sheet id
 - **Calendar** blocks — list days, weeks, months, or years for a `from`/`to` range
-- **Gantt** / **Kanban** / **Mindmap** blocks — project timelines, boards, and indented idea trees
+- **Gantt** / **Kanban** / **Kanban Gantt** / **Mindmap** blocks — project timelines, boards, timed cost tracking, and indented idea trees
 - File manager with drag-and-drop uploads; click images to open in a new tab
 - **Local file links** — paste Windows paths or insert via toolbar; click in preview to reveal in Explorer (local dev server)
 - Resizable dashboard panels (sidebar, editor, chat/mail)
 - Dark dashboard UI
-- **Keep** — Google Keep–style quick notes per workspace (pin, colors, checklists, archive)
+- **Keep** — Google Keep–style quick notes per workspace (pin, colors, checklists, archive, drag reorder, markdown)
 
 ### Chat & mail
 - **Private chat** — WhatsApp-style 1:1 messages, end-to-end encrypted in the browser (ECDH + AES-GCM)
@@ -524,8 +524,9 @@ Or paste a path from Explorer (**Shift+Right click → Copy as path**) into the 
 Quick notes are separate from the page tree — lightweight sticky notes for each workspace.
 
 - Open from the top bar **Keep** button (toggle back with the same button or by clicking a page/folder in the tree).
-- **Composer** at the top: title, body, optional checklist, and card color.
-- **Cards** in a grid: pin, recolor, checklist, archive, or delete from the card footer on hover.
+- **Composer** at the top: title, body (markdown), optional checklist, and card color.
+- **Cards** in a grid: pin, recolor, checklist, archive, or delete from the card footer on hover. Collapsed cards render markdown (bold, lists, links, images, …); expand to edit the source.
+- **Drag and drop** cards to reorder (writers only). Dropping onto a pinned/unpinned card moves the note into that group. Disabled while search is active.
 - **Search** filters title and body; **Show archived** lists archived notes.
 - Pinned notes stay at the top; your last view (**Pages** vs **Keep**) is saved in user settings.
 - Writers can create and edit notes; read-only members can view them.
@@ -586,7 +587,7 @@ markdown
 ```
 
 
-Multi-day keys use `@d:from-to` (same `D.M.YY` dates; `..` also works as separator). In preview, a **colored line** runs along the **bottom** of the covered days; overlapping periods stack with the **newest line above** older ones. **Times** stay visible on the day (time only for daily timed notes; title in the tooltip); period **titles** stay on the **start** day bar. Click a time or line to edit.
+Multi-day keys use `@d:from-to` (same `D.M.YY` dates; `..` also works as separator). In preview, a **colored line** runs along the **bottom** of the covered days; overlapping periods stack with the **newest line above** older ones. **Times** stay visible on desktop (time only for daily timed notes; title in the tooltip). On **mobile**, day events show as **points** only (details in the tooltip). Period **titles** stay on the **start** day bar on desktop. Click a time, point, or line to edit.
 
 markdown
 ```calendar{from=1.1.26;to=1.7.26;mode=year;col=danger}
@@ -645,6 +646,52 @@ Each card line is:
 You can also group with `## Column` headings and write `Label | note` under each.
 
 Use the toolbar **kanban** button to insert a sample board. In **Edit** mode, **drag cards** between columns (or reorder within a column), click the **title** to edit name/columns, or click a **card** to edit label, column, note, and image.
+
+### Kanban Gantt
+
+A kanban board with per-task timers and hourly cost rollups. Fence name: `kanbangantt` (also `kbgantt` / `kgantt`):
+
+markdown
+```kanbangantt{cols=Todo,Doing,Suspended,Done;withcost=1;rate=50;currency=EUR;col=info}
+# Sprint board
+Todo | Design wireframes | status=idle;rate=60
+Doing | Build API | status=running;rate=75;started=14.07.26 09:15;elapsed=3600
+Suspended | On hold task | status=suspended;rate=75;elapsed=1800
+Done | Kickoff | status=stopped;rate=50;elapsed=7200
+```
+
+
+| Option | Description |
+|--------|-------------|
+| `cols` | Comma-separated column names (default `Todo,Doing,Suspended,Done`) |
+| `withcost` | Show rates and cost totals (`1` / `0`, default `1`). Also `costs` / `showcost` |
+| `rate` | Default cost per hour for tasks without their own `rate` (used when `withcost=1`) |
+| `currency` | Display currency (default `EUR`) |
+| `col` | Theme: `info` / `success` / `warning` / `danger` / `note`, or a CSS color |
+| `title` | Optional title via fence `title=…`, body `# Title`, or `title: …` |
+
+Each task line is:
+
+`Column | Label | status=…;rate=…;elapsed=…;started=… | optional markdown | optional ![](image)`
+
+| Field | Meaning |
+|--------|---------|
+| `status` | `idle` / `running` / `suspended` / `stopped` |
+| `rate` | Cost per hour for this task (falls back to board `rate`) |
+| `elapsed` | Accumulated seconds (paused time) |
+| `started` | When the current run began (`DD.MM.YY HH:MM`) — only while `running` |
+
+**Suspended column:** default boards include a **Suspended** category. Clicking **Suspend** pauses the timer and moves the task there. **Resume** (Start) moves it back to **Doing** and continues timing.
+
+**Cost** = `(elapsed + live running time) / 3600 × rate`. The board footer and each column show totals.
+
+Use the toolbar **kanban gantt** button to insert a sample. In **Edit** mode:
+
+- **Start** / **Suspend** / **Stop** on a card update status and elapsed in the markdown
+- **Drag** tasks between columns (or reorder within a column) using the **⠿ handle** on each card
+- Click the **title** for board rate/currency/columns and the **With cost** toggle, or a **card** (outside the buttons) to edit rate, status, note, and image
+
+Turn off **With cost** (`withcost=0`) for a time-only board: rates and money totals are hidden; timers still work.
 
 ### Mindmap
 
