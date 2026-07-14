@@ -10214,7 +10214,7 @@ function formatTextWithMarkup(rawText) {
         if (isImageFileHref(url)) {
           const fileName = url.split('/').pop();
           const cleanName = fileName.replace(/_[A-Za-z0-9]+(?=\.[a-z0-9]+$)/i, '');
-          easyMDE.codemirror.replaceSelection(`![${cleanName}](${url})\n`);
+          easyMDE.codemirror.replaceSelection(`![${cleanName}](${url}){width=100%}\n`);
           easyMDE.codemirror.focus();
           scheduleSave();
           return;
