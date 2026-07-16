@@ -1172,3 +1172,22 @@ def open_local_file(request):
         return JsonResponse({'error': str(exc)}, status=400)
     except OSError as exc:
         return JsonResponse({'error': str(exc)}, status=500)
+
+
+@login_required
+@require_GET
+def rss_fetch(request):
+    """Proxy + parse an external RSS/Atom feed (MagpieRSS-style JSON)."""
+    from .rss_feed import fetch_rss
+
+    url = (request.GET.get('url') or '').strip()
+    limit = request.GET.get('limit') or 10
+    if not url:
+        return JsonResponse({'error': 'url required'}, status=400)
+    try:
+        data = fetch_rss(url, limit=limit)
+    except ValueError as exc:
+        return JsonResponse({'error': str(exc)}, status=400)
+    except Exception as exc:  # noqa: BLE001 — surface fetch failures cleanly
+        return JsonResponse({'error': f'Feed error: {exc}'}, status=502)
+    return JsonResponse(data)

@@ -57,6 +57,7 @@ urlpatterns = [
     path('api/dm/signal/<int:user_id>/', views_dm.dm_signal_send, name='dm_signal_send'),
 
     path('api/uploads/', views.upload_file, name='api_upload'),
+    path('api/rss/', views.rss_fetch, name='api_rss_fetch'),
     path('api/local-files/open/', views.open_local_file, name='api_open_local_file'),
     path('api/pages/<int:pk>/', views.page_detail, name='api_page_detail'),
     path('api/pages/create/', views.page_create, name='api_page_create'),
