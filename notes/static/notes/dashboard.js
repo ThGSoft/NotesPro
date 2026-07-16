@@ -1347,7 +1347,7 @@
   }
 
   function isPreviewRichBlock(el) {
-    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .page-tags');
+    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .page-tags');
   }
 
   function getPreviewBlockSourceLine(node) {
@@ -1867,6 +1867,185 @@
     return text.replace(/```panel(?:\s+(\w+))?\s*\n([\s\S]*?)```/gi, (_, typeRaw, content) => (
       wrapRichPreviewBlock(parsePanelBlockContent(typeRaw, content))
     ));
+  }
+
+  // MagpieRSS-style news/RSS embed:
+  // ```news url=https://feeds.bbci.co.uk/news/world/rss.xml
+  // ```news{url=…;limit=10;col=info}
+  const NEWS_BLOCK_RE = /```(?:news|rss)(?:\{([^}]*)\}|([^\n`]*))?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+  const NEWS_CLIENT_CACHE_MS = 60_000;
+  const newsFeedCache = new Map();
+
+  function parseNewsAttrString(raw) {
+    const config = {};
+    const text = String(raw || '').trim();
+    if (!text) return config;
+    // Brace form uses `;`, space form uses whitespace between key=value pairs.
+    const parts = text.includes(';')
+      ? text.split(';')
+      : text.match(/(?:[^\s"']+|"(?:\\.|[^"])*"|'(?:\\.|[^'])*')+/g) || [];
+    parts.forEach(part => {
+      const piece = String(part || '').trim();
+      if (!piece) return;
+      const eq = piece.indexOf('=');
+      if (eq <= 0) return;
+      const key = piece.slice(0, eq).trim().toLowerCase();
+      let val = piece.slice(eq + 1).trim();
+      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+        val = val.slice(1, -1);
+      }
+      if (key) config[key] = val;
+    });
+    return config;
+  }
+
+  function parseNewsSpec(braceAttrs, spaceAttrs, body = '') {
+    const config = {
+      ...parseNewsAttrString(braceAttrs),
+      ...parseNewsAttrString(spaceAttrs),
+    };
+    const url = String(config.url || config.feed || config.src || '').trim();
+    let limit = parseInt(config.limit || config.max || '10', 10);
+    if (!Number.isFinite(limit)) limit = 10;
+    limit = Math.max(1, Math.min(50, limit));
+    const colRaw = String(config.col || config.color || 'info').toLowerCase();
+    const col = ['info', 'success', 'warning', 'danger', 'note', 'primary'].includes(colRaw)
+      ? (colRaw === 'primary' ? 'info' : colRaw)
+      : 'info';
+    let title = String(config.title || '').trim();
+    const lines = String(body || '').replace(/\r\n/g, '\n').split('\n');
+    for (const line of lines) {
+      const m = line.match(/^#\s+(.+)$/);
+      if (m) {
+        title = m[1].trim();
+        break;
+      }
+    }
+    return { url, limit, col, title };
+  }
+
+  function newsShellHtml(spec) {
+    const url = spec.url || '';
+    const title = spec.title || (url ? 'News' : 'News feed');
+    const missing = !url
+      ? '<div class="md-news-error">Add a feed URL: <code>```news url=https://…</code></div>'
+      : '<div class="md-news-loading">Loading feed…</div>';
+    return wrapRichPreviewBlock(
+      `<div class="md-news md-news--${escapeHtml(spec.col)}" data-news-url="${escapeHtml(url)}" data-news-limit="${spec.limit}" data-news-title="${escapeHtml(title)}">`
+      + `<div class="md-news-head"><span class="md-news-badge">RSS</span>`
+      + `<strong class="md-news-title">${escapeHtml(title)}</strong></div>`
+      + `<div class="md-news-body">${missing}</div></div>`,
+    );
+  }
+
+  function parseNewsBlocks(text) {
+    NEWS_BLOCK_RE.lastIndex = 0;
+    return String(text || '').replace(NEWS_BLOCK_RE, (_, braceAttrs, spaceAttrs, content) => {
+      const spec = parseNewsSpec(braceAttrs, spaceAttrs, content);
+      return newsShellHtml(spec);
+    });
+  }
+
+  function formatNewsDate(value) {
+    if (!value) return '';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return String(value);
+    try {
+      return d.toLocaleString(undefined, {
+        year: 'numeric', month: 'short', day: 'numeric',
+        hour: '2-digit', minute: '2-digit',
+      });
+    } catch (_) {
+      return d.toISOString().slice(0, 16).replace('T', ' ');
+    }
+  }
+
+  function renderNewsItemsHtml(data, fallbackTitle) {
+    const channel = data?.channel || {};
+    const items = Array.isArray(data?.items) ? data.items : [];
+    const channelTitle = channel.title || fallbackTitle || 'News';
+    const channelLink = channel.link || '';
+    const headLink = channelLink
+      ? `<a class="md-news-channel" href="${escapeHtml(channelLink)}" target="_blank" rel="noopener noreferrer">${escapeHtml(channelTitle)}</a>`
+      : `<span class="md-news-channel">${escapeHtml(channelTitle)}</span>`;
+    const channelDesc = channel.description
+      ? `<div class="md-news-channel-desc">${escapeHtml(channel.description)}</div>`
+      : '';
+    if (!items.length) {
+      return `${headLink}${channelDesc}<div class="md-news-empty">No items in this feed.</div>`;
+    }
+    const list = items.map(item => {
+      const title = item.title || '(untitled)';
+      const link = item.link || '';
+      const titleHtml = link
+        ? `<a href="${escapeHtml(link)}" target="_blank" rel="noopener noreferrer">${escapeHtml(title)}</a>`
+        : escapeHtml(title);
+      const desc = item.description
+        ? `<div class="md-news-item-desc">${escapeHtml(item.description)}</div>`
+        : '';
+      const date = item.pubDate
+        ? `<div class="md-news-item-date">${escapeHtml(formatNewsDate(item.pubDate))}</div>`
+        : '';
+      const imageUrl = String(item.image || '').trim();
+      const safeImage = /^https?:\/\//i.test(imageUrl) ? imageUrl : '';
+      const img = safeImage
+        ? (
+          link
+            ? `<a class="md-news-item-media" href="${escapeHtml(link)}" target="_blank" rel="noopener noreferrer">`
+              + `<img class="md-news-item-img" src="${escapeHtml(safeImage)}" alt="" loading="lazy" referrerpolicy="no-referrer"></a>`
+            : `<div class="md-news-item-media"><img class="md-news-item-img" src="${escapeHtml(safeImage)}" alt="" loading="lazy" referrerpolicy="no-referrer"></div>`
+        )
+        : '';
+      return `<article class="md-news-item${safeImage ? ' md-news-item--has-image' : ''}">${img}`
+        + `<div class="md-news-item-copy"><h4 class="md-news-item-title">${titleHtml}</h4>${desc}${date}</div></article>`;
+    }).join('');
+    return `${headLink}${channelDesc}<div class="md-news-items">${list}</div>`;
+  }
+
+  async function fetchNewsFeed(url, limit) {
+    const key = `${url}::${limit}`;
+    const now = Date.now();
+    const hit = newsFeedCache.get(key);
+    if (hit?.data && (now - hit.ts) < NEWS_CLIENT_CACHE_MS) return hit.data;
+    if (hit?.promise) return hit.promise;
+
+    const promise = api(`api/rss/?url=${encodeURIComponent(url)}&limit=${encodeURIComponent(limit)}`)
+      .then(data => {
+        newsFeedCache.set(key, { ts: Date.now(), data, promise: null });
+        return data;
+      })
+      .catch(err => {
+        newsFeedCache.delete(key);
+        throw err;
+      });
+    newsFeedCache.set(key, { ts: now, data: hit?.data || null, promise });
+    return promise;
+  }
+
+  function hydrateNewsBlocks(root) {
+    if (!root) return;
+    root.querySelectorAll('.md-news[data-news-url]').forEach(el => {
+      const url = (el.getAttribute('data-news-url') || '').trim();
+      if (!url || el.dataset.newsHydrated === '1') return;
+      el.dataset.newsHydrated = '1';
+      const limit = el.getAttribute('data-news-limit') || '10';
+      const fallbackTitle = el.getAttribute('data-news-title') || 'News';
+      const body = el.querySelector('.md-news-body');
+      const titleEl = el.querySelector('.md-news-title');
+      fetchNewsFeed(url, limit).then(data => {
+        if (!el.isConnected) return;
+        if (titleEl && data?.channel?.title && fallbackTitle === 'News') {
+          titleEl.textContent = data.channel.title;
+        }
+        if (body) body.innerHTML = renderNewsItemsHtml(data, fallbackTitle);
+      }).catch(err => {
+        if (!el.isConnected) return;
+        el.dataset.newsHydrated = '0';
+        if (body) {
+          body.innerHTML = `<div class="md-news-error">${escapeHtml(err.message || 'Failed to load feed')}</div>`;
+        }
+      });
+    });
   }
 
   const CALENDAR_BLOCK_RE = /```(?:calendar|calender)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
@@ -5509,6 +5688,12 @@ function formatTextWithMarkup(rawText) {
         : 'info';
       return `\n\n---\n*${PANEL_TYPE_LABELS[type]} panel — open full preview to view*\n---\n\n`;
     });
+    NEWS_BLOCK_RE.lastIndex = 0;
+    md = md.replace(NEWS_BLOCK_RE, (_, braceAttrs, spaceAttrs, content) => {
+      const spec = parseNewsSpec(braceAttrs, spaceAttrs, content);
+      const label = spec.title || (spec.url ? 'News feed' : 'News');
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
     md = md.replace(/```(?:calendar|calender)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
       const spec = parseCalendarSpec(fenceAttrs, '');
       const label = (spec.from && spec.to)
@@ -5570,6 +5755,7 @@ function formatTextWithMarkup(rawText) {
       md = parseSheetBlocks(md, options);
       md = parseChartBlocks(md, sheetRegistry);
       md = parsePanelBlocks(md);
+      md = parseNewsBlocks(md);
       md = parseCalendarBlocks(md, options);
       md = parseGanttBlocks(md, options);
       md = parseKanbanganttBlocks(md, options);
@@ -5945,6 +6131,7 @@ function formatTextWithMarkup(rawText) {
     preview.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(h => { h.id = slugifyHeading(h.textContent); });
     markFileLinks(preview);
     renderD3Charts(preview, sheetRegistry);
+    hydrateNewsBlocks(preview);
     buildFloatingToc();
     annotatePreviewSourceLines(raw, preview);
     if (isEditing) preview.tabIndex = -1;
@@ -9342,6 +9529,18 @@ function formatTextWithMarkup(rawText) {
           },
           className: 'fa fa-sitemap',
           title: 'Insert mindmap',
+        },
+        {
+          name: 'insert-news',
+          action: (editor) => {
+            insertFenceBlock(
+              editor,
+              'news url=https://feeds.bbci.co.uk/news/world/rss.xml',
+              '# World news',
+            );
+          },
+          className: 'fa fa-rss',
+          title: 'Insert news / RSS feed',
         },
         {
           name:         'snippets',
