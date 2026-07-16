@@ -1103,19 +1103,61 @@ body.editing #preview-content:focus {
 }
 
 .preview-content img.md-image,
-.preview-layout img.md-image {
+.preview-layout img.md-image,
+.editor-preview-side img.md-image,
+.EasyMDEContainer .editor-preview img.md-image {
   height: auto;
   max-width: 100%;
 }
 
 .preview-content .md-image-wrap,
-.preview-layout .md-image-wrap {
+.preview-layout .md-image-wrap,
+.editor-preview-side .md-image-wrap,
+.EasyMDEContainer .editor-preview .md-image-wrap {
   margin: 10px 0;
 }
 
 .preview-content .md-image-wrap img.md-image,
 .preview-layout .md-image-wrap img.md-image {
   display: inline-block;
+}
+
+.preview-content .md-image-wrap--full,
+.preview-layout .md-image-wrap--full,
+.editor-preview-side .md-image-wrap--full,
+.EasyMDEContainer .editor-preview .md-image-wrap--full {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  margin: 10px 0;
+}
+
+.preview-content .md-image-wrap--full a.md-image-link,
+.preview-layout .md-image-wrap--full a.md-image-link,
+.editor-preview-side .md-image-wrap--full a.md-image-link,
+.EasyMDEContainer .editor-preview .md-image-wrap--full a.md-image-link,
+.preview-content a.md-image-link--full,
+.preview-layout a.md-image-link--full,
+.editor-preview-side a.md-image-link--full,
+.EasyMDEContainer .editor-preview a.md-image-link--full {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  line-height: 0;
+}
+
+.preview-content .md-image-wrap--full img.md-image,
+.preview-layout .md-image-wrap--full img.md-image,
+.editor-preview-side .md-image-wrap--full img.md-image,
+.EasyMDEContainer .editor-preview .md-image-wrap--full img.md-image,
+.preview-content img.md-image--full,
+.preview-layout img.md-image--full,
+.editor-preview-side img.md-image--full,
+.EasyMDEContainer .editor-preview img.md-image--full {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
 }
 
 .preview-content a.file-link-app,
@@ -1536,6 +1578,22 @@ body.editing #preview-content:focus {
   overflow: hidden;
 }
 
+.spreadsheet-table .sheet-cell-image .md-image-wrap--sheet-cell,
+.spreadsheet-table .sheet-cell-image .md-image-wrap--full {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+}
+
+.spreadsheet-table .sheet-cell-image a.md-image-link,
+.spreadsheet-table .sheet-cell-image a.md-image-link--full {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  line-height: 0;
+}
+
 .spreadsheet-table .sheet-cell-image img.md-image,
 .spreadsheet-table .sheet-cell-image .md-image-wrap--sheet-cell img.md-image {
   display: block;
@@ -1546,9 +1604,35 @@ body.editing #preview-content:focus {
   vertical-align: middle;
 }
 
-.spreadsheet-table .sheet-cell-image .md-image-wrap--sheet-cell {
-  margin: 0;
+/* Explicit non-100% widths keep inline style from renderSheetMarkdownImage */
+
+/* Markdown GFM tables: full-width images fill the cell */
+.preview-content table td .md-image-wrap--full,
+.preview-content table th .md-image-wrap--full,
+.preview-layout table td .md-image-wrap--full,
+.preview-layout table th .md-image-wrap--full,
+.editor-preview-side table td .md-image-wrap--full,
+.EasyMDEContainer .editor-preview table td .md-image-wrap--full {
+  display: block;
+  width: 100%;
   max-width: 100%;
+  margin: 6px 0;
+}
+
+.preview-content table td a.md-image-link--full,
+.preview-content table th a.md-image-link--full,
+.preview-layout table td a.md-image-link--full,
+.preview-layout table th a.md-image-link--full,
+.editor-preview-side table td a.md-image-link--full,
+.EasyMDEContainer .editor-preview table td a.md-image-link--full,
+.preview-content table td img.md-image--full,
+.preview-content table th img.md-image--full,
+.preview-layout table td img.md-image--full,
+.preview-layout table th img.md-image--full {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
 }
 
 body.editing .spreadsheet-table .sheet-cell-editable:hover,
@@ -4868,6 +4952,13 @@ table {
   border-radius: 6px;
   display: block;
   margin: 6px 0;
+}
+
+.keep-md .md-image-wrap--full,
+.keep-md a.md-image-link--full,
+.keep-md img.md-image--full {
+  width: 100%;
+  max-width: 100%;
 }
 
 .keep-md table {

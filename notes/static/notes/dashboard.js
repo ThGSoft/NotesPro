@@ -701,7 +701,7 @@
     return { width, align };
   }
 
-  function renderMarkdownImage(alt, src, attributes) {
+  function renderMarkdownImage(alt, src, attributes, options = {}) {
     const { width, align } = parseMarkdownImageAttrs(attributes);
     const styles = ['height: auto'];
     if (width) {
@@ -710,23 +710,66 @@
     } else {
       styles.unshift('max-width: 100%');
     }
-    const img = `<img class="md-image" src="${src}" alt="${alt}" style="${styles.join('; ')}"${width ? ` data-md-width="${width}"` : ''}>`;
+    const isFullWidth = Boolean(width && /^100%$/.test(String(width).trim()));
+    const imgClass = `md-image${isFullWidth ? ' md-image--full' : ''}`;
+    const img = `<img class="${imgClass}" src="${src}" alt="${alt}" style="${styles.join('; ')}"${width ? ` data-md-width="${width}"` : ''}>`;
     const tabHref = imageTabHref(src);
     const linkedImg = tabHref
-      ? `<a href="${String(tabHref).replace(/"/g, '&quot;')}" target="_blank" rel="noopener noreferrer" class="md-image-link">${img}</a>`
+      ? `<a href="${String(tabHref).replace(/"/g, '&quot;')}" target="_blank" rel="noopener noreferrer" class="md-image-link${isFullWidth ? ' md-image-link--full' : ''}">${img}</a>`
       : img;
+    // In table cells use <span> (valid phrasing/flow in td after restore); avoid <figure>
+    // so GFM pipe tables stay intact during tokenize → marked → restore.
+    const wrapTag = options.tableCell ? 'span' : 'figure';
+    const wrapExtra = options.tableCell ? ' md-image-wrap--table' : '';
+    const wrapStyle = options.tableCell
+      ? `display:block;width:${isFullWidth ? '100%' : 'auto'};max-width:100%;margin:6px 0;`
+      : 'margin: 10px 0;';
     if (align && align !== 'left') {
-      return `<figure class="md-image-wrap" style="text-align: ${align}; margin: 10px 0;">${linkedImg}</figure>`;
+      return `<${wrapTag} class="md-image-wrap${isFullWidth ? ' md-image-wrap--full' : ''}${wrapExtra}" style="text-align: ${align}; ${wrapStyle}">${linkedImg}</${wrapTag}>`;
     }
-    if (width) {
-      return `<figure class="md-image-wrap" style="margin: 10px 0;">${linkedImg}</figure>`;
+    if (width || options.tableCell) {
+      return `<${wrapTag} class="md-image-wrap${isFullWidth ? ' md-image-wrap--full' : ''}${wrapExtra}" style="${wrapStyle}">${linkedImg}</${wrapTag}>`;
     }
     return linkedImg;
   }
 
+  function materializeMarkdownImages(markdown) {
+    const specs = [];
+    // Skip fenced code by splitting on fences
+    const parts = String(markdown || '').split(/(```[\s\S]*?```)/g);
+    const out = parts.map(part => {
+      if (part.startsWith('```')) return part;
+      const imageRegex = /!\[(.*?)\]\((.*?)\)\s*(?:\{(.*?)\})?/g;
+      return part.replace(imageRegex, (match, alt, src, attributes) => {
+        const token = `@@MDIMG${specs.length}@@`;
+        specs.push({ alt, src, attributes: attributes || '' });
+        return token;
+      });
+    }).join('');
+    return { markdown: out, imageSpecs: specs };
+  }
+
+  function restoreMarkdownImageTokens(html, imageSpecs) {
+    if (!imageSpecs?.length) return html;
+    let out = String(html || '');
+    out = out.replace(/<p>\s*(@@MDIMG\d+@@)\s*<\/p>/gi, '$1');
+    out = out.replace(/@@MDIMG(\d+)@@/g, (match, id, offset, full) => {
+      const idx = Number(id);
+      const spec = imageSpecs[idx];
+      if (!spec) return '';
+      const before = full.slice(0, offset);
+      const lastOpen = Math.max(before.lastIndexOf('<td'), before.lastIndexOf('<th'));
+      const lastClose = Math.max(before.lastIndexOf('</td>'), before.lastIndexOf('</th>'));
+      const inTable = lastOpen > lastClose;
+      return renderMarkdownImage(spec.alt, spec.src, spec.attributes, { tableCell: inTable });
+    });
+    return out;
+  }
+
   function parseMarkdownImages(plainText) {
-    const imageRegex = /!\[(.*?)\]\((.*?)\)\s*(?:\{(.*?)\})?/g;
-    return plainText.replace(imageRegex, (match, alt, src, attributes) => renderMarkdownImage(alt, src, attributes));
+    // Legacy helper: materialize immediately (non-table contexts / callers expecting HTML).
+    const { markdown, imageSpecs } = materializeMarkdownImages(plainText);
+    return restoreMarkdownImageTokens(markdown, imageSpecs);
   }
 
   function applyPreviewImageStyles(root) {
@@ -738,6 +781,23 @@
         img.style.width = img.dataset.mdWidth;
         img.style.maxWidth = '100%';
         img.style.height = 'auto';
+        img.style.display = 'block';
+        if (/^100%$/.test(String(img.dataset.mdWidth).trim())) {
+          img.classList.add('md-image--full');
+          const link = img.closest('a.md-image-link');
+          const wrap = img.closest('.md-image-wrap');
+          link?.classList.add('md-image-link--full');
+          wrap?.classList.add('md-image-wrap--full');
+          if (link) {
+            link.style.display = 'block';
+            link.style.width = '100%';
+            link.style.maxWidth = '100%';
+          }
+          if (wrap) {
+            wrap.style.width = '100%';
+            wrap.style.maxWidth = '100%';
+          }
+        }
       }
       wrapImageWithTabLink(img);
     });
@@ -949,22 +1009,27 @@
 
   function renderSheetMarkdownImage(alt, src, attributes) {
     const { width, align } = parseMarkdownImageAttrs(attributes);
-    const styles = ['height: auto'];
-    if (width) {
-      styles.unshift(`width: ${width}`);
-      styles.push('max-width: 100%');
-    } else {
-      styles.unshift('width: 100%', 'max-width: 100%', 'object-fit: contain');
-    }
-    const img = `<img class="md-image md-image--sheet-cell" src="${src}" alt="${alt}" style="${styles.join('; ')}"${width ? ` data-md-width="${width}"` : ''}>`;
+    // Sheet cells: fill cell by default; honor explicit {width=…} overrides.
+    const effectiveWidth = width || '100%';
+    const isFullWidth = /^100%$/.test(String(effectiveWidth).trim());
+    const styles = [
+      `width: ${effectiveWidth}`,
+      'max-width: 100%',
+      'height: auto',
+      'object-fit: contain',
+      'display: block',
+    ];
+    const imgClass = `md-image md-image--sheet-cell${isFullWidth ? ' md-image--full' : ''}`;
+    const img = `<img class="${imgClass}" src="${src}" alt="${alt}" style="${styles.join('; ')}" data-md-width="${escapeHtml(effectiveWidth)}">`;
     const tabHref = imageTabHref(src);
     const linkedImg = tabHref
-      ? `<a href="${String(tabHref).replace(/"/g, '&quot;')}" target="_blank" rel="noopener noreferrer" class="md-image-link">${img}</a>`
+      ? `<a href="${String(tabHref).replace(/"/g, '&quot;')}" target="_blank" rel="noopener noreferrer" class="md-image-link${isFullWidth ? ' md-image-link--full' : ''}">${img}</a>`
       : img;
+    const wrapClass = `md-image-wrap md-image-wrap--sheet-cell${isFullWidth ? ' md-image-wrap--full' : ''}`;
     if (align && align !== 'left') {
-      return `<figure class="md-image-wrap md-image-wrap--sheet-cell" style="text-align: ${align}; margin: 0;">${linkedImg}</figure>`;
+      return `<figure class="${wrapClass}" style="text-align: ${align}; margin: 0; width: ${isFullWidth ? '100%' : 'auto'};">${linkedImg}</figure>`;
     }
-    return `<figure class="md-image-wrap md-image-wrap--sheet-cell" style="margin: 0;">${linkedImg}</figure>`;
+    return `<figure class="${wrapClass}" style="margin: 0; width: ${isFullWidth ? '100%' : 'auto'};">${linkedImg}</figure>`;
   }
 
   function renderSheetCellContent(cell, style) {
@@ -5513,12 +5578,14 @@ function formatTextWithMarkup(rawText) {
     } else {
       md = replaceRichBlocksWithPlaceholders(md);
     }
-    md = parseMarkdownImages(md);
+    const images = materializeMarkdownImages(md);
+    md = images.markdown;
     const styled = materializeMarkdownInStyledSpans(md);
     return {
       markdown: styled.markdown,
       tagsHtml: buildTagsHtml(tags),
       styledSpanHtml: styled.rendered,
+      imageSpecs: images.imageSpecs,
     };
   }
 
@@ -5534,6 +5601,8 @@ function formatTextWithMarkup(rawText) {
         ? processed.styledSpanHtml[idx]
         : '';
     });
+    // After styled spans (their inner marked may still hold @@MDIMG…@@ tokens).
+    html = restoreMarkdownImageTokens(html, processed.imageSpecs);
     return html;
   }
 
@@ -5796,7 +5865,35 @@ function formatTextWithMarkup(rawText) {
     }
   }
 
+  /** CodeMirror often paints blank the first time #markdown-wrap leaves display:none — refresh after layout. */
+  function refreshMarkdownEditorLayout({ syncScroll = false } = {}) {
+    if (!easyMDE) return;
+    const wrap = document.getElementById('markdown-wrap');
+    if (!wrap || wrap.classList.contains('hidden')) return;
+    if (!document.body.classList.contains('editing')) return;
 
+    const toolbar = wrap.querySelector('.editor-toolbar');
+    const cmEl = wrap.querySelector('.CodeMirror');
+    if (toolbar) toolbar.style.display = '';
+    if (cmEl) cmEl.style.display = '';
+
+    void wrap.offsetWidth;
+    easyMDE.codemirror.refresh();
+
+    if (syncScroll && isEditorPreviewSplit()) {
+      rebuildPreviewScrollAnchors();
+      syncPreviewScrollFromEditor();
+    }
+  }
+
+  function scheduleMarkdownEditorLayoutRefresh({ syncScroll = false } = {}) {
+    const run = () => refreshMarkdownEditorLayout({ syncScroll });
+    requestAnimationFrame(() => {
+      requestAnimationFrame(run);
+    });
+    setTimeout(run, 50);
+    setTimeout(run, 200);
+  }
 
   function renderPreview() {
     const preview = document.getElementById('preview-content');
@@ -5842,6 +5939,7 @@ function formatTextWithMarkup(rawText) {
     let html = marked.parse(processed.markdown) + processed.tagsHtml;
     html = restoreStyledSpanTokens(html, processed.styledSpanHtml);
     html = html.replace(/<p>\s*(<div class="md-styled-block"[\s\S]*?<\/div>)\s*<\/p>/gi, '$1');
+    html = restoreMarkdownImageTokens(html, processed.imageSpecs);
     preview.innerHTML = html;
     applyPreviewImageStyles(preview);
     preview.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(h => { h.id = slugifyHeading(h.textContent); });
@@ -5988,15 +6086,7 @@ function formatTextWithMarkup(rawText) {
       resetEasyMdePreviewState();
       markdownWrap?.classList.remove('hidden');
       previewWrap?.classList.add('hidden');
-      if (easyMDE) {
-        setTimeout(() => {
-          easyMDE.codemirror.refresh();
-          const toolbar = document.querySelector('#markdown-wrap .editor-toolbar');
-          const cm = document.querySelector('#markdown-wrap .CodeMirror');
-          if (toolbar) toolbar.style.display = '';
-          if (cm) cm.style.display = '';
-        }, 50);
-      }
+      scheduleMarkdownEditorLayoutRefresh();
       syncMobileContentMenu();
       if (isMobileLayout()) buildFloatingToc();
       return;
@@ -6010,17 +6100,7 @@ function formatTextWithMarkup(rawText) {
       renderPreview();
       initEditorPreviewScrollSync();
       applyEditorTypographyFromSettings();
-      if (easyMDE) {
-        setTimeout(() => {
-          easyMDE.codemirror.refresh();
-          const toolbar = document.querySelector('#markdown-wrap .editor-toolbar');
-          const cm = document.querySelector('#markdown-wrap .CodeMirror');
-          if (toolbar) toolbar.style.display = '';
-          if (cm) cm.style.display = '';
-          rebuildPreviewScrollAnchors();
-          syncPreviewScrollFromEditor();
-        }, 50);
-      }
+      scheduleMarkdownEditorLayoutRefresh({ syncScroll: true });
       return;
     }
 
@@ -6029,15 +6109,7 @@ function formatTextWithMarkup(rawText) {
 
     if (mode === 'markdown') {
       markdownWrap?.classList.remove('hidden');
-      if (easyMDE) {
-        setTimeout(() => {
-          easyMDE.codemirror.refresh();
-          const toolbar = document.querySelector('#markdown-wrap .editor-toolbar');
-          const cm = document.querySelector('#markdown-wrap .CodeMirror');
-          if (toolbar) toolbar.style.display = '';
-          if (cm) cm.style.display = '';
-        }, 50);
-      }
+      scheduleMarkdownEditorLayoutRefresh();
     } else {
       previewWrap?.classList.remove('hidden');
       renderPreview();
@@ -6054,6 +6126,8 @@ function formatTextWithMarkup(rawText) {
     if (editing) {
       restoreRightPanelAfterPreview();
       switchMode('markdown');
+      // Right-panel restore / grid reflow often finishes after switchMode’s first refresh.
+      scheduleMarkdownEditorLayoutRefresh({ syncScroll: !isMobileLayout() });
     } else {
       hideEditorFindBar();
       hideRightPanelForPreview();
@@ -6084,7 +6158,10 @@ function formatTextWithMarkup(rawText) {
     right.classList.remove('collapsed');
     syncAppShellLayout();
     rightPanelWasExpandedBeforePreview = null;
-    requestAnimationFrame(refreshCommPanelAfterToggle);
+    requestAnimationFrame(() => {
+      refreshCommPanelAfterToggle();
+      if (isEditing) scheduleMarkdownEditorLayoutRefresh({ syncScroll: !isMobileLayout() });
+    });
   }
 
   function syncUserEditAccess(isOwner, role) {
@@ -9438,6 +9515,7 @@ function formatTextWithMarkup(rawText) {
           let html = this.parent.markdown(processed.markdown);
           html = restoreStyledSpanTokens(html, processed.styledSpanHtml);
           html = html.replace(/<p>\s*(<div class="md-styled-block"[\s\S]*?<\/div>)\s*<\/p>/gi, '$1');
+          html = restoreMarkdownImageTokens(html, processed.imageSpecs);
           const wrap = document.createElement('div');
           wrap.innerHTML = html;
           markFileLinks(wrap);

@@ -74,7 +74,7 @@ python manage.py runserver
 
 Open:
 - http://127.0.0.1:8000/login/
-- Demo user after `seed_demo`: `demo` / `password` — workspace **Docs → README** contains this guide with screenshots
+- Demo user after `seed_demo`: `demo` / `password` — workspace **Docs → README** contains this guide with screenshots; **Docs → Blocks** has gantt/calendar/mindmap/kanban/panel examples
 
 Copy `.env.example` to `.env.dev` (or set `DJANGO_ENV`) for local settings. See [Email invitations](#email-invitations) and [Database encryption](#database-encryption) below.
 
