@@ -719,6 +719,32 @@ Tree structure uses **indentation** (2 spaces or a tab per level). Each line is:
 
 Use the toolbar **mindmap** (sitemap) button to insert a sample. In **Edit** mode, click the **title** to change name/direction, or click a **node** to edit label/note/image, add a child, or delete the node.
 
+### News / RSS (Magpie-style)
+
+Embed a live RSS or Atom feed with a fenced `news` block (alias: `rss`):
+
+````markdown
+```news url=https://feeds.bbci.co.uk/news/world/rss.xml
+# World news
+```
+````
+
+Or with brace options:
+
+````markdown
+```news{url=https://feeds.bbci.co.uk/news/world/rss.xml;limit=8;col=info}
+```
+````
+
+| Option | Description |
+|--------|-------------|
+| `url` | Feed URL (`feed` / `src` also accepted) |
+| `limit` | Max items (1–50, default 10) |
+| `col` | Theme: `info` / `success` / `warning` / `danger` / `note` |
+| `title` | Optional heading (or a `# Title` line in the body) |
+
+The server fetches and caches the feed (like MagpieRSS), then the preview shows channel title, linked item titles, **thumbnails** (when the feed provides `media:thumbnail`, image enclosures, or inline `<img>`), short descriptions, and dates. Use the toolbar **RSS** button to insert a BBC World News sample.
+
 ## Notes
 
 - Markdown images support optional size and alignment: `![alt](/media/uploads/photo.png){width=50%}` or `{width=120px; align=center}`. Pasted screenshots default to `{width=100%}`.
