@@ -21,3 +21,4 @@ notes/tests/__pycache__/test_local_files.cpython-310.pyc
 notes/tests/__pycache__/test_tags.cpython-310.pyc
 db.sqlite3
 media
+/notes/management/commands/__pycache__

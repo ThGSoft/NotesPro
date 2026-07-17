@@ -2015,34 +2015,70 @@
         return data;
       })
       .catch(err => {
+        const prev = newsFeedCache.get(key);
+        // Keep serving a previous good payload if a background refresh fails.
+        if (prev?.data) {
+          newsFeedCache.set(key, { ts: prev.ts, data: prev.data, promise: null });
+          return prev.data;
+        }
         newsFeedCache.delete(key);
         throw err;
       });
-    newsFeedCache.set(key, { ts: now, data: hit?.data || null, promise });
+    newsFeedCache.set(key, { ts: hit?.ts || now, data: hit?.data || null, promise });
     return promise;
+  }
+
+  function getCachedNewsFeed(url, limit) {
+    const hit = newsFeedCache.get(`${url}::${limit}`);
+    if (hit?.data && (Date.now() - hit.ts) < NEWS_CLIENT_CACHE_MS) return hit.data;
+    return null;
+  }
+
+  function paintNewsBlock(el, data, fallbackTitle) {
+    if (!el || !data) return;
+    const titleEl = el.querySelector('.md-news-title');
+    const body = el.querySelector('.md-news-body');
+    if (titleEl && data?.channel?.title && fallbackTitle === 'News') {
+      titleEl.textContent = data.channel.title;
+    }
+    if (body) body.innerHTML = renderNewsItemsHtml(data, fallbackTitle);
+    el.dataset.newsHydrated = '1';
+    el.classList.remove('md-news--loading');
   }
 
   function hydrateNewsBlocks(root) {
     if (!root) return;
     root.querySelectorAll('.md-news[data-news-url]').forEach(el => {
       const url = (el.getAttribute('data-news-url') || '').trim();
-      if (!url || el.dataset.newsHydrated === '1') return;
-      el.dataset.newsHydrated = '1';
+      if (!url) return;
       const limit = el.getAttribute('data-news-limit') || '10';
       const fallbackTitle = el.getAttribute('data-news-title') || 'News';
-      const body = el.querySelector('.md-news-body');
-      const titleEl = el.querySelector('.md-news-title');
+      const cached = getCachedNewsFeed(url, limit);
+      if (cached) {
+        // Instant paint from client cache — no loading flash on preview refresh.
+        paintNewsBlock(el, cached, fallbackTitle);
+        return;
+      }
+      if (el.dataset.newsPending === '1') return;
+      el.dataset.newsPending = '1';
+      el.classList.add('md-news--loading');
+      const token = String(Date.now()) + Math.random().toString(36).slice(2, 7);
+      el.dataset.newsToken = token;
       fetchNewsFeed(url, limit).then(data => {
-        if (!el.isConnected) return;
-        if (titleEl && data?.channel?.title && fallbackTitle === 'News') {
-          titleEl.textContent = data.channel.title;
-        }
-        if (body) body.innerHTML = renderNewsItemsHtml(data, fallbackTitle);
+        if (!el.isConnected || el.dataset.newsToken !== token) return;
+        paintNewsBlock(el, data, fallbackTitle);
       }).catch(err => {
-        if (!el.isConnected) return;
+        if (!el.isConnected || el.dataset.newsToken !== token) return;
+        el.dataset.newsPending = '0';
         el.dataset.newsHydrated = '0';
+        el.classList.remove('md-news--loading');
+        const body = el.querySelector('.md-news-body');
         if (body) {
           body.innerHTML = `<div class="md-news-error">${escapeHtml(err.message || 'Failed to load feed')}</div>`;
+        }
+      }).finally(() => {
+        if (el.isConnected && el.dataset.newsToken === token) {
+          el.dataset.newsPending = '0';
         }
       });
     });

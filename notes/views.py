@@ -1175,17 +1175,22 @@ def open_local_file(request):
 
 
 @login_required
-@require_GET
-def rss_fetch(request):
-    """Proxy + parse an external RSS/Atom feed (MagpieRSS-style JSON)."""
+async def rss_fetch(request):
+    """Proxy + parse an external RSS/Atom feed (async; MagpieRSS-style JSON)."""
+    from asgiref.sync import sync_to_async
+
     from .rss_feed import fetch_rss
+
+    if request.method != 'GET':
+        return JsonResponse({'error': 'GET required'}, status=405)
 
     url = (request.GET.get('url') or '').strip()
     limit = request.GET.get('limit') or 10
     if not url:
         return JsonResponse({'error': 'url required'}, status=400)
     try:
-        data = fetch_rss(url, limit=limit)
+        # Blocking HTTP/XML work runs in a worker thread so ASGI stays responsive.
+        data = await sync_to_async(fetch_rss, thread_sensitive=False)(url, limit=limit)
     except ValueError as exc:
         return JsonResponse({'error': str(exc)}, status=400)
     except Exception as exc:  # noqa: BLE001 — surface fetch failures cleanly

@@ -1,18 +1,26 @@
-# Django Notes Pro
+# Notes Pro
 
 Collaborative notes app with workspaces, markdown editing, embedded spreadsheets and charts, team chat, and encrypted messaging.
-
+##  Live Demo
+https://thgsoft.online/DjangoNotesPro/
 ## Screenshots
 
-| Dashboard (edit + preview) | Editor toolbar & find/replace |
-|:---:|:---:|
-| ![Dashboard overview](docs/screenshots/dashboard-overview.png) | ![Editor toolbar](docs/screenshots/dashboard-editor.png) |
+### RSS Feeds
+![RSS Feeds](docs/screenshots/RSS-Feeds.png)
+### Sprintboard
+![Sprintboard](docs/screenshots/SprintBoard.png)
+### Kanban  
+![Kanban ](docs/screenshots/Kanban.png)
+### Mindmap
+![Mindmap](docs/screenshots/Mindmap.png)
+### Panels
+![Panels](docs/screenshots/Panels.png)
+### Sheets & Charts
+![Sheets & Charts](docs/screenshots/Sheet-Charts.png)
+### Sheets with Calculation
+![Sheets with Calculation](docs/screenshots/Sheets.png)
 
-| Preview mode (sheets & charts) | Chat panel (private / group / mail) |
-|:---:|:---:|
-| ![Preview mode](docs/screenshots/dashboard-preview.png) | ![Chat panel](docs/screenshots/dashboard-chat.png) |
 
-Screenshots are generated from `docs/screenshots/dashboard-mock.html` (static mock using the app stylesheet). After UI changes, refresh them by opening that file via a local server and capturing each `?shot=` view (`overview`, `editor`, `preview`, `chat`).
 
 ## Features
 - Multiple workspaces with members, roles, and email invites
@@ -74,7 +82,7 @@ python manage.py runserver
 
 Open:
 - http://127.0.0.1:8000/login/
-- Demo user after `seed_demo`: `demo` / `password` — workspace **Docs → README** contains this guide with screenshots; **Docs → Blocks** has gantt/calendar/mindmap/kanban/panel examples
+- Demo user after `seed_demo`: `demo` / `password` — workspace **Docs → README** contains this guide with screenshots; **Docs → Blocks** has gantt/calendar/mindmap/kanban/panel examples; **Docs → RSS Feeds** embeds BBC / DE / CH news feeds
 
 Copy `.env.example` to `.env.dev` (or set `DJANGO_ENV`) for local settings. See [Email invitations](#email-invitations) and [Database encryption](#database-encryption) below.
 
@@ -743,7 +751,7 @@ Or with brace options:
 | `col` | Theme: `info` / `success` / `warning` / `danger` / `note` |
 | `title` | Optional heading (or a `# Title` line in the body) |
 
-The server fetches and caches the feed (like MagpieRSS), then the preview shows channel title, linked item titles, **thumbnails** (when the feed provides `media:thumbnail`, image enclosures, or inline `<img>`), short descriptions, and dates. Use the toolbar **RSS** button to insert a BBC World News sample.
+The server fetches and caches the feed asynchronously (like MagpieRSS, non-blocking on ASGI), then the preview shows channel title, linked item titles, **thumbnails** (when the feed provides `media:thumbnail`, image enclosures, or inline `<img>`), short descriptions, and dates. Preview paints from a client cache so typing does not flash “Loading…”. Use the toolbar **RSS** button to insert a BBC World News sample.
 
 ## Notes
 

@@ -1590,6 +1590,26 @@ a.md-news-channel:hover {
   color: #64748b;
 }
 
+.md-news--loading .md-news-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.md-news--loading .md-news-loading::before {
+  content: '';
+  width: 12px;
+  height: 12px;
+  border: 2px solid #cbd5e1;
+  border-top-color: #ea580c;
+  border-radius: 50%;
+  animation: md-news-spin 0.7s linear infinite;
+}
+
+@keyframes md-news-spin {
+  to { transform: rotate(360deg); }
+}
+
 .md-news-error {
   font-size: 13px;
   color: #b91c1c;
