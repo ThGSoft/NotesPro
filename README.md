@@ -258,7 +258,7 @@ A format prefix may be **glued to cell text** (no tab after the closing backtick
 |-------|--------|
 | `bold` | Bold text |
 | `normal` / `nobold` | Turn bold off |
-| `frlen=N` | Decimal places for numbers and formula results |
+| `frlen=N` | Decimal places for formula results (cells starting with `=`) |
 | `align=left` / `center` / `right` | Cell text alignment |
 | `col=blue` / `#777` | Text color (CSS color name or `#hex`) |
 | `bg-col=#eee` / `yellow` | Background color (CSS name or `#hex`) |
@@ -343,7 +343,7 @@ Examples:
 #### Decimal places
 
 - Default from sheet `frLen` or active cell `style=frlen=N`.
-- Override for one formula with a **`.N` suffix** (stripped before evaluation): `=c[0,-1]+c[0,-2].0` → integer result.
+- Override for one formula with a **`.N` suffix** after a cell reference (stripped before evaluation): `=c[0,-1]+c[0,-2].0` → integer result. Decimals inside the expression (e.g. `=c[-2,0]*0.35`) are kept as numbers.
 
 Formulas are evaluated **row by row, left to right**. References to cells not yet evaluated may still contain raw formula text and are treated as non-numeric.
 
@@ -351,7 +351,19 @@ Formulas are evaluated **row by row, left to right**. References to cells not ye
 
 1. Click **Edit** on the page (markdown + preview side by side).
 2. Click a sheet cell in the preview to edit inline.
-3. Press **Enter** or click away to save; the matching tab-separated cell in the markdown `sheet` block is updated and autosaved.
+3. Press **Enter** or click away to save; press **Esc** to undo changes since focus (restores the cell value from when you clicked it).
+4. While a cell is focused (empty or formula starting with `=`), **Shift+click another cell** in the same sheet to insert a relative reference (`c[col, row]`, e.g. `c[-1, 0]`). Empty cells get `=` prepended automatically.
+
+**Numbers** — cells without a leading `=` are shown as plain text (`2026` stays `2026`, not `2026.00`). Formula cells (`=…`) are evaluated and formatted with `frlen`. Formulas still parse Swiss/European number formats in referenced cells, such as `1'356.788` or `1'356,788`.
+
+**Sheet structure shortcuts** (while a **whole row or column** is selected in preview edit mode):
+
+1. Click the **column band** above a column header, or the **row band** left of a row, to select the full column/row (highlighted in blue).
+2. With a column selected: **`+`** insert column **before** selection (copies cell from the left column when one exists) · **`-`** remove column.
+3. With a row selected: **`°`** insert row **above** selection (copies cells from the row above when one exists) · **`Shift+-`** remove row.
+4. Click any cell to clear the band selection and edit cell contents.
+
+On Swiss/German keyboards, `°` and `+` share one key — unshifted selects/adds rows via `°`, shifted (`+`) adds columns when a column band is selected.
 
 Header cells are editable too. In read-only preview (not editing), cells are not editable. Editing a formula cell replaces the formula with the typed value.
 
@@ -480,7 +492,7 @@ In split preview while editing:
 
 - Plain text lines — add or remove leading spaces in the source
 - Colored **panel** blocks — indent panel body lines
-- **Sheet** cells — `Tab` indents the cell value in the markdown `sheet` block
+- **Sheet** cells — `Tab` indents the cell value; select a full row/column via the band gutters, then `+`/`-` (column) or `°`/`Shift+-` (row) change structure
 
 #### Clear formatting
 

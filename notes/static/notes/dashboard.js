@@ -805,8 +805,143 @@
 
   function initMarked() {
     if (typeof marked === 'undefined' || window.__markedConfigured) return;
-    marked.setOptions({ gfm: true, breaks: true });
+    marked.setOptions({ gfm: true, breaks: true, async: false });
     window.__markedConfigured = true;
+  }
+
+  /** Inline/block markdown for kanban/gantt/mindmap cards (supports ~~strike~~, **bold**, etc.). */
+  function renderCardMarkdown(text, { inline = true } = {}) {
+    const raw = String(text || '');
+    if (!raw) return '';
+    initMarked();
+    let html = '';
+    try {
+      if (typeof marked !== 'undefined') {
+        if (inline && typeof marked.parseInline === 'function') {
+          html = marked.parseInline(raw, { async: false });
+        } else {
+          html = marked.parse(raw, { async: false });
+        }
+        if (html && typeof html.then === 'function') {
+          html = escapeHtml(raw);
+        } else {
+          html = String(html || '');
+          if (inline) {
+            html = html.replace(/^<p(?:\s[^>]*)?>/i, '').replace(/<\/p>\s*$/i, '');
+          }
+        }
+      } else {
+        html = escapeHtml(raw);
+      }
+    } catch (_) {
+      html = escapeHtml(raw);
+    }
+    // Fallback when marked leaves GFM strikethrough unparsed.
+    if (html.includes('~~') && !/<del\b/i.test(html)) {
+      html = html.replace(/~~([^~\n]+?)~~/g, '<del>$1</del>');
+    }
+    return html;
+  }
+
+  const MARKDOWN_MODAL_FIELD_IDS = [
+    'kanban-card-label', 'kanban-card-text',
+    'kg-card-label', 'kg-card-text',
+    'gantt-note-label', 'gantt-note-text',
+    'mindmap-node-label', 'mindmap-node-text',
+    'calendar-note-text',
+  ];
+  let lastMarkdownModalField = null;
+  const modalFieldSelections = new WeakMap();
+
+  function rememberModalFieldSelection(el) {
+    if (!el || !MARKDOWN_MODAL_FIELD_IDS.includes(el.id)) return;
+    try {
+      modalFieldSelections.set(el, {
+        start: el.selectionStart ?? 0,
+        end: el.selectionEnd ?? 0,
+      });
+    } catch (_) { /* ignore */ }
+  }
+
+  document.addEventListener('focusin', (e) => {
+    const el = e.target;
+    if (el && MARKDOWN_MODAL_FIELD_IDS.includes(el.id)) {
+      lastMarkdownModalField = el;
+      rememberModalFieldSelection(el);
+    }
+  });
+  document.addEventListener('selectionchange', () => {
+    rememberModalFieldSelection(document.activeElement);
+  });
+  document.addEventListener('focusout', (e) => {
+    rememberModalFieldSelection(e.target);
+  });
+
+  function getFocusedMarkdownModalField() {
+    const active = document.activeElement;
+    if (active && MARKDOWN_MODAL_FIELD_IDS.includes(active.id)
+      && !active.disabled && !active.readOnly) {
+      return active;
+    }
+    // Toolbar buttons steal focus; reuse the last modal field while its modal is open.
+    const last = lastMarkdownModalField;
+    if (!last || !document.body.contains(last) || last.disabled || last.readOnly) return null;
+    if (!MARKDOWN_MODAL_FIELD_IDS.includes(last.id)) return null;
+    const modal = last.closest('.modal');
+    if (modal && !modal.classList.contains('show')) return null;
+    return last;
+  }
+
+  function wrapModalFieldSelection(el, before, after) {
+    if (!el) return false;
+    const saved = modalFieldSelections.get(el);
+    el.focus();
+    if (saved) {
+      try {
+        el.setSelectionRange(saved.start, saved.end);
+      } catch (_) { /* ignore */ }
+    }
+    const start = el.selectionStart ?? 0;
+    const end = el.selectionEnd ?? start;
+    const value = String(el.value || '');
+    const selected = value.slice(start, end);
+    const beforeLen = before.length;
+    const afterLen = after.length;
+    // Toggle off if selection (or nearby) is already wrapped.
+    if (selected && selected.startsWith(before) && selected.endsWith(after) && selected.length >= beforeLen + afterLen) {
+      const inner = selected.slice(beforeLen, selected.length - afterLen);
+      el.value = value.slice(0, start) + inner + value.slice(end);
+      el.focus();
+      el.setSelectionRange(start, start + inner.length);
+      rememberModalFieldSelection(el);
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      return true;
+    }
+    if (!selected && start >= beforeLen && value.slice(start - beforeLen, start) === before
+      && value.slice(end, end + afterLen) === after) {
+      el.value = value.slice(0, start - beforeLen) + value.slice(end + afterLen);
+      el.focus();
+      el.setSelectionRange(start - beforeLen, start - beforeLen);
+      rememberModalFieldSelection(el);
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      return true;
+    }
+    const insert = selected || 'text';
+    el.value = value.slice(0, start) + before + insert + after + value.slice(end);
+    el.focus();
+    el.setSelectionRange(start + beforeLen, start + beforeLen + insert.length);
+    rememberModalFieldSelection(el);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    return true;
+  }
+
+  function applyEditorOrModalFormat(editor, before, after, fallbackAction) {
+    const field = getFocusedMarkdownModalField();
+    if (field) {
+      wrapModalFieldSelection(field, before, after);
+      return;
+    }
+    if (typeof fallbackAction === 'function') fallbackAction(editor);
   }
 
   function parseBacktickConfig(line) {
@@ -855,6 +990,7 @@
   }
 
   const SHEET_BLOCK_RE = /```sheet(?:\{([^}]*)\})?(?:[ \t]*\r?\n)([\s\S]*?)\r?\n```[ \t]*(?:\r?\n|$)/gi;
+  let sheetBandSelection = null;
 
   function sheetFenceSuffix(attrs) {
     const a = String(attrs || '').trim();
@@ -917,24 +1053,36 @@
 
   function applySheetCellStyle(cell, state) {
     const trimmed = String(cell).trim();
-    let parts = null;
-    let value = '';
+    let value = trimmed;
+    let styleState = state;
 
     const styleEq = trimmed.match(/^style\s*=\s*(.+)$/i);
     if (styleEq) {
-      parts = styleEq[1].split(',');
-    } else if (trimmed.startsWith('`')) {
-      const backtickMatch = trimmed.match(/^`([^`]*)`([\s\S]*)$/);
-      if (backtickMatch) {
-        parts = backtickMatch[1].split(';');
-        value = backtickMatch[2];
-      } else if (trimmed.endsWith('`') && trimmed.length > 1) {
-        parts = trimmed.slice(1, -1).split(';');
-      }
+      return { value: '', styleState: applySheetStyleParts(styleEq[1].split(','), styleState) };
     }
 
-    if (!parts) return { value: cell, styleState: state };
-    return { value, styleState: applySheetStyleParts(parts, state) };
+    if (!trimmed.startsWith('`')) return { value: cell, styleState: state };
+
+    let parsedAny = false;
+    while (value.startsWith('`')) {
+      const glued = value.match(/^`([^`]*)`([\s\S]*)$/);
+      if (glued) {
+        styleState = applySheetStyleParts(glued[1].split(';'), styleState);
+        value = glued[2];
+        parsedAny = true;
+        continue;
+      }
+      if (value.endsWith('`') && value.length > 1) {
+        styleState = applySheetStyleParts(value.slice(1, -1).split(';'), styleState);
+        value = '';
+        parsedAny = true;
+        continue;
+      }
+      break;
+    }
+
+    if (!parsedAny) return { value: cell, styleState: state };
+    return { value, styleState };
   }
 
   function parseBacktickSegments(line) {
@@ -1056,14 +1204,23 @@
     return parts.join('');
   }
 
+  /** Parse sheet numbers: 1234.56, 1'356.788, 1'356,788, 1 356,788 */
+  function parseSheetNumber(value) {
+    if (value == null || value === '') return NaN;
+    let s = String(value).trim();
+    if (!s || s.startsWith('=')) return NaN;
+    s = s.replace(/[\s\u00a0\u202f']/g, '');
+    const lastComma = s.lastIndexOf(',');
+    const lastDot = s.lastIndexOf('.');
+    if (lastComma > -1 && (lastDot === -1 || lastComma > lastDot)) {
+      s = s.replace(/\./g, '').replace(',', '.');
+    }
+    const n = Number(s);
+    return Number.isFinite(n) ? n : NaN;
+  }
+
   function formatSheetDisplayValue(cell, style) {
     if (cell === '#ERR!' || cell === '') return cell;
-    const trimmed = String(cell).trim();
-    const num = Number(trimmed);
-    if (trimmed !== '' && !Number.isNaN(num) && Number.isFinite(num)) {
-      const fr = style?.frlen ?? 2;
-      return Number(num).toFixed(fr);
-    }
     return cell;
   }
 
@@ -1129,8 +1286,8 @@
     const rr = baseR + parseInt(rowOff, 10);
     const cc = baseC + parseInt(colOff, 10);
     if (!out[rr] || out[rr][cc] === undefined) return 0;
-    const val = parseFloat(out[rr][cc]);
-    return isNaN(val) ? 0 : val;
+    const val = parseSheetNumber(out[rr][cc]);
+    return Number.isNaN(val) ? 0 : val;
   }
 
   function sheetSumArea(out, baseR, baseC, col1, row1, col2, row2) {
@@ -1146,8 +1303,8 @@
     for (let rr = minRow; rr <= maxRow; rr++) {
       for (let cc = minCol; cc <= maxCol; cc++) {
         if (!out[rr] || out[rr][cc] === undefined) continue;
-        const val = parseFloat(out[rr][cc]);
-        if (!isNaN(val)) total += val;
+        const val = parseSheetNumber(out[rr][cc]);
+        if (!Number.isNaN(val)) total += val;
       }
     }
     return total;
@@ -1166,8 +1323,8 @@
           if (formula.trim() === 'SUM_ABOVE') {
             let total = 0;
             for (let prevR = 0; prevR < r; prevR++) {
-              const val = parseFloat(out[prevR][c]);
-              if (!isNaN(val)) total += val;
+              const val = parseSheetNumber(out[prevR][c]);
+              if (!Number.isNaN(val)) total += val;
             }
             const cellFrLen = cellStyles?.[r]?.[c]?.frlen;
             const frac = cellFrLen !== undefined ? cellFrLen : frLen;
@@ -1175,9 +1332,10 @@
           } else {
             const cellFrLen = cellStyles?.[r]?.[c]?.frlen;
             let frac = cellFrLen !== undefined ? cellFrLen : frLen;
-            formula = formula.replace(/\.(\d+)$/, (_, digits) => {
+            // Only strip a trailing .N format suffix after a cell ref or group — not decimals like *0.35
+            formula = formula.replace(/(\]|\))\.(\d+)$/, (_, prefix, digits) => {
               frac = parseInt(digits, 10);
-              return '';
+              return prefix;
             });
             formula = formula.replace(
               /sum\s*\(\s*c\[\s*(-?\d+)\s*,\s*(-?\d+)\s*\]\s*,\s*c\[\s*(-?\d+)\s*,\s*(-?\d+)\s*\]\s*\)/gi,
@@ -1220,21 +1378,52 @@
   }
 
   function sheetGridToHtml(grid, config, options = {}, cellStyles, rawGrid) {
-    const { sheetIndex = 0, editable = false } = options;
+    const { sheetIndex = 0, editable = false, bandSelection = null } = options;
     const fontSize = config['font-size'] || 'medium';
     const hasHeader = sheetHasHeader(config) && grid.length > 0;
     const colCount = Math.max(...grid.map(row => row.length), 0);
     const colWidths = sheetColumnWidths(cellStyles, colCount);
     const hasColWidths = colWidths.some(Boolean);
     const fixedCols = hasColWidths;
-    const tableClass = `spreadsheet-table${fixedCols ? ' spreadsheet-table--fixed-cols' : ''}`;
-    let html = `<table class="${tableClass}" style="font-size:${fontSize}">`;
+    const tableClass = [
+      'spreadsheet-table',
+      fixedCols ? 'spreadsheet-table--fixed-cols' : '',
+      editable ? 'spreadsheet-table--bands' : '',
+    ].filter(Boolean).join(' ');
+    let html = editable ? '<div class="sheet-table-wrap">' : '';
+    html += `<table class="${tableClass}" style="font-size:${fontSize}">`;
     if (hasColWidths) {
-      html += `<colgroup>${colWidths.map(w => (
+      html += '<colgroup>';
+      if (editable) html += '<col style="width:28px">';
+      html += colWidths.map(w => (
         w ? `<col style="width:${w}">` : '<col>'
-      )).join('')}</colgroup>`;
+      )).join('');
+      html += '</colgroup>';
+    }
+    if (editable && colCount > 0) {
+      html += '<thead><tr class="sheet-band-row sheet-band-row--cols">';
+      html += '<th class="sheet-band-corner" aria-hidden="true"></th>';
+      for (let col = 0; col < colCount; col += 1) {
+        const colSelected = bandSelection?.type === 'col' && bandSelection.index === col;
+        html += [
+          `<th class="sheet-col-band${colSelected ? ' sheet-col-band--selected' : ''}"`,
+          ` data-sheet-index="${sheetIndex}" data-col="${col}"`,
+          ` tabindex="0" role="button" aria-label="Select column ${col + 1}"></th>`,
+        ].join('');
+      }
+      html += '</tr></thead>';
     }
     const cellStyleOpts = { omitCellWidth: hasColWidths };
+
+    const renderRowBand = (row, bandTag = 'td') => {
+      if (!editable) return '';
+      const rowSelected = bandSelection?.type === 'row' && bandSelection.index === row;
+      return [
+        `<${bandTag} class="sheet-row-band${rowSelected ? ' sheet-row-band--selected' : ''}"`,
+        ` data-sheet-index="${sheetIndex}" data-row="${row}"`,
+        ` tabindex="0" role="button" aria-label="Select row ${row + 1}"></${bandTag}>`,
+      ].join('');
+    };
 
     const renderCell = (cell, tag, row, col) => {
       const style = cellStyles?.[row]?.[col] || {};
@@ -1242,35 +1431,46 @@
       const isErr = cell === '#ERR!';
       const isImage = !isErr && sheetCellHasImage(cell, style);
       const display = isErr ? '#ERR!' : renderSheetCellContent(cell, style);
-      if (editable && !isErr && !isImage) {
-        const errClass = isErr ? ' sheet-cell-err' : '';
+      const rowSelected = bandSelection?.type === 'row' && bandSelection.index === row;
+      const colSelected = bandSelection?.type === 'col' && bandSelection.index === col;
+      const bandClass = rowSelected
+        ? ' sheet-cell--row-selected'
+        : (colSelected ? ' sheet-cell--col-selected' : '');
+      if (editable && !isImage) {
         const rawCell = String(rawGrid?.[row]?.[col] ?? '').trim();
         const formulaAttr = rawCell.startsWith('=')
           ? ` data-sheet-formula="${escapeHtml(rawCell)}"`
           : '';
-        return `<${tag} contenteditable="plaintext-only" class="sheet-cell-editable${errClass}" data-sheet-index="${sheetIndex}" data-row="${row}" data-col="${col}" spellcheck="false" tabindex="0"${formulaAttr}${styleAttr}>${display}</${tag}>`;
+        const errClass = isErr ? ' sheet-cell-err' : '';
+        return `<${tag} contenteditable="plaintext-only" class="sheet-cell-editable${errClass}${bandClass}" data-sheet-index="${sheetIndex}" data-row="${row}" data-col="${col}" spellcheck="false" tabindex="0"${formulaAttr}${styleAttr}>${display}</${tag}>`;
       }
       if (isImage) {
-        return `<${tag} class="sheet-cell-image"${styleAttr}>${display}</${tag}>`;
+        return `<${tag} class="sheet-cell-image${bandClass}"${styleAttr}>${display}</${tag}>`;
       }
-      if (isErr) return `<${tag} class="sheet-cell-err"${styleAttr}>${display}</${tag}>`;
-      return `<${tag}${styleAttr}>${display}</${tag}>`;
+      if (isErr) return `<${tag} class="sheet-cell-err${bandClass}"${styleAttr}>${display}</${tag}>`;
+      return bandClass
+        ? `<${tag} class="${bandClass.trim()}"${styleAttr}>${display}</${tag}>`
+        : `<${tag}${styleAttr}>${display}</${tag}>`;
     };
 
     if (hasHeader) {
       html += '<thead><tr>';
+      html += renderRowBand(0, 'th');
       grid[0].forEach((cell, col) => { html += renderCell(cell, 'th', 0, col); });
       html += '</tr></thead><tbody>';
       grid.slice(1).forEach((row, ri) => {
+        const rowIndex = ri + 1;
         html += '<tr>';
-        row.forEach((cell, col) => { html += renderCell(cell, 'td', ri + 1, col); });
+        html += renderRowBand(rowIndex, 'td');
+        row.forEach((cell, col) => { html += renderCell(cell, 'td', rowIndex, col); });
         html += '</tr>';
       });
       html += '</tbody>';
     } else {
-      html += '<tbody>';
+      html += editable ? '<tbody>' : '<tbody>';
       grid.forEach((row, ri) => {
         html += '<tr>';
+        html += renderRowBand(ri, 'td');
         row.forEach((cell, col) => { html += renderCell(cell, 'td', ri, col); });
         html += '</tr>';
       });
@@ -1278,6 +1478,7 @@
     }
 
     html += '</table>';
+    if (editable) html += '</div>';
     return html;
   }
 
@@ -1303,6 +1504,182 @@
       parsed.dataRows[row] = cols.join('\t');
       return `\`\`\`sheet${sheetFenceSuffix(fenceAttrs)}\n${serializeSheetContent(parsed)}\n\`\`\`\n`;
     });
+  }
+
+  function addSheetRowInMarkdown(markdown, sheetIndex, atRow, options = {}) {
+    const copyFromAbove = options.copyFromAbove !== false;
+    let idx = 0;
+    return markdown.replace(SHEET_BLOCK_RE, (match, fenceAttrs, content) => {
+      if (idx++ !== sheetIndex) return match;
+      const parsed = parseSheetContent(content, fenceAttrs);
+      const rows = [...(parsed.dataRows || [])];
+      const insertAt = Math.min(Math.max(0, atRow), rows.length);
+      const colCount = Math.max(...rows.map(r => r.split('\t').length), 1);
+      let newRow = Array(colCount).fill('').join('\t');
+      if (copyFromAbove && atRow > 0 && rows[atRow - 1]) {
+        newRow = rows[atRow - 1];
+      }
+      rows.splice(insertAt, 0, newRow);
+      parsed.dataRows = rows;
+      return `\`\`\`sheet${sheetFenceSuffix(fenceAttrs)}\n${serializeSheetContent(parsed)}\n\`\`\`\n`;
+    });
+  }
+
+  function mutateSheetBlockInMarkdown(markdown, sheetIndex, mutateFn) {
+    let idx = 0;
+    let changed = false;
+    const updated = markdown.replace(SHEET_BLOCK_RE, (match, fenceAttrs, content) => {
+      if (idx++ !== sheetIndex) return match;
+      const parsed = parseSheetContent(content, fenceAttrs);
+      const before = serializeSheetContent(parsed);
+      mutateFn(parsed);
+      const after = serializeSheetContent(parsed);
+      if (after !== before) changed = true;
+      return `\`\`\`sheet${sheetFenceSuffix(fenceAttrs)}\n${after}\n\`\`\`\n`;
+    });
+    return changed ? updated : markdown;
+  }
+
+  function addSheetColumnInMarkdown(markdown, sheetIndex, atCol, options = {}) {
+    const copyFromLeft = options.copyFromLeft !== false;
+    return mutateSheetBlockInMarkdown(markdown, sheetIndex, (parsed) => {
+      parsed.dataRows = (parsed.dataRows || []).map(row => {
+        const cols = row.split('\t');
+        const insertAt = Math.min(Math.max(0, atCol), cols.length);
+        let newCell = '';
+        if (copyFromLeft && atCol > 0 && cols[atCol - 1] !== undefined) {
+          newCell = cols[atCol - 1];
+        }
+        cols.splice(insertAt, 0, newCell);
+        return cols.join('\t');
+      });
+    });
+  }
+
+  function removeSheetColumnInMarkdown(markdown, sheetIndex, colIndex) {
+    return mutateSheetBlockInMarkdown(markdown, sheetIndex, (parsed) => {
+      const colCount = Math.max(...(parsed.dataRows || []).map(r => r.split('\t').length), 1);
+      if (colCount <= 1) return;
+      parsed.dataRows = parsed.dataRows.map(row => {
+        const cols = row.split('\t');
+        if (colIndex >= 0 && colIndex < cols.length) cols.splice(colIndex, 1);
+        return cols.join('\t');
+      });
+    });
+  }
+
+  function removeSheetRowInMarkdown(markdown, sheetIndex, rowIndex) {
+    return mutateSheetBlockInMarkdown(markdown, sheetIndex, (parsed) => {
+      if ((parsed.dataRows || []).length <= 1) return;
+      if (rowIndex >= 0 && rowIndex < parsed.dataRows.length) {
+        parsed.dataRows.splice(rowIndex, 1);
+      }
+    });
+  }
+
+  function setSheetBandSelection(sheetIndex, type, index) {
+    sheetBandSelection = { sheetIndex, type, index };
+  }
+
+  function clearSheetBandSelection() {
+    sheetBandSelection = null;
+  }
+
+  function isSheetColPlusKey(e) {
+    return !e.ctrlKey && !e.metaKey && !e.altKey
+      && (e.key === '+' || (e.key === '=' && e.shiftKey));
+  }
+
+  function isSheetColMinusKey(e) {
+    return !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && e.key === '-';
+  }
+
+  function isSheetRowPlusKey(e) {
+    return !e.ctrlKey && !e.metaKey && !e.altKey && e.key === '°';
+  }
+
+  function isSheetRowMinusKey(e) {
+    if (e.ctrlKey || e.metaKey || e.altKey) return false;
+    return e.key === '_' || (e.key === '-' && e.shiftKey);
+  }
+
+  function focusSheetBandAfterEdit(sheetIndex, type, index) {
+    requestAnimationFrame(() => {
+      const preview = document.getElementById('preview-content');
+      const selector = type === 'col'
+        ? `.sheet-col-band[data-sheet-index="${sheetIndex}"][data-col="${index}"]`
+        : `.sheet-row-band[data-sheet-index="${sheetIndex}"][data-row="${index}"]`;
+      preview?.querySelector(selector)?.focus();
+    });
+  }
+
+  function applySheetStructureFromBand(action) {
+    if (!easyMDE || !isPreviewInteractionEnabled() || !sheetBandSelection) return false;
+    const { sheetIndex, type, index } = sheetBandSelection;
+    const oldMarkdown = easyMDE.value();
+    let updated = oldMarkdown;
+    let nextIndex = index;
+
+    if (type === 'col') {
+      if (action === 'addCol') {
+        updated = addSheetColumnInMarkdown(oldMarkdown, sheetIndex, index, { copyFromLeft: true });
+        nextIndex = index;
+      } else if (action === 'removeCol') {
+        updated = removeSheetColumnInMarkdown(oldMarkdown, sheetIndex, index);
+        nextIndex = Math.max(0, index - 1);
+      } else {
+        return false;
+      }
+    } else if (type === 'row') {
+      if (action === 'addRow') {
+        updated = addSheetRowInMarkdown(oldMarkdown, sheetIndex, index, { copyFromAbove: true });
+        nextIndex = index;
+      } else if (action === 'removeRow') {
+        updated = removeSheetRowInMarkdown(oldMarkdown, sheetIndex, index);
+        nextIndex = Math.max(0, index - 1);
+      } else {
+        return false;
+      }
+    } else {
+      return false;
+    }
+
+    if (updated === oldMarkdown) return false;
+    easyMDE.value(updated);
+    scheduleSave();
+    setSheetBandSelection(sheetIndex, type, nextIndex);
+    renderPreview();
+    focusSheetBandAfterEdit(sheetIndex, type, nextIndex);
+    return true;
+  }
+
+  function handleSheetBandStructureKey(e) {
+    if (!sheetBandSelection || !isPreviewInteractionEnabled()) return false;
+    const { type } = sheetBandSelection;
+    if (type === 'col') {
+      if (isSheetColPlusKey(e)) {
+        e.preventDefault();
+        applySheetStructureFromBand('addCol');
+        return true;
+      }
+      if (isSheetColMinusKey(e)) {
+        e.preventDefault();
+        applySheetStructureFromBand('removeCol');
+        return true;
+      }
+    } else if (type === 'row') {
+      if (isSheetRowPlusKey(e)) {
+        e.preventDefault();
+        applySheetStructureFromBand('addRow');
+        return true;
+      }
+      if (isSheetRowMinusKey(e)) {
+        e.preventDefault();
+        applySheetStructureFromBand('removeRow');
+        return true;
+      }
+    }
+    return false;
   }
 
   function collectMarkdownTextLineIndexes(raw) {
@@ -1396,6 +1773,65 @@
     return preview.querySelector('.sheet-cell-editable:focus');
   }
 
+  function clearSheetRefPickHighlight() {
+    document.querySelectorAll('.sheet-cell-editable.sheet-cell--ref-pick').forEach(el => {
+      el.classList.remove('sheet-cell--ref-pick');
+    });
+  }
+
+  function formatSheetRelativeRef(sourceCell, targetCell) {
+    const srcRow = parseInt(sourceCell.dataset.row, 10);
+    const srcCol = parseInt(sourceCell.dataset.col, 10);
+    const tgtRow = parseInt(targetCell.dataset.row, 10);
+    const tgtCol = parseInt(targetCell.dataset.col, 10);
+    if ([srcRow, srcCol, tgtRow, tgtCol].some(n => Number.isNaN(n))) return null;
+    const colOff = tgtCol - srcCol;
+    const rowOff = tgtRow - srcRow;
+    return `c[${colOff}, ${rowOff}]`;
+  }
+
+  function insertTextAtSheetCellCursor(cell, text) {
+    cell.focus();
+    const sel = window.getSelection();
+    if (sel?.rangeCount && cell.contains(sel.anchorNode)) {
+      const range = sel.getRangeAt(0);
+      range.deleteContents();
+      const node = document.createTextNode(text);
+      range.insertNode(node);
+      range.setStartAfter(node);
+      range.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(range);
+      return;
+    }
+    cell.textContent = `${cell.textContent || ''}${text}`;
+  }
+
+  function insertSheetCellRelativeRef(sourceCell, targetCell) {
+    const ref = formatSheetRelativeRef(sourceCell, targetCell);
+    if (!ref) return false;
+    const text = sourceCell.textContent || '';
+    if (!text.trim()) {
+      sourceCell.textContent = `=${ref}`;
+    } else if (text.startsWith('=')) {
+      insertTextAtSheetCellCursor(sourceCell, ref);
+    } else {
+      return false;
+    }
+    sourceCell.focus();
+    sourceCell.classList.add('sheet-cell--ref-pick');
+    return true;
+  }
+
+  function tryInsertSheetCellRefFromClick(targetCell) {
+    const sourceCell = getActiveSheetCell();
+    if (!sourceCell || !targetCell || sourceCell === targetCell) return false;
+    if (sourceCell.dataset.sheetIndex !== targetCell.dataset.sheetIndex) return false;
+    if (!insertSheetCellRelativeRef(sourceCell, targetCell)) return false;
+    syncSheetCellToMarkdown(sourceCell, { skipRender: true });
+    return true;
+  }
+
   function indentSheetCell(cell) {
     if (!cell) return;
     cell.focus();
@@ -1434,6 +1870,59 @@
       range.setStart(node, range.startOffset - 1);
       range.deleteContents();
     }
+  }
+
+  function getSheetCellMarkdownValue(sheetIndex, row, col) {
+    if (!easyMDE) return '';
+    let idx = 0;
+    let value = '';
+    easyMDE.value().replace(SHEET_BLOCK_RE, (match, fenceAttrs, content) => {
+      if (idx++ !== sheetIndex) return match;
+      const parsed = parseSheetContent(content, fenceAttrs);
+      if (!parsed.dataRows[row]) return match;
+      const cols = parsed.dataRows[row].split('\t');
+      while (cols.length <= col) cols.push('');
+      value = cols[col] ?? '';
+      return match;
+    });
+    return value;
+  }
+
+  let sheetCellEditCancelled = false;
+
+  function beginSheetCellEdit(cell) {
+    if (!cell?.dataset) return;
+    const sheetIndex = parseInt(cell.dataset.sheetIndex, 10);
+    const row = parseInt(cell.dataset.row, 10);
+    const col = parseInt(cell.dataset.col, 10);
+    if ([sheetIndex, row, col].some(n => Number.isNaN(n))) return;
+    cell.dataset.sheetEditOriginal = getSheetCellMarkdownValue(sheetIndex, row, col);
+    clearSheetRefPickHighlight();
+    cell.classList.add('sheet-cell--ref-pick');
+    const formula = cell.dataset.sheetFormula;
+    if (formula) cell.textContent = formula;
+  }
+
+  function cancelSheetCellEdit(cell) {
+    if (!cell?.dataset || !isPreviewInteractionEnabled()) return;
+    const sheetIndex = parseInt(cell.dataset.sheetIndex, 10);
+    const row = parseInt(cell.dataset.row, 10);
+    const col = parseInt(cell.dataset.col, 10);
+    const original = cell.dataset.sheetEditOriginal;
+    if ([sheetIndex, row, col].some(n => Number.isNaN(n)) || original === undefined) {
+      cell.blur();
+      return;
+    }
+    sheetCellEditCancelled = true;
+    delete cell.dataset.sheetEditOriginal;
+    cell.classList.remove('sheet-cell--ref-pick');
+    const oldMarkdown = easyMDE.value();
+    const updated = updateSheetCellInMarkdown(oldMarkdown, sheetIndex, row, col, original);
+    if (updated !== oldMarkdown) {
+      easyMDE.value(updated);
+      scheduleSave();
+    }
+    renderPreview();
   }
 
   function syncSheetCellToMarkdown(cell, { skipRender = false } = {}) {
@@ -1505,6 +1994,7 @@
   }
 
   function commitSheetCellEdit(cell) {
+    if (cell?.dataset) delete cell.dataset.sheetEditOriginal;
     syncSheetCellToMarkdown(cell);
   }
 
@@ -1516,7 +2006,57 @@
     preview.addEventListener('mousedown', e => {
       if (!isPreviewInteractionEnabled()) return;
       if (e.target.closest?.('.md-tag, .md-tags, .calendar-unit, a, button, input, select, textarea')) return;
+      const colBand = e.target.closest?.('.sheet-col-band');
+      const rowBand = e.target.closest?.('.sheet-row-band');
+      if (colBand && preview.contains(colBand)) {
+        e.preventDefault();
+        const sheetIndex = parseInt(colBand.dataset.sheetIndex, 10);
+        const col = parseInt(colBand.dataset.col, 10);
+        if (Number.isFinite(sheetIndex) && Number.isFinite(col)) {
+          setSheetBandSelection(sheetIndex, 'col', col);
+          renderPreview();
+          focusSheetBandAfterEdit(sheetIndex, 'col', col);
+        }
+        return;
+      }
+      if (rowBand && preview.contains(rowBand)) {
+        e.preventDefault();
+        const sheetIndex = parseInt(rowBand.dataset.sheetIndex, 10);
+        const row = parseInt(rowBand.dataset.row, 10);
+        if (Number.isFinite(sheetIndex) && Number.isFinite(row)) {
+          setSheetBandSelection(sheetIndex, 'row', row);
+          renderPreview();
+          focusSheetBandAfterEdit(sheetIndex, 'row', row);
+        }
+        return;
+      }
       setPreviewContextFromEvent(e);
+      const targetCell = e.target.closest?.('.sheet-cell-editable');
+      if (targetCell && preview.contains(targetCell)) {
+        const activeCell = getActiveSheetCell();
+        if (activeCell && activeCell !== targetCell && e.shiftKey && tryInsertSheetCellRefFromClick(targetCell)) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+        if (sheetBandSelection) {
+          clearSheetBandSelection();
+          preview.querySelectorAll(
+            '.sheet-col-band--selected, .sheet-row-band--selected, .sheet-cell--row-selected, .sheet-cell--col-selected',
+          ).forEach(el => {
+            el.classList.remove(
+              'sheet-col-band--selected',
+              'sheet-row-band--selected',
+              'sheet-cell--row-selected',
+              'sheet-cell--col-selected',
+            );
+          });
+        }
+        return;
+      }
+      if (!e.target.closest?.('.sheet-preview-block')) {
+        clearSheetBandSelection();
+      }
       if (!e.target.closest?.('.sheet-cell-editable')) {
         preview.focus({ preventScroll: true });
       }
@@ -1525,22 +2065,35 @@
     preview.addEventListener('focusin', e => {
       const cell = e.target.closest?.('.sheet-cell-editable');
       if (cell && preview.contains(cell) && isPreviewInteractionEnabled()) {
-        const formula = cell.dataset.sheetFormula;
-        if (formula) cell.textContent = formula;
+        beginSheetCellEdit(cell);
         return;
       }
+      clearSheetRefPickHighlight();
       setPreviewContextFromEvent(e);
     }, true);
 
     preview.addEventListener('blur', e => {
       const cell = e.target.closest?.('.sheet-cell-editable');
-      if (cell && preview.contains(cell)) commitSheetCellEdit(cell);
+      if (cell && preview.contains(cell)) {
+        cell.classList.remove('sheet-cell--ref-pick');
+        if (sheetCellEditCancelled) {
+          sheetCellEditCancelled = false;
+          return;
+        }
+        commitSheetCellEdit(cell);
+      }
     }, true);
 
     preview.addEventListener('keydown', e => {
       if (!isPreviewInteractionEnabled()) return;
+      if (handleSheetBandStructureKey(e)) return;
       const cell = e.target.closest?.('.sheet-cell-editable');
       if (cell && preview.contains(cell)) {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          cancelSheetCellEdit(cell);
+          return;
+        }
         if (e.key === 'Enter') {
           e.preventDefault();
           cell.blur();
@@ -1593,6 +2146,7 @@
       const sheetHtml = sheetGridToHtml(parsed.grid, parsed.config, {
         sheetIndex: idx,
         editable: !!options.sheetEditable,
+        bandSelection: sheetBandSelection?.sheetIndex === idx ? sheetBandSelection : null,
       }, parsed.cellStyles, parsed.rawGrid);
       return wrapRichPreviewBlock(
         `<div class="sheet-preview-block" data-sheet-index="${idx}">${title}${sheetHtml}</div>`,
@@ -1631,7 +2185,8 @@
       label: useIndex ? String(ri + 1) : String(row[xIdx] ?? ''),
       values: yList.map((yKey, si) => {
         const yIdx = resolveColumnIndex(headers, yKey, si + 1);
-        return parseFloat(row[yIdx]) || 0;
+        const n = parseSheetNumber(row[yIdx]);
+        return Number.isNaN(n) ? 0 : n;
       }),
     })).filter(r => useIndex || r.label !== '');
 
@@ -3403,21 +3958,14 @@
   }
 
   function kanbanCardMarkup(card) {
-    const raw = String(card.text || '');
-    let textHtml = '';
-    if (raw) {
-      try {
-        textHtml = typeof marked !== 'undefined' ? marked.parse(raw) : escapeHtml(raw);
-      } catch (_) {
-        textHtml = escapeHtml(raw);
-      }
-    }
+    const textHtml = renderCardMarkdown(card.text, { inline: false });
+    const labelHtml = renderCardMarkdown(card.label, { inline: true }) || escapeHtml(card.label || '');
     const image = card.image
       ? `<img class="kanban-card-image md-image" src="${escapeHtml(card.image)}" alt="" draggable="false">`
       : '';
     return [
       image,
-      `<div class="kanban-card-label">${escapeHtml(card.label)}</div>`,
+      `<div class="kanban-card-label">${labelHtml}</div>`,
       textHtml ? `<div class="kanban-card-text">${textHtml}</div>` : '',
     ].join('');
   }
@@ -3437,10 +3985,11 @@
       const cardsHtml = colCards.map(card => {
         const hasNote = !!(card.text || card.image);
         const mdAttr = card.text ? ` data-kanban-markdown="${escapeHtml(card.text)}"` : '';
+        const labelAttr = card.label ? ` data-kanban-label="${escapeHtml(card.label)}"` : '';
         const dragAttr = editable ? ' draggable="true"' : '';
         const editClass = editable ? ' kanban-card--editable' : '';
         return [
-          `<div class="kanban-card${hasNote ? ' kanban-card--has-note' : ''}${editClass}" data-kanban-card-id="${escapeHtml(card.id)}" data-kanban-col="${escapeHtml(card.col)}"${mdAttr}${dragAttr}>`,
+          `<div class="kanban-card${hasNote ? ' kanban-card--has-note' : ''}${editClass}" data-kanban-card-id="${escapeHtml(card.id)}" data-kanban-col="${escapeHtml(card.col)}"${mdAttr}${labelAttr}${dragAttr}>`,
           kanbanCardMarkup(card),
           `</div>`,
         ].join('');
@@ -3688,10 +4237,21 @@
     return `${sec}s`;
   }
 
+  function kgStableCardId(col, label, occurrence = 0) {
+    const raw = `${String(col || '').trim()}|${String(label || '').trim()}|${occurrence}`;
+    let hash = 2166136261;
+    for (let i = 0; i < raw.length; i += 1) {
+      hash ^= raw.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    return `kg_${(hash >>> 0).toString(36)}`;
+  }
+
   function parseKanbanganttSpec(fenceAttrs, body = '') {
     const config = { ...parseBacktickConfig(`\`${String(fenceAttrs || '').replace(/`/g, '')}\``) };
     const cards = [];
     const discoveredCols = [];
+    const idCounts = Object.create(null);
     let bodyTitle = '';
     let expectingTitle = true;
     let currentCol = '';
@@ -3763,8 +4323,11 @@
       }
 
       const defaultRate = parseKgRate(config.rate || config.hourly || 0, 0);
+      const labelKey = `${col}\n${label}`;
+      const occurrence = idCounts[labelKey] || 0;
+      idCounts[labelKey] = occurrence + 1;
       cards.push({
-        id: `kg${cards.length + 1}`,
+        id: (meta.id && String(meta.id).trim()) || kgStableCardId(col, label, occurrence),
         col,
         label: label || `Task ${cards.length + 1}`,
         text: note,
@@ -3807,7 +4370,9 @@
 
   function serializeKanbanganttCards(cards, defaultRate = 0) {
     return (cards || []).map(card => {
-      const metaParts = [`status=${card.status || 'idle'}`];
+      const metaParts = [];
+      if (card.id) metaParts.push(`id=${card.id}`);
+      metaParts.push(`status=${card.status || 'idle'}`);
       const rate = card.rate != null ? card.rate : defaultRate;
       if (rate > 0) metaParts.push(`rate=${rate}`);
       const elapsed = parseKgElapsed(card.elapsed);
@@ -3848,14 +4413,8 @@
     const status = card.status || 'idle';
 
     const raw = String(card.text || '');
-    let textHtml = '';
-    if (raw) {
-      try {
-        textHtml = typeof marked !== 'undefined' ? marked.parse(raw) : escapeHtml(raw);
-      } catch (_) {
-        textHtml = escapeHtml(raw);
-      }
-    }
+    const textHtml = renderCardMarkdown(raw, { inline: false });
+    const labelHtml = renderCardMarkdown(card.label, { inline: true }) || escapeHtml(card.label || '');
     const image = card.image
       ? `<img class="kg-card-image md-image" src="${escapeHtml(card.image)}" alt="" draggable="false">`
       : '';
@@ -3887,7 +4446,7 @@
     return [
       handleHtml,
       image,
-      `<div class="kg-card-label">${escapeHtml(card.label)}</div>`,
+      `<div class="kg-card-label">${labelHtml}</div>`,
       `<div class="kg-card-status kg-card-status--${escapeHtml(status)}">${escapeHtml(status)}</div>`,
       metrics,
       `<div class="kg-card-bar" title="Time vs board"><span style="width:${barPct}%"></span></div>`,
@@ -3930,6 +4489,8 @@
       const cardsHtml = colCards.map(card => {
         const hasNote = !!(card.text || card.image);
         const mdAttr = card.text ? ` data-kg-markdown="${escapeHtml(card.text)}"` : '';
+        const imageAttr = card.image ? ` data-kg-image="${escapeHtml(card.image)}"` : '';
+        const labelAttr = card.label ? ` data-kg-label="${escapeHtml(card.label)}"` : '';
         const editClass = editable ? ' kg-card--editable' : '';
         const startedIso = card.started instanceof Date && !Number.isNaN(card.started.getTime())
           ? card.started.toISOString()
@@ -3944,6 +4505,8 @@
           ` data-kg-elapsed="${escapeHtml(String(parseKgElapsed(card.elapsed)))}"`,
           startedIso ? ` data-kg-started="${escapeHtml(startedIso)}"` : '',
           mdAttr,
+          imageAttr,
+          labelAttr,
           `>`,
           kanbanganttCardMarkup(card, spec, now, { editable }),
           `</div>`,
@@ -3953,7 +4516,12 @@
         `<div class="kg-column${column.toLowerCase() === 'suspended' ? ' kg-column--suspended' : ''}" data-kg-col="${escapeHtml(column)}">`,
         `<div class="kg-column-header">`,
         `<span class="kg-column-title">${escapeHtml(column)}</span>`,
+        `<span class="kg-column-header-end">`,
         `<span class="kg-column-count">${colCards.length}</span>`,
+        editable
+          ? `<button type="button" class="kg-column-add" data-kg-add-col="${escapeHtml(column)}" title="Add task" aria-label="Add task to ${escapeHtml(column)}">+</button>`
+          : '',
+        `</span>`,
         `</div>`,
         withCost ? `<div class="kg-column-cost">${escapeHtml(formatKgMoney(colCost, currency))}</div>` : '',
         `<div class="kg-column-cards">${cardsHtml || '<div class="kg-column-empty">Drop tasks here</div>'}</div>`,
@@ -3986,6 +4554,7 @@
   function parseKanbanganttBlockAt(markdown, kgIndex) {
     let idx = 0;
     let spec = null;
+    KANBANGANTT_BLOCK_RE.lastIndex = 0;
     String(markdown || '').replace(KANBANGANTT_BLOCK_RE, (_, fenceAttrs, content) => {
       if (idx === kgIndex) spec = parseKanbanganttSpec(fenceAttrs, content);
       idx += 1;
@@ -4025,6 +4594,10 @@
     else delete cardEl.dataset.kgStarted;
     if (card.text) cardEl.dataset.kgMarkdown = card.text;
     else delete cardEl.dataset.kgMarkdown;
+    if (card.image) cardEl.dataset.kgImage = card.image;
+    else delete cardEl.dataset.kgImage;
+    if (card.label) cardEl.dataset.kgLabel = card.label;
+    else delete cardEl.dataset.kgLabel;
 
     cardEl.innerHTML = kanbanganttCardMarkup(card, spec, Date.now(), { editable });
 
@@ -4041,6 +4614,7 @@
 
   function rewriteKanbanganttBlock(markdown, kgIndex, mutateFn) {
     let idx = 0;
+    KANBANGANTT_BLOCK_RE.lastIndex = 0;
     return String(markdown || '').replace(KANBANGANTT_BLOCK_RE, (match, fenceAttrs, content = '') => {
       const thisIndex = idx;
       idx += 1;
@@ -4063,15 +4637,25 @@
 
   function updateKanbanganttCardInMarkdown(markdown, kgIndex, cardId, patch = {}) {
     return rewriteKanbanganttBlock(markdown, kgIndex, (spec) => {
-      const card = spec.cards.find(c => c.id === cardId);
+      let card = spec.cards.find(c => c.id === cardId);
+      if (!card && patch._labelHint) {
+        const hintLabel = String(patch._labelHint).trim();
+        const hintCol = String(patch._colHint || '').trim();
+        card = spec.cards.find(c => c.label === hintLabel && (!hintCol || c.col === hintCol))
+          || spec.cards.find(c => c.label === hintLabel);
+      }
       if (!card) return { spec };
       if (patch.label != null) card.label = String(patch.label).trim() || card.label;
       if (patch.col != null && String(patch.col).trim()) {
         card.col = String(patch.col).trim();
         if (!spec.columns.includes(card.col)) spec.columns.push(card.col);
       }
-      if (patch.text != null) card.text = String(patch.text || '').replace(/\r?\n/g, ' ').trim();
-      if (patch.image != null) card.image = String(patch.image || '').trim();
+      if (Object.prototype.hasOwnProperty.call(patch, 'text')) {
+        card.text = String(patch.text || '').replace(/\r?\n/g, ' ').trim();
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, 'image')) {
+        card.image = String(patch.image || '').trim();
+      }
       if (patch.status != null) card.status = parseKgStatus(patch.status);
       if (patch.rate != null) {
         const r = parseKgRate(patch.rate, spec.rate || 0);
@@ -4096,6 +4680,62 @@
       }
       return { spec };
     });
+  }
+
+  function addKanbanganttCardInMarkdown(markdown, kgIndex, cardData = {}) {
+    let newCardId = null;
+    const updated = rewriteKanbanganttBlock(markdown, kgIndex, (spec) => {
+      const col = String(cardData.col || '').trim()
+        || spec.columns[0]
+        || KANBANGANTT_DEFAULT_COLS[0];
+      if (!spec.columns.includes(col)) spec.columns.push(col);
+
+      const label = String(cardData.label || '').trim() || `Task ${spec.cards.length + 1}`;
+      let occurrence = spec.cards.filter(c => c.col === col && c.label === label).length;
+      let cardId = kgStableCardId(col, label, occurrence);
+      while (spec.cards.some(c => c.id === cardId)) {
+        occurrence += 1;
+        cardId = kgStableCardId(col, label, occurrence);
+      }
+      newCardId = cardId;
+
+      const defaultRate = spec.rate || 0;
+      const card = {
+        id: cardId,
+        col,
+        label,
+        text: String(cardData.text || '').replace(/\r?\n/g, ' ').trim(),
+        image: String(cardData.image || '').trim(),
+        status: parseKgStatus(cardData.status || 'idle'),
+        rate: cardData.rate != null && cardData.rate !== ''
+          ? parseKgRate(cardData.rate, defaultRate)
+          : null,
+        elapsed: parseKgElapsed(cardData.elapsed || 0),
+        started: null,
+      };
+      if (card.status === 'running') card.started = new Date();
+      if (card.status === 'suspended') card.col = kgEnsureSuspendColumn(spec);
+
+      let insertAt = spec.cards.length;
+      for (let i = spec.cards.length - 1; i >= 0; i -= 1) {
+        if (spec.cards[i].col === col) {
+          insertAt = i + 1;
+          break;
+        }
+      }
+      if (!spec.cards.some(c => c.col === col)) {
+        const colIdx = spec.columns.indexOf(col);
+        insertAt = 0;
+        for (let i = 0; i < colIdx; i += 1) {
+          const cName = spec.columns[i];
+          const last = [...spec.cards].map((c, idx) => (c.col === cName ? idx : -1)).filter(n => n >= 0).pop();
+          if (last != null) insertAt = last + 1;
+        }
+      }
+      spec.cards.splice(insertAt, 0, card);
+      return { spec };
+    });
+    return { updated, newCardId };
   }
 
   function applyKanbanganttTimerInMarkdown(markdown, kgIndex, cardId, action) {
@@ -6343,6 +6983,7 @@ function formatTextWithMarkup(rawText) {
   function setEditing(editing) {
     if (editing && !userCanEdit) editing = false;
     isEditing = editing;
+    if (!editing) clearSheetBandSelection();
     document.body.classList.toggle('editing', editing);
     const btn = document.getElementById('edit-toggle');
     if (btn) btn.textContent = editing ? 'Preview' : 'Edit';
@@ -8360,14 +9001,16 @@ function formatTextWithMarkup(rawText) {
     if (!Number.isFinite(kanbanIndex)) return;
 
     const columns = parseKanbanColumns(block.dataset.kanbanCols || '');
-    const label = cardEl.querySelector('.kanban-card-label')?.textContent || '';
+    const label = cardEl.dataset.kanbanLabel
+      || cardEl.querySelector('.kanban-card-label')?.textContent
+      || '';
     const text = cardEl.dataset.kanbanMarkdown
       || cardEl.querySelector('.kanban-card-text')?.textContent
       || '';
     const image = cardEl.querySelector('.kanban-card-image')?.getAttribute('src') || '';
     const col = cardEl.dataset.kanbanCol || columns[0] || '';
 
-    kanbanCardContext = { kanbanIndex, cardId };
+    kanbanCardContext = { kanbanIndex, cardId, label, col };
     const title = document.getElementById('kanban-card-modal-title');
     if (title) title.textContent = `Kanban card · ${label || cardId}`;
     const labelInput = document.getElementById('kanban-card-label');
@@ -8651,18 +9294,22 @@ function formatTextWithMarkup(rawText) {
     if (!Number.isFinite(kgIndex)) return;
 
     const columns = parseKanbanColumns(block.dataset.kgCols || '');
-    const label = cardEl.querySelector('.kg-card-label')?.textContent || '';
+    const label = cardEl.dataset.kgLabel
+      || cardEl.querySelector('.kg-card-label')?.textContent
+      || '';
     const text = cardEl.dataset.kgMarkdown
       || cardEl.querySelector('.kg-card-text')?.textContent
       || '';
-    const image = cardEl.querySelector('.kg-card-image')?.getAttribute('src') || '';
+    const image = cardEl.dataset.kgImage
+      || mediaMarkdownPath(cardEl.querySelector('.kg-card-image')?.getAttribute('src') || '')
+      || '';
     const col = cardEl.dataset.kgCol || columns[0] || 'Todo';
     const rate = cardEl.dataset.kgRate || block.dataset.kgRate || '0';
     const status = cardEl.dataset.kgStatus || 'idle';
     const elapsed = cardEl.dataset.kgElapsed || '0';
     const withCost = block.dataset.kgWithcost !== '0';
 
-    kgCardContext = { kgIndex, cardId };
+    kgCardContext = { kgIndex, cardId, label, col };
     const title = document.getElementById('kg-card-modal-title');
     if (title) title.textContent = `Task · ${label || cardId}`;
     const labelInput = document.getElementById('kg-card-label');
@@ -8686,32 +9333,119 @@ function formatTextWithMarkup(rawText) {
     if (modalEl) openDashboardModal(modalEl);
   }
 
+  function openKgNewCardModal(block, col) {
+    if (!isPreviewInteractionEnabled() || !block) return;
+    const kgIndex = parseInt(block.dataset.kgIndex, 10);
+    if (!Number.isFinite(kgIndex)) return;
+
+    const columns = parseKanbanColumns(block.dataset.kgCols || '');
+    const targetCol = String(col || '').trim() || columns[0] || KANBANGANTT_DEFAULT_COLS[0];
+    const withCost = block.dataset.kgWithcost !== '0';
+    const defaultRate = block.dataset.kgRate || '0';
+
+    kgCardContext = { kgIndex, cardId: null, isNew: true, col: targetCol };
+    const title = document.getElementById('kg-card-modal-title');
+    if (title) title.textContent = 'New Kanban Gantt task';
+    const labelInput = document.getElementById('kg-card-label');
+    const colSelect = document.getElementById('kg-card-col');
+    const rateInput = document.getElementById('kg-card-rate');
+    const rateField = document.getElementById('kg-card-rate-field');
+    const statusSelect = document.getElementById('kg-card-status');
+    const elapsedInput = document.getElementById('kg-card-elapsed');
+    const textInput = document.getElementById('kg-card-text');
+    const imageInput = document.getElementById('kg-card-image');
+    if (labelInput) labelInput.value = '';
+    fillKgColumnSelect(colSelect, columns, targetCol);
+    rateField?.classList.toggle('d-none', !withCost);
+    if (rateInput) rateInput.value = defaultRate;
+    if (statusSelect) statusSelect.value = 'idle';
+    if (elapsedInput) elapsedInput.value = '0';
+    if (textInput) textInput.value = '';
+    if (imageInput) imageInput.value = '';
+    refreshKgCardImagePreview();
+    const modalEl = document.getElementById('kg-card-modal');
+    if (modalEl) openDashboardModal(modalEl);
+    labelInput?.focus();
+  }
+
   function saveKgCardFromModal({ clear = false } = {}) {
     if (!easyMDE || !kgCardContext) return;
-    const label = clear ? null : (document.getElementById('kg-card-label')?.value || '');
-    const col = clear ? null : (document.getElementById('kg-card-col')?.value || '');
+    const ctx = kgCardContext;
     const withCost = document.getElementById('preview-content')
-      ?.querySelector(`.kg-block[data-kg-index="${kgCardContext.kgIndex}"]`)
+      ?.querySelector(`.kg-block[data-kg-index="${ctx.kgIndex}"]`)
       ?.dataset?.kgWithcost !== '0';
-    const rate = clear || !withCost ? null : (document.getElementById('kg-card-rate')?.value || '');
-    const status = clear ? null : (document.getElementById('kg-card-status')?.value || 'idle');
-    const elapsed = clear ? null : (document.getElementById('kg-card-elapsed')?.value || '0');
-    const text = clear ? '' : (document.getElementById('kg-card-text')?.value || '');
-    const image = clear ? '' : (document.getElementById('kg-card-image')?.value || '');
-    const patch = { label, col, status, elapsed, text, image };
-    if (rate != null) patch.rate = rate;
-    if (!clear && status && status !== 'running') patch.started = null;
+
+    if (ctx.isNew && clear) {
+      bootstrap.Modal.getInstance(document.getElementById('kg-card-modal'))?.hide();
+      kgCardContext = null;
+      return;
+    }
+
+    let patch;
+    if (clear) {
+      // Clear note only — keep label/column/timer fields.
+      const textInput = document.getElementById('kg-card-text');
+      const imageInput = document.getElementById('kg-card-image');
+      if (textInput) textInput.value = '';
+      if (imageInput) imageInput.value = '';
+      refreshKgCardImagePreview();
+      patch = {
+        text: '',
+        image: '',
+        _labelHint: ctx.label || document.getElementById('kg-card-label')?.value || '',
+        _colHint: ctx.col || document.getElementById('kg-card-col')?.value || '',
+      };
+    } else {
+      const label = document.getElementById('kg-card-label')?.value || '';
+      const col = document.getElementById('kg-card-col')?.value || '';
+      const rate = !withCost ? null : (document.getElementById('kg-card-rate')?.value || '');
+      const status = document.getElementById('kg-card-status')?.value || 'idle';
+      const elapsed = document.getElementById('kg-card-elapsed')?.value || '0';
+      const text = document.getElementById('kg-card-text')?.value || '';
+      const image = document.getElementById('kg-card-image')?.value || '';
+      patch = {
+        label,
+        col,
+        status,
+        elapsed,
+        text,
+        image,
+        _labelHint: ctx.label || label,
+        _colHint: ctx.col || col,
+      };
+      if (rate != null) patch.rate = rate;
+      if (status && status !== 'running') patch.started = null;
+    }
+
     const oldMarkdown = easyMDE.value();
-    const updated = updateKanbanganttCardInMarkdown(
-      oldMarkdown,
-      kgCardContext.kgIndex,
-      kgCardContext.cardId,
-      patch,
-    );
+    let updated = oldMarkdown;
+    let savedCardId = ctx.cardId;
+    if (ctx.isNew) {
+      const result = addKanbanganttCardInMarkdown(oldMarkdown, ctx.kgIndex, patch);
+      updated = result.updated;
+      savedCardId = result.newCardId;
+    } else {
+      updated = updateKanbanganttCardInMarkdown(
+        oldMarkdown,
+        ctx.kgIndex,
+        ctx.cardId,
+        patch,
+      );
+    }
     if (updated !== oldMarkdown) {
       easyMDE.value(updated);
       scheduleSave();
+    } else if (clear) {
+      // Note already empty in source — still drop stale DOM note UI.
+      scheduleSave();
+    }
+    // Always refresh the card so cleared notes disappear even if fence text
+    // normalized to the same string (or only DOM attrs were stale).
+    capturePreviewScrollPosition();
+    if (ctx.isNew || !refreshKgPreviewCard(savedCardId, ctx.kgIndex)) {
       schedulePreviewRefresh();
+    } else {
+      restorePreviewScrollPosition(document.getElementById('preview-content'));
     }
     bootstrap.Modal.getInstance(document.getElementById('kg-card-modal'))?.hide();
     kgCardContext = null;
@@ -8859,6 +9593,14 @@ function formatTextWithMarkup(rawText) {
 
     preview.addEventListener('click', e => {
       if (!isPreviewInteractionEnabled()) return;
+      const addBtn = e.target.closest?.('.kg-column-add');
+      if (addBtn && preview.contains(addBtn)) {
+        e.preventDefault();
+        e.stopPropagation();
+        const block = addBtn.closest('.kg-block');
+        openKgNewCardModal(block, addBtn.dataset.kgAddCol);
+        return;
+      }
       const actionBtn = e.target.closest?.('.kg-action-btn');
       if (actionBtn && preview.contains(actionBtn)) {
         e.preventDefault();
@@ -9464,7 +10206,25 @@ function formatTextWithMarkup(rawText) {
       minHeight: '200px',
       toolbar: [
         'code',
-        'bold', 'italic', '|',
+        {
+          name: 'bold',
+          action: (editor) => applyEditorOrModalFormat(editor, '**', '**', window.EasyMDE?.toggleBold),
+          className: 'fa fa-bold',
+          title: 'Bold',
+        },
+        {
+          name: 'italic',
+          action: (editor) => applyEditorOrModalFormat(editor, '*', '*', window.EasyMDE?.toggleItalic),
+          className: 'fa fa-italic',
+          title: 'Italic',
+        },
+        {
+          name: 'strikethrough',
+          action: (editor) => applyEditorOrModalFormat(editor, '~~', '~~', window.EasyMDE?.toggleStrikethrough),
+          className: 'fa fa-strikethrough',
+          title: 'Strikethrough',
+        },
+        '|',
         'quote', 'unordered-list', 'ordered-list', '|',
         'link','image','table',
         {
