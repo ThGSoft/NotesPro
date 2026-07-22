@@ -1061,6 +1061,11 @@
       return { value: '', styleState: applySheetStyleParts(styleEq[1].split(','), styleState) };
     }
 
+    // Empty-row placeholders: lone ` or only-backtick cells — never show in preview
+    if (/^`+$/.test(trimmed)) {
+      return { value: '', styleState: state };
+    }
+
     if (!trimmed.startsWith('`')) return { value: cell, styleState: state };
 
     let parsedAny = false;
@@ -1077,6 +1082,12 @@
         value = '';
         parsedAny = true;
         continue;
+      }
+      // Unclosed lone "`" leftover — treat as empty placeholder
+      if (value === '`') {
+        value = '';
+        parsedAny = true;
+        break;
       }
       break;
     }
@@ -1197,11 +1208,23 @@
       ));
       lastIndex = imageRegex.lastIndex;
     }
-    if (!parts.length) return escapeHtml(formatted);
+    if (!parts.length) {
+      const escaped = escapeHtml(formatted);
+      // Preview filler only — markdown source keeps empty cells as bare \t
+      return escaped || '&nbsp;';
+    }
     if (lastIndex < formatted.length) {
       parts.push(escapeHtml(formatted.slice(lastIndex)));
     }
-    return parts.join('');
+    return parts.join('') || '&nbsp;';
+  }
+
+  function sheetCellTextToMarkdown(text) {
+    let value = String(text || '').replace(/\r?\n/g, ' ').replace(/\t/g, ' ');
+    // Strip preview &nbsp; fillers; empty / whitespace-only → ''
+    value = value.replace(/\u00a0/g, ' ');
+    if (!value.trim()) return '';
+    return value;
   }
 
   /** Parse sheet numbers: 1234.56, 1'356.788, 1'356,788, 1 356,788 */
@@ -1394,12 +1417,30 @@
     html += `<table class="${tableClass}" style="font-size:${fontSize}">`;
     if (hasColWidths) {
       html += '<colgroup>';
-      if (editable) html += '<col style="width:28px">';
+      if (editable) html += '<col style="width:36px">';
       html += colWidths.map(w => (
         w ? `<col style="width:${w}">` : '<col>'
       )).join('');
       html += '</colgroup>';
     }
+    const renderBandActions = (axis, index) => {
+      const addAction = axis === 'col' ? 'addCol' : 'addRow';
+      const removeAction = axis === 'col' ? 'removeCol' : 'removeRow';
+      const addLabel = axis === 'col' ? 'Insert column' : 'Insert row';
+      const removeLabel = axis === 'col' ? 'Delete column' : 'Delete row';
+      const indexAttr = axis === 'col' ? `data-col="${index}"` : `data-row="${index}"`;
+      return [
+        `<div class="sheet-band-actions sheet-band-actions--${axis}">`,
+        `<button type="button" class="sheet-band-btn sheet-band-btn--add"`,
+        ` data-sheet-action="${addAction}" data-sheet-index="${sheetIndex}" ${indexAttr}`,
+        ` title="${addLabel}" aria-label="${addLabel}">+</button>`,
+        `<button type="button" class="sheet-band-btn sheet-band-btn--remove"`,
+        ` data-sheet-action="${removeAction}" data-sheet-index="${sheetIndex}" ${indexAttr}`,
+        ` title="${removeLabel}" aria-label="${removeLabel}">−</button>`,
+        '</div>',
+      ].join('');
+    };
+
     if (editable && colCount > 0) {
       html += '<thead><tr class="sheet-band-row sheet-band-row--cols">';
       html += '<th class="sheet-band-corner" aria-hidden="true"></th>';
@@ -1408,7 +1449,9 @@
         html += [
           `<th class="sheet-col-band${colSelected ? ' sheet-col-band--selected' : ''}"`,
           ` data-sheet-index="${sheetIndex}" data-col="${col}"`,
-          ` tabindex="0" role="button" aria-label="Select column ${col + 1}"></th>`,
+          ` tabindex="0" role="button" aria-label="Select column ${col + 1}">`,
+          renderBandActions('col', col),
+          '</th>',
         ].join('');
       }
       html += '</tr></thead>';
@@ -1421,7 +1464,9 @@
       return [
         `<${bandTag} class="sheet-row-band${rowSelected ? ' sheet-row-band--selected' : ''}"`,
         ` data-sheet-index="${sheetIndex}" data-row="${row}"`,
-        ` tabindex="0" role="button" aria-label="Select row ${row + 1}"></${bandTag}>`,
+        ` tabindex="0" role="button" aria-label="Select row ${row + 1}">`,
+        renderBandActions('row', row),
+        `</${bandTag}>`,
       ].join('');
     };
 
@@ -1453,25 +1498,31 @@
         : `<${tag}${styleAttr}>${display}</${tag}>`;
     };
 
+    const padCells = (row) => {
+      const cells = Array.isArray(row) ? [...row] : [];
+      while (cells.length < colCount) cells.push('');
+      return cells.slice(0, colCount);
+    };
+
     if (hasHeader) {
       html += '<thead><tr>';
       html += renderRowBand(0, 'th');
-      grid[0].forEach((cell, col) => { html += renderCell(cell, 'th', 0, col); });
+      padCells(grid[0]).forEach((cell, col) => { html += renderCell(cell, 'th', 0, col); });
       html += '</tr></thead><tbody>';
       grid.slice(1).forEach((row, ri) => {
         const rowIndex = ri + 1;
         html += '<tr>';
         html += renderRowBand(rowIndex, 'td');
-        row.forEach((cell, col) => { html += renderCell(cell, 'td', rowIndex, col); });
+        padCells(row).forEach((cell, col) => { html += renderCell(cell, 'td', rowIndex, col); });
         html += '</tr>';
       });
       html += '</tbody>';
     } else {
-      html += editable ? '<tbody>' : '<tbody>';
+      html += '<tbody>';
       grid.forEach((row, ri) => {
         html += '<tr>';
         html += renderRowBand(ri, 'td');
-        row.forEach((cell, col) => { html += renderCell(cell, 'td', ri, col); });
+        padCells(row).forEach((cell, col) => { html += renderCell(cell, 'td', ri, col); });
         html += '</tr>';
       });
       html += '</tbody>';
@@ -1482,13 +1533,48 @@
     return html;
   }
 
+  function sheetCellMarkdownIsEmpty(cell) {
+    let rest = String(cell ?? '').trim();
+    if (!rest) return true;
+    // Lone ` or only-backtick placeholders
+    if (/^`+$/.test(rest)) return true;
+    while (rest.startsWith('`')) {
+      const matched = rest.match(/^`([^`]*)`([\s\S]*)$/);
+      if (!matched) return rest === '`';
+      // Real format tokens mean this is not a blank placeholder row cell
+      if (matched[1].trim()) return false;
+      rest = matched[2].trim();
+    }
+    return rest === '';
+  }
+
+  function sheetRowCellsAreEmpty(cols) {
+    return (cols || []).every(sheetCellMarkdownIsEmpty);
+  }
+
+  /** Empty rows can't be only tabs — trim() would drop them. Use a lone ` placeholder. */
+  function emptySheetRowLine(colCount) {
+    const n = Math.max(1, colCount || 1);
+    return ['`', ...Array(Math.max(0, n - 1)).fill('')].join('\t');
+  }
+
+  function serializeSheetDataRow(rowLine, colCount) {
+    const cols = String(rowLine ?? '').split('\t');
+    const n = Math.max(colCount || 0, cols.length, 1);
+    while (cols.length < n) cols.push('');
+    if (sheetRowCellsAreEmpty(cols)) return emptySheetRowLine(n);
+    return cols.join('\t');
+  }
+
   function serializeSheetContent(parsed) {
     const lines = [];
     const configKeys = Object.keys(parsed.config || {});
     if (configKeys.length) {
       lines.push('`' + configKeys.map(k => `${k}=${parsed.config[k]}`).join(';') + '`');
     }
-    (parsed.dataRows || []).forEach(row => lines.push(row));
+    const rows = parsed.dataRows || [];
+    const colCount = Math.max(...rows.map(r => String(r).split('\t').length), 1);
+    rows.forEach(row => lines.push(serializeSheetDataRow(row, colCount)));
     return lines.join('\n');
   }
 
@@ -1501,7 +1587,12 @@
       const cols = parsed.dataRows[row].split('\t');
       while (cols.length <= col) cols.push('');
       cols[col] = String(newValue).replace(/\t/g, ' ').replace(/\r?\n/g, ' ');
-      parsed.dataRows[row] = cols.join('\t');
+      const colCount = Math.max(
+        ...parsed.dataRows.map(r => r.split('\t').length),
+        cols.length,
+        1,
+      );
+      parsed.dataRows[row] = serializeSheetDataRow(cols.join('\t'), colCount);
       return `\`\`\`sheet${sheetFenceSuffix(fenceAttrs)}\n${serializeSheetContent(parsed)}\n\`\`\`\n`;
     });
   }
@@ -1515,9 +1606,9 @@
       const rows = [...(parsed.dataRows || [])];
       const insertAt = Math.min(Math.max(0, atRow), rows.length);
       const colCount = Math.max(...rows.map(r => r.split('\t').length), 1);
-      let newRow = Array(colCount).fill('').join('\t');
+      let newRow = emptySheetRowLine(colCount);
       if (copyFromAbove && atRow > 0 && rows[atRow - 1]) {
-        newRow = rows[atRow - 1];
+        newRow = serializeSheetDataRow(rows[atRow - 1], colCount);
       }
       rows.splice(insertAt, 0, newRow);
       parsed.dataRows = rows;
@@ -1613,12 +1704,14 @@
     });
   }
 
-  function applySheetStructureFromBand(action) {
-    if (!easyMDE || !isPreviewInteractionEnabled() || !sheetBandSelection) return false;
-    const { sheetIndex, type, index } = sheetBandSelection;
+  function applySheetStructureFromBand(action, selection = sheetBandSelection) {
+    if (!easyMDE || !isPreviewInteractionEnabled() || !selection) return false;
+    const { sheetIndex, type, index } = selection;
+    if (!Number.isFinite(sheetIndex) || !Number.isFinite(index)) return false;
     const oldMarkdown = easyMDE.value();
     let updated = oldMarkdown;
     let nextIndex = index;
+    let nextType = type;
 
     if (type === 'col') {
       if (action === 'addCol') {
@@ -1647,10 +1740,28 @@
     if (updated === oldMarkdown) return false;
     easyMDE.value(updated);
     scheduleSave();
-    setSheetBandSelection(sheetIndex, type, nextIndex);
+    setSheetBandSelection(sheetIndex, nextType, nextIndex);
     renderPreview();
-    focusSheetBandAfterEdit(sheetIndex, type, nextIndex);
+    focusSheetBandAfterEdit(sheetIndex, nextType, nextIndex);
     return true;
+  }
+
+  function handleSheetBandActionClick(btn) {
+    if (!btn || !isPreviewInteractionEnabled()) return false;
+    const action = btn.dataset.sheetAction;
+    const sheetIndex = parseInt(btn.dataset.sheetIndex, 10);
+    const col = parseInt(btn.dataset.col, 10);
+    const row = parseInt(btn.dataset.row, 10);
+    if (!action || !Number.isFinite(sheetIndex)) return false;
+    if (action === 'addCol' || action === 'removeCol') {
+      if (!Number.isFinite(col)) return false;
+      return applySheetStructureFromBand(action, { sheetIndex, type: 'col', index: col });
+    }
+    if (action === 'addRow' || action === 'removeRow') {
+      if (!Number.isFinite(row)) return false;
+      return applySheetStructureFromBand(action, { sheetIndex, type: 'row', index: row });
+    }
+    return false;
   }
 
   function handleSheetBandStructureKey(e) {
@@ -1900,7 +2011,12 @@
     clearSheetRefPickHighlight();
     cell.classList.add('sheet-cell--ref-pick');
     const formula = cell.dataset.sheetFormula;
-    if (formula) cell.textContent = formula;
+    if (formula) {
+      cell.textContent = formula;
+    } else if (/^[\u00a0\s]*$/.test(cell.textContent || '')) {
+      // Clear preview &nbsp; filler so typing starts from a real empty cell
+      cell.textContent = '';
+    }
   }
 
   function cancelSheetCellEdit(cell) {
@@ -1931,7 +2047,7 @@
     const row = parseInt(cell.dataset.row, 10);
     const col = parseInt(cell.dataset.col, 10);
     if ([sheetIndex, row, col].some(n => Number.isNaN(n))) return false;
-    const newValue = cell.textContent.replace(/\r?\n/g, ' ').replace(/\t/g, ' ');
+    const newValue = sheetCellTextToMarkdown(cell.textContent);
     const oldMarkdown = easyMDE.value();
     const updated = updateSheetCellInMarkdown(oldMarkdown, sheetIndex, row, col, newValue);
     if (updated === oldMarkdown) return false;
@@ -2003,8 +2119,23 @@
     if (!preview || preview.dataset.sheetEditBound === '1') return;
     preview.dataset.sheetEditBound = '1';
 
+    preview.addEventListener('click', e => {
+      if (!isPreviewInteractionEnabled()) return;
+      const actionBtn = e.target.closest?.('.sheet-band-btn');
+      if (actionBtn && preview.contains(actionBtn)) {
+        e.preventDefault();
+        e.stopPropagation();
+        handleSheetBandActionClick(actionBtn);
+      }
+    });
+
     preview.addEventListener('mousedown', e => {
       if (!isPreviewInteractionEnabled()) return;
+      if (e.target.closest?.('.sheet-band-btn')) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
       if (e.target.closest?.('.md-tag, .md-tags, .calendar-unit, a, button, input, select, textarea')) return;
       const colBand = e.target.closest?.('.sheet-col-band');
       const rowBand = e.target.closest?.('.sheet-row-band');

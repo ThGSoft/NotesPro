@@ -203,6 +203,7 @@ Column `%` widths are scaled down if their sum exceeds 100%.
 | **Columns** | Separate cells with a **tab** character (not spaces). |
 | **Config line** | Optional first line in backticks: `` `key=value;key2=value2` `` |
 | **Data rows** | One row per line after the config line. |
+| **Empty rows** | Use a lone `` ` `` (or empty backticks) on the line so the row is kept — tabs alone are dropped. The placeholder is hidden in preview (empty cells show blank). |
 | **Header row** | The **first data row** is treated as column headers by default (`<thead>`). |
 | **Formulas** | A cell starting with `=` is evaluated (see below). |
 | **Format cell** | A cell wrapped in backticks sets formatting for that cell and all following cells until the next format cell (see below). |
@@ -359,9 +360,10 @@ Formulas are evaluated **row by row, left to right**. References to cells not ye
 **Sheet structure shortcuts** (while a **whole row or column** is selected in preview edit mode):
 
 1. Click the **column band** above a column header, or the **row band** left of a row, to select the full column/row (highlighted in blue).
-2. With a column selected: **`+`** insert column **before** selection (copies cell from the left column when one exists) · **`-`** remove column.
-3. With a row selected: **`°`** insert row **above** selection (copies cells from the row above when one exists) · **`Shift+-`** remove row.
-4. Click any cell to clear the band selection and edit cell contents.
+2. Use the **`+` / `−` buttons** in that band to insert or delete — or the keyboard shortcuts below.
+3. With a column selected: **`+`** insert column **before** selection (copies cell from the left column when one exists) · **`-`** remove column.
+4. With a row selected: **`°`** insert row **above** selection (copies cells from the row above when one exists) · **`Shift+-`** remove row.
+5. Click any cell to clear the band selection and edit cell contents.
 
 On Swiss/German keyboards, `°` and `+` share one key — unshifted selects/adds rows via `°`, shifted (`+`) adds columns when a column band is selected.
 
@@ -492,7 +494,7 @@ In split preview while editing:
 
 - Plain text lines — add or remove leading spaces in the source
 - Colored **panel** blocks — indent panel body lines
-- **Sheet** cells — `Tab` indents the cell value; select a full row/column via the band gutters, then `+`/`-` (column) or `°`/`Shift+-` (row) change structure
+- **Sheet** cells — `Tab` indents the cell value; use row/column band **`+`/`−`** buttons (or `+`/`-` / `°`/`Shift+-` shortcuts) to change structure
 
 #### Clear formatting
 
