@@ -1712,32 +1712,59 @@
     });
   }
 
-  function applySheetStructureFromBand(action, selection = sheetBandSelection) {
+  function getSheetDimensions(sheetIndex) {
+    if (!easyMDE) return { rows: 0, cols: 0 };
+    let idx = 0;
+    let rows = 0;
+    let cols = 0;
+    easyMDE.value().replace(SHEET_BLOCK_RE, (match, fenceAttrs, content) => {
+      if (idx++ !== sheetIndex) return match;
+      const parsed = parseSheetContent(content, fenceAttrs);
+      const dataRows = parsed.dataRows || [];
+      rows = dataRows.length;
+      cols = Math.max(...dataRows.map(r => String(r).split('\t').length), 0);
+      return match;
+    });
+    return { rows, cols };
+  }
+
+  function applySheetStructureFromBand(action, selection = sheetBandSelection, placement = 'this') {
     if (!easyMDE || !isPreviewInteractionEnabled() || !selection) return false;
     const { sheetIndex, type, index } = selection;
     if (!Number.isFinite(sheetIndex) || !Number.isFinite(index)) return false;
+    const dims = getSheetDimensions(sheetIndex);
     const oldMarkdown = easyMDE.value();
     let updated = oldMarkdown;
     let nextIndex = index;
-    let nextType = type;
+    const nextType = type;
 
     if (type === 'col') {
       if (action === 'addCol') {
-        updated = addSheetColumnInMarkdown(oldMarkdown, sheetIndex, index, { copyFromLeft: true });
-        nextIndex = index;
+        const at = placement === 'after' ? index + 1 : index;
+        updated = addSheetColumnInMarkdown(oldMarkdown, sheetIndex, at, { copyFromLeft: true });
+        nextIndex = at;
       } else if (action === 'removeCol') {
-        updated = removeSheetColumnInMarkdown(oldMarkdown, sheetIndex, index);
-        nextIndex = Math.max(0, index - 1);
+        let del = index;
+        if (placement === 'before') del = index - 1;
+        else if (placement === 'after') del = index + 1;
+        if (del < 0 || del >= dims.cols) return false;
+        updated = removeSheetColumnInMarkdown(oldMarkdown, sheetIndex, del);
+        nextIndex = Math.min(del, Math.max(0, dims.cols - 2));
       } else {
         return false;
       }
     } else if (type === 'row') {
       if (action === 'addRow') {
-        updated = addSheetRowInMarkdown(oldMarkdown, sheetIndex, index, { copyFromAbove: true });
-        nextIndex = index;
+        const at = placement === 'after' ? index + 1 : index;
+        updated = addSheetRowInMarkdown(oldMarkdown, sheetIndex, at, { copyFromAbove: true });
+        nextIndex = at;
       } else if (action === 'removeRow') {
-        updated = removeSheetRowInMarkdown(oldMarkdown, sheetIndex, index);
-        nextIndex = Math.max(0, index - 1);
+        let del = index;
+        if (placement === 'before') del = index - 1;
+        else if (placement === 'after') del = index + 1;
+        if (del < 0 || del >= dims.rows) return false;
+        updated = removeSheetRowInMarkdown(oldMarkdown, sheetIndex, del);
+        nextIndex = Math.min(del, Math.max(0, dims.rows - 2));
       } else {
         return false;
       }
@@ -1754,6 +1781,91 @@
     return true;
   }
 
+  let sheetStructureMenuEl = null;
+
+  function hideSheetStructureMenu() {
+    sheetStructureMenuEl?.remove();
+    sheetStructureMenuEl = null;
+  }
+
+  function showSheetStructurePlacementMenu(anchorEl, { action, sheetIndex, type, index }) {
+    hideSheetStructureMenu();
+    if (!anchorEl || !isPreviewInteractionEnabled()) return;
+
+    const dims = getSheetDimensions(sheetIndex);
+    const isAdd = action === 'addRow' || action === 'addCol';
+    const isRow = type === 'row';
+    const choices = [];
+
+    if (isAdd) {
+      if (isRow) {
+        choices.push({ placement: 'before', label: 'Insert above' });
+        choices.push({ placement: 'after', label: 'Insert below' });
+      } else {
+        choices.push({ placement: 'before', label: 'Insert left' });
+        choices.push({ placement: 'after', label: 'Insert right' });
+      }
+    } else if (isRow) {
+      choices.push({ placement: 'this', label: 'Delete this row' });
+      if (index > 0) choices.push({ placement: 'before', label: 'Delete row above' });
+      if (index < dims.rows - 1) choices.push({ placement: 'after', label: 'Delete row below' });
+    } else {
+      choices.push({ placement: 'this', label: 'Delete this column' });
+      if (index > 0) choices.push({ placement: 'before', label: 'Delete column left' });
+      if (index < dims.cols - 1) choices.push({ placement: 'after', label: 'Delete column right' });
+    }
+
+    if (!choices.length) return;
+
+    const menu = document.createElement('div');
+    menu.className = 'sheet-structure-menu';
+    menu.setAttribute('role', 'menu');
+    menu.innerHTML = choices.map((c, i) => (
+      `<button type="button" class="sheet-structure-menu-btn" data-placement="${c.placement}" role="menuitem">${escapeHtml(c.label)}</button>`
+    )).join('');
+
+    const onPick = (placement) => {
+      hideSheetStructureMenu();
+      applySheetStructureFromBand(action, { sheetIndex, type, index }, placement);
+    };
+
+    menu.addEventListener('click', (e) => {
+      const btn = e.target.closest?.('.sheet-structure-menu-btn');
+      if (!btn || !menu.contains(btn)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      onPick(btn.dataset.placement || 'this');
+    });
+
+    document.body.appendChild(menu);
+    sheetStructureMenuEl = menu;
+
+    const rect = anchorEl.getBoundingClientRect();
+    const menuRect = menu.getBoundingClientRect();
+    let left = rect.left;
+    let top = rect.bottom + 4;
+    if (left + menuRect.width > window.innerWidth - 8) {
+      left = Math.max(8, window.innerWidth - menuRect.width - 8);
+    }
+    if (top + menuRect.height > window.innerHeight - 8) {
+      top = Math.max(8, rect.top - menuRect.height - 4);
+    }
+    menu.style.left = `${Math.round(left)}px`;
+    menu.style.top = `${Math.round(top)}px`;
+
+    const dismiss = (e) => {
+      if (e.type === 'keydown' && e.key !== 'Escape') return;
+      if (e.type === 'mousedown' && menu.contains(e.target)) return;
+      hideSheetStructureMenu();
+      document.removeEventListener('mousedown', dismiss, true);
+      document.removeEventListener('keydown', dismiss, true);
+    };
+    requestAnimationFrame(() => {
+      document.addEventListener('mousedown', dismiss, true);
+      document.addEventListener('keydown', dismiss, true);
+    });
+  }
+
   function handleSheetBandActionClick(btn) {
     if (!btn || !isPreviewInteractionEnabled()) return false;
     const action = btn.dataset.sheetAction;
@@ -1761,40 +1873,65 @@
     const col = parseInt(btn.dataset.col, 10);
     const row = parseInt(btn.dataset.row, 10);
     if (!action || !Number.isFinite(sheetIndex)) return false;
+
+    let type = null;
+    let index = null;
     if (action === 'addCol' || action === 'removeCol') {
       if (!Number.isFinite(col)) return false;
-      return applySheetStructureFromBand(action, { sheetIndex, type: 'col', index: col });
-    }
-    if (action === 'addRow' || action === 'removeRow') {
+      type = 'col';
+      index = col;
+    } else if (action === 'addRow' || action === 'removeRow') {
       if (!Number.isFinite(row)) return false;
-      return applySheetStructureFromBand(action, { sheetIndex, type: 'row', index: row });
+      type = 'row';
+      index = row;
+    } else {
+      return false;
     }
-    return false;
+
+    // +/- buttons always ask placement: above/below (rows) or left/right (cols).
+    showSheetStructurePlacementMenu(btn, { action, sheetIndex, type, index });
+    return true;
   }
 
   function handleSheetBandStructureKey(e) {
     if (!sheetBandSelection || !isPreviewInteractionEnabled()) return false;
-    const { type } = sheetBandSelection;
+    const { type, sheetIndex, index } = sheetBandSelection;
+    const dims = getSheetDimensions(sheetIndex);
+    const isLastRow = type === 'row' && index === dims.rows - 1;
+    const isLastCol = type === 'col' && index === dims.cols - 1;
+    const preview = document.getElementById('preview-content');
+    const anchor = type === 'col'
+      ? preview?.querySelector(`.sheet-col-band[data-sheet-index="${sheetIndex}"][data-col="${index}"]`)
+      : preview?.querySelector(`.sheet-row-band[data-sheet-index="${sheetIndex}"][data-row="${index}"]`);
+
     if (type === 'col') {
       if (isSheetColPlusKey(e)) {
         e.preventDefault();
-        applySheetStructureFromBand('addCol');
+        if (isLastCol) {
+          showSheetStructurePlacementMenu(anchor, { action: 'addCol', sheetIndex, type, index });
+        } else {
+          applySheetStructureFromBand('addCol', sheetBandSelection, 'before');
+        }
         return true;
       }
       if (isSheetColMinusKey(e)) {
         e.preventDefault();
-        applySheetStructureFromBand('removeCol');
+        showSheetStructurePlacementMenu(anchor, { action: 'removeCol', sheetIndex, type, index });
         return true;
       }
     } else if (type === 'row') {
       if (isSheetRowPlusKey(e)) {
         e.preventDefault();
-        applySheetStructureFromBand('addRow');
+        if (isLastRow) {
+          showSheetStructurePlacementMenu(anchor, { action: 'addRow', sheetIndex, type, index });
+        } else {
+          applySheetStructureFromBand('addRow', sheetBandSelection, 'before');
+        }
         return true;
       }
       if (isSheetRowMinusKey(e)) {
         e.preventDefault();
-        applySheetStructureFromBand('removeRow');
+        showSheetStructurePlacementMenu(anchor, { action: 'removeRow', sheetIndex, type, index });
         return true;
       }
     }
