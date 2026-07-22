@@ -1291,12 +1291,19 @@
     Object.assign(config, fence.config);
     const initialFormatParts = [...fence.formatParts];
     content.split('\n').forEach(line => {
-      const trimmed = line.trim();
-      if (!trimmed) return;
+      // Keep leading/trailing tabs so empty cells at the start/end of a row survive.
+      const rawLine = String(line || '').replace(/\r$/, '').replace(/^\uFEFF/, '');
+      if (rawLine === '') return;
+      const trimmed = rawLine.trim();
+      if (!trimmed) {
+        // Whitespace-only: keep tab-only rows (empty cells); drop space-only blanks
+        if (rawLine.includes('\t')) dataRows.push(rawLine);
+        return;
+      }
       if (isSheetMetaLine(trimmed)) {
         parseSheetMetaLine(trimmed, config, initialFormatParts);
       } else {
-        dataRows.push(trimmed);
+        dataRows.push(rawLine);
       }
     });
     const rawGrid = dataRows.map(row => row.replace(/\t \t/g, '\t&emsp;\t').split('\t').map(c => c.trim()));
@@ -1563,6 +1570,7 @@
     const n = Math.max(colCount || 0, cols.length, 1);
     while (cols.length < n) cols.push('');
     if (sheetRowCellsAreEmpty(cols)) return emptySheetRowLine(n);
+    // Keep leading empty cells as leading tabs (do not trim the joined line)
     return cols.join('\t');
   }
 
