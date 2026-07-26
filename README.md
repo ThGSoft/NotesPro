@@ -231,7 +231,8 @@ Sheet config keys (semicolon-separated inside one `` `…` `` block):
 | `align=left` / `center` / `right` | Default cell alignment. |
 | `col=blue` / `#777` | Default text color (CSS name or hex). |
 | `bg-col=#eee` / `yellow` | Default background color (CSS name or hex). |
-| `font-size=medium` | Table font size (`small`, `medium`, `large`, or CSS size). |
+| `font-size=medium` | Table font size (`small`, `medium`, `large`, or CSS size). Overrides layout font when set. |
+| `layout=small` / `normal` / `big` | Table density (padding + default font). Also switchable in preview via **Layout** buttons. |
 
 Example without header row:
 
@@ -419,9 +420,11 @@ Multiple Y columns produce **grouped bars** (or multiple lines). You can also us
 
 `` `sheet=quarterly; type=bar; x=Month; y=Sales,Costs` ``
 
-Chart types: `bar`, `line`, `scatter`, `pie`. Pie charts use the first Y column only. Column names can be header names or `0`-based indices.
+**Empty rows → new series** — optional (chart settings ⚙, default On). A blank sheet row or lone `` ` `` starts a new series with a new color (`Sales (1)`, `Sales (2)`, …). Turn Off to ignore blank rows and keep one continuous series.
 
-In preview, use the chart **settings** (gear) to switch type, toggle data points, and change X / left Y / right Y axes; settings are saved per page in your user preferences.
+Chart types: `bar`, `line`, `scatter`, `pie`. Pie charts use the first Y column only (empty rows are skipped). Column names can be header names or `0`-based indices.
+
+In preview, use the chart **settings** (gear) to switch type, toggle data points, enable/disable empty-row series splits, and change X / left Y / right Y axes; settings are saved per page in your user preferences. The legend shows **n / avg / min / max** for each series.
 
 ## Markdown editor
 

@@ -974,6 +974,14 @@
     return '';
   }
 
+  function sanitizeSheetLayout(value) {
+    const lower = String(value || '').trim().toLowerCase();
+    if (lower === 'small' || lower === 'normal' || lower === 'big') return lower;
+    if (lower === 'medium' || lower === 'default' || lower === '') return 'normal';
+    if (lower === 'large') return 'big';
+    return 'normal';
+  }
+
   function sanitizeSheetWidth(value) {
     if (!value) return '';
     const v = String(value).trim();
@@ -1003,7 +1011,7 @@
     String(attrs || '').split(';').forEach(part => {
       const p = part.trim();
       if (!p) return;
-      if (/\b(id|sheet|header)\s*=/i.test(p)) {
+      if (/\b(id|sheet|header|layout)\s*=/i.test(p)) {
         Object.assign(config, parseBacktickConfig('`' + p + '`'));
       } else {
         formatParts.push(p);
@@ -1107,25 +1115,33 @@
     return segments;
   }
 
+  function isSheetConfigToken(part) {
+    return /^(id|sheet|header|layout|frlen|align|col|bg-col|bgcol|font-size|fontsize|width)\s*=/i.test(String(part || '').trim());
+  }
+
   function isSheetMetaLine(trimmed) {
     if (!trimmed.includes('`')) return false;
     if (trimmed.includes('\t')) return false;
     const segments = parseBacktickSegments(trimmed);
     if (!segments.length) return false;
     if (trimmed.replace(/`[^`]*`/g, '').trim()) return false;
-    return segments.some(s => /\b(id|sheet|header)\s*=/i.test(s));
+    return segments.some(s => s.split(';').some(isSheetConfigToken));
   }
 
   function parseSheetMetaLine(trimmed, config, initialFormatParts) {
     parseBacktickSegments(trimmed).forEach(inner => {
-      if (/\b(id|sheet|header)\s*=/i.test(inner)) {
-        Object.assign(config, parseBacktickConfig('`' + inner + '`'));
-      } else {
-        inner.split(';').forEach(part => {
-          const p = part.trim();
-          if (p) initialFormatParts.push(p);
-        });
+      const configParts = [];
+      const formatParts = [];
+      String(inner || '').split(';').forEach(part => {
+        const p = part.trim();
+        if (!p) return;
+        if (isSheetConfigToken(p)) configParts.push(p);
+        else formatParts.push(p);
+      });
+      if (configParts.length) {
+        Object.assign(config, parseBacktickConfig('`' + configParts.join(';') + '`'));
       }
+      formatParts.forEach(p => initialFormatParts.push(p));
     });
   }
 
@@ -1409,7 +1425,8 @@
 
   function sheetGridToHtml(grid, config, options = {}, cellStyles, rawGrid) {
     const { sheetIndex = 0, editable = false, bandSelection = null } = options;
-    const fontSize = config['font-size'] || 'medium';
+    const fontSize = config['font-size'] || '';
+    const layout = sanitizeSheetLayout(config.layout);
     const hasHeader = sheetHasHeader(config) && grid.length > 0;
     const colCount = Math.max(...grid.map(row => row.length), 0);
     const colWidths = sheetColumnWidths(cellStyles, colCount);
@@ -1417,11 +1434,13 @@
     const fixedCols = hasColWidths;
     const tableClass = [
       'spreadsheet-table',
+      `spreadsheet-table--layout-${layout}`,
       fixedCols ? 'spreadsheet-table--fixed-cols' : '',
       editable ? 'spreadsheet-table--bands' : '',
     ].filter(Boolean).join(' ');
     let html = editable ? '<div class="sheet-table-wrap">' : '';
-    html += `<table class="${tableClass}" style="font-size:${fontSize}">`;
+    const styleAttr = fontSize ? ` style="font-size:${escapeHtml(fontSize)}"` : '';
+    html += `<table class="${tableClass}"${styleAttr}>`;
     if (hasColWidths) {
       html += '<colgroup>';
       if (editable) html += '<col style="width:36px">';
@@ -2266,6 +2285,21 @@
 
     preview.addEventListener('click', e => {
       if (!isPreviewInteractionEnabled()) return;
+      const layoutBtn = e.target.closest?.('.sheet-layout-btn');
+      if (layoutBtn && preview.contains(layoutBtn)) {
+        e.preventDefault();
+        e.stopPropagation();
+        const sheetIndex = parseInt(layoutBtn.dataset.sheetIndex, 10);
+        const layout = layoutBtn.dataset.sheetLayout;
+        if (!easyMDE || !Number.isFinite(sheetIndex) || !layout) return;
+        const oldMarkdown = easyMDE.value();
+        const updated = setSheetLayoutInMarkdown(oldMarkdown, sheetIndex, layout);
+        if (updated === oldMarkdown) return;
+        easyMDE.value(updated);
+        scheduleSave();
+        renderPreview();
+        return;
+      }
       const actionBtn = e.target.closest?.('.sheet-band-btn');
       if (actionBtn && preview.contains(actionBtn)) {
         e.preventDefault();
@@ -2410,22 +2444,54 @@
     return `\n\n${html}\n\n`;
   }
 
+  function setSheetLayoutInMarkdown(markdown, sheetIndex, layout) {
+    const next = sanitizeSheetLayout(layout);
+    let idx = 0;
+    return String(markdown || '').replace(SHEET_BLOCK_RE, (match, fenceAttrs, content) => {
+      if (idx++ !== sheetIndex) return match;
+      const parsed = parseSheetContent(content, fenceAttrs);
+      if (!parsed.config) parsed.config = {};
+      if (next === 'normal') delete parsed.config.layout;
+      else parsed.config.layout = next;
+      const fence = String(fenceAttrs || '')
+        .split(';')
+        .map(p => p.trim())
+        .filter(p => p && !/^layout\s*=/i.test(p))
+        .join(';');
+      return `\`\`\`sheet${sheetFenceSuffix(fence)}\n${serializeSheetContent(parsed)}\n\`\`\`\n`;
+    });
+  }
+
   function parseSheetBlocks(plainText, options = {}) {
     let sheetIndex = 0;
+    const editable = !!options.sheetEditable;
     return plainText.replace(SHEET_BLOCK_RE, (_, fenceAttrs, content) => {
       const parsed = parseSheetContent(content, fenceAttrs);
       const idx = sheetIndex++;
       const id = parsed.config.id || parsed.config.sheet || '';
-      const title = id
+      const layout = sanitizeSheetLayout(parsed.config.layout);
+      const layoutBtns = ['small', 'normal', 'big'].map(size => {
+        const active = size === layout ? ' active' : '';
+        return `<button type="button" class="btn btn-outline-secondary sheet-layout-btn${active}" data-sheet-index="${idx}" data-sheet-layout="${size}">${size.charAt(0).toUpperCase()}${size.slice(1)}</button>`;
+      }).join('');
+      const meta = id
         ? `<div class="sheet-block-meta">Sheet: <strong>${escapeHtml(id)}</strong></div>`
-        : '';
+        : '<div class="sheet-block-meta">Sheet</div>';
+      const toolbar = `
+        <div class="sheet-block-toolbar">
+          ${meta}
+          <div class="sheet-layout-controls" role="group" aria-label="Sheet layout">
+            <span class="sheet-layout-label">Layout</span>
+            <div class="sheet-layout-buttons">${layoutBtns}</div>
+          </div>
+        </div>`;
       const sheetHtml = sheetGridToHtml(parsed.grid, parsed.config, {
         sheetIndex: idx,
-        editable: !!options.sheetEditable,
+        editable,
         bandSelection: sheetBandSelection?.sheetIndex === idx ? sheetBandSelection : null,
       }, parsed.cellStyles, parsed.rawGrid);
       return wrapRichPreviewBlock(
-        `<div class="sheet-preview-block" data-sheet-index="${idx}">${title}${sheetHtml}</div>`,
+        `<div class="sheet-preview-block" data-sheet-index="${idx}" data-sheet-layout="${layout}">${toolbar}${sheetHtml}</div>`,
       );
     });
   }
@@ -2447,7 +2513,20 @@
     return ['1'];
   }
 
-  function chartDataFromSheet(sheet, xKey, yKeys) {
+  function isSheetRowBlankForChart(row) {
+    if (!Array.isArray(row) || !row.length) return true;
+    return row.every(c => String(c ?? '').trim() === '');
+  }
+
+  function chartUniqueLabel(raw, seen) {
+    const base = String(raw ?? '').trim() || '(empty)';
+    const count = (seen.get(base) || 0) + 1;
+    seen.set(base, count);
+    return count === 1 ? base : `${base} (${count})`;
+  }
+
+  function chartDataFromSheet(sheet, xKey, yKeys, options = {}) {
+    const splitEmptyRows = options.splitEmptyRows !== false;
     const grid = sheet.grid || [];
     if (!grid.length) return { labels: [], series: [], points: [] };
     const hasHeader = sheetHasHeader(sheet.config) && grid.length > 0;
@@ -2456,37 +2535,80 @@
     const useIndex = xKey === 'index' || xKey === '__index__';
     const xIdx = useIndex ? 0 : resolveColumnIndex(headers, xKey, 0);
     const yList = Array.isArray(yKeys) ? yKeys : [yKeys];
+    const yIndexes = yList.map((yKey, si) => resolveColumnIndex(headers, yKey, si + 1));
 
-    const rows = grid.slice(start).map((row, ri) => ({
-      label: useIndex ? String(ri + 1) : String(row[xIdx] ?? ''),
-      values: yList.map((yKey, si) => {
-        const yIdx = resolveColumnIndex(headers, yKey, si + 1);
-        const n = parseSheetNumber(row[yIdx]);
-        return Number.isNaN(n) ? 0 : n;
-      }),
-    })).filter(r => useIndex || r.label !== '');
+    // Optionally split on blank rows → each block becomes its own colored series group
+    const segments = [];
+    let current = [];
+    grid.slice(start).forEach((row, ri) => {
+      if (isSheetRowBlankForChart(row)) {
+        if (splitEmptyRows) {
+          if (current.length) {
+            segments.push(current);
+            current = [];
+          }
+        }
+        return;
+      }
+      current.push({ row, ri });
+    });
+    if (current.length) segments.push(current);
+    if (!segments.length) return { labels: [], series: [], points: [] };
 
-    const series = yList.map((yKey, si) => ({
-      key: yKey,
-      name: String(headers[resolveColumnIndex(headers, yKey, si + 1)] ?? yKey),
-      values: rows.map(r => r.values[si]),
-    }));
+    const labelSeen = new Map();
+    const rowMeta = [];
+    segments.forEach((seg, segIdx) => {
+      seg.forEach(({ row, ri }) => {
+        const rawLabel = useIndex ? String(rowMeta.length + 1) : String(row[xIdx] ?? '');
+        if (!useIndex && rawLabel.trim() === '') return;
+        const values = yIndexes.map((yIdx) => {
+          const raw = String(row[yIdx] ?? '').trim();
+          if (!raw) return null;
+          const n = parseSheetNumber(raw);
+          return Number.isNaN(n) ? null : n;
+        });
+        // Skip rows with no numeric Y values (empty cells must not count)
+        if (values.every(v => v == null)) return;
+        const label = useIndex ? rawLabel : chartUniqueLabel(rawLabel, labelSeen);
+        rowMeta.push({ label, segIdx, values });
+      });
+    });
+    if (!rowMeta.length) return { labels: [], series: [], points: [] };
+
+    const labels = rowMeta.map(r => r.label);
+    const segmentCount = segments.length;
+    const series = [];
+    yList.forEach((yKey, si) => {
+      const baseName = String(headers[yIndexes[si]] ?? yKey);
+      for (let segIdx = 0; segIdx < segmentCount; segIdx += 1) {
+        if (!rowMeta.some(r => r.segIdx === segIdx && r.values[si] != null)) continue;
+        const name = segmentCount === 1 ? baseName : `${baseName} (${segIdx + 1})`;
+        series.push({
+          key: yKey,
+          name,
+          segment: segIdx,
+          values: rowMeta.map(r => (r.segIdx === segIdx ? r.values[si] : null)),
+        });
+      }
+    });
 
     return {
-      labels: rows.map(r => r.label),
+      labels,
       series,
-      points: rows.map(r => ({ label: r.label, value: r.values[0] ?? 0 })),
+      points: rowMeta
+        .filter(r => Number.isFinite(r.values[0]))
+        .map(r => ({ label: r.label, value: r.values[0] })),
       xAxisLabel: useIndex ? 'Index' : String(headers[xIdx] ?? xKey),
     };
   }
 
-  function chartDataFromSheetDual(sheet, xKey, leftYKeys, rightYKeys) {
+  function chartDataFromSheetDual(sheet, xKey, leftYKeys, rightYKeys, options = {}) {
     const leftKeys = Array.isArray(leftYKeys) ? leftYKeys : [leftYKeys].filter(Boolean);
     const rightKeys = Array.isArray(rightYKeys) ? rightYKeys : [rightYKeys].filter(Boolean);
     const leftOnly = leftKeys.filter(k => !rightKeys.includes(k));
     const rightOnly = rightKeys.filter(k => !leftKeys.includes(k));
-    const left = leftOnly.length ? chartDataFromSheet(sheet, xKey, leftOnly) : null;
-    const right = rightOnly.length ? chartDataFromSheet(sheet, xKey, rightOnly) : null;
+    const left = leftOnly.length ? chartDataFromSheet(sheet, xKey, leftOnly, options) : null;
+    const right = rightOnly.length ? chartDataFromSheet(sheet, xKey, rightOnly, options) : null;
     const labels = left?.labels?.length ? left.labels : (right?.labels ?? []);
     return {
       labels,
@@ -2530,7 +2652,10 @@
 
   function drawLineSeries(g, container, labels, series, xAt, y, color, yScaleMode, xLabel, showPoints) {
     if (!series.length) return;
-    const line = d3.line().x((_, i) => xAt(i)).y(d => y(chartYValue(d, yScaleMode)));
+    const line = d3.line()
+      .defined(d => Number.isFinite(d))
+      .x((_, i) => xAt(i))
+      .y(d => y(chartYValue(d, yScaleMode)));
     series.forEach(s => {
       g.append('path')
         .datum(s.values)
@@ -2557,7 +2682,7 @@
         label,
         name: s0.name,
         value: s0.values[i],
-      }))).join('rect')
+      })).filter(d => Number.isFinite(d.value))).join('rect')
         .attr('class', 'chart-bar chart-bar-left')
         .attr('x', d => x(d.label))
         .attr('y', d => chartBarRect(d.value, y, yScaleMode).y)
@@ -2581,7 +2706,7 @@
       .attr('class', 'bar-group-left')
       .attr('transform', label => `translate(${x0(label)},0)`)
       .selectAll('rect')
-      .data((label, li) => series.map(s => ({ name: s.name, label, value: s.values[li] })))
+      .data((label, li) => series.map(s => ({ name: s.name, label, value: s.values[li] })).filter(d => Number.isFinite(d.value)))
       .join('rect')
       .attr('class', 'chart-bar')
       .attr('x', d => x1(d.name))
@@ -5429,13 +5554,39 @@
     return `\n\`\`\`panel ${panelType}\n${lines.join('\n')}\n\`\`\`\n`;
   }
 
+  function chartSeriesStats(values) {
+    const nums = (values || []).filter(v => Number.isFinite(v));
+    const count = nums.length;
+    if (!count) return { count: 0, avg: NaN, min: NaN, max: NaN };
+    let sum = 0;
+    let min = nums[0];
+    let max = nums[0];
+    nums.forEach((v) => {
+      sum += v;
+      if (v < min) min = v;
+      if (v > max) max = v;
+    });
+    return { count, avg: sum / count, min, max };
+  }
+
+  function formatChartSeriesStats(values) {
+    const { count, avg, min, max } = chartSeriesStats(values);
+    if (!count) return 'n=0';
+    return `n=${count} · avg ${formatChartValue(avg)} · min ${formatChartValue(min)} · max ${formatChartValue(max)}`;
+  }
+
   function appendChartLegend(container, series, colorScale) {
+    if (!series?.length) return;
     const legend = document.createElement('div');
     legend.className = 'chart-block-legend';
     series.forEach(s => {
       const item = document.createElement('span');
       item.className = 'chart-legend-item';
-      item.innerHTML = `<span class="chart-legend-swatch" style="background:${colorScale(s.name)}"></span>${escapeHtml(s.name)}`;
+      item.innerHTML = [
+        `<span class="chart-legend-swatch" style="background:${colorScale(s.name)}"></span>`,
+        `<span class="chart-legend-name">${escapeHtml(s.name)}</span>`,
+        `<span class="chart-legend-stats">${escapeHtml(formatChartSeriesStats(s.values))}</span>`,
+      ].join('');
       legend.appendChild(item);
     });
     container.appendChild(legend);
@@ -5531,12 +5682,15 @@
         label: labels[i],
         name: s.name,
         value,
-      }));
+      })).filter(d => Number.isFinite(d.value));
       const dots = g.selectAll(`.chart-scatter-dot-${si}`)
         .data(pointData)
         .join('circle')
         .attr('class', `chart-scatter-dot-${si} chart-point`)
-        .attr('cx', (_, i) => xPos(labels[i], i, s.name))
+        .attr('cx', d => {
+          const i = labels.indexOf(d.label);
+          return xPos(d.label, i, s.name);
+        })
         .attr('cy', d => y(chartYValue(d.value, yScaleMode)))
         .attr('r', 5)
         .attr('fill', '#fff')
@@ -5628,7 +5782,7 @@
       );
     }
 
-    if (allSeries.length > 1) appendChartLegend(container, allSeries, color);
+    if (allSeries.length) appendChartLegend(container, allSeries, color);
 
     styleXAxisLabels(
       g.append('g').attr('transform', `translate(0,${innerH})`).call(d3.axisBottom(x0)),
@@ -5668,7 +5822,7 @@
       drawLineSeries(g, container, labels, rightSeries, i => x(labels[i]), yRight, color, yScaleMode, xLabel, showPoints);
     }
 
-    if (allSeries.length > 1) appendChartLegend(container, allSeries, color);
+    if (allSeries.length) appendChartLegend(container, allSeries, color);
 
     styleXAxisLabels(
       g.append('g').attr('transform', `translate(0,${innerH})`).call(d3.axisBottom(x)),
@@ -5707,7 +5861,7 @@
       drawScatterPoints(g, container, labels, rightSeries, label => x(label), yRight, color, yScaleMode, { xLabel });
     }
 
-    if (allSeries.length > 1) appendChartLegend(container, allSeries, color);
+    if (allSeries.length) appendChartLegend(container, allSeries, color);
 
     styleXAxisLabels(
       g.append('g').attr('transform', `translate(0,${innerH})`).call(d3.axisBottom(x)),
@@ -5862,6 +6016,8 @@
         ? stored.mode
         : (CHART_MODES.includes(spec.type) ? spec.type : 'bar');
       let showPoints = !!stored?.showPoints;
+      // Default On — empty sheet rows start a new colored series
+      let splitEmptyRows = stored?.splitEmptyRows !== false;
 
       const toolbar = document.createElement('div');
       toolbar.className = 'chart-block-toolbar d-none';
@@ -5879,6 +6035,13 @@
       const pointsButtons = document.createElement('div');
       pointsButtons.className = 'chart-axis-buttons chart-block-axis-buttons';
       pointsGroup.appendChild(pointsButtons);
+
+      const splitGroup = document.createElement('div');
+      splitGroup.className = 'chart-block-axis-group';
+      splitGroup.innerHTML = '<div class="chart-block-axis-label">Empty rows → new series</div>';
+      const splitButtons = document.createElement('div');
+      splitButtons.className = 'chart-axis-buttons chart-block-axis-buttons';
+      splitGroup.appendChild(splitButtons);
 
       const xGroup = document.createElement('div');
       xGroup.className = 'chart-block-axis-group';
@@ -5901,7 +6064,7 @@
       yRightButtons.className = 'chart-axis-buttons chart-block-axis-buttons';
       yRightGroup.appendChild(yRightButtons);
 
-      toolbar.append(modeGroup, pointsGroup, xGroup, yGroup, yRightGroup);
+      toolbar.append(modeGroup, pointsGroup, splitGroup, xGroup, yGroup, yRightGroup);
 
       const canvas = document.createElement('div');
       canvas.className = 'chart-block-canvas';
@@ -5912,6 +6075,7 @@
         scheduleChartSettingsSave(chartIndex, {
           mode: chartMode,
           showPoints,
+          splitEmptyRows,
           x: getChartAxisValues(xButtons)[0] || xDefault,
           yLeft: getChartAxisValues(yButtons),
           yRight: getChartAxisValues(yRightButtons),
@@ -5928,9 +6092,11 @@
         if (chartMode === 'pie') {
           xGroup.classList.add('d-none');
           yRightGroup.classList.add('d-none');
+          splitGroup.classList.add('d-none');
         } else {
           if (sheet && columns.length) xGroup.classList.remove('d-none');
           yRightGroup.classList.remove('d-none');
+          splitGroup.classList.remove('d-none');
         }
         if (chartMode === 'bar' || chartMode === 'line') pointsGroup.classList.remove('d-none');
         else pointsGroup.classList.add('d-none');
@@ -5961,6 +6127,14 @@
         persistChartSettings();
       });
 
+      renderChartToggleButtons(splitButtons, splitEmptyRows);
+      bindChartAxisButtons(splitButtons, false);
+      splitButtons.addEventListener('click', () => {
+        splitEmptyRows = getChartAxisValues(splitButtons)[0] === '1';
+        drawChart();
+        persistChartSettings();
+      });
+
       const width = Math.max(320, el.clientWidth || 480);
       const height = 280;
 
@@ -5981,7 +6155,7 @@
           return { labels: [], leftSeries: [], rightSeries: [], series: [], points: [] };
         }
         const xKey = getChartAxisValues(xButtons)[0] || 'index';
-        return chartDataFromSheetDual(sheet, xKey, leftKeys, rightKeys);
+        return chartDataFromSheetDual(sheet, xKey, leftKeys, rightKeys, { splitEmptyRows });
       }
 
       function chartRenderOptions(chartData) {
@@ -8422,7 +8596,7 @@ function formatTextWithMarkup(rawText) {
 
   const EXAMPLE_SHEET_ID = 'quarterly';
   const EXAMPLE_SHEET_BODY = [
-    '`id=quarterly',
+    '`id=quarterly`',
     'Month\tSales\tCosts',
     'Jan\t100\t80',
     'Feb\t150\t90',
