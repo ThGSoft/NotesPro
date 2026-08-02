@@ -1300,7 +1300,7 @@
     return normalized;
   }
 
-  function parseSheetContent(content, fenceAttrs = '') {
+  function parseSheetRaw(content, fenceAttrs = '') {
     const config = {};
     const dataRows = [];
     const fence = parseSheetFenceAttrs(fenceAttrs);
@@ -1324,8 +1324,21 @@
     });
     const rawGrid = dataRows.map(row => row.replace(/\t \t/g, '\t&emsp;\t').split('\t').map(c => c.trim()));
     const { values, styles } = buildSheetStyleGrid(rawGrid, config, initialFormatParts);
-    const grid = evaluateSheetGrid(values, config, styles);
-    return { config, dataRows, grid, rawGrid: values, cellStyles: styles };
+    return { config, dataRows, rawGrid: values, cellStyles: styles };
+  }
+
+  function parseSheetContent(content, fenceAttrs = '', evalOptions = {}) {
+    const parsed = parseSheetRaw(content, fenceAttrs);
+    const grid = evaluateSheetGrid(parsed.rawGrid, parsed.config, parsed.cellStyles, evalOptions);
+    return { ...parsed, grid };
+  }
+
+  function sheetAbsCellValue(out, col, row) {
+    const rr = parseInt(row, 10);
+    const cc = parseInt(col, 10);
+    if (!out?.[rr] || out[rr][cc] === undefined) return 0;
+    const val = parseSheetNumber(out[rr][cc]);
+    return Number.isNaN(val) ? 0 : val;
   }
 
   function sheetRelCellValue(out, baseR, baseC, colOff, rowOff) {
@@ -1336,11 +1349,24 @@
     return Number.isNaN(val) ? 0 : val;
   }
 
-  function sheetSumArea(out, baseR, baseC, col1, row1, col2, row2) {
-    const absC1 = baseC + parseInt(col1, 10);
-    const absR1 = baseR + parseInt(row1, 10);
-    const absC2 = baseC + parseInt(col2, 10);
-    const absR2 = baseR + parseInt(row2, 10);
+  function sheetResolveCellRef(out, baseR, baseC, absCol, col, absRow, row) {
+    if (absCol && absRow) return sheetAbsCellValue(out, col, row);
+    if (absCol || absRow) {
+      // Mixed: absolute axis uses index, relative axis uses offset
+      const cc = absCol ? parseInt(col, 10) : baseC + parseInt(col, 10);
+      const rr = absRow ? parseInt(row, 10) : baseR + parseInt(row, 10);
+      if (!out?.[rr] || out[rr][cc] === undefined) return 0;
+      const val = parseSheetNumber(out[rr][cc]);
+      return Number.isNaN(val) ? 0 : val;
+    }
+    return sheetRelCellValue(out, baseR, baseC, col, row);
+  }
+
+  function sheetSumArea(out, baseR, baseC, col1, row1, col2, row2, abs = {}) {
+    const absC1 = abs.c1 ? parseInt(col1, 10) : baseC + parseInt(col1, 10);
+    const absR1 = abs.r1 ? parseInt(row1, 10) : baseR + parseInt(row1, 10);
+    const absC2 = abs.c2 ? parseInt(col2, 10) : baseC + parseInt(col2, 10);
+    const absR2 = abs.r2 ? parseInt(row2, 10) : baseR + parseInt(row2, 10);
     const minCol = Math.min(absC1, absC2);
     const maxCol = Math.max(absC1, absC2);
     const minRow = Math.min(absR1, absR2);
@@ -1356,14 +1382,15 @@
     return total;
   }
 
-  function evaluateSheetGrid(grid, config, cellStyles) {
+  function evaluateSheetGrid(grid, config, cellStyles, options = {}) {
     const defaultFrLen = parseInt(config.frLen, 10);
     const frLen = Number.isNaN(defaultFrLen) ? 2 : defaultFrLen;
+    const getSheetGrid = options.getSheetGrid || null;
     const out = grid.map(row => [...row]);
     for (let r = 0; r < out.length; r++) {
       for (let c = 0; c < out[r].length; c++) {
         let cell = out[r][c];
-        if (!cell.startsWith('=')) continue;
+        if (!String(cell).startsWith('=')) continue;
         try {
           let formula = cell.substring(1);
           if (formula.trim() === 'SUM_ABOVE') {
@@ -1383,13 +1410,33 @@
               frac = parseInt(digits, 10);
               return prefix;
             });
+
+            // Cross-sheet refs: !sheetId!c[$4,$2] or !sheetId!c[-1,0]
             formula = formula.replace(
-              /sum\s*\(\s*c\[\s*(-?\d+)\s*,\s*(-?\d+)\s*\]\s*,\s*c\[\s*(-?\d+)\s*,\s*(-?\d+)\s*\]\s*\)/gi,
-              (_, col1, row1, col2, row2) => sheetSumArea(out, r, c, col1, row1, col2, row2),
+              /!([A-Za-z_][A-Za-z0-9_-]*)!c\[\s*(\$)?\s*(-?\d+)\s*,\s*(\$)?\s*(-?\d+)\s*\]/gi,
+              (_, sheetId, absC, col, absR, row) => {
+                const other = getSheetGrid?.(sheetId);
+                if (!other) return 0;
+                return sheetResolveCellRef(other, r, c, absC, col, absR, row);
+              },
             );
-            formula = formula.replace(/c\[\s*(-?\d+)\s*,\s*(-?\d+)\s*\]/g, (_, colOff, rowOff) => {
-              return sheetRelCellValue(out, r, c, colOff, rowOff);
-            });
+
+            // Cross-sheet sum: sum(!id!c[…], !id!c[…]) — expand refs first already done;
+            // same-sheet sum with optional absolute $ markers
+            formula = formula.replace(
+              /sum\s*\(\s*c\[\s*(\$)?\s*(-?\d+)\s*,\s*(\$)?\s*(-?\d+)\s*\]\s*,\s*c\[\s*(\$)?\s*(-?\d+)\s*,\s*(\$)?\s*(-?\d+)\s*\]\s*\)/gi,
+              (_, absC1, col1, absR1, row1, absC2, col2, absR2, row2) => sheetSumArea(
+                out, r, c, col1, row1, col2, row2,
+                { c1: !!absC1, r1: !!absR1, c2: !!absC2, r2: !!absR2 },
+              ),
+            );
+
+            // Same-sheet cell refs: c[col,row] relative, c[$col,$row] absolute
+            formula = formula.replace(
+              /c\[\s*(\$)?\s*(-?\d+)\s*,\s*(\$)?\s*(-?\d+)\s*\]/g,
+              (_, absC, col, absR, row) => sheetResolveCellRef(out, r, c, absC, col, absR, row),
+            );
+
             const mathScope = `
               const sqrt = Math.sqrt;
               const sqr = (n) => Math.pow(n, 2);
@@ -1415,6 +1462,32 @@
       }
     }
     return out;
+  }
+
+  function evaluateSheetListWithCrossRefs(sheetList) {
+    const byId = new Map();
+    sheetList.forEach((sheet, i) => {
+      const id = (sheet.config.id || sheet.config.sheet || `sheet-${i}`).trim();
+      sheet.id = id;
+      sheet.grid = (sheet.rawGrid || []).map(row => [...row]);
+      byId.set(id, sheet);
+    });
+
+    const getSheetGrid = (refId) => byId.get(String(refId || '').trim())?.grid || null;
+
+    // Multi-pass so forward / cross-sheet refs can settle
+    for (let pass = 0; pass < 3; pass += 1) {
+      sheetList.forEach((sheet) => {
+        sheet.grid = evaluateSheetGrid(sheet.rawGrid, sheet.config, sheet.cellStyles, {
+          getSheetGrid: (refId) => {
+            if (refId === sheet.id) return sheet.grid;
+            return getSheetGrid(refId);
+          },
+        });
+        byId.set(sheet.id, sheet);
+      });
+    }
+    return sheetList;
   }
 
   function sheetHasHeader(config) {
@@ -2060,6 +2133,18 @@
     const tgtRow = parseInt(targetCell.dataset.row, 10);
     const tgtCol = parseInt(targetCell.dataset.col, 10);
     if ([srcRow, srcCol, tgtRow, tgtCol].some(n => Number.isNaN(n))) return null;
+
+    const srcSheet = sourceCell.dataset.sheetIndex;
+    const tgtSheet = targetCell.dataset.sheetIndex;
+    if (srcSheet !== tgtSheet) {
+      const sheetId = targetCell.closest('.sheet-preview-block')?.dataset.sheetId
+        || targetCell.dataset.sheetId
+        || '';
+      if (!sheetId) return null;
+      // Cross-sheet: absolute indices so the ref stays stable
+      return `!${sheetId}!c[$${tgtCol}, $${tgtRow}]`;
+    }
+
     const colOff = tgtCol - srcCol;
     const rowOff = tgtRow - srcRow;
     return `c[${colOff}, ${rowOff}]`;
@@ -2101,7 +2186,6 @@
   function tryInsertSheetCellRefFromClick(targetCell) {
     const sourceCell = getActiveSheetCell();
     if (!sourceCell || !targetCell || sourceCell === targetCell) return false;
-    if (sourceCell.dataset.sheetIndex !== targetCell.dataset.sheetIndex) return false;
     if (!insertSheetCellRelativeRef(sourceCell, targetCell)) return false;
     syncSheetCellToMarkdown(sourceCell, { skipRender: true });
     return true;
@@ -2428,14 +2512,15 @@
   }
 
   function buildSheetRegistry(markdown) {
-    const registry = new Map();
-    let autoIdx = 0;
-    markdown.replace(SHEET_BLOCK_RE, (_, fenceAttrs, content) => {
-      const parsed = parseSheetContent(content, fenceAttrs);
-      const id = (parsed.config.id || parsed.config.sheet || `sheet-${autoIdx++}`).trim();
-      parsed.id = id;
-      registry.set(id, parsed);
+    const sheets = [];
+    String(markdown || '').replace(SHEET_BLOCK_RE, (_, fenceAttrs, content) => {
+      sheets.push(parseSheetRaw(content, fenceAttrs));
       return _;
+    });
+    evaluateSheetListWithCrossRefs(sheets);
+    const registry = new Map();
+    sheets.forEach((parsed) => {
+      registry.set(parsed.id, parsed);
     });
     return registry;
   }
@@ -2449,7 +2534,7 @@
     let idx = 0;
     return String(markdown || '').replace(SHEET_BLOCK_RE, (match, fenceAttrs, content) => {
       if (idx++ !== sheetIndex) return match;
-      const parsed = parseSheetContent(content, fenceAttrs);
+      const parsed = parseSheetRaw(content, fenceAttrs);
       if (!parsed.config) parsed.config = {};
       if (next === 'normal') delete parsed.config.layout;
       else parsed.config.layout = next;
@@ -2463,13 +2548,21 @@
   }
 
   function parseSheetBlocks(plainText, options = {}) {
+    const sheets = [];
+    String(plainText || '').replace(SHEET_BLOCK_RE, (_, fenceAttrs, content) => {
+      sheets.push(parseSheetRaw(content, fenceAttrs));
+      return _;
+    });
+    evaluateSheetListWithCrossRefs(sheets);
+
     let sheetIndex = 0;
     const editable = !!options.sheetEditable;
-    return plainText.replace(SHEET_BLOCK_RE, (_, fenceAttrs, content) => {
-      const parsed = parseSheetContent(content, fenceAttrs);
-      const idx = sheetIndex++;
-      const id = parsed.config.id || parsed.config.sheet || '';
-      const layout = sanitizeSheetLayout(parsed.config.layout);
+    return plainText.replace(SHEET_BLOCK_RE, () => {
+      const parsed = sheets[sheetIndex];
+      const idx = sheetIndex;
+      sheetIndex += 1;
+      const id = parsed?.id || parsed?.config?.id || parsed?.config?.sheet || '';
+      const layout = sanitizeSheetLayout(parsed?.config?.layout);
       const layoutBtns = ['small', 'normal', 'big'].map(size => {
         const active = size === layout ? ' active' : '';
         return `<button type="button" class="btn btn-outline-secondary sheet-layout-btn${active}" data-sheet-index="${idx}" data-sheet-layout="${size}">${size.charAt(0).toUpperCase()}${size.slice(1)}</button>`;
@@ -2491,7 +2584,7 @@
         bandSelection: sheetBandSelection?.sheetIndex === idx ? sheetBandSelection : null,
       }, parsed.cellStyles, parsed.rawGrid);
       return wrapRichPreviewBlock(
-        `<div class="sheet-preview-block" data-sheet-index="${idx}" data-sheet-layout="${layout}">${toolbar}${sheetHtml}</div>`,
+        `<div class="sheet-preview-block" data-sheet-index="${idx}" data-sheet-id="${escapeHtml(id)}" data-sheet-layout="${layout}">${toolbar}${sheetHtml}</div>`,
       );
     });
   }
