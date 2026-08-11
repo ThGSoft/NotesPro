@@ -1,33 +1,26 @@
 # Notes Pro
 
 Collaborative notes app with workspaces, markdown editing, embedded spreadsheets and charts, team chat, and encrypted messaging.
-
-## Live Demo
-
+##  Live Demo
 https://thgsoft.online/DjangoNotesPro/
-
 ## Screenshots
 
 ### RSS Feeds
 ![RSS Feeds](docs/screenshots/RSS-Feeds.png)
-
 ### Sprintboard
 ![Sprintboard](docs/screenshots/SprintBoard.png)
-
-### Kanban
-![Kanban](docs/screenshots/Kanban.png)
-
+### Kanban  
+![Kanban ](docs/screenshots/Kanban.png)
 ### Mindmap
 ![Mindmap](docs/screenshots/Mindmap.png)
-
 ### Panels
 ![Panels](docs/screenshots/Panels.png)
-
 ### Sheets & Charts
 ![Sheets & Charts](docs/screenshots/Sheet-Charts.png)
-
 ### Sheets with Calculation
 ![Sheets with Calculation](docs/screenshots/Sheets.png)
+
+
 
 ## Features
 - Multiple workspaces with members, roles, and email invites
@@ -38,16 +31,15 @@ https://thgsoft.online/DjangoNotesPro/
 - **Find / replace** bar above the editor (`Ctrl+F`, `Ctrl+H`, `F3`); **Replace all** for bulk edits
 - **Snippets** — reusable text blocks (toolbar + sidebar); stored in your user settings
 - **Colored panels** — info / success / warning / danger / note callout blocks in markdown
-- Tab-separated **`sheet`** blocks — formulas (relative, absolute `$`, **cross-sheet** `!id!c[…]`), layout Small/Normal/Big, images in cells
-- D3 **`chart`** blocks linked by sheet id — empty rows can start a new colored series; legend shows **n / avg / min / max**
+- Tab-separated `sheet` blocks (formulas) and D3 `chart` blocks linked by sheet id
+- **ThGMaths / Calcs** blocks — engineering calculator (real/complex, ranges, matrices, multi-curve `Plot`, SCI/ENG/FIX)
 - **Calendar** blocks — list days, weeks, months, or years for a `from`/`to` range
 - **Gantt** / **Kanban** / **Kanban Gantt** / **Mindmap** blocks — project timelines, boards, timed cost tracking, and indented idea trees
-- **News / RSS** blocks — Magpie-style live feeds with images
 - File manager with drag-and-drop uploads; click images to open in a new tab
-- **Local file links** — paste Windows paths or insert via toolbar; click in preview to reveal in Explorer (local Django)
+- **Local file links** — paste Windows paths or insert via toolbar; click in preview to reveal in Explorer (local dev server)
 - Resizable dashboard panels (sidebar, editor, chat/mail)
 - Dark dashboard UI
-- **Keep** — Google Keep–style quick notes per workspace (shared with all members; pin, colors, checklists, archive, drag reorder, markdown)
+- **Keep** — Google Keep–style quick notes per workspace (pin, colors, checklists, archive, drag reorder, markdown)
 
 ### Chat & mail
 - **Private chat** — WhatsApp-style 1:1 messages, end-to-end encrypted in the browser (ECDH + AES-GCM)
@@ -91,7 +83,7 @@ python manage.py runserver
 
 Open:
 - http://127.0.0.1:8000/login/
-- Demo user after `seed_demo`: `demo` / `password` — workspace **Docs → README** contains this guide with screenshots; **Docs → Blocks** has gantt/calendar/mindmap/kanban/panel examples; **Docs → RSS Feeds** embeds BBC / DE / CH news feeds
+- Demo user after `seed_demo`: `demo` / `password` — workspace **Docs → README** contains this guide with screenshots; **Docs → Blocks** has gantt/calendar/mindmap/kanban/calcs/panel examples; **Docs → RSS Feeds** embeds BBC / DE / CH news feeds
 
 Copy `.env.example` to `.env.dev` (or set `DJANGO_ENV`) for local settings. See [Email invitations](#email-invitations) and [Database encryption](#database-encryption) below.
 
@@ -179,7 +171,7 @@ python manage.py send_test_email someone@example.com
 
 ## Sheets
 
-Sheets are tab-separated tables embedded in markdown as fenced `sheet` blocks. Tables render at **≤ 100%** page width. They support formulas (including **cross-sheet** refs), per-cell styling, **layout density**, **markdown images in cells**, and can be linked from `chart` blocks by sheet id.
+Sheets are tab-separated tables embedded in markdown as fenced `sheet` blocks. Tables render at **≤ 100%** page width. They support formulas, per-cell styling, **markdown images in cells**, and can be linked from `chart` blocks by sheet id.
 
 Use the **Insert sheet** toolbar button in the markdown editor, or type a block manually:
 
@@ -209,10 +201,9 @@ Column `%` widths are scaled down if their sum exceeds 100%.
 
 | Rule | Description |
 |------|-------------|
-| **Columns** | Separate cells with a **tab** character (not spaces). Leading/trailing tabs keep empty cells at the start or end of a row. |
+| **Columns** | Separate cells with a **tab** character (not spaces). |
 | **Config line** | Optional first line in backticks: `` `key=value;key2=value2` `` |
 | **Data rows** | One row per line after the config line. |
-| **Empty rows** | Use a lone `` ` `` on the line so a fully blank row is kept — a line with only spaces is dropped. Tab-only lines are kept as empty cells. The `` ` `` placeholder is hidden in preview. |
 | **Header row** | The **first data row** is treated as column headers by default (`<thead>`). |
 | **Formulas** | A cell starting with `=` is evaluated (see below). |
 | **Format cell** | A cell wrapped in backticks sets formatting for that cell and all following cells until the next format cell (see below). |
@@ -240,8 +231,7 @@ Sheet config keys (semicolon-separated inside one `` `…` `` block):
 | `align=left` / `center` / `right` | Default cell alignment. |
 | `col=blue` / `#777` | Default text color (CSS name or hex). |
 | `bg-col=#eee` / `yellow` | Default background color (CSS name or hex). |
-| `font-size=medium` | Table font size (`small`, `medium`, `large`, or CSS size). Overrides layout font when set. |
-| `layout=small` / `normal` / `big` | Table density (padding + default font). Also switchable in preview via **Layout** buttons. |
+| `font-size=medium` | Table font size (`small`, `medium`, `large`, or CSS size). |
 
 Example without header row:
 
@@ -313,45 +303,7 @@ Cells starting with `=` are formulas. Invalid formulas show `#ERR!`.
 | `c[-1, 0]` | One column left, same row |
 | `c[1, 1]` | One column right, one row below |
 
-#### Absolute cell reference
-
-Prefix a coordinate with `$` for a fixed **0-based** index (not relative to the current cell):
-
-| Reference | Meaning |
-|-----------|---------|
-| `c[$4, $2]` | Column 4, row 2 (absolute) |
-| `c[$0, -1]` | Absolute column 0, one row above (mixed) |
-
-#### Cross-sheet reference
-
-Reference another sheet on the **same page** by its `id`:
-
-`!sheetId!c[col, row]` or `!sheetId!c[$col, $row]`
-
-Example — values from sheet `rates`, used in sheet `invoice`:
-
-
-```sheet
-`id=rates; header=0
-1.1	1.2	1.5
-2.0	2.5	3.0
-```
-
-```sheet
-`id=invoice; frLen=2
-Item	Qty	Rate	Total
-Widget	10	=!rates!c[$1, $0]	=c[-2, 0] * c[-1, 0]
-Gadget	3	=!rates!c[$2, $1]	=c[-2, 0] * c[-1, 0]
-```
-
-
-Or in one formula:
-
-```text
-=c[-2, 0] * !rates!c[$4, $2]
-```
-
-Missing sheets or non-numeric cells count as `0`. Sheets on the page are evaluated in a few passes so forward and cross-sheet refs can resolve.
+Missing or non-numeric cells count as `0` in formulas.
 
 #### Sum of a rectangular area
 
@@ -387,6 +339,10 @@ Examples:
 =c[0, -1] + c[-1, 0]
 =sqrt(c[0, -1].2)
 =round(c[0,-1] * 1.19)
+=17:34 - 13:23 + 3:33
+
+
+Times use `H:MM` or `H:MM:SS`. The result is shown as a duration (`7:44`). A bare number added to a time is **hours** (`17:34 + 1` → `18:34`). Referenced cells that contain a time (`17:34`) are parsed as hours.
 
 
 #### Decimal places
@@ -401,16 +357,15 @@ Formulas are evaluated **row by row, left to right**. References to cells not ye
 1. Click **Edit** on the page (markdown + preview side by side).
 2. Click a sheet cell in the preview to edit inline.
 3. Press **Enter** or click away to save; press **Esc** to undo changes since focus (restores the cell value from when you clicked it).
-4. While a cell is focused (empty or formula starting with `=`), **Shift+click another cell** to insert a reference. Same sheet → relative `c[col, row]`; another sheet on the page → absolute `!sheetId!c[$col, $row]`. Empty cells get `=` prepended automatically.
-5. Use the sheet **Layout** buttons (**Small** / **Normal** / **Big**) above the table to change density — stored as `layout=…` in the sheet config.
+4. While a cell is focused (empty or formula starting with `=`), **Shift+click another cell** in the same sheet to insert a relative reference (`c[col, row]`, e.g. `c[-1, 0]`). Empty cells get `=` prepended automatically.
 
-**Numbers** — cells without a leading `=` are shown as plain text (`2026` stays `2026`, not `2026.00`). Formula cells (`=…`) are evaluated and formatted with `frlen`. Formulas still parse Swiss/European number formats in referenced cells, such as `1'356.788` or `1'356,788`. Empty preview cells use a non-breaking space for click targets; the markdown source keeps bare tabs (empty rows use a lone `` ` `` placeholder, hidden in preview).
+**Numbers** — cells without a leading `=` are shown as plain text (`2026` stays `2026`, not `2026.00`). Formula cells (`=…`) are evaluated and formatted with `frlen`. Formulas still parse Swiss/European number formats in referenced cells, such as `1'356.788` or `1'356,788`.
 
-**Sheet structure** (preview edit mode):
+**Sheet structure shortcuts** (while a **whole row or column** is selected in preview edit mode):
 
-1. Click the **column band** above a column, or the **row band** left of a row, to select it (highlighted in blue).
-2. Use the **`+` / `−` buttons** on that band — a menu asks **above/below** (rows) or **left/right** (columns) for insert, and **this / above / below** (or left/right) for delete.
-3. Keyboard (with a band selected): **`+`/`-`** column insert-before / delete menu (on the **last column**, `+` asks left/right); **`°`/`Shift+-`** row insert-above / delete menu (on the **last row**, `°` asks above/below).
+1. Click the **column band** above a column header, or the **row band** left of a row, to select the full column/row (highlighted in blue).
+2. With a column selected: **`+`** insert column **before** selection (copies cell from the left column when one exists) · **`-`** remove column.
+3. With a row selected: **`°`** insert row **above** selection (copies cells from the row above when one exists) · **`Shift+-`** remove row.
 4. Click any cell to clear the band selection and edit cell contents.
 
 On Swiss/German keyboards, `°` and `+` share one key — unshifted selects/adds rows via `°`, shifted (`+`) adds columns when a column band is selected.
@@ -447,7 +402,6 @@ Define data in a sheet block first:
 Month	Sales	Costs
 Jan	100	80
 Feb	150	90
-`
 Mar	200	110
 Apr	120	85
 ```
@@ -458,7 +412,7 @@ Render a D3 chart from that sheet:
 
 ```chart
 quarterly
-line
+bar
 Month
 Sales
 Costs
@@ -467,20 +421,11 @@ Costs
 
 Multiple Y columns produce **grouped bars** (or multiple lines). You can also use comma-separated names in one config line:
 
-`` `sheet=quarterly; type=line; x=Month; y=Sales,Costs` ``
+`` `sheet=quarterly; type=bar; x=Month; y=Sales,Costs` ``
 
-**Empty rows → new series** — optional (chart settings ⚙, default **On**). A blank sheet row or lone `` ` `` starts a new series with a new color (`Sales (1)`, `Sales (2)`, …). Turn **Off** to ignore blank rows and keep one continuous series. Empty Y cells are not counted in series stats.
+Chart types: `bar`, `line`, `scatter`, `pie`. Pie charts use the first Y column only. Column names can be header names or `0`-based indices.
 
-Chart types: `bar`, `line`, `scatter`, `pie`. Pie charts use the first Y column only (empty rows are skipped). Column names can be header names or `0`-based indices.
-
-In preview, open chart **settings** (gear) to:
-
-- Switch chart type
-- Toggle data points (bar / line)
-- Enable/disable **Empty rows → new series**
-- Change bottom (X), left Y, and right Y axes
-
-Settings are saved per chart in your user preferences. The legend shows **n / avg / min / max** for each series.
+In preview, use the chart **settings** (gear) to switch type, toggle data points, and change X / left Y / right Y axes; settings are saved per page in your user preferences.
 
 ## Markdown editor
 
@@ -552,7 +497,7 @@ In split preview while editing:
 
 - Plain text lines — add or remove leading spaces in the source
 - Colored **panel** blocks — indent panel body lines
-- **Sheet** cells — `Tab` indents the cell value; use row/column band **`+`/`−`** buttons (or `+`/`-` / `°`/`Shift+-` shortcuts) to change structure
+- **Sheet** cells — `Tab` indents the cell value; select a full row/column via the band gutters, then `+`/`-` (column) or `°`/`Shift+-` (row) change structure
 
 #### Clear formatting
 
@@ -590,9 +535,9 @@ Optional title: first line `# Title` or `title: My title`.
 
 Link to files on your PC (paths with spaces are supported):
 
-```markdown
+markdown
 [Report](file:///C:/Users/you/My Documents/report.pdf)
-```
+
 
 Or paste a path from Explorer (**Shift+Right click → Copy as path**) into the editor.
 
@@ -601,7 +546,7 @@ Or paste a path from Explorer (**Shift+Right click → Copy as path**) into the 
 
 ### Keep
 
-Quick notes are separate from the page tree — lightweight sticky notes **shared with the whole workspace** (not per-user).
+Quick notes are separate from the page tree — lightweight sticky notes for each workspace.
 
 - Open from the top bar **Keep** button (toggle back with the same button or by clicking a page/folder in the tree).
 - **Composer** at the top: title, body (markdown), optional checklist, and card color.
@@ -798,6 +743,56 @@ Tree structure uses **indentation** (2 spaces or a tab per level). Each line is:
 `Label | optional markdown | optional ![](image)`
 
 Use the toolbar **mindmap** (sitemap) button to insert a sample. In **Edit** mode, click the **title** to change name/direction, or click a **node** to edit label/note/image, add a child, or delete the node.
+
+### Calcs (ThGMaths)
+
+Embed an engineering calculator with a fenced `calcs` block. Each line is evaluated top to bottom; results show in **blue** beside the source. Errors are **red** (`Divide by 0`, `Index out of range`). Values can be real, complex, vectors, or matrices. Vector arithmetic is **element-wise**; `*` on two matrices is matrix product.
+
+````markdown
+```calcs{fix=7;col=info}
+(* block comment *)
+FIX(7, true)
+x:=5
+a:= 3 + 4i
+V1:=(1,3,4, 8)
+Sum(V1)
+j:=-10..10
+y3[j]:=(j*j)/100
+Plot([j, y3])
+```
+````
+
+| Example | Meaning |
+|---------|---------|
+| `(* … *)` / `{…}` | Block comments (may span lines) |
+| `x:=5` | Assign `5` to `x` (spaces around `:=` are fine) |
+| `a:= 3 + 4i` | Complex (`1i` is always the imaginary unit) |
+| `V1:=(1,3,4, 8)` | Vector |
+| `Sum(V1)` | Sum of elements (`16`) |
+| `D:=((…),(…))` | Matrix (rows are nested tuples; lines may wrap) |
+| `Inv(D)` / `D^-1` | Matrix inverse; `D*Inv(D)` is identity |
+| `j:=-10..10` | Inclusive range vector |
+| `y3[j]:=(j*j)/100` | Define `y3` over the same length as `j` |
+| `Plot([j, y3])` | Curve from two vectors |
+| `Plot([j, y2], [j, y3])` | Several curves |
+| `Plot(V)` | `V` is an *n*×4 matrix of segments `(x0,y0,x1,y1)` |
+| `SCI(7, true)` / `ENG(7, false)` / `FIX(7, true)` | Display digits + trim trailing zeros |
+| `sqrt` / `sqr` / `exp` / `ln` / `sin` / `asin` / `cos` / `tan` / `atan` / `abs` | Functions (names are case-insensitive) |
+| `H:= 180E3 kFr` | Trailing units (`kFr`, `%`) are ignored labels |
+| `ω:= 2*Pi*50` | Unicode names; `Pi` / `π` / `e` |
+| `sin(x)/x=` | Trailing `=` is optional |
+| `17:34 - 13:23` | Time durations (`H:MM` or `H:MM:SS`) |
+
+`SCI(7, true)` prints `640*15.7` as `1.0048E+004`; `false` keeps padded digits (`1.004800E+004`). `ENG` uses exponents that are multiples of 3 (`10.048E3`). `FIX(7, true)` drops trailing zeros (`10048`).
+
+| Option | Description |
+|--------|-------------|
+| `fix` / `sci` / `eng` | Initial display digits, e.g. `fix=7` |
+| `trim` | `true` / `false` — strip trailing zeros |
+| `col` | Theme: `info` / `success` / `warning` / `danger` / `note` |
+| `title` | Optional title (default `ThGMaths`) |
+
+Also `#` and `//` line comments. Use the toolbar **calculator** button to insert a sample.
 
 ### News / RSS (Magpie-style)
 

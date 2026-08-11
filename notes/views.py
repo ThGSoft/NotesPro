@@ -1139,7 +1139,7 @@ def open_local_file(request):
     if not href and not display_path:
         return JsonResponse({'error': 'Path required'}, status=400)
 
-    from .local_files import open_in_file_manager
+    from .local_files import file_url_to_path, open_in_file_manager
 
     candidates = []
     for raw in (href, display_path):
@@ -1148,25 +1148,30 @@ def open_local_file(request):
             continue
         candidates.append(raw)
 
-    last_missing = None
+    fs_path = None
     last_error = None
     for raw in candidates:
         try:
-            resolved = open_in_file_manager(raw)
-            return JsonResponse({'success': True, 'path': resolved})
-        except FileNotFoundError as exc:
-            last_missing = str(exc)
+            fs_path = file_url_to_path(raw)
+            break
         except ValueError as exc:
             last_error = exc
-        except OSError as exc:
-            return JsonResponse({'error': str(exc)}, status=500)
 
-    if last_missing is not None:
+    if fs_path is None:
+        return JsonResponse({'error': str(last_error or 'Invalid path')}, status=400)
+
+    try:
+        resolved = open_in_file_manager(fs_path)
+        return JsonResponse({'success': True, 'path': resolved})
+    except FileNotFoundError:
         return JsonResponse(
-            {'error': f'File or folder not found: {last_missing}'},
+            {'error': f'File or folder not found: {fs_path}'},
             status=404,
         )
-    return JsonResponse({'error': str(last_error or 'Invalid path')}, status=400)
+    except ValueError as exc:
+        return JsonResponse({'error': str(exc)}, status=400)
+    except OSError as exc:
+        return JsonResponse({'error': str(exc)}, status=500)
 
 
 @login_required

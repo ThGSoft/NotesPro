@@ -96,6 +96,11 @@ Done | Kickoff | ![](/media/uploads/photo.png)
 Done | Define Remote
 ```
 
+# News / RSS
+```news url=https://feeds.bbci.co.uk/news/world/rss.xml
+# BBC World
+```
+
 ```panel info
 # info
 Your content here.
@@ -126,6 +131,93 @@ Todo | Design wireframes | status=idle;rate=60
 Doing | Build API | status=idle;rate=75
 Suspended | On hold task | status=suspended;rate=75;elapsed=1800
 Done | Kickoff | status=stopped;rate=50;elapsed=7200
+```
+
+# Calcs (ThGMaths)
+```calcs{fix=7;col=info}
+(* sample *)
+FIX(7, true)
+V1:=(1,3,4, 8)
+Sum(V1)
+a:= 3 + 4i
+sqr(1i)
+j:=-10..10
+y3[j]:=(j*j)/100
+Plot([j, y3])
+```
+"""
+
+
+RSS_FEEDS_MARKDOWN = """# RSS Feeds
+
+## Great Britain
+
+### bbc.news
+```news url=https://feeds.bbci.co.uk/news/world/rss.xml
+```
+
+## Deutschland
+
+### tagesschau.de
+```news url=https://www.tagesschau.de/index~rss2.xml
+# World news
+```
+
+### spiegel.de
+```news url=https://www.spiegel.de/schlagzeilen/tops/index.rss
+```
+
+### zeit.de
+```news url=https://newsfeed.zeit.de/index
+# News
+```
+
+### stern.de
+```news url=https://www.stern.de/feed/standard/alle-nachrichten/
+# World news
+```
+
+### n-tv.de
+```news url=https://www.n-tv.de/politik/rss
+```
+
+## Schweiz
+
+### nnz.schweiz
+```news url=https://www.nzz.ch/schweiz.rss
+# World news
+```
+
+### bazonline
+```news url=https://partner-feeds.publishing.tamedia.ch/rss/bazonline/front
+```
+
+### bazonline.sport
+```news url=https://partner-feeds.publishing.tamedia.ch/rss/bazonline/sport
+```
+
+### bazonline.schweiz
+```news url=https://partner-feeds.publishing.tamedia.ch/rss/bazonline/schweiz
+```
+
+### bazonline.wirtschaft
+```news url=https://partner-feeds.publishing.tamedia.ch/rss/bazonline/wirtschaft
+```
+
+### bazonline.digital
+```news url=https://partner-feeds.publishing.tamedia.ch/rss/bazonline/digital
+```
+
+### sonntagszeitung
+```news url=https://partner-feeds.publishing.tamedia.ch/rss/bazonline/sonntagszeitung
+```
+
+### srf.news
+```news url=https://www.srf.ch/news/bnf/rss/1646
+```
+
+### srf.sport
+```news url=https://partner-feeds.publishing.tamedia.ch/rss/bazonline/sport
 ```
 """
 
@@ -181,7 +273,8 @@ class Command(BaseCommand):
                     '# Welcome\n\n'
                     'Edit in markdown, preview when you are done.\n\n'
                     'See **README** in this folder for the full project guide and screenshots.\n\n'
-                    'Open **Blocks** for interactive gantt, calendar, mindmap, kanban, and panel examples.'
+                    'Open **Blocks** for interactive gantt, calendar, mindmap, kanban, calcs, and panel examples.\n\n'
+                    'Open **RSS Feeds** for live BBC, DE, and CH news embeds.'
                 ),
             },
         )
@@ -198,6 +291,18 @@ class Command(BaseCommand):
             },
         )
 
+        Page.objects.update_or_create(
+            workspace=ws,
+            slug='rss-feeds',
+            deleted=False,
+            defaults={
+                'parent': docs,
+                'title': 'RSS Feeds',
+                'sort_order': 3,
+                'markdown_content': RSS_FEEDS_MARKDOWN,
+            },
+        )
+
         missing = [
             name for name in SCREENSHOT_FILES
             if not (Path(settings.BASE_DIR) / 'docs' / 'screenshots' / name).is_file()
@@ -208,5 +313,5 @@ class Command(BaseCommand):
             ))
 
         self.stdout.write(self.style.SUCCESS(
-            'Demo data ready. Login: demo / password — open Docs > README or Blocks',
+            'Demo data ready. Login: demo / password — open Docs > README, Blocks, or RSS Feeds',
         ))
