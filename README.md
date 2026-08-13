@@ -32,6 +32,7 @@ https://thgsoft.online/DjangoNotesPro/
 - **Snippets** — reusable text blocks (toolbar + sidebar); stored in your user settings
 - **Colored panels** — info / success / warning / danger / note callout blocks in markdown
 - Tab-separated `sheet` blocks (formulas) and D3 `chart` blocks linked by sheet id
+- **ThGMaths / Calcs** blocks — engineering calculator (real/complex, ranges, matrices, multi-curve `Plot`, SCI/ENG/FIX)
 - **Calendar** blocks — list days, weeks, months, or years for a `from`/`to` range
 - **Gantt** / **Kanban** / **Kanban Gantt** / **Mindmap** blocks — project timelines, boards, timed cost tracking, and indented idea trees
 - File manager with drag-and-drop uploads; click images to open in a new tab
@@ -82,7 +83,7 @@ python manage.py runserver
 
 Open:
 - http://127.0.0.1:8000/login/
-- Demo user after `seed_demo`: `demo` / `password` — workspace **Docs → README** contains this guide with screenshots; **Docs → Blocks** has gantt/calendar/mindmap/kanban/panel examples; **Docs → RSS Feeds** embeds BBC / DE / CH news feeds
+- Demo user after `seed_demo`: `demo` / `password` — workspace **Docs → README** contains this guide with screenshots; **Docs → Blocks** has gantt/calendar/mindmap/kanban/calcs/panel examples; **Docs → RSS Feeds** embeds BBC / DE / CH news feeds
 
 Copy `.env.example` to `.env.dev` (or set `DJANGO_ENV`) for local settings. See [Email invitations](#email-invitations) and [Database encryption](#database-encryption) below.
 
@@ -200,10 +201,9 @@ Column `%` widths are scaled down if their sum exceeds 100%.
 
 | Rule | Description |
 |------|-------------|
-| **Columns** | Separate cells with a **tab** character (not spaces). Leading/trailing tabs keep empty cells at the start or end of a row. |
+| **Columns** | Separate cells with a **tab** character (not spaces). |
 | **Config line** | Optional first line in backticks: `` `key=value;key2=value2` `` |
 | **Data rows** | One row per line after the config line. |
-| **Empty rows** | Use a lone `` ` `` on the line so a fully blank row is kept — a line with only spaces is dropped. Tab-only lines are kept as empty cells. The `` ` `` placeholder is hidden in preview. |
 | **Header row** | The **first data row** is treated as column headers by default (`<thead>`). |
 | **Formulas** | A cell starting with `=` is evaluated (see below). |
 | **Format cell** | A cell wrapped in backticks sets formatting for that cell and all following cells until the next format cell (see below). |
@@ -231,8 +231,7 @@ Sheet config keys (semicolon-separated inside one `` `…` `` block):
 | `align=left` / `center` / `right` | Default cell alignment. |
 | `col=blue` / `#777` | Default text color (CSS name or hex). |
 | `bg-col=#eee` / `yellow` | Default background color (CSS name or hex). |
-| `font-size=medium` | Table font size (`small`, `medium`, `large`, or CSS size). Overrides layout font when set. |
-| `layout=small` / `normal` / `big` | Table density (padding + default font). Also switchable in preview via **Layout** buttons. |
+| `font-size=medium` | Table font size (`small`, `medium`, `large`, or CSS size). |
 
 Example without header row:
 
@@ -340,6 +339,10 @@ Examples:
 =c[0, -1] + c[-1, 0]
 =sqrt(c[0, -1].2)
 =round(c[0,-1] * 1.19)
+=17:34 - 13:23 + 3:33
+
+
+Times use `H:MM` or `H:MM:SS`. The result is shown as a duration (`7:44`). A bare number added to a time is **hours** (`17:34 + 1` → `18:34`). Referenced cells that contain a time (`17:34`) are parsed as hours.
 
 
 #### Decimal places
@@ -361,8 +364,8 @@ Formulas are evaluated **row by row, left to right**. References to cells not ye
 **Sheet structure shortcuts** (while a **whole row or column** is selected in preview edit mode):
 
 1. Click the **column band** above a column header, or the **row band** left of a row, to select the full column/row (highlighted in blue).
-2. Use the **`+` / `−` buttons** in that band — a menu asks **above/below** (rows) or **left/right** (columns) for insert, and **this / above-below / left-right** for delete.
-3. Keyboard (with a band selected): **`+`/`-`** column insert-before / delete-this (on the **last column**, `+` asks left/right); **`°`/`Shift+-`** row insert-above / delete-this (on the **last row**, `°` asks above/below). Delete keys always open the placement menu.
+2. With a column selected: **`+`** insert column **before** selection (copies cell from the left column when one exists) · **`-`** remove column.
+3. With a row selected: **`°`** insert row **above** selection (copies cells from the row above when one exists) · **`Shift+-`** remove row.
 4. Click any cell to clear the band selection and edit cell contents.
 
 On Swiss/German keyboards, `°` and `+` share one key — unshifted selects/adds rows via `°`, shifted (`+`) adds columns when a column band is selected.
@@ -420,11 +423,9 @@ Multiple Y columns produce **grouped bars** (or multiple lines). You can also us
 
 `` `sheet=quarterly; type=bar; x=Month; y=Sales,Costs` ``
 
-**Empty rows → new series** — optional (chart settings ⚙, default On). A blank sheet row or lone `` ` `` starts a new series with a new color (`Sales (1)`, `Sales (2)`, …). Turn Off to ignore blank rows and keep one continuous series.
+Chart types: `bar`, `line`, `scatter`, `pie`. Pie charts use the first Y column only. Column names can be header names or `0`-based indices.
 
-Chart types: `bar`, `line`, `scatter`, `pie`. Pie charts use the first Y column only (empty rows are skipped). Column names can be header names or `0`-based indices.
-
-In preview, use the chart **settings** (gear) to switch type, toggle data points, enable/disable empty-row series splits, and change X / left Y / right Y axes; settings are saved per page in your user preferences. The legend shows **n / avg / min / max** for each series.
+In preview, use the chart **settings** (gear) to switch type, toggle data points, and change X / left Y / right Y axes; settings are saved per page in your user preferences.
 
 ## Markdown editor
 
@@ -496,7 +497,7 @@ In split preview while editing:
 
 - Plain text lines — add or remove leading spaces in the source
 - Colored **panel** blocks — indent panel body lines
-- **Sheet** cells — `Tab` indents the cell value; use row/column band **`+`/`−`** buttons (or `+`/`-` / `°`/`Shift+-` shortcuts) to change structure
+- **Sheet** cells — `Tab` indents the cell value; select a full row/column via the band gutters, then `+`/`-` (column) or `°`/`Shift+-` (row) change structure
 
 #### Clear formatting
 
@@ -742,6 +743,73 @@ Tree structure uses **indentation** (2 spaces or a tab per level). Each line is:
 `Label | optional markdown | optional ![](image)`
 
 Use the toolbar **mindmap** (sitemap) button to insert a sample. In **Edit** mode, click the **title** to change name/direction, or click a **node** to edit label/note/image, add a child, or delete the node.
+
+### Calcs (ThGMaths)
+
+Embed an engineering calculator with a fenced `calcs` block. Each line is evaluated top to bottom; results show in **blue** beside the source. Errors are **red** (`Divide by 0`, `Index out of range`). Values can be real, complex, vectors, or matrices. Vector arithmetic is **element-wise**; `*` on two matrices is matrix product.
+
+````markdown
+```calcs{fix=7;col=info}
+(* block comment *)
+FIX(7, true)
+x:=5
+a:= 3 + 4i
+V1:=(1,3,4, 8)
+Sum(V1)
+j:=-10..10
+y3[j]:=(j*j)/100
+Plot([j, y3])
+```
+````
+
+| Example | Meaning |
+|---------|---------|
+| `x:=5` | Assign real value `5.0` to `x` |
+| `c:=5.0+7.0i` | Complex assignment |
+| `v:=(1,2+6i,3)` | Vector with complex entries |
+| `A:=((1,3,4,5),(7,1+2i,4,5),…)` | Matrix (rows are nested tuples) |
+| `inv(A)` / `A^-1` | Inverse of matrix `A` |
+| `sqrt(x)` | Square root (real or complex) |
+| `sqr(x)` | Square, `x²` |
+| `exp(x)` / `ln(x)` | Exponential and natural log |
+| `sin` / `asin` / `cos` / `tan` / `atan` | Trigonometry |
+| `abs(x)` / `inv(x)` | Absolute value / inverse (including matrices) |
+| `sum(v)` | Sum of vector (or matrix) elements |
+| `plot([...])` | Graph a list, or `plot(x, y)` for two vectors |
+| `i:=0..n` | Integer range vector (`0, 1, …, n`) |
+| `y[i]:=expr` | Build array by evaluating `expr` for each index in `i` |
+| `d[1]:= …` / `d[3]:= …` | 1-based element assign — auto-creates vector `1..max(index)` (gaps = `0`) |
+| `d[1..3]:= …` | Same, range fill at indices 1..3 (`d[3]` reads the third slot) |
+| `Plot(y1, y2)` | Two (or more) curves — hover snaps to nearest data point |
+| `Plot([i,y1],[i,y2])` | X/Y pairs with shared legend |
+| `FIX` / `ENG` / `SCI` | Display format (`FIX 4`, `SCI 3`, `ENG 3`) |
+| `= 17:34 - 13:23 + 3:33` | Time arithmetic (`H:MM` or `H:MM:SS`); result `7:44` |
+
+| Option | Description |
+|--------|-------------|
+| `fix` / `sci` / `eng` | Initial display digits, e.g. `fix=4` |
+| `color` / `col` | Text & accent color (`color=red`, `color=#778800`, or theme `info` / `success` / …) |
+| `bkcol` | Background color (`bkcol=silver`, `bkcol=#eee`; `bgcol` also works) |
+| `title` | Optional title (default `Calcs`) |
+
+Constants: `pi`, `e`, `i` / `j` (imaginary unit). Prefix a line with `'` for **markdown text** — HTML allowed (`'<span style="font-size:87.5%"> **Montag**</span>`). Combine label + result: `'**Total:**'   a+b` (label first) or `a+b '**Total:**'` (result first). Separate statements with **commas** or a trailing comma on the next line. Comments: `#` or `//`. A leading `=` is optional (`= 17:34 - 13:23` same as without `=`). Times are durations (`H:MM` or `H:MM:SS`); a bare number mixed with a time is hours. Vectors longer than 10 elements show the first 10 values followed by `..`. Use the toolbar **calculator** button to insert a sample.
+
+Example (decaying envelope + sine, dual plot):
+
+````markdown
+```calcs{fix=4;col=info}
+f:=50
+A:=1
+w:=2*Pi*f
+SR:=96*3
+i:=0..2*SR
+y1[i]:=exp(-i/SR)*A
+y2[i]:=sin(20*w*i/SR)*exp(-i/SR)*A
+Plot(y1)
+Plot(y2)
+Plot([i,y1],[i,y2],[i,y3],[i,y4])
+```
+````
 
 ### News / RSS (Magpie-style)
 
