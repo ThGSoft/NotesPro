@@ -974,14 +974,6 @@
     return '';
   }
 
-  function sanitizeSheetLayout(value) {
-    const lower = String(value || '').trim().toLowerCase();
-    if (lower === 'small' || lower === 'normal' || lower === 'big') return lower;
-    if (lower === 'medium' || lower === 'default' || lower === '') return 'normal';
-    if (lower === 'large') return 'big';
-    return 'normal';
-  }
-
   function sanitizeSheetWidth(value) {
     if (!value) return '';
     const v = String(value).trim();
@@ -1011,7 +1003,7 @@
     String(attrs || '').split(';').forEach(part => {
       const p = part.trim();
       if (!p) return;
-      if (/\b(id|sheet|header|layout)\s*=/i.test(p)) {
+      if (/\b(id|sheet|header)\s*=/i.test(p)) {
         Object.assign(config, parseBacktickConfig('`' + p + '`'));
       } else {
         formatParts.push(p);
@@ -1069,11 +1061,6 @@
       return { value: '', styleState: applySheetStyleParts(styleEq[1].split(','), styleState) };
     }
 
-    // Empty-row placeholders: lone ` or only-backtick cells — never show in preview
-    if (/^`+$/.test(trimmed)) {
-      return { value: '', styleState: state };
-    }
-
     if (!trimmed.startsWith('`')) return { value: cell, styleState: state };
 
     let parsedAny = false;
@@ -1090,12 +1077,6 @@
         value = '';
         parsedAny = true;
         continue;
-      }
-      // Unclosed lone "`" leftover — treat as empty placeholder
-      if (value === '`') {
-        value = '';
-        parsedAny = true;
-        break;
       }
       break;
     }
@@ -1115,33 +1096,25 @@
     return segments;
   }
 
-  function isSheetConfigToken(part) {
-    return /^(id|sheet|header|layout|frlen|align|col|bg-col|bgcol|font-size|fontsize|width)\s*=/i.test(String(part || '').trim());
-  }
-
   function isSheetMetaLine(trimmed) {
     if (!trimmed.includes('`')) return false;
     if (trimmed.includes('\t')) return false;
     const segments = parseBacktickSegments(trimmed);
     if (!segments.length) return false;
     if (trimmed.replace(/`[^`]*`/g, '').trim()) return false;
-    return segments.some(s => s.split(';').some(isSheetConfigToken));
+    return segments.some(s => /\b(id|sheet|header)\s*=/i.test(s));
   }
 
   function parseSheetMetaLine(trimmed, config, initialFormatParts) {
     parseBacktickSegments(trimmed).forEach(inner => {
-      const configParts = [];
-      const formatParts = [];
-      String(inner || '').split(';').forEach(part => {
-        const p = part.trim();
-        if (!p) return;
-        if (isSheetConfigToken(p)) configParts.push(p);
-        else formatParts.push(p);
-      });
-      if (configParts.length) {
-        Object.assign(config, parseBacktickConfig('`' + configParts.join(';') + '`'));
+      if (/\b(id|sheet|header)\s*=/i.test(inner)) {
+        Object.assign(config, parseBacktickConfig('`' + inner + '`'));
+      } else {
+        inner.split(';').forEach(part => {
+          const p = part.trim();
+          if (p) initialFormatParts.push(p);
+        });
       }
-      formatParts.forEach(p => initialFormatParts.push(p));
     });
   }
 
@@ -1224,23 +1197,44 @@
       ));
       lastIndex = imageRegex.lastIndex;
     }
-    if (!parts.length) {
-      const escaped = escapeHtml(formatted);
-      // Preview filler only — markdown source keeps empty cells as bare \t
-      return escaped || '&nbsp;';
-    }
+    if (!parts.length) return escapeHtml(formatted);
     if (lastIndex < formatted.length) {
       parts.push(escapeHtml(formatted.slice(lastIndex)));
     }
-    return parts.join('') || '&nbsp;';
+    return parts.join('');
   }
 
-  function sheetCellTextToMarkdown(text) {
-    let value = String(text || '').replace(/\r?\n/g, ' ').replace(/\t/g, ' ');
-    // Strip preview &nbsp; fillers; empty / whitespace-only → ''
-    value = value.replace(/\u00a0/g, ' ');
-    if (!value.trim()) return '';
-    return value;
+  function parseSheetTimeToHours(value) {
+    const m = String(value || '').trim().match(/^(-)?(\d{1,5}):([0-5]\d)(?::([0-5]\d))?$/);
+    if (!m) return NaN;
+    const sec = parseInt(m[2], 10) * 3600 + parseInt(m[3], 10) * 60 + (m[4] ? parseInt(m[4], 10) : 0);
+    return (m[1] ? -sec : sec) / 3600;
+  }
+
+  function formatSheetHoursAsTime(hours, withSeconds) {
+    const sign = hours < 0 ? '-' : '';
+    let rest = Math.round(Math.abs(hours) * 3600);
+    const h = Math.floor(rest / 3600);
+    rest -= h * 3600;
+    const m = Math.floor(rest / 60);
+    rest -= m * 60;
+    const mm = String(m).padStart(2, '0');
+    if (withSeconds || rest) return `${sign}${h}:${mm}:${String(rest).padStart(2, '0')}`;
+    return `${sign}${h}:${mm}`;
+  }
+
+  function replaceSheetTimeLiterals(formula) {
+    let withSeconds = false;
+    let found = false;
+    const next = String(formula).replace(/(\d{1,5}):([0-5]\d)(?::([0-5]\d))?/g, (full, h, min, sec, offset, src) => {
+      const prev = offset > 0 ? src[offset - 1] : '';
+      if (/[\w.]/.test(prev)) return full;
+      found = true;
+      if (sec != null) withSeconds = true;
+      const hours = Number(h) + Number(min) / 60 + Number(sec || 0) / 3600;
+      return `(${hours})`;
+    });
+    return { formula: next, found, withSeconds };
   }
 
   /** Parse sheet numbers: 1234.56, 1'356.788, 1'356,788, 1 356,788 */
@@ -1248,6 +1242,8 @@
     if (value == null || value === '') return NaN;
     let s = String(value).trim();
     if (!s || s.startsWith('=')) return NaN;
+    const asTime = parseSheetTimeToHours(s);
+    if (!Number.isNaN(asTime)) return asTime;
     s = s.replace(/[\s\u00a0\u202f']/g, '');
     const lastComma = s.lastIndexOf(',');
     const lastDot = s.lastIndexOf('.');
@@ -1307,19 +1303,12 @@
     Object.assign(config, fence.config);
     const initialFormatParts = [...fence.formatParts];
     content.split('\n').forEach(line => {
-      // Keep leading/trailing tabs so empty cells at the start/end of a row survive.
-      const rawLine = String(line || '').replace(/\r$/, '').replace(/^\uFEFF/, '');
-      if (rawLine === '') return;
-      const trimmed = rawLine.trim();
-      if (!trimmed) {
-        // Whitespace-only: keep tab-only rows (empty cells); drop space-only blanks
-        if (rawLine.includes('\t')) dataRows.push(rawLine);
-        return;
-      }
+      const trimmed = line.trim();
+      if (!trimmed) return;
       if (isSheetMetaLine(trimmed)) {
         parseSheetMetaLine(trimmed, config, initialFormatParts);
       } else {
-        dataRows.push(rawLine);
+        dataRows.push(trimmed);
       }
     });
     const rawGrid = dataRows.map(row => row.replace(/\t \t/g, '\t&emsp;\t').split('\t').map(c => c.trim()));
@@ -1390,6 +1379,8 @@
             formula = formula.replace(/c\[\s*(-?\d+)\s*,\s*(-?\d+)\s*\]/g, (_, colOff, rowOff) => {
               return sheetRelCellValue(out, r, c, colOff, rowOff);
             });
+            const timeRewrite = replaceSheetTimeLiterals(formula);
+            formula = timeRewrite.formula;
             const mathScope = `
               const sqrt = Math.sqrt;
               const sqr = (n) => Math.pow(n, 2);
@@ -1406,7 +1397,11 @@
               return ${formula};
             `;
             const result = new Function(mathScope)();
-            cell = !isNaN(result) ? Number(result).toFixed(frac) : result;
+            if (timeRewrite.found && Number.isFinite(result)) {
+              cell = formatSheetHoursAsTime(result, timeRewrite.withSeconds);
+            } else {
+              cell = !isNaN(result) ? Number(result).toFixed(frac) : result;
+            }
           }
           out[r][c] = String(cell);
         } catch (e) {
@@ -1425,8 +1420,7 @@
 
   function sheetGridToHtml(grid, config, options = {}, cellStyles, rawGrid) {
     const { sheetIndex = 0, editable = false, bandSelection = null } = options;
-    const fontSize = config['font-size'] || '';
-    const layout = sanitizeSheetLayout(config.layout);
+    const fontSize = config['font-size'] || 'medium';
     const hasHeader = sheetHasHeader(config) && grid.length > 0;
     const colCount = Math.max(...grid.map(row => row.length), 0);
     const colWidths = sheetColumnWidths(cellStyles, colCount);
@@ -1434,39 +1428,19 @@
     const fixedCols = hasColWidths;
     const tableClass = [
       'spreadsheet-table',
-      `spreadsheet-table--layout-${layout}`,
       fixedCols ? 'spreadsheet-table--fixed-cols' : '',
       editable ? 'spreadsheet-table--bands' : '',
     ].filter(Boolean).join(' ');
     let html = editable ? '<div class="sheet-table-wrap">' : '';
-    const styleAttr = fontSize ? ` style="font-size:${escapeHtml(fontSize)}"` : '';
-    html += `<table class="${tableClass}"${styleAttr}>`;
+    html += `<table class="${tableClass}" style="font-size:${fontSize}">`;
     if (hasColWidths) {
       html += '<colgroup>';
-      if (editable) html += '<col style="width:36px">';
+      if (editable) html += '<col style="width:28px">';
       html += colWidths.map(w => (
         w ? `<col style="width:${w}">` : '<col>'
       )).join('');
       html += '</colgroup>';
     }
-    const renderBandActions = (axis, index) => {
-      const addAction = axis === 'col' ? 'addCol' : 'addRow';
-      const removeAction = axis === 'col' ? 'removeCol' : 'removeRow';
-      const addLabel = axis === 'col' ? 'Insert column' : 'Insert row';
-      const removeLabel = axis === 'col' ? 'Delete column' : 'Delete row';
-      const indexAttr = axis === 'col' ? `data-col="${index}"` : `data-row="${index}"`;
-      return [
-        `<div class="sheet-band-actions sheet-band-actions--${axis}">`,
-        `<button type="button" class="sheet-band-btn sheet-band-btn--add"`,
-        ` data-sheet-action="${addAction}" data-sheet-index="${sheetIndex}" ${indexAttr}`,
-        ` title="${addLabel}" aria-label="${addLabel}">+</button>`,
-        `<button type="button" class="sheet-band-btn sheet-band-btn--remove"`,
-        ` data-sheet-action="${removeAction}" data-sheet-index="${sheetIndex}" ${indexAttr}`,
-        ` title="${removeLabel}" aria-label="${removeLabel}">−</button>`,
-        '</div>',
-      ].join('');
-    };
-
     if (editable && colCount > 0) {
       html += '<thead><tr class="sheet-band-row sheet-band-row--cols">';
       html += '<th class="sheet-band-corner" aria-hidden="true"></th>';
@@ -1475,9 +1449,7 @@
         html += [
           `<th class="sheet-col-band${colSelected ? ' sheet-col-band--selected' : ''}"`,
           ` data-sheet-index="${sheetIndex}" data-col="${col}"`,
-          ` tabindex="0" role="button" aria-label="Select column ${col + 1}">`,
-          renderBandActions('col', col),
-          '</th>',
+          ` tabindex="0" role="button" aria-label="Select column ${col + 1}"></th>`,
         ].join('');
       }
       html += '</tr></thead>';
@@ -1490,9 +1462,7 @@
       return [
         `<${bandTag} class="sheet-row-band${rowSelected ? ' sheet-row-band--selected' : ''}"`,
         ` data-sheet-index="${sheetIndex}" data-row="${row}"`,
-        ` tabindex="0" role="button" aria-label="Select row ${row + 1}">`,
-        renderBandActions('row', row),
-        `</${bandTag}>`,
+        ` tabindex="0" role="button" aria-label="Select row ${row + 1}"></${bandTag}>`,
       ].join('');
     };
 
@@ -1524,31 +1494,25 @@
         : `<${tag}${styleAttr}>${display}</${tag}>`;
     };
 
-    const padCells = (row) => {
-      const cells = Array.isArray(row) ? [...row] : [];
-      while (cells.length < colCount) cells.push('');
-      return cells.slice(0, colCount);
-    };
-
     if (hasHeader) {
       html += '<thead><tr>';
       html += renderRowBand(0, 'th');
-      padCells(grid[0]).forEach((cell, col) => { html += renderCell(cell, 'th', 0, col); });
+      grid[0].forEach((cell, col) => { html += renderCell(cell, 'th', 0, col); });
       html += '</tr></thead><tbody>';
       grid.slice(1).forEach((row, ri) => {
         const rowIndex = ri + 1;
         html += '<tr>';
         html += renderRowBand(rowIndex, 'td');
-        padCells(row).forEach((cell, col) => { html += renderCell(cell, 'td', rowIndex, col); });
+        row.forEach((cell, col) => { html += renderCell(cell, 'td', rowIndex, col); });
         html += '</tr>';
       });
       html += '</tbody>';
     } else {
-      html += '<tbody>';
+      html += editable ? '<tbody>' : '<tbody>';
       grid.forEach((row, ri) => {
         html += '<tr>';
         html += renderRowBand(ri, 'td');
-        padCells(row).forEach((cell, col) => { html += renderCell(cell, 'td', ri, col); });
+        row.forEach((cell, col) => { html += renderCell(cell, 'td', ri, col); });
         html += '</tr>';
       });
       html += '</tbody>';
@@ -1559,49 +1523,13 @@
     return html;
   }
 
-  function sheetCellMarkdownIsEmpty(cell) {
-    let rest = String(cell ?? '').trim();
-    if (!rest) return true;
-    // Lone ` or only-backtick placeholders
-    if (/^`+$/.test(rest)) return true;
-    while (rest.startsWith('`')) {
-      const matched = rest.match(/^`([^`]*)`([\s\S]*)$/);
-      if (!matched) return rest === '`';
-      // Real format tokens mean this is not a blank placeholder row cell
-      if (matched[1].trim()) return false;
-      rest = matched[2].trim();
-    }
-    return rest === '';
-  }
-
-  function sheetRowCellsAreEmpty(cols) {
-    return (cols || []).every(sheetCellMarkdownIsEmpty);
-  }
-
-  /** Empty rows can't be only tabs — trim() would drop them. Use a lone ` placeholder. */
-  function emptySheetRowLine(colCount) {
-    const n = Math.max(1, colCount || 1);
-    return ['`', ...Array(Math.max(0, n - 1)).fill('')].join('\t');
-  }
-
-  function serializeSheetDataRow(rowLine, colCount) {
-    const cols = String(rowLine ?? '').split('\t');
-    const n = Math.max(colCount || 0, cols.length, 1);
-    while (cols.length < n) cols.push('');
-    if (sheetRowCellsAreEmpty(cols)) return emptySheetRowLine(n);
-    // Keep leading empty cells as leading tabs (do not trim the joined line)
-    return cols.join('\t');
-  }
-
   function serializeSheetContent(parsed) {
     const lines = [];
     const configKeys = Object.keys(parsed.config || {});
     if (configKeys.length) {
       lines.push('`' + configKeys.map(k => `${k}=${parsed.config[k]}`).join(';') + '`');
     }
-    const rows = parsed.dataRows || [];
-    const colCount = Math.max(...rows.map(r => String(r).split('\t').length), 1);
-    rows.forEach(row => lines.push(serializeSheetDataRow(row, colCount)));
+    (parsed.dataRows || []).forEach(row => lines.push(row));
     return lines.join('\n');
   }
 
@@ -1614,12 +1542,7 @@
       const cols = parsed.dataRows[row].split('\t');
       while (cols.length <= col) cols.push('');
       cols[col] = String(newValue).replace(/\t/g, ' ').replace(/\r?\n/g, ' ');
-      const colCount = Math.max(
-        ...parsed.dataRows.map(r => r.split('\t').length),
-        cols.length,
-        1,
-      );
-      parsed.dataRows[row] = serializeSheetDataRow(cols.join('\t'), colCount);
+      parsed.dataRows[row] = cols.join('\t');
       return `\`\`\`sheet${sheetFenceSuffix(fenceAttrs)}\n${serializeSheetContent(parsed)}\n\`\`\`\n`;
     });
   }
@@ -1633,9 +1556,9 @@
       const rows = [...(parsed.dataRows || [])];
       const insertAt = Math.min(Math.max(0, atRow), rows.length);
       const colCount = Math.max(...rows.map(r => r.split('\t').length), 1);
-      let newRow = emptySheetRowLine(colCount);
+      let newRow = Array(colCount).fill('').join('\t');
       if (copyFromAbove && atRow > 0 && rows[atRow - 1]) {
-        newRow = serializeSheetDataRow(rows[atRow - 1], colCount);
+        newRow = rows[atRow - 1];
       }
       rows.splice(insertAt, 0, newRow);
       parsed.dataRows = rows;
@@ -1731,59 +1654,30 @@
     });
   }
 
-  function getSheetDimensions(sheetIndex) {
-    if (!easyMDE) return { rows: 0, cols: 0 };
-    let idx = 0;
-    let rows = 0;
-    let cols = 0;
-    easyMDE.value().replace(SHEET_BLOCK_RE, (match, fenceAttrs, content) => {
-      if (idx++ !== sheetIndex) return match;
-      const parsed = parseSheetContent(content, fenceAttrs);
-      const dataRows = parsed.dataRows || [];
-      rows = dataRows.length;
-      cols = Math.max(...dataRows.map(r => String(r).split('\t').length), 0);
-      return match;
-    });
-    return { rows, cols };
-  }
-
-  function applySheetStructureFromBand(action, selection = sheetBandSelection, placement = 'this') {
-    if (!easyMDE || !isPreviewInteractionEnabled() || !selection) return false;
-    const { sheetIndex, type, index } = selection;
-    if (!Number.isFinite(sheetIndex) || !Number.isFinite(index)) return false;
-    const dims = getSheetDimensions(sheetIndex);
+  function applySheetStructureFromBand(action) {
+    if (!easyMDE || !isPreviewInteractionEnabled() || !sheetBandSelection) return false;
+    const { sheetIndex, type, index } = sheetBandSelection;
     const oldMarkdown = easyMDE.value();
     let updated = oldMarkdown;
     let nextIndex = index;
-    const nextType = type;
 
     if (type === 'col') {
       if (action === 'addCol') {
-        const at = placement === 'after' ? index + 1 : index;
-        updated = addSheetColumnInMarkdown(oldMarkdown, sheetIndex, at, { copyFromLeft: true });
-        nextIndex = at;
+        updated = addSheetColumnInMarkdown(oldMarkdown, sheetIndex, index, { copyFromLeft: true });
+        nextIndex = index;
       } else if (action === 'removeCol') {
-        let del = index;
-        if (placement === 'before') del = index - 1;
-        else if (placement === 'after') del = index + 1;
-        if (del < 0 || del >= dims.cols) return false;
-        updated = removeSheetColumnInMarkdown(oldMarkdown, sheetIndex, del);
-        nextIndex = Math.min(del, Math.max(0, dims.cols - 2));
+        updated = removeSheetColumnInMarkdown(oldMarkdown, sheetIndex, index);
+        nextIndex = Math.max(0, index - 1);
       } else {
         return false;
       }
     } else if (type === 'row') {
       if (action === 'addRow') {
-        const at = placement === 'after' ? index + 1 : index;
-        updated = addSheetRowInMarkdown(oldMarkdown, sheetIndex, at, { copyFromAbove: true });
-        nextIndex = at;
+        updated = addSheetRowInMarkdown(oldMarkdown, sheetIndex, index, { copyFromAbove: true });
+        nextIndex = index;
       } else if (action === 'removeRow') {
-        let del = index;
-        if (placement === 'before') del = index - 1;
-        else if (placement === 'after') del = index + 1;
-        if (del < 0 || del >= dims.rows) return false;
-        updated = removeSheetRowInMarkdown(oldMarkdown, sheetIndex, del);
-        nextIndex = Math.min(del, Math.max(0, dims.rows - 2));
+        updated = removeSheetRowInMarkdown(oldMarkdown, sheetIndex, index);
+        nextIndex = Math.max(0, index - 1);
       } else {
         return false;
       }
@@ -1794,163 +1688,35 @@
     if (updated === oldMarkdown) return false;
     easyMDE.value(updated);
     scheduleSave();
-    setSheetBandSelection(sheetIndex, nextType, nextIndex);
+    setSheetBandSelection(sheetIndex, type, nextIndex);
     renderPreview();
-    focusSheetBandAfterEdit(sheetIndex, nextType, nextIndex);
-    return true;
-  }
-
-  let sheetStructureMenuEl = null;
-
-  function hideSheetStructureMenu() {
-    sheetStructureMenuEl?.remove();
-    sheetStructureMenuEl = null;
-  }
-
-  function showSheetStructurePlacementMenu(anchorEl, { action, sheetIndex, type, index }) {
-    hideSheetStructureMenu();
-    if (!anchorEl || !isPreviewInteractionEnabled()) return;
-
-    const dims = getSheetDimensions(sheetIndex);
-    const isAdd = action === 'addRow' || action === 'addCol';
-    const isRow = type === 'row';
-    const choices = [];
-
-    if (isAdd) {
-      if (isRow) {
-        choices.push({ placement: 'before', label: 'Insert above' });
-        choices.push({ placement: 'after', label: 'Insert below' });
-      } else {
-        choices.push({ placement: 'before', label: 'Insert left' });
-        choices.push({ placement: 'after', label: 'Insert right' });
-      }
-    } else if (isRow) {
-      choices.push({ placement: 'this', label: 'Delete this row' });
-      if (index > 0) choices.push({ placement: 'before', label: 'Delete row above' });
-      if (index < dims.rows - 1) choices.push({ placement: 'after', label: 'Delete row below' });
-    } else {
-      choices.push({ placement: 'this', label: 'Delete this column' });
-      if (index > 0) choices.push({ placement: 'before', label: 'Delete column left' });
-      if (index < dims.cols - 1) choices.push({ placement: 'after', label: 'Delete column right' });
-    }
-
-    if (!choices.length) return;
-
-    const menu = document.createElement('div');
-    menu.className = 'sheet-structure-menu';
-    menu.setAttribute('role', 'menu');
-    menu.innerHTML = choices.map((c, i) => (
-      `<button type="button" class="sheet-structure-menu-btn" data-placement="${c.placement}" role="menuitem">${escapeHtml(c.label)}</button>`
-    )).join('');
-
-    const onPick = (placement) => {
-      hideSheetStructureMenu();
-      applySheetStructureFromBand(action, { sheetIndex, type, index }, placement);
-    };
-
-    menu.addEventListener('click', (e) => {
-      const btn = e.target.closest?.('.sheet-structure-menu-btn');
-      if (!btn || !menu.contains(btn)) return;
-      e.preventDefault();
-      e.stopPropagation();
-      onPick(btn.dataset.placement || 'this');
-    });
-
-    document.body.appendChild(menu);
-    sheetStructureMenuEl = menu;
-
-    const rect = anchorEl.getBoundingClientRect();
-    const menuRect = menu.getBoundingClientRect();
-    let left = rect.left;
-    let top = rect.bottom + 4;
-    if (left + menuRect.width > window.innerWidth - 8) {
-      left = Math.max(8, window.innerWidth - menuRect.width - 8);
-    }
-    if (top + menuRect.height > window.innerHeight - 8) {
-      top = Math.max(8, rect.top - menuRect.height - 4);
-    }
-    menu.style.left = `${Math.round(left)}px`;
-    menu.style.top = `${Math.round(top)}px`;
-
-    const dismiss = (e) => {
-      if (e.type === 'keydown' && e.key !== 'Escape') return;
-      if (e.type === 'mousedown' && menu.contains(e.target)) return;
-      hideSheetStructureMenu();
-      document.removeEventListener('mousedown', dismiss, true);
-      document.removeEventListener('keydown', dismiss, true);
-    };
-    requestAnimationFrame(() => {
-      document.addEventListener('mousedown', dismiss, true);
-      document.addEventListener('keydown', dismiss, true);
-    });
-  }
-
-  function handleSheetBandActionClick(btn) {
-    if (!btn || !isPreviewInteractionEnabled()) return false;
-    const action = btn.dataset.sheetAction;
-    const sheetIndex = parseInt(btn.dataset.sheetIndex, 10);
-    const col = parseInt(btn.dataset.col, 10);
-    const row = parseInt(btn.dataset.row, 10);
-    if (!action || !Number.isFinite(sheetIndex)) return false;
-
-    let type = null;
-    let index = null;
-    if (action === 'addCol' || action === 'removeCol') {
-      if (!Number.isFinite(col)) return false;
-      type = 'col';
-      index = col;
-    } else if (action === 'addRow' || action === 'removeRow') {
-      if (!Number.isFinite(row)) return false;
-      type = 'row';
-      index = row;
-    } else {
-      return false;
-    }
-
-    // +/- buttons always ask placement: above/below (rows) or left/right (cols).
-    showSheetStructurePlacementMenu(btn, { action, sheetIndex, type, index });
+    focusSheetBandAfterEdit(sheetIndex, type, nextIndex);
     return true;
   }
 
   function handleSheetBandStructureKey(e) {
     if (!sheetBandSelection || !isPreviewInteractionEnabled()) return false;
-    const { type, sheetIndex, index } = sheetBandSelection;
-    const dims = getSheetDimensions(sheetIndex);
-    const isLastRow = type === 'row' && index === dims.rows - 1;
-    const isLastCol = type === 'col' && index === dims.cols - 1;
-    const preview = document.getElementById('preview-content');
-    const anchor = type === 'col'
-      ? preview?.querySelector(`.sheet-col-band[data-sheet-index="${sheetIndex}"][data-col="${index}"]`)
-      : preview?.querySelector(`.sheet-row-band[data-sheet-index="${sheetIndex}"][data-row="${index}"]`);
-
+    const { type } = sheetBandSelection;
     if (type === 'col') {
       if (isSheetColPlusKey(e)) {
         e.preventDefault();
-        if (isLastCol) {
-          showSheetStructurePlacementMenu(anchor, { action: 'addCol', sheetIndex, type, index });
-        } else {
-          applySheetStructureFromBand('addCol', sheetBandSelection, 'before');
-        }
+        applySheetStructureFromBand('addCol');
         return true;
       }
       if (isSheetColMinusKey(e)) {
         e.preventDefault();
-        showSheetStructurePlacementMenu(anchor, { action: 'removeCol', sheetIndex, type, index });
+        applySheetStructureFromBand('removeCol');
         return true;
       }
     } else if (type === 'row') {
       if (isSheetRowPlusKey(e)) {
         e.preventDefault();
-        if (isLastRow) {
-          showSheetStructurePlacementMenu(anchor, { action: 'addRow', sheetIndex, type, index });
-        } else {
-          applySheetStructureFromBand('addRow', sheetBandSelection, 'before');
-        }
+        applySheetStructureFromBand('addRow');
         return true;
       }
       if (isSheetRowMinusKey(e)) {
         e.preventDefault();
-        showSheetStructurePlacementMenu(anchor, { action: 'removeRow', sheetIndex, type, index });
+        applySheetStructureFromBand('removeRow');
         return true;
       }
     }
@@ -1999,7 +1765,7 @@
   }
 
   function isPreviewRichBlock(el) {
-    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .page-tags');
+    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .calcs-block, .page-tags');
   }
 
   function getPreviewBlockSourceLine(node) {
@@ -2175,12 +1941,7 @@
     clearSheetRefPickHighlight();
     cell.classList.add('sheet-cell--ref-pick');
     const formula = cell.dataset.sheetFormula;
-    if (formula) {
-      cell.textContent = formula;
-    } else if (/^[\u00a0\s]*$/.test(cell.textContent || '')) {
-      // Clear preview &nbsp; filler so typing starts from a real empty cell
-      cell.textContent = '';
-    }
+    if (formula) cell.textContent = formula;
   }
 
   function cancelSheetCellEdit(cell) {
@@ -2211,7 +1972,7 @@
     const row = parseInt(cell.dataset.row, 10);
     const col = parseInt(cell.dataset.col, 10);
     if ([sheetIndex, row, col].some(n => Number.isNaN(n))) return false;
-    const newValue = sheetCellTextToMarkdown(cell.textContent);
+    const newValue = cell.textContent.replace(/\r?\n/g, ' ').replace(/\t/g, ' ');
     const oldMarkdown = easyMDE.value();
     const updated = updateSheetCellInMarkdown(oldMarkdown, sheetIndex, row, col, newValue);
     if (updated === oldMarkdown) return false;
@@ -2283,38 +2044,8 @@
     if (!preview || preview.dataset.sheetEditBound === '1') return;
     preview.dataset.sheetEditBound = '1';
 
-    preview.addEventListener('click', e => {
-      if (!isPreviewInteractionEnabled()) return;
-      const layoutBtn = e.target.closest?.('.sheet-layout-btn');
-      if (layoutBtn && preview.contains(layoutBtn)) {
-        e.preventDefault();
-        e.stopPropagation();
-        const sheetIndex = parseInt(layoutBtn.dataset.sheetIndex, 10);
-        const layout = layoutBtn.dataset.sheetLayout;
-        if (!easyMDE || !Number.isFinite(sheetIndex) || !layout) return;
-        const oldMarkdown = easyMDE.value();
-        const updated = setSheetLayoutInMarkdown(oldMarkdown, sheetIndex, layout);
-        if (updated === oldMarkdown) return;
-        easyMDE.value(updated);
-        scheduleSave();
-        renderPreview();
-        return;
-      }
-      const actionBtn = e.target.closest?.('.sheet-band-btn');
-      if (actionBtn && preview.contains(actionBtn)) {
-        e.preventDefault();
-        e.stopPropagation();
-        handleSheetBandActionClick(actionBtn);
-      }
-    });
-
     preview.addEventListener('mousedown', e => {
       if (!isPreviewInteractionEnabled()) return;
-      if (e.target.closest?.('.sheet-band-btn')) {
-        e.preventDefault();
-        e.stopPropagation();
-        return;
-      }
       if (e.target.closest?.('.md-tag, .md-tags, .calendar-unit, a, button, input, select, textarea')) return;
       const colBand = e.target.closest?.('.sheet-col-band');
       const rowBand = e.target.closest?.('.sheet-row-band');
@@ -2444,54 +2175,22 @@
     return `\n\n${html}\n\n`;
   }
 
-  function setSheetLayoutInMarkdown(markdown, sheetIndex, layout) {
-    const next = sanitizeSheetLayout(layout);
-    let idx = 0;
-    return String(markdown || '').replace(SHEET_BLOCK_RE, (match, fenceAttrs, content) => {
-      if (idx++ !== sheetIndex) return match;
-      const parsed = parseSheetContent(content, fenceAttrs);
-      if (!parsed.config) parsed.config = {};
-      if (next === 'normal') delete parsed.config.layout;
-      else parsed.config.layout = next;
-      const fence = String(fenceAttrs || '')
-        .split(';')
-        .map(p => p.trim())
-        .filter(p => p && !/^layout\s*=/i.test(p))
-        .join(';');
-      return `\`\`\`sheet${sheetFenceSuffix(fence)}\n${serializeSheetContent(parsed)}\n\`\`\`\n`;
-    });
-  }
-
   function parseSheetBlocks(plainText, options = {}) {
     let sheetIndex = 0;
-    const editable = !!options.sheetEditable;
     return plainText.replace(SHEET_BLOCK_RE, (_, fenceAttrs, content) => {
       const parsed = parseSheetContent(content, fenceAttrs);
       const idx = sheetIndex++;
       const id = parsed.config.id || parsed.config.sheet || '';
-      const layout = sanitizeSheetLayout(parsed.config.layout);
-      const layoutBtns = ['small', 'normal', 'big'].map(size => {
-        const active = size === layout ? ' active' : '';
-        return `<button type="button" class="btn btn-outline-secondary sheet-layout-btn${active}" data-sheet-index="${idx}" data-sheet-layout="${size}">${size.charAt(0).toUpperCase()}${size.slice(1)}</button>`;
-      }).join('');
-      const meta = id
+      const title = id
         ? `<div class="sheet-block-meta">Sheet: <strong>${escapeHtml(id)}</strong></div>`
-        : '<div class="sheet-block-meta">Sheet</div>';
-      const toolbar = `
-        <div class="sheet-block-toolbar">
-          ${meta}
-          <div class="sheet-layout-controls" role="group" aria-label="Sheet layout">
-            <span class="sheet-layout-label">Layout</span>
-            <div class="sheet-layout-buttons">${layoutBtns}</div>
-          </div>
-        </div>`;
+        : '';
       const sheetHtml = sheetGridToHtml(parsed.grid, parsed.config, {
         sheetIndex: idx,
-        editable,
+        editable: !!options.sheetEditable,
         bandSelection: sheetBandSelection?.sheetIndex === idx ? sheetBandSelection : null,
       }, parsed.cellStyles, parsed.rawGrid);
       return wrapRichPreviewBlock(
-        `<div class="sheet-preview-block" data-sheet-index="${idx}" data-sheet-layout="${layout}">${toolbar}${sheetHtml}</div>`,
+        `<div class="sheet-preview-block" data-sheet-index="${idx}">${title}${sheetHtml}</div>`,
       );
     });
   }
@@ -2513,20 +2212,7 @@
     return ['1'];
   }
 
-  function isSheetRowBlankForChart(row) {
-    if (!Array.isArray(row) || !row.length) return true;
-    return row.every(c => String(c ?? '').trim() === '');
-  }
-
-  function chartUniqueLabel(raw, seen) {
-    const base = String(raw ?? '').trim() || '(empty)';
-    const count = (seen.get(base) || 0) + 1;
-    seen.set(base, count);
-    return count === 1 ? base : `${base} (${count})`;
-  }
-
-  function chartDataFromSheet(sheet, xKey, yKeys, options = {}) {
-    const splitEmptyRows = options.splitEmptyRows !== false;
+  function chartDataFromSheet(sheet, xKey, yKeys) {
     const grid = sheet.grid || [];
     if (!grid.length) return { labels: [], series: [], points: [] };
     const hasHeader = sheetHasHeader(sheet.config) && grid.length > 0;
@@ -2535,80 +2221,37 @@
     const useIndex = xKey === 'index' || xKey === '__index__';
     const xIdx = useIndex ? 0 : resolveColumnIndex(headers, xKey, 0);
     const yList = Array.isArray(yKeys) ? yKeys : [yKeys];
-    const yIndexes = yList.map((yKey, si) => resolveColumnIndex(headers, yKey, si + 1));
 
-    // Optionally split on blank rows → each block becomes its own colored series group
-    const segments = [];
-    let current = [];
-    grid.slice(start).forEach((row, ri) => {
-      if (isSheetRowBlankForChart(row)) {
-        if (splitEmptyRows) {
-          if (current.length) {
-            segments.push(current);
-            current = [];
-          }
-        }
-        return;
-      }
-      current.push({ row, ri });
-    });
-    if (current.length) segments.push(current);
-    if (!segments.length) return { labels: [], series: [], points: [] };
+    const rows = grid.slice(start).map((row, ri) => ({
+      label: useIndex ? String(ri + 1) : String(row[xIdx] ?? ''),
+      values: yList.map((yKey, si) => {
+        const yIdx = resolveColumnIndex(headers, yKey, si + 1);
+        const n = parseSheetNumber(row[yIdx]);
+        return Number.isNaN(n) ? 0 : n;
+      }),
+    })).filter(r => useIndex || r.label !== '');
 
-    const labelSeen = new Map();
-    const rowMeta = [];
-    segments.forEach((seg, segIdx) => {
-      seg.forEach(({ row, ri }) => {
-        const rawLabel = useIndex ? String(rowMeta.length + 1) : String(row[xIdx] ?? '');
-        if (!useIndex && rawLabel.trim() === '') return;
-        const values = yIndexes.map((yIdx) => {
-          const raw = String(row[yIdx] ?? '').trim();
-          if (!raw) return null;
-          const n = parseSheetNumber(raw);
-          return Number.isNaN(n) ? null : n;
-        });
-        // Skip rows with no numeric Y values (empty cells must not count)
-        if (values.every(v => v == null)) return;
-        const label = useIndex ? rawLabel : chartUniqueLabel(rawLabel, labelSeen);
-        rowMeta.push({ label, segIdx, values });
-      });
-    });
-    if (!rowMeta.length) return { labels: [], series: [], points: [] };
-
-    const labels = rowMeta.map(r => r.label);
-    const segmentCount = segments.length;
-    const series = [];
-    yList.forEach((yKey, si) => {
-      const baseName = String(headers[yIndexes[si]] ?? yKey);
-      for (let segIdx = 0; segIdx < segmentCount; segIdx += 1) {
-        if (!rowMeta.some(r => r.segIdx === segIdx && r.values[si] != null)) continue;
-        const name = segmentCount === 1 ? baseName : `${baseName} (${segIdx + 1})`;
-        series.push({
-          key: yKey,
-          name,
-          segment: segIdx,
-          values: rowMeta.map(r => (r.segIdx === segIdx ? r.values[si] : null)),
-        });
-      }
-    });
+    const series = yList.map((yKey, si) => ({
+      key: yKey,
+      name: String(headers[resolveColumnIndex(headers, yKey, si + 1)] ?? yKey),
+      values: rows.map(r => r.values[si]),
+    }));
 
     return {
-      labels,
+      labels: rows.map(r => r.label),
       series,
-      points: rowMeta
-        .filter(r => Number.isFinite(r.values[0]))
-        .map(r => ({ label: r.label, value: r.values[0] })),
+      points: rows.map(r => ({ label: r.label, value: r.values[0] ?? 0 })),
       xAxisLabel: useIndex ? 'Index' : String(headers[xIdx] ?? xKey),
     };
   }
 
-  function chartDataFromSheetDual(sheet, xKey, leftYKeys, rightYKeys, options = {}) {
+  function chartDataFromSheetDual(sheet, xKey, leftYKeys, rightYKeys) {
     const leftKeys = Array.isArray(leftYKeys) ? leftYKeys : [leftYKeys].filter(Boolean);
     const rightKeys = Array.isArray(rightYKeys) ? rightYKeys : [rightYKeys].filter(Boolean);
     const leftOnly = leftKeys.filter(k => !rightKeys.includes(k));
     const rightOnly = rightKeys.filter(k => !leftKeys.includes(k));
-    const left = leftOnly.length ? chartDataFromSheet(sheet, xKey, leftOnly, options) : null;
-    const right = rightOnly.length ? chartDataFromSheet(sheet, xKey, rightOnly, options) : null;
+    const left = leftOnly.length ? chartDataFromSheet(sheet, xKey, leftOnly) : null;
+    const right = rightOnly.length ? chartDataFromSheet(sheet, xKey, rightOnly) : null;
     const labels = left?.labels?.length ? left.labels : (right?.labels ?? []);
     return {
       labels,
@@ -2652,10 +2295,7 @@
 
   function drawLineSeries(g, container, labels, series, xAt, y, color, yScaleMode, xLabel, showPoints) {
     if (!series.length) return;
-    const line = d3.line()
-      .defined(d => Number.isFinite(d))
-      .x((_, i) => xAt(i))
-      .y(d => y(chartYValue(d, yScaleMode)));
+    const line = d3.line().x((_, i) => xAt(i)).y(d => y(chartYValue(d, yScaleMode)));
     series.forEach(s => {
       g.append('path')
         .datum(s.values)
@@ -2682,7 +2322,7 @@
         label,
         name: s0.name,
         value: s0.values[i],
-      })).filter(d => Number.isFinite(d.value))).join('rect')
+      }))).join('rect')
         .attr('class', 'chart-bar chart-bar-left')
         .attr('x', d => x(d.label))
         .attr('y', d => chartBarRect(d.value, y, yScaleMode).y)
@@ -2706,7 +2346,7 @@
       .attr('class', 'bar-group-left')
       .attr('transform', label => `translate(${x0(label)},0)`)
       .selectAll('rect')
-      .data((label, li) => series.map(s => ({ name: s.name, label, value: s.values[li] })).filter(d => Number.isFinite(d.value)))
+      .data((label, li) => series.map(s => ({ name: s.name, label, value: s.values[li] })))
       .join('rect')
       .attr('class', 'chart-bar')
       .attr('x', d => x1(d.name))
@@ -5546,6 +5186,19 @@
     });
   }
 
+  const CALCS_BLOCK_RE = /```calcs(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function parseCalcsBlocks(text) {
+    CALCS_BLOCK_RE.lastIndex = 0;
+    return text.replace(CALCS_BLOCK_RE, (_, fenceAttrs, content) => {
+      const engine = window.NotesProCalcs;
+      const html = engine?.renderBlock
+        ? engine.renderBlock(content || '', fenceAttrs || '')
+        : '<div class="calcs-block calcs-block--error">Calcs engine not loaded.</div>';
+      return wrapRichPreviewBlock(html);
+    });
+  }
+
   function buildPanelFence(type, title, body) {
     const panelType = PANEL_TYPES.includes(type) ? type : 'info';
     const lines = [];
@@ -5554,39 +5207,13 @@
     return `\n\`\`\`panel ${panelType}\n${lines.join('\n')}\n\`\`\`\n`;
   }
 
-  function chartSeriesStats(values) {
-    const nums = (values || []).filter(v => Number.isFinite(v));
-    const count = nums.length;
-    if (!count) return { count: 0, avg: NaN, min: NaN, max: NaN };
-    let sum = 0;
-    let min = nums[0];
-    let max = nums[0];
-    nums.forEach((v) => {
-      sum += v;
-      if (v < min) min = v;
-      if (v > max) max = v;
-    });
-    return { count, avg: sum / count, min, max };
-  }
-
-  function formatChartSeriesStats(values) {
-    const { count, avg, min, max } = chartSeriesStats(values);
-    if (!count) return 'n=0';
-    return `n=${count} · avg ${formatChartValue(avg)} · min ${formatChartValue(min)} · max ${formatChartValue(max)}`;
-  }
-
   function appendChartLegend(container, series, colorScale) {
-    if (!series?.length) return;
     const legend = document.createElement('div');
     legend.className = 'chart-block-legend';
     series.forEach(s => {
       const item = document.createElement('span');
       item.className = 'chart-legend-item';
-      item.innerHTML = [
-        `<span class="chart-legend-swatch" style="background:${colorScale(s.name)}"></span>`,
-        `<span class="chart-legend-name">${escapeHtml(s.name)}</span>`,
-        `<span class="chart-legend-stats">${escapeHtml(formatChartSeriesStats(s.values))}</span>`,
-      ].join('');
+      item.innerHTML = `<span class="chart-legend-swatch" style="background:${colorScale(s.name)}"></span>${escapeHtml(s.name)}`;
       legend.appendChild(item);
     });
     container.appendChild(legend);
@@ -5682,15 +5309,12 @@
         label: labels[i],
         name: s.name,
         value,
-      })).filter(d => Number.isFinite(d.value));
+      }));
       const dots = g.selectAll(`.chart-scatter-dot-${si}`)
         .data(pointData)
         .join('circle')
         .attr('class', `chart-scatter-dot-${si} chart-point`)
-        .attr('cx', d => {
-          const i = labels.indexOf(d.label);
-          return xPos(d.label, i, s.name);
-        })
+        .attr('cx', (_, i) => xPos(labels[i], i, s.name))
         .attr('cy', d => y(chartYValue(d.value, yScaleMode)))
         .attr('r', 5)
         .attr('fill', '#fff')
@@ -5782,7 +5406,7 @@
       );
     }
 
-    if (allSeries.length) appendChartLegend(container, allSeries, color);
+    if (allSeries.length > 1) appendChartLegend(container, allSeries, color);
 
     styleXAxisLabels(
       g.append('g').attr('transform', `translate(0,${innerH})`).call(d3.axisBottom(x0)),
@@ -5822,7 +5446,7 @@
       drawLineSeries(g, container, labels, rightSeries, i => x(labels[i]), yRight, color, yScaleMode, xLabel, showPoints);
     }
 
-    if (allSeries.length) appendChartLegend(container, allSeries, color);
+    if (allSeries.length > 1) appendChartLegend(container, allSeries, color);
 
     styleXAxisLabels(
       g.append('g').attr('transform', `translate(0,${innerH})`).call(d3.axisBottom(x)),
@@ -5861,7 +5485,7 @@
       drawScatterPoints(g, container, labels, rightSeries, label => x(label), yRight, color, yScaleMode, { xLabel });
     }
 
-    if (allSeries.length) appendChartLegend(container, allSeries, color);
+    if (allSeries.length > 1) appendChartLegend(container, allSeries, color);
 
     styleXAxisLabels(
       g.append('g').attr('transform', `translate(0,${innerH})`).call(d3.axisBottom(x)),
@@ -6016,8 +5640,6 @@
         ? stored.mode
         : (CHART_MODES.includes(spec.type) ? spec.type : 'bar');
       let showPoints = !!stored?.showPoints;
-      // Default On — empty sheet rows start a new colored series
-      let splitEmptyRows = stored?.splitEmptyRows !== false;
 
       const toolbar = document.createElement('div');
       toolbar.className = 'chart-block-toolbar d-none';
@@ -6035,13 +5657,6 @@
       const pointsButtons = document.createElement('div');
       pointsButtons.className = 'chart-axis-buttons chart-block-axis-buttons';
       pointsGroup.appendChild(pointsButtons);
-
-      const splitGroup = document.createElement('div');
-      splitGroup.className = 'chart-block-axis-group';
-      splitGroup.innerHTML = '<div class="chart-block-axis-label">Empty rows → new series</div>';
-      const splitButtons = document.createElement('div');
-      splitButtons.className = 'chart-axis-buttons chart-block-axis-buttons';
-      splitGroup.appendChild(splitButtons);
 
       const xGroup = document.createElement('div');
       xGroup.className = 'chart-block-axis-group';
@@ -6064,7 +5679,7 @@
       yRightButtons.className = 'chart-axis-buttons chart-block-axis-buttons';
       yRightGroup.appendChild(yRightButtons);
 
-      toolbar.append(modeGroup, pointsGroup, splitGroup, xGroup, yGroup, yRightGroup);
+      toolbar.append(modeGroup, pointsGroup, xGroup, yGroup, yRightGroup);
 
       const canvas = document.createElement('div');
       canvas.className = 'chart-block-canvas';
@@ -6075,7 +5690,6 @@
         scheduleChartSettingsSave(chartIndex, {
           mode: chartMode,
           showPoints,
-          splitEmptyRows,
           x: getChartAxisValues(xButtons)[0] || xDefault,
           yLeft: getChartAxisValues(yButtons),
           yRight: getChartAxisValues(yRightButtons),
@@ -6092,11 +5706,9 @@
         if (chartMode === 'pie') {
           xGroup.classList.add('d-none');
           yRightGroup.classList.add('d-none');
-          splitGroup.classList.add('d-none');
         } else {
           if (sheet && columns.length) xGroup.classList.remove('d-none');
           yRightGroup.classList.remove('d-none');
-          splitGroup.classList.remove('d-none');
         }
         if (chartMode === 'bar' || chartMode === 'line') pointsGroup.classList.remove('d-none');
         else pointsGroup.classList.add('d-none');
@@ -6127,14 +5739,6 @@
         persistChartSettings();
       });
 
-      renderChartToggleButtons(splitButtons, splitEmptyRows);
-      bindChartAxisButtons(splitButtons, false);
-      splitButtons.addEventListener('click', () => {
-        splitEmptyRows = getChartAxisValues(splitButtons)[0] === '1';
-        drawChart();
-        persistChartSettings();
-      });
-
       const width = Math.max(320, el.clientWidth || 480);
       const height = 280;
 
@@ -6155,7 +5759,7 @@
           return { labels: [], leftSeries: [], rightSeries: [], series: [], points: [] };
         }
         const xKey = getChartAxisValues(xButtons)[0] || 'index';
-        return chartDataFromSheetDual(sheet, xKey, leftKeys, rightKeys, { splitEmptyRows });
+        return chartDataFromSheetDual(sheet, xKey, leftKeys, rightKeys);
       }
 
       function chartRenderOptions(chartData) {
@@ -6849,6 +6453,11 @@ function formatTextWithMarkup(rawText) {
       const label = spec.title || 'Mindmap';
       return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
     });
+    md = md.replace(/```calcs(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const cfg = window.NotesProCalcs?.parseFenceAttrs?.(fenceAttrs) || {};
+      const label = cfg.title || 'ThGMaths';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
     return md;
   }
 
@@ -6887,6 +6496,7 @@ function formatTextWithMarkup(rawText) {
       md = parseKanbanganttBlocks(md, options);
       md = parseKanbanBlocks(md, options);
       md = parseMindmapBlocks(md, options);
+      md = parseCalcsBlocks(md);
     } else {
       md = replaceRichBlocksWithPlaceholders(md);
     }
@@ -8596,7 +8206,7 @@ function formatTextWithMarkup(rawText) {
 
   const EXAMPLE_SHEET_ID = 'quarterly';
   const EXAMPLE_SHEET_BODY = [
-    '`id=quarterly`',
+    '`id=quarterly',
     'Month\tSales\tCosts',
     'Jan\t100\t80',
     'Feb\t150\t90',
@@ -10775,6 +10385,25 @@ function formatTextWithMarkup(rawText) {
           },
           className: 'fa fa-sitemap',
           title: 'Insert mindmap',
+        },
+        {
+          name: 'insert-calcs',
+          action: (editor) => {
+            const body = [
+              '(* ThGMaths *)',
+              'FIX(7, true)',
+              'x:=5',
+              'a:= 3 + 4i',
+              'V1:=(1,3,4, 8)',
+              'Sum(V1)',
+              'j:=-10..10',
+              'y3[j]:=(j*j)/100',
+              'Plot([j, y3])',
+            ].join('\n');
+            insertFenceBlock(editor, 'calcs{fix=7;col=info}', body);
+          },
+          className: 'fa fa-calculator',
+          title: 'Insert ThGMaths / calcs',
         },
         {
           name: 'insert-news',
