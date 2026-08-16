@@ -1,1099 +1,1701 @@
 /**
- * NotesPro engineering calculator for fenced ```calcs``` blocks.
- * Exposes window.NotesProCalcs.renderBlock / parseFenceAttrs.
+ * NotesPro ```calcs``` engine — real/complex scalars, vectors, matrices,
+ * FIX/ENG/SCI display, and SVG plots.
  */
-(function (global) {
+(function (root, factory) {
+  const api = factory();
+  root.NotesProCalcs = api;
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = api;
+  }
+}(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+  'use strict';
+
   const EPS = 1e-12;
+  const ARRAY_PREVIEW = 10;
   const THEMES = ['info', 'success', 'warning', 'danger', 'note'];
+  const FORMAT_CMDS = { FIX: 'fix', ENG: 'eng', SCI: 'sci' };
+
+  function complex(re, im) {
+    return { kind: 'c', re: +re || 0, im: +im || 0 };
+  }
+
+  function vector(items) {
+    return { kind: 'v', items: items.slice() };
+  }
+
+  function matrix(rows) {
+    return { kind: 'm', rows: rows.map(r => r.slice()) };
+  }
+
+  function plotVal(series) {
+    return { kind: 'plot', series };
+  }
+
+  function timeVal(seconds, withSeconds) {
+    return { kind: 't', sec: +seconds || 0, withSeconds: !!withSeconds };
+  }
+
+  function isC(v) { return v && v.kind === 'c'; }
+  function isV(v) { return v && v.kind === 'v'; }
+  function isM(v) { return v && v.kind === 'm'; }
+  function isPlot(v) { return v && v.kind === 'plot'; }
+  function isT(v) { return v && v.kind === 't'; }
+
+  function nearly(a, b) { return Math.abs(a - b) < EPS; }
+  function isZeroC(z) { return nearly(z.re, 0) && nearly(z.im, 0); }
+  function isReal(z) { return nearly(z.im, 0); }
+
+  function cloneVal(v) {
+    if (isC(v)) return complex(v.re, v.im);
+    if (isV(v)) {
+      const out = vector(v.items.map(cloneVal));
+      if (v.__plotName) out.__plotName = v.__plotName;
+      if (v.__indexOrigin != null) out.__indexOrigin = v.__indexOrigin;
+      return out;
+    }
+    if (isM(v)) return matrix(v.rows.map(row => row.map(cloneVal)));
+    if (isPlot(v)) return plotVal(v.series.map(s => ({ x: s.x.slice(), y: s.y.slice(), name: s.name })));
+    if (isT(v)) return timeVal(v.sec, v.withSeconds);
+    return v;
+  }
+
+  function cAdd(a, b) { return complex(a.re + b.re, a.im + b.im); }
+  function cSub(a, b) { return complex(a.re - b.re, a.im - b.im); }
+  function cMul(a, b) {
+    return complex(a.re * b.re - a.im * b.im, a.re * b.im + a.im * b.re);
+  }
+  function cDiv(a, b) {
+    const d = b.re * b.re + b.im * b.im;
+    if (d < EPS * EPS) throw new Error('Division by zero');
+    return complex((a.re * b.re + a.im * b.im) / d, (a.im * b.re - a.re * b.im) / d);
+  }
+  function cNeg(a) { return complex(-a.re, -a.im); }
+  function cAbs(a) { return Math.hypot(a.re, a.im); }
+  function cArg(a) { return Math.atan2(a.im, a.re); }
+  function cConj(a) { return complex(a.re, -a.im); }
+
+  function cExp(a) {
+    const e = Math.exp(a.re);
+    return complex(e * Math.cos(a.im), e * Math.sin(a.im));
+  }
+  function cLn(a) {
+    const r = cAbs(a);
+    if (r < EPS) throw new Error('ln of zero');
+    return complex(Math.log(r), cArg(a));
+  }
+  function cSqrt(a) {
+    const r = cAbs(a);
+    if (r < EPS) return complex(0, 0);
+    const t = cArg(a) / 2;
+    const s = Math.sqrt(r);
+    return complex(s * Math.cos(t), s * Math.sin(t));
+  }
+  function cPow(a, b) {
+    if (isZeroC(a)) {
+      if (isZeroC(b)) return complex(1, 0);
+      if (isReal(b) && b.re > 0) return complex(0, 0);
+      throw new Error('0^x is undefined for this exponent');
+    }
+    return cExp(cMul(b, cLn(a)));
+  }
+  function cSin(a) {
+    return complex(
+      Math.sin(a.re) * Math.cosh(a.im),
+      Math.cos(a.re) * Math.sinh(a.im),
+    );
+  }
+  function cCos(a) {
+    return complex(
+      Math.cos(a.re) * Math.cosh(a.im),
+      -Math.sin(a.re) * Math.sinh(a.im),
+    );
+  }
+  function cTan(a) { return cDiv(cSin(a), cCos(a)); }
+  function cAsin(a) {
+    // -i ln(i z + sqrt(1 - z^2))
+    const i = complex(0, 1);
+    const one = complex(1, 0);
+    return cMul(cNeg(i), cLn(cAdd(cMul(i, a), cSqrt(cSub(one, cMul(a, a))))));
+  }
+  function cAcos(a) {
+    const i = complex(0, 1);
+    const one = complex(1, 0);
+    return cMul(cNeg(i), cLn(cAdd(a, cMul(i, cSqrt(cSub(one, cMul(a, a)))))));
+  }
+  function cAtan(a) {
+    const i = complex(0, 1);
+    const one = complex(1, 0);
+    return cMul(cDiv(i, complex(2, 0)), cSub(cLn(cSub(one, cMul(i, a))), cLn(cAdd(one, cMul(i, a)))));
+  }
+
+  function expectC(v, name) {
+    if (!isC(v)) throw new Error(`${name} expects a scalar`);
+    return v;
+  }
+
+  function mapScalar(v, fn, name) {
+    if (isT(v)) return fn(complex(v.sec / 3600, 0));
+    if (isC(v)) return fn(v);
+    if (isV(v)) return vector(v.items.map(x => mapScalar(x, fn, name)));
+    if (isM(v)) return matrix(v.rows.map(row => row.map(x => mapScalar(x, fn, name))));
+    throw new Error(`${name} cannot be applied to this value`);
+  }
+
+  function shapeOf(v) {
+    if (isC(v)) return [1, 1];
+    if (isV(v)) return [1, v.items.length];
+    if (isM(v)) return [v.rows.length, v.rows[0] ? v.rows[0].length : 0];
+    return [0, 0];
+  }
+
+  function asMatrix(v) {
+    if (isM(v)) return v;
+    if (isV(v)) return matrix([v.items.map(cloneVal)]);
+    if (isC(v)) return matrix([[cloneVal(v)]]);
+    throw new Error('Expected a number, vector, or matrix');
+  }
+
+  function sameShape(a, b) {
+    const sa = shapeOf(a);
+    const sb = shapeOf(b);
+    return sa[0] === sb[0] && sa[1] === sb[1];
+  }
+
+  function zipBin(a, b, fn, name) {
+    if (isC(a) && isC(b)) return fn(a, b);
+    if (isC(a)) return mapScalar(b, x => fn(a, x), name);
+    if (isC(b)) return mapScalar(a, x => fn(x, b), name);
+    if (isV(a) && isV(b)) {
+      if (a.items.length !== b.items.length) throw new Error(`${name}: vector length mismatch`);
+      return vector(a.items.map((x, i) => zipBin(x, b.items[i], fn, name)));
+    }
+    if (isM(a) && isM(b)) {
+      if (!sameShape(a, b)) throw new Error(`${name}: matrix size mismatch`);
+      return matrix(a.rows.map((row, i) => row.map((x, j) => zipBin(x, b.rows[i][j], fn, name))));
+    }
+    throw new Error(`${name}: incompatible types`);
+  }
+
+  function matMul(a, b) {
+    const A = asMatrix(a);
+    const B = asMatrix(b);
+    const n = A.rows.length;
+    const m = A.rows[0].length;
+    const p = B.rows[0].length;
+    if (B.rows.length !== m) throw new Error('Matrix multiply: inner dimensions must agree');
+    const out = [];
+    for (let i = 0; i < n; i += 1) {
+      const row = [];
+      for (let j = 0; j < p; j += 1) {
+        let s = complex(0, 0);
+        for (let k = 0; k < m; k += 1) s = cAdd(s, cMul(A.rows[i][k], B.rows[k][j]));
+        row.push(s);
+      }
+      out.push(row);
+    }
+    if (isV(a) && isV(b) && n === 1 && p === 1) return out[0][0];
+    if (isC(a) || isC(b)) return out[0][0];
+    if (isV(b) && p === 1) return vector(out.map(r => r[0]));
+    if (n === 1 && isV(a)) return vector(out[0]);
+    return matrix(out);
+  }
+
+  function identity(n) {
+    const rows = [];
+    for (let i = 0; i < n; i += 1) {
+      const row = [];
+      for (let j = 0; j < n; j += 1) row.push(complex(i === j ? 1 : 0, 0));
+      rows.push(row);
+    }
+    return matrix(rows);
+  }
+
+  function matInv(v) {
+    if (isC(v)) {
+      if (isZeroC(v)) throw new Error('inv of zero');
+      return cDiv(complex(1, 0), v);
+    }
+    if (isV(v)) return vector(v.items.map(x => matInv(x)));
+    if (!isM(v)) throw new Error('inv expects a scalar or square matrix');
+    const n = v.rows.length;
+    if (!n || v.rows.some(r => r.length !== n)) throw new Error('inv expects a square matrix');
+    const a = v.rows.map((row, i) => row.map(cloneVal).concat(identity(n).rows[i].map(cloneVal)));
+    for (let col = 0; col < n; col += 1) {
+      let piv = col;
+      let best = cAbs(a[col][col]);
+      for (let r = col + 1; r < n; r += 1) {
+        const mag = cAbs(a[r][col]);
+        if (mag > best) { best = mag; piv = r; }
+      }
+      if (best < EPS) throw new Error('Matrix is singular');
+      if (piv !== col) {
+        const tmp = a[col];
+        a[col] = a[piv];
+        a[piv] = tmp;
+      }
+      const div = a[col][col];
+      for (let c = 0; c < 2 * n; c += 1) a[col][c] = cDiv(a[col][c], div);
+      for (let r = 0; r < n; r += 1) {
+        if (r === col) continue;
+        const f = a[r][col];
+        if (isZeroC(f)) continue;
+        for (let c = 0; c < 2 * n; c += 1) a[r][c] = cSub(a[r][c], cMul(f, a[col][c]));
+      }
+    }
+    return matrix(a.map(row => row.slice(n)));
+  }
+
+  function matPowInt(m, n) {
+    if (n < 0) return matPowInt(matInv(m), -n);
+    if (n === 0) {
+      if (!isM(m)) return complex(1, 0);
+      const d = m.rows.length;
+      if (m.rows.some(r => r.length !== d)) throw new Error('A^0 requires a square matrix');
+      return identity(d);
+    }
+    let acc = isM(m) ? identity(m.rows.length) : complex(1, 0);
+    let base = cloneVal(m);
+    let e = n;
+    while (e > 0) {
+      if (e & 1) acc = isM(m) ? matMul(acc, base) : cMul(acc, base);
+      e >>= 1;
+      if (e) base = isM(m) ? matMul(base, base) : cMul(base, base);
+    }
+    return acc;
+  }
+
+  function powVal(a, b) {
+    if (isC(a) && isC(b)) {
+      if (isReal(b) && nearly(b.re, Math.round(b.re)) && Math.abs(b.re) <= 1e6) {
+        return matPowInt(a, Math.round(b.re));
+      }
+      return cPow(a, b);
+    }
+    if (isM(a) && isC(b) && isReal(b) && nearly(b.re, Math.round(b.re))) {
+      return matPowInt(a, Math.round(b.re));
+    }
+    if ((isV(a) || isM(a)) && isC(b)) {
+      return mapScalar(a, x => powVal(x, b), '^');
+    }
+    throw new Error('Unsupported power');
+  }
+
+  function mulVal(a, b) {
+    if (isT(a) && isC(b) && isReal(b)) return timeVal(a.sec * b.re, a.withSeconds);
+    if (isT(b) && isC(a) && isReal(a)) return timeVal(b.sec * a.re, b.withSeconds);
+    if (isT(a) || isT(b)) throw new Error('*: multiply time by a real scalar');
+    if (isM(a) || isM(b)) {
+      if (isC(a) || isC(b)) return zipBin(a, b, cMul, '*');
+      return matMul(a, b);
+    }
+    if (isV(a) && isV(b)) return zipBin(a, b, cMul, '*');
+    return zipBin(a, b, cMul, '*');
+  }
+
+  function toTimeParts(v, op) {
+    if (isT(v)) return { sec: v.sec, withSeconds: v.withSeconds };
+    if (isC(v) && isReal(v)) return { sec: v.re * 3600, withSeconds: false };
+    throw new Error(`${op}: expected a time or hours`);
+  }
+
+  function timeBin(a, b, fn, op) {
+    const left = toTimeParts(a, op);
+    const right = toTimeParts(b, op);
+    return timeVal(fn(left.sec, right.sec), left.withSeconds || right.withSeconds);
+  }
+
+  function addVal(a, b) {
+    if (isT(a) || isT(b)) return timeBin(a, b, (x, y) => x + y, '+');
+    return zipBin(a, b, cAdd, '+');
+  }
+  function subVal(a, b) {
+    if (isT(a) || isT(b)) return timeBin(a, b, (x, y) => x - y, '-');
+    return zipBin(a, b, cSub, '-');
+  }
+  function divVal(a, b) {
+    if (isT(a) && isT(b)) {
+      if (Math.abs(b.sec) < EPS) throw new Error('Division by zero');
+      return complex(a.sec / b.sec, 0);
+    }
+    if (isT(a) && isC(b) && isReal(b)) {
+      if (Math.abs(b.re) < EPS) throw new Error('Division by zero');
+      return timeVal(a.sec / b.re, a.withSeconds);
+    }
+    if (isM(b) && !isC(a)) throw new Error('Use inv(A) or A^-1 to divide by a matrix');
+    return zipBin(a, b, cDiv, '/');
+  }
+
+  function sumVal(v) {
+    if (isC(v) || isT(v)) return cloneVal(v);
+    if (isV(v)) return v.items.reduce((s, x) => addVal(s, sumVal(x)), complex(0, 0));
+    if (isM(v)) return v.rows.reduce((s, row) => addVal(s, sumVal(vector(row))), complex(0, 0));
+    throw new Error('sum expects a number, vector, or matrix');
+  }
+
+  function realScalar(v, label) {
+    if (isC(v) && isReal(v)) return v.re;
+    throw new Error(label || 'Expected a real scalar');
+  }
+
+  function intScalar(v, label) {
+    const n = realScalar(v, label);
+    if (!nearly(n, Math.round(n))) throw new Error(label || 'Expected an integer index');
+    return Math.round(n);
+  }
+
+  function vectorSlotIndex(idx, indexOrigin) {
+    const i = intScalar(idx, 'Index must be an integer');
+    if (indexOrigin === 1) {
+      if (i < 1) throw new Error('Index must be >= 1');
+      return i - 1;
+    }
+    if (i < 0) throw new Error('Index must be non-negative');
+    return i;
+  }
+
+  function getVectorElement(arr, idx) {
+    if (!isV(arr)) throw new Error('Not a vector');
+    const pos = vectorSlotIndex(idx, arr.__indexOrigin || 0);
+    if (pos < 0 || pos >= arr.items.length) throw new Error(`Index ${intScalar(idx, 'Index')} out of range`);
+    return cloneVal(arr.items[pos]);
+  }
+
+  function detectIndexOrigin(indexValues, existing) {
+    if (existing && isV(existing) && existing.__indexOrigin != null) {
+      return existing.__indexOrigin;
+    }
+    if (!indexValues.length) return 0;
+    const min = Math.min(...indexValues.map(v => intScalar(v, 'Index must be an integer')));
+    return min >= 1 ? 1 : 0;
+  }
+
+  function evalSlotIndexedAssign(name, indexValues, exprAst, env) {
+    // Literal indices / ranges (d[1]:=…, d[1..3]:=…) — values are slot positions.
+    const existing = lookupVar(env, name);
+    let items = existing && isV(existing) ? existing.items.map(cloneVal) : [];
+    const origin = detectIndexOrigin(indexValues, existing);
+
+    for (const idxVal of indexValues) {
+      const pos = vectorSlotIndex(idxVal, origin);
+      while (items.length <= pos) items.push(complex(0, 0));
+      items[pos] = cloneVal(evalAst(exprAst, env));
+    }
+
+    const result = vector(items);
+    result.__plotName = name;
+    result.__indexOrigin = origin;
+    env.vars[name] = result;
+    return result;
+  }
+
+  function evalDomainIndexedAssign(name, indexValues, exprAst, env, indexName) {
+    // Named domain (y3[j]:=(j*j)/100 with j:=-10..10) — pack densely; j is the
+    // loop value, not a storage index. Result length matches the domain vector.
+    const items = indexValues.map((idxVal) => {
+      const loopVars = { [indexName]: cloneVal(idxVal) };
+      return cloneVal(evalAst(exprAst, childEnv(env, loopVars)));
+    });
+    const result = vector(items);
+    result.__plotName = name;
+    result.__indexOrigin = 0;
+    result.__domain = vector(indexValues.map(cloneVal));
+    env.vars[name] = result;
+    return result;
+  }
+
+  function evalScalarIndexedAssign(name, indexVal, exprAst, env) {
+    return evalSlotIndexedAssign(name, [indexVal], exprAst, env);
+  }
+
+  function vectorFromRange(start, end) {
+    const a = intScalar(start, 'Range start must be an integer');
+    const b = intScalar(end, 'Range end must be an integer');
+    const items = [];
+    if (a <= b) {
+      for (let n = a; n <= b; n += 1) items.push(complex(n, 0));
+    } else {
+      for (let n = a; n >= b; n -= 1) items.push(complex(n, 0));
+    }
+    return vector(items);
+  }
+
+  function flattenReals(v, out) {
+    if (isT(v)) {
+      out.push(v.sec / 3600);
+      return;
+    }
+    if (isC(v)) {
+      out.push(isReal(v) ? v.re : cAbs(v));
+      return;
+    }
+    if (isV(v)) { v.items.forEach(x => flattenReals(x, out)); return; }
+    if (isM(v)) { v.rows.forEach(row => row.forEach(x => flattenReals(x, out))); return; }
+  }
+
+  function plotLegendLabel(name, idx) {
+    const raw = String(name || `y${idx + 1}`);
+    return raw.charAt(0).toUpperCase() + raw.slice(1);
+  }
+
+  function seriesFromPairArg(arg) {
+    if (!isV(arg) || arg.items.length !== 2 || !isV(arg.items[0]) || !isV(arg.items[1])) return null;
+    const x = [];
+    const y = [];
+    flattenReals(arg.items[0], x);
+    flattenReals(arg.items[1], y);
+    const n = Math.min(x.length, y.length);
+    if (!n) return null;
+    return {
+      x: x.slice(0, n),
+      y: y.slice(0, n),
+      name: arg.items[1].__plotName || arg.__plotName || 'y',
+    };
+  }
+
+  function toPlotSeries(args) {
+    if (!args.length) throw new Error('plot: missing data');
+    const pairs = args.map(seriesFromPairArg);
+    if (pairs.length === args.length && pairs.every(Boolean)) return pairs;
+    if (args.length === 1) {
+      const arg = args[0];
+      const singlePair = seriesFromPairArg(arg);
+      if (singlePair) return [singlePair];
+      if (isV(arg)) {
+        const y = [];
+        flattenReals(arg, y);
+        if (!y.length) throw new Error('plot: empty data');
+        return [{ x: y.map((_, i) => i), y, name: arg.__plotName || 'y1' }];
+      }
+      return toXY(args);
+    }
+    if (args.every(isV)) {
+      return args.map((arg, idx) => {
+        const y = [];
+        flattenReals(arg, y);
+        if (!y.length) throw new Error(`plot: empty series ${idx + 1}`);
+        return { x: y.map((_, i) => i), y, name: arg.__plotName || `y${idx + 1}` };
+      });
+    }
+    throw new Error('plot: use Plot(y1, y2, …) or Plot([x,y1],[x,y2])');
+  }
+
+  function toXY(args) {
+    if (args.length === 1) {
+      const y = [];
+      flattenReals(args[0], y);
+      if (!y.length) throw new Error('plot: empty data');
+      return [{ x: y.map((_, i) => i), y, name: 'y' }];
+    }
+    if (args.length === 2) {
+      const x = [];
+      const y = [];
+      flattenReals(args[0], x);
+      flattenReals(args[1], y);
+      const n = Math.min(x.length, y.length);
+      if (!n) throw new Error('plot: empty data');
+      return [{ x: x.slice(0, n), y: y.slice(0, n), name: 'y' }];
+    }
+    throw new Error('plot([y]) or plot(x, y)');
+  }
+
+  function tokenize(src) {
+    const tokens = [];
+    let i = 0;
+    const s = String(src || '');
+    const push = (type, value) => tokens.push({ type, value });
+    while (i < s.length) {
+      const ch = s[i];
+      if (ch === ' ' || ch === '\t' || ch === '\r') { i += 1; continue; }
+      if (ch === '#' || (ch === '/' && s[i + 1] === '/')) break;
+      if (ch === ':' && s[i + 1] === '=') { push('ASSIGN'); i += 2; continue; }
+      if (ch === '.' && s[i + 1] === '.') { push('RANGE'); i += 2; continue; }
+      if ('+-*/^(),[]'.includes(ch)) {
+        const map = {
+          '+': 'PLUS', '-': 'MINUS', '*': 'STAR', '/': 'SLASH', '^': 'CARET',
+          '(': 'LP', ')': 'RP', '[': 'LB', ']': 'RB', ',': 'COMMA',
+        };
+        push(map[ch]);
+        i += 1;
+        continue;
+      }
+      if (/[0-9.]/.test(ch)) {
+        const time = s.slice(i).match(/^(\d{1,5}):([0-5]\d)(?::([0-5]\d))?/);
+        if (time) {
+          const hours = parseInt(time[1], 10);
+          const minutes = parseInt(time[2], 10);
+          const seconds = time[3] != null ? parseInt(time[3], 10) : 0;
+          push('NUM', timeVal(hours * 3600 + minutes * 60 + seconds, time[3] != null));
+          i += time[0].length;
+          continue;
+        }
+        // 0..n must not be tokenized as 0. followed by .2…
+        const rangeStart = s.slice(i).match(/^(\d+)\.\./);
+        if (rangeStart) {
+          push('NUM', complex(parseInt(rangeStart[1], 10), 0));
+          i += rangeStart[1].length;
+          continue;
+        }
+        const m = s.slice(i).match(/^(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?([iIjJ])?/);
+        if (!m) throw new Error(`Bad number near "${s.slice(i, i + 8)}"`);
+        const num = parseFloat(m[1] + (m[2] || ''));
+        if (m[3]) push('NUM', complex(0, num));
+        else push('NUM', complex(num, 0));
+        i += m[0].length;
+        continue;
+      }
+      if (/[A-Za-z_]/.test(ch)) {
+        const m = s.slice(i).match(/^[A-Za-z_][A-Za-z0-9_]*/);
+        const name = m[0];
+        const upper = name.toUpperCase();
+        if (FORMAT_CMDS[upper]) push('FMT', FORMAT_CMDS[upper]);
+        else push('ID', name);
+        i += name.length;
+        continue;
+      }
+      throw new Error(`Unexpected "${ch}"`);
+    }
+    push('EOL');
+    return tokens;
+  }
+
+  function parseLine(src) {
+    const tokens = tokenize(src);
+    let p = 0;
+    const peek = () => tokens[p];
+    const eat = (type) => {
+      if (peek().type !== type) return null;
+      const t = peek();
+      p += 1;
+      return t;
+    };
+    const expect = (type, msg) => {
+      const t = eat(type);
+      if (!t) throw new Error(msg || `Expected ${type}`);
+      return t;
+    };
+
+    function parsePrimary() {
+      if (eat('NUM')) {
+        const n = tokens[p - 1].value;
+        return { type: 'num', value: n };
+      }
+      if (peek().type === 'ID') {
+        const name = eat('ID').value;
+        if (eat('LB')) {
+          const index = parseRangeExpr();
+          expect('RB', `Missing ] after ${name}[`);
+          return { type: 'subscript', name, index };
+        }
+        if (eat('LP')) {
+          const args = [];
+          if (peek().type !== 'RP') {
+            args.push(parseRangeExpr());
+            while (eat('COMMA')) args.push(parseRangeExpr());
+          }
+          expect('RP', `Missing ) after ${name}(`);
+          return { type: 'call', name, args };
+        }
+        return { type: 'id', name };
+      }
+      if (eat('LP') || eat('LB')) {
+        const closer = tokens[p - 1].type === 'LP' ? 'RP' : 'RB';
+        if (peek().type === closer) {
+          eat(closer);
+          return { type: 'vec', items: [] };
+        }
+        const items = [parseRangeExpr()];
+        while (eat('COMMA')) items.push(parseRangeExpr());
+        expect(closer, 'Missing closing ) or ]');
+        if (items.length === 1 && closer === 'RP') return items[0];
+        return { type: 'vec', items };
+      }
+      throw new Error('Expected a value');
+    }
+
+    function parseUnary() {
+      if (eat('MINUS')) return { type: 'neg', inner: parseUnary() };
+      if (eat('PLUS')) return parseUnary();
+      return parsePrimary();
+    }
+
+    function parsePower() {
+      let left = parseUnary();
+      while (eat('CARET')) {
+        left = { type: 'pow', left, right: parseUnary() };
+      }
+      return left;
+    }
+
+    function parseTerm() {
+      let left = parsePower();
+      while (peek().type === 'STAR' || peek().type === 'SLASH') {
+        const op = eat(peek().type).type === 'STAR' ? 'mul' : 'div';
+        left = { type: op, left, right: parsePower() };
+      }
+      return left;
+    }
+
+    function parseAddExpr() {
+      let left = parseTerm();
+      while (peek().type === 'PLUS' || peek().type === 'MINUS') {
+        const op = eat(peek().type).type === 'PLUS' ? 'add' : 'sub';
+        left = { type: op, left, right: parseTerm() };
+      }
+      return left;
+    }
+
+    function parseRangeExpr() {
+      let left = parseAddExpr();
+      while (eat('RANGE')) {
+        left = { type: 'range', left, right: parseAddExpr() };
+      }
+      return left;
+    }
+
+    if (peek().type === 'EOL') return { type: 'empty' };
+    if (peek().type === 'FMT') {
+      const mode = eat('FMT').value;
+      let digits = null;
+      if (peek().type === 'NUM') digits = Math.round(eat('NUM').value.re);
+      else if (eat('LP')) {
+        if (peek().type === 'NUM') digits = Math.round(eat('NUM').value.re);
+        expect('RP', 'Missing ) after format');
+      }
+      return { type: 'format', mode, digits };
+    }
+    if (peek().type === 'ID' && tokens[p + 1] && tokens[p + 1].type === 'LB') {
+      const saveP = p;
+      const name = eat('ID').value;
+      eat('LB');
+      const index = parseRangeExpr();
+      expect('RB', `Missing ] after ${name}[`);
+      if (eat('ASSIGN')) {
+        return { type: 'indexed_assign', name, index, expr: parseRangeExpr() };
+      }
+      p = saveP;
+    }
+    if (peek().type === 'ID' && tokens[p + 1] && tokens[p + 1].type === 'ASSIGN') {
+      const name = eat('ID').value;
+      eat('ASSIGN');
+      return { type: 'assign', name, expr: parseRangeExpr() };
+    }
+    return { type: 'expr', expr: parseRangeExpr() };
+  }
+
+  function listToValue(items) {
+    if (items.length && items.every(isV)) {
+      const w = items[0].items.length;
+      if (w && items.every(v => v.items.length === w && v.items.every(isC))) {
+        return matrix(items.map(v => v.items.map(cloneVal)));
+      }
+    }
+    if (items.length && items.every(isC)) return vector(items);
+    if (items.length === 1) return items[0];
+    return vector(items);
+  }
+
+  function childEnv(env, extraVars) {
+    return { vars: { ...env.vars, ...extraVars }, format: env.format };
+  }
+
+  function evalIndexedAssign(name, indexAst, exprAst, env) {
+    if (indexAst.type !== 'id') {
+      const indexVal = evalAst(indexAst, env);
+      if (isC(indexVal)) return evalScalarIndexedAssign(name, indexVal, exprAst, env);
+      if (!isV(indexVal)) throw new Error('index must be a vector, range, or scalar');
+      return evalSlotIndexedAssign(name, indexVal.items, exprAst, env);
+    }
+
+    const indexName = indexAst.name;
+    const idxVar = lookupVar(env, indexName);
+    if (!idxVar) throw new Error(`Unknown index "${indexName}"`);
+    if (!isV(idxVar)) {
+      if (isC(idxVar) && isReal(idxVar) && nearly(idxVar.im, 1)) {
+        throw new Error(`${indexName} must be a vector index (use another name, or assign ${indexName}:=0..n first — ${indexName} is the imaginary unit)`);
+      }
+      throw new Error(`${indexName} must be a vector index`);
+    }
+    // y[j]:=f(j) — j is a domain vector (may include negatives); pack by position.
+    return evalDomainIndexedAssign(name, idxVar.items, exprAst, env, indexName);
+  }
+
+  function evalAst(ast, env) {
+    switch (ast.type) {
+      case 'num': return cloneVal(ast.value);
+      case 'id': {
+        const found = lookupVar(env, ast.name);
+        if (!found) throw new Error(`Unknown name "${ast.name}"`);
+        return cloneVal(found);
+      }
+      case 'neg': {
+        const inner = evalAst(ast.inner, env);
+        if (isT(inner)) return timeVal(-inner.sec, inner.withSeconds);
+        return mapScalar(inner, cNeg, 'unary -');
+      }
+      case 'add': return addVal(evalAst(ast.left, env), evalAst(ast.right, env));
+      case 'sub': return subVal(evalAst(ast.left, env), evalAst(ast.right, env));
+      case 'mul': return mulVal(evalAst(ast.left, env), evalAst(ast.right, env));
+      case 'div': return divVal(evalAst(ast.left, env), evalAst(ast.right, env));
+      case 'pow': return powVal(evalAst(ast.left, env), evalAst(ast.right, env));
+      case 'range': return vectorFromRange(evalAst(ast.left, env), evalAst(ast.right, env));
+      case 'subscript': {
+        const arr = lookupVar(env, ast.name);
+        if (!arr) throw new Error(`Unknown name "${ast.name}"`);
+        const idx = evalAst(ast.index, env);
+        if (isV(arr)) {
+          if (isV(idx)) return vector(idx.items.map(i => getVectorElement(arr, i)));
+          return getVectorElement(arr, idx);
+        }
+        throw new Error(`${ast.name} is not subscriptable`);
+      }
+      case 'vec': return listToValue(ast.items.map(it => evalAst(it, env)));
+      case 'call': return evalCall(ast.name, ast.args.map(a => evalAst(a, env)), env);
+      default: throw new Error('Internal parse error');
+    }
+  }
+
+  function evalCall(name, args, env) {
+    const fn = name.toLowerCase();
+    const one = (label, impl) => {
+      if (args.length !== 1) throw new Error(`${label}(x)`);
+      return mapScalar(args[0], impl, label);
+    };
+    switch (fn) {
+      case 'sqrt': return one('sqrt', cSqrt);
+      case 'sqr': return one('sqr', z => cMul(z, z));
+      case 'exp': return one('exp', cExp);
+      case 'ln': case 'log': return one('ln', cLn);
+      case 'sin': return one('sin', cSin);
+      case 'cos': return one('cos', cCos);
+      case 'tan': return one('tan', cTan);
+      case 'asin': return one('asin', cAsin);
+      case 'acos': return one('acos', cAcos);
+      case 'atan': return one('atan', cAtan);
+      case 'abs': {
+        const v = need(args, 1, 'abs');
+        if (isT(v)) return timeVal(Math.abs(v.sec), v.withSeconds);
+        return mapScalar(v, z => complex(cAbs(z), 0), 'abs');
+      }
+      case 'inv':
+        if (args.length !== 1) throw new Error('inv(x)');
+        return matInv(args[0]);
+      case 'sum':
+        if (args.length !== 1) throw new Error('sum(v)');
+        return sumVal(args[0]);
+      case 'plot':
+        return plotVal(toPlotSeries(args));
+      case 're': return one('re', z => complex(z.re, 0));
+      case 'im': return one('im', z => complex(z.im, 0));
+      case 'conj': return one('conj', cConj);
+      default:
+        if (Object.prototype.hasOwnProperty.call(env.vars, name)) {
+          throw new Error(`"${name}" is not a function`);
+        }
+        throw new Error(`Unknown function ${name}()`);
+    }
+  }
+
+  function need(args, n, label) {
+    if (args.length !== n) throw new Error(`${label} expects ${n} argument(s)`);
+    return args[0];
+  }
+
+  function lookupVar(env, name) {
+    if (Object.prototype.hasOwnProperty.call(env.vars, name)) return env.vars[name];
+    const lower = String(name).toLowerCase();
+    const key = Object.keys(env.vars).find(k => k.toLowerCase() === lower);
+    return key ? env.vars[key] : null;
+  }
+
+  function defaultEnv() {
+    return {
+      vars: {
+        pi: complex(Math.PI, 0),
+        e: complex(Math.E, 0),
+        i: complex(0, 1),
+        j: complex(0, 1),
+      },
+      format: { mode: 'fix', digits: 4 },
+    };
+  }
+
+  function applyFenceFormat(env, attrs) {
+    const cfg = parseFenceAttrs(attrs);
+    const digitsOf = (key, fallback) => {
+      const n = parseInt(cfg[key], 10);
+      return Number.isFinite(n) ? clampDigits(n) : fallback;
+    };
+    if (cfg.fix != null) env.format = { mode: 'fix', digits: digitsOf('fix', 4) };
+    else if (cfg.sci != null) env.format = { mode: 'sci', digits: digitsOf('sci', 4) };
+    else if (cfg.eng != null) env.format = { mode: 'eng', digits: digitsOf('eng', 3) };
+    return cfg;
+  }
+
+  function parseFenceAttrs(attrs) {
+    const config = {};
+    String(attrs || '').split(';').forEach(pair => {
+      const trimmed = pair.trim();
+      if (!trimmed) return;
+      const eq = trimmed.indexOf('=');
+      if (eq < 0) {
+        config[trimmed.toLowerCase()] = '';
+        return;
+      }
+      config[trimmed.slice(0, eq).trim().toLowerCase()] = trimmed.slice(eq + 1).trim().replace(/,\s*$/, '');
+    });
+    return config;
+  }
+
+  function clampDigits(n) {
+    return Math.max(0, Math.min(12, n));
+  }
+
+  function formatMantExp(value, digits, eng) {
+    if (!Number.isFinite(value)) return String(value);
+    if (value === 0) return `0.${'0'.repeat(digits)}e0`;
+    const sign = value < 0 ? '-' : '';
+    const abs = Math.abs(value);
+    let exp = Math.floor(Math.log10(abs));
+    if (eng) {
+      const rem = ((exp % 3) + 3) % 3;
+      exp -= rem;
+    }
+    const mant = abs / (10 ** exp);
+    return `${sign}${mant.toFixed(digits)}e${exp}`;
+  }
+
+  function formatReal(value, fmt) {
+    if (!Number.isFinite(value)) return String(value);
+    const d = clampDigits(fmt.digits);
+    if (fmt.mode === 'sci') return formatMantExp(value, d, false);
+    if (fmt.mode === 'eng') return formatMantExp(value, d, true);
+    return value.toFixed(d);
+  }
+
+  function formatComplex(z, fmt) {
+    if (isReal(z)) return formatReal(z.re, fmt);
+    if (nearly(z.re, 0)) {
+      const im = formatReal(z.im, fmt);
+      return z.im < 0 ? `${im}i` : `${im}i`;
+    }
+    const re = formatReal(z.re, fmt);
+    const imAbs = formatReal(Math.abs(z.im), fmt);
+    return z.im < 0 ? `${re} - ${imAbs}i` : `${re} + ${imAbs}i`;
+  }
+
+  function pad2(n) {
+    return String(n).padStart(2, '0');
+  }
+
+  function formatTime(v) {
+    const sign = v.sec < 0 ? '-' : '';
+    let rest = Math.round(Math.abs(v.sec));
+    const hours = Math.floor(rest / 3600);
+    rest -= hours * 3600;
+    const minutes = Math.floor(rest / 60);
+    rest -= minutes * 60;
+    if (v.withSeconds || rest) return `${sign}${hours}:${pad2(minutes)}:${pad2(rest)}`;
+    return `${sign}${hours}:${pad2(minutes)}`;
+  }
+
+  function formatVector(v, fmt) {
+    const items = v.items;
+    if (items.length <= ARRAY_PREVIEW) {
+      return `(${items.map(x => formatValue(x, fmt)).join(', ')})`;
+    }
+    const head = items.slice(0, ARRAY_PREVIEW).map(x => formatValue(x, fmt)).join(', ');
+    return `(${head}, ..)`;
+  }
+
+  function formatValue(v, fmt) {
+    if (isT(v)) return formatTime(v);
+    if (isC(v)) return formatComplex(v, fmt);
+    if (isV(v)) return formatVector(v, fmt);
+    if (isM(v)) {
+      return v.rows.map(row => `(${row.map(x => formatValue(x, fmt)).join(', ')})`).join('\n');
+    }
+    if (isPlot(v)) return '[plot]';
+    return String(v);
+  }
 
   function escapeHtml(text) {
-    return String(text ?? '')
+    return String(text)
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;');
   }
 
-  function parseFenceAttrs(raw) {
-    const config = {};
-    String(raw || '').split(';').forEach((part) => {
-      const piece = String(part || '').trim();
-      if (!piece) return;
-      const eq = piece.indexOf('=');
-      if (eq <= 0) {
-        const key = piece.toLowerCase();
-        if (key === 'fix' || key === 'sci' || key === 'eng') config[key] = '4';
-        return;
-      }
-      const key = piece.slice(0, eq).trim().toLowerCase();
-      let val = piece.slice(eq + 1).trim();
-      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
-        val = val.slice(1, -1);
-      }
-      if (key) config[key] = val;
-    });
-    return config;
+  function sanitizeCalcsColor(value) {
+    if (!value) return '';
+    const v = String(value).trim();
+    if (/^#[0-9a-f]{3,8}$/i.test(v)) return v;
+    if (/^[a-zA-Z]+$/.test(v) && v.length <= 20) return v.toLowerCase();
+    return '';
   }
 
-  function C(re, im) {
-    return { k: 'c', re: Number(re) || 0, im: Number(im) || 0 };
-  }
-
-  function T(seconds) {
-    return { k: 't', sec: Number(seconds) || 0 };
-  }
-
-  function V(items) {
-    return { k: 'v', items: items.slice() };
-  }
-
-  function M(rows) {
-    return { k: 'm', rows: rows.map((r) => r.slice()) };
-  }
-
-  function L(items) {
-    return { k: 'l', items: items.slice() };
-  }
-
-  function isC(v) { return v && v.k === 'c'; }
-  function isT(v) { return v && v.k === 't'; }
-  function isV(v) { return v && v.k === 'v'; }
-  function isM(v) { return v && v.k === 'm'; }
-  function isL(v) { return v && v.k === 'l'; }
-  function isB(v) { return v && v.k === 'b'; }
-
-  function cloneVal(v) {
-    if (isC(v)) return C(v.re, v.im);
-    if (isT(v)) return T(v.sec);
-    if (isB(v)) return { k: 'b', v: !!v.v };
-    if (isV(v)) return V(v.items.map(cloneVal));
-    if (isL(v)) return L(v.items.map(cloneVal));
-    if (isM(v)) return M(v.rows.map((r) => r.map(cloneVal)));
-    return v;
-  }
-
-  function mag2(z) { return z.re * z.re + z.im * z.im; }
-  function mag(z) { return Math.sqrt(mag2(z)); }
-  function nearly0(z) { return Math.abs(z.re) < EPS && Math.abs(z.im) < EPS; }
-  function isReal(z) { return Math.abs(z.im) < EPS; }
-  function isInt(z) { return isReal(z) && Math.abs(z.re - Math.round(z.re)) < 1e-9; }
-
-  function addC(a, b) { return C(a.re + b.re, a.im + b.im); }
-  function subC(a, b) { return C(a.re - b.re, a.im - b.im); }
-  function mulC(a, b) { return C(a.re * b.re - a.im * b.im, a.re * b.im + a.im * b.re); }
-  function divC(a, b) {
-    const d = mag2(b);
-    if (d < EPS * EPS) throw new Error('Divide by 0');
-    return C((a.re * b.re + a.im * b.im) / d, (a.im * b.re - a.re * b.im) / d);
-  }
-  function negC(a) { return C(-a.re, -a.im); }
-  function conjC(a) { return C(a.re, -a.im); }
-
-  function expC(z) {
-    const e = Math.exp(z.re);
-    return C(e * Math.cos(z.im), e * Math.sin(z.im));
-  }
-
-  function lnC(z) {
-    if (nearly0(z)) throw new Error('Log of zero');
-    return C(Math.log(mag(z)), Math.atan2(z.im, z.re));
-  }
-
-  function sqrtC(z) {
-    if (nearly0(z)) return C(0, 0);
-    const r = mag(z);
-    const re = Math.sqrt(Math.max(0, (r + z.re) / 2));
-    let im = Math.sqrt(Math.max(0, (r - z.re) / 2));
-    if (z.im < 0) im = -im;
-    return C(re, im);
-  }
-
-  function sinC(z) {
-    return C(Math.sin(z.re) * Math.cosh(z.im), Math.cos(z.re) * Math.sinh(z.im));
-  }
-
-  function cosC(z) {
-    return C(Math.cos(z.re) * Math.cosh(z.im), -Math.sin(z.re) * Math.sinh(z.im));
-  }
-
-  function tanC(z) { return divC(sinC(z), cosC(z)); }
-
-  function asinC(z) {
-    // -i * ln(i*z + sqrt(1 - z^2))
-    const i = C(0, 1);
-    return mulC(C(0, -1), lnC(addC(mulC(i, z), sqrtC(subC(C(1, 0), mulC(z, z))))));
-  }
-
-  function atanC(z) {
-    // (i/2) * ln((1 - i z) / (1 + i z))
-    const iz = mulC(C(0, 1), z);
-    return mulC(C(0, 0.5), lnC(divC(subC(C(1, 0), iz), addC(C(1, 0), iz))));
-  }
-
-  function powC(a, b) {
-    if (isInt(b) && Math.abs(b.re) <= 64) {
-      return powIntC(a, Math.round(b.re));
+  function resolveCalcsStyle(cfg) {
+    const strip = value => sanitizeCalcsColor(String(value || '').trim().replace(/,\s*$/, ''));
+    let theme = '';
+    let colorCss = '';
+    const bgCss = strip(cfg.bkcol || cfg.bgcol || cfg.bgcolor || cfg.background || '');
+    if (cfg.color != null && cfg.color !== '') {
+      colorCss = strip(cfg.color);
+    } else if (cfg.col != null && cfg.col !== '') {
+      const lower = String(cfg.col).trim().replace(/,\s*$/, '').toLowerCase();
+      if (THEMES.includes(lower)) theme = lower;
+      else colorCss = strip(cfg.col);
     }
-    if (nearly0(a)) {
-      if (b.re > 0) return C(0, 0);
-      throw new Error('0 to a non-positive power');
+    return { theme, colorCss, bgCss };
+  }
+
+  function parseCalcsTrailingQuote(raw) {
+    const closed = raw.match(/^(.*?)\s+'([^']*)'\s*$/);
+    if (closed && closed[1].trim()) {
+      return { rest: closed[1].trim(), md: closed[2], mdPos: 'after' };
     }
-    return expC(mulC(b, lnC(a)));
-  }
-
-  function powIntC(a, n) {
-    if (n === 0) return C(1, 0);
-    if (n < 0) return divC(C(1, 0), powIntC(a, -n));
-    let acc = C(1, 0);
-    let base = a;
-    let e = n;
-    while (e > 0) {
-      if (e & 1) acc = mulC(acc, base);
-      base = mulC(base, base);
-      e >>= 1;
+    const open = raw.match(/^(.*?)\s+'([^']*)$/);
+    if (open && open[1].trim()) {
+      return { rest: open[1].trim(), md: open[2], mdPos: 'after' };
     }
-    return acc;
-  }
-
-  function hoursToTime(z) {
-    if (!isC(z) || !isReal(z)) throw new Error('Expected a real number of hours');
-    return T(z.re * 3600);
-  }
-
-  function timeToHours(t) {
-    return C(t.sec / 3600, 0);
-  }
-
-  function shapeError(op) {
-    throw new Error(`Incompatible shapes for ${op}`);
-  }
-
-  function vecLen(v) { return v.items.length; }
-
-  function matShape(m) {
-    const r = m.rows.length;
-    const c = r ? m.rows[0].length : 0;
-    return [r, c];
-  }
-
-  function assertRect(m) {
-    const cols = m.rows[0] ? m.rows[0].length : 0;
-    m.rows.forEach((row) => {
-      if (row.length !== cols) throw new Error('Jagged matrix');
-    });
-  }
-
-  function mapC(val, fn) {
-    if (isC(val)) return fn(val);
-    if (isV(val)) return V(val.items.map((x) => mapC(x, fn)));
-    if (isM(val)) return M(val.rows.map((row) => row.map((x) => mapC(x, fn))));
-    throw new Error('Expected a numeric value');
-  }
-
-  function zipBin(a, b, fn, op) {
-    if (isC(a) && isC(b)) return fn(a, b);
-    if (isC(a) && (isV(b) || isM(b))) return mapC(b, (x) => fn(a, x));
-    if ((isV(a) || isM(a)) && isC(b)) return mapC(a, (x) => fn(x, b));
-    if (isV(a) && isV(b)) {
-      if (vecLen(a) !== vecLen(b)) shapeError(op);
-      return V(a.items.map((x, i) => fn(x, b.items[i])));
-    }
-    if (isM(a) && isM(b)) {
-      const [r1, c1] = matShape(a);
-      const [r2, c2] = matShape(b);
-      if (r1 !== r2 || c1 !== c2) shapeError(op);
-      return M(a.rows.map((row, i) => row.map((x, j) => fn(x, b.rows[i][j]))));
-    }
-    shapeError(op);
-  }
-
-  function addVal(a, b) {
-    if (isT(a) || isT(b)) {
-      const ta = isT(a) ? a : hoursToTime(a);
-      const tb = isT(b) ? b : hoursToTime(b);
-      return T(ta.sec + tb.sec);
-    }
-    return zipBin(a, b, addC, '+');
-  }
-
-  function subVal(a, b) {
-    if (isT(a) || isT(b)) {
-      const ta = isT(a) ? a : hoursToTime(a);
-      const tb = isT(b) ? b : hoursToTime(b);
-      return T(ta.sec - tb.sec);
-    }
-    return zipBin(a, b, subC, '-');
-  }
-
-  function mulMatMat(a, b) {
-    const [r1, c1] = matShape(a);
-    const [r2, c2] = matShape(b);
-    if (c1 !== r2) shapeError('*');
-    const out = [];
-    for (let i = 0; i < r1; i += 1) {
-      const row = [];
-      for (let j = 0; j < c2; j += 1) {
-        let s = C(0, 0);
-        for (let k = 0; k < c1; k += 1) s = addC(s, mulC(a.rows[i][k], b.rows[k][j]));
-        row.push(s);
-      }
-      out.push(row);
-    }
-    return M(out);
-  }
-
-  function mulMatVec(m, v) {
-    const [r, c] = matShape(m);
-    if (c !== vecLen(v)) shapeError('*');
-    return V(m.rows.map((row) => {
-      let s = C(0, 0);
-      row.forEach((x, j) => { s = addC(s, mulC(x, v.items[j])); });
-      return s;
-    }));
-  }
-
-  function mulVal(a, b) {
-    if (isT(a) || isT(b)) {
-      if (isT(a) && isT(b)) throw new Error('Cannot multiply two times');
-      const t = isT(a) ? a : b;
-      const n = isT(a) ? b : a;
-      if (!isC(n) || !isReal(n)) throw new Error('Time scale must be real');
-      return T(t.sec * n.re);
-    }
-    if (isM(a) && isM(b)) return mulMatMat(a, b);
-    if (isM(a) && isV(b)) return mulMatVec(a, b);
-    if (isV(a) && isM(b)) {
-      // row vector * matrix
-      const row = M([a.items]);
-      const prod = mulMatMat(row, b);
-      return V(prod.rows[0]);
-    }
-    return zipBin(a, b, mulC, '*');
-  }
-
-  function divVal(a, b) {
-    if (isT(a) || isT(b)) {
-      if (isT(a) && isT(b)) return C(a.sec / b.sec, 0);
-      if (isT(a) && isC(b) && isReal(b)) {
-        if (Math.abs(b.re) < EPS) throw new Error('Divide by 0');
-        return T(a.sec / b.re);
-      }
-      throw new Error('Invalid time division');
-    }
-    return zipBin(a, b, divC, '/');
-  }
-
-  function negVal(a) {
-    if (isT(a)) return T(-a.sec);
-    return mapC(a, negC);
-  }
-
-  function flattenNums(val, acc) {
-    if (isC(val)) { acc.push(val); return acc; }
-    if (isV(val)) { val.items.forEach((x) => flattenNums(x, acc)); return acc; }
-    if (isM(val)) { val.rows.forEach((row) => row.forEach((x) => flattenNums(x, acc))); return acc; }
-    throw new Error('Cannot flatten value');
-  }
-
-  function identMat(n) {
-    const rows = [];
-    for (let i = 0; i < n; i += 1) {
-      const row = [];
-      for (let j = 0; j < n; j += 1) row.push(C(i === j ? 1 : 0, 0));
-      rows.push(row);
-    }
-    return M(rows);
-  }
-
-  function invMat(m) {
-    assertRect(m);
-    const [n, c] = matShape(m);
-    if (n !== c) throw new Error('Inverse requires a square matrix');
-    const a = m.rows.map((row, i) => row.concat(identMat(n).rows[i]).map(cloneVal));
-    for (let col = 0; col < n; col += 1) {
-      let piv = col;
-      let best = mag2(a[col][col]);
-      for (let r = col + 1; r < n; r += 1) {
-        const mm = mag2(a[r][col]);
-        if (mm > best) { best = mm; piv = r; }
-      }
-      if (best < EPS * EPS) throw new Error('Matrix is singular');
-      if (piv !== col) {
-        const tmp = a[col];
-        a[col] = a[piv];
-        a[piv] = tmp;
-      }
-      const diag = a[col][col];
-      for (let j = 0; j < 2 * n; j += 1) a[col][j] = divC(a[col][j], diag);
-      for (let r = 0; r < n; r += 1) {
-        if (r === col) continue;
-        const f = a[r][col];
-        if (nearly0(f)) continue;
-        for (let j = 0; j < 2 * n; j += 1) a[r][j] = subC(a[r][j], mulC(f, a[col][j]));
-      }
-    }
-    return M(a.map((row) => row.slice(n)));
-  }
-
-  function invVal(val) {
-    if (isC(val)) return divC(C(1, 0), val);
-    if (isM(val)) return invMat(val);
-    throw new Error('inv() expects a scalar or square matrix');
-  }
-
-  function powIntMat(m, n) {
-    if (n === 0) {
-      const [r, c] = matShape(m);
-      if (r !== c) throw new Error('Identity requires a square matrix');
-      return identMat(r);
-    }
-    if (n < 0) return powIntMat(invMat(m), -n);
-    let acc = identMat(matShape(m)[0]);
-    let base = m;
-    let e = n;
-    while (e > 0) {
-      if (e & 1) acc = mulMatMat(acc, base);
-      base = mulMatMat(base, base);
-      e >>= 1;
-    }
-    return acc;
-  }
-
-  function powVal(a, b) {
-    if (isM(a) && isC(b) && isInt(b)) return powIntMat(a, Math.round(b.re));
-    if (isC(a) && isC(b)) return powC(a, b);
-    if ((isV(a) || isM(a)) && isC(b)) return mapC(a, (x) => powC(x, b));
-    throw new Error('Invalid power');
-  }
-
-  function absVal(val) {
-    if (isC(val)) return C(mag(val), 0);
-    if (isT(val)) return T(Math.abs(val.sec));
-    const nums = flattenNums(val, []);
-    let s = 0;
-    nums.forEach((z) => { s += mag2(z); });
-    return C(Math.sqrt(s), 0);
-  }
-
-  function sumVal(val) {
-    if (isT(val)) return cloneVal(val);
-    const nums = flattenNums(val, []);
-    return nums.reduce((acc, z) => addC(acc, z), C(0, 0));
-  }
-
-  function asReal(val) {
-    if (isC(val) && isReal(val)) return val.re;
-    throw new Error('Expected a real number');
-  }
-
-  function asBool(val) {
-    if (isB(val)) return !!val.v;
-    if (isC(val)) return !nearly0(val);
-    throw new Error('Expected true or false');
-  }
-
-  function asRealList(val, name) {
-    let items;
-    if (isV(val)) items = val.items;
-    else if (isL(val) && val.items.every(isC)) items = val.items;
-    else if (isM(val) && matShape(val)[0] === 1) items = val.rows[0];
-    else if (isM(val) && matShape(val)[1] === 1) items = val.rows.map((r) => r[0]);
-    else throw new Error(`${name} expects a vector`);
-    return items.map((x) => {
-      if (!isC(x)) throw new Error(`${name} values must be numeric`);
-      return x.re;
-    });
-  }
-
-  function makeRange(a, b) {
-    if (!isC(a) || !isC(b) || !isReal(a) || !isReal(b)) throw new Error('Range bounds must be real');
-    const start = isInt(a) && isInt(b) ? Math.round(a.re) : a.re;
-    const end = isInt(a) && isInt(b) ? Math.round(b.re) : b.re;
-    const step = end >= start ? 1 : -1;
-    const n = Math.floor(Math.abs(end - start)) + 1;
-    if (n > 100000) throw new Error('Range too large');
-    const items = [];
-    if (isInt(a) && isInt(b)) {
-      for (let i = start; step > 0 ? i <= end : i >= end; i += step) items.push(C(i, 0));
-    } else {
-      for (let i = 0; i < n; i += 1) items.push(C(start + i * step, 0));
-    }
-    return V(items);
-  }
-
-  function indexGet(val, idx) {
-    if (!isV(val) && !isL(val)) throw new Error('Index out of range');
-    const items = val.items;
-    if (isC(idx) && isInt(idx)) {
-      const i = Math.round(idx.re);
-      if (i < 0 || i >= items.length) throw new Error('Index out of range');
-      return cloneVal(items[i]);
-    }
-    if (isV(idx)) {
-      if (vecLen(idx) === items.length) return cloneVal(val);
-      return V(idx.items.map((x) => indexGet(val, x)));
-    }
-    throw new Error('Index out of range');
-  }
-
-  function indexSet(env, name, idx, val) {
-    if (isV(idx)) {
-      const n = vecLen(idx);
-      if (isC(val) || isT(val)) {
-        env[name] = V(Array.from({ length: n }, () => cloneVal(val)));
-      } else if (isV(val)) {
-        if (vecLen(val) !== n) throw new Error('Index out of range');
-        env[name] = cloneVal(val);
-      } else {
-        throw new Error('Indexed assignment expects a scalar or vector');
-      }
-      return env[name];
-    }
-    if (!isC(idx) || !isInt(idx)) throw new Error('Index out of range');
-    const i = Math.round(idx.re);
-    let vec = env[name];
-    if (!isV(vec)) vec = V([]);
-    if (i < 0 || i >= vecLen(vec)) throw new Error('Index out of range');
-    vec.items[i] = cloneVal(val);
-    env[name] = vec;
-    return cloneVal(val);
-  }
-
-  function pairItems(val) {
-    if (isL(val)) return val.items;
-    if (isV(val) && val.items.length === 2 && (isV(val.items[0]) || isL(val.items[0]))) return val.items;
     return null;
   }
 
-  function isSegmentMatrix(val) {
-    return isM(val) && matShape(val)[1] === 4 && matShape(val)[0] > 0;
-  }
-
-  function buildPlot(args) {
-    const series = [];
-    const segments = [];
-    const addSegments = (m) => {
-      m.rows.forEach((row) => {
-        row.forEach((x) => { if (!isC(x)) throw new Error('Plot segments must be numeric'); });
-        segments.push({
-          x0: row[0].re, y0: row[1].re, x1: row[2].re, y1: row[3].re,
-        });
-      });
-    };
-    const addSeriesPair = (xVal, yVal) => {
-      const xs = asRealList(xVal, 'Plot');
-      const ys = asRealList(yVal, 'Plot');
-      if (xs.length !== ys.length) throw new Error('Plot(x, y) length mismatch');
-      series.push({ xs, ys });
-    };
-
-    if (args.length === 2 && isV(args[0]) && args[0].items.every(isC) && isV(args[1]) && args[1].items.every(isC)) {
-      addSeriesPair(args[0], args[1]);
-      return { k: 'plot', series, segments };
+  function parseCalcsQuotedLine(raw) {
+    if (!raw.startsWith("'")) return null;
+    const closeIdx = raw.indexOf("'", 1);
+    if (closeIdx > 0) {
+      return {
+        md: raw.slice(1, closeIdx),
+        rest: raw.slice(closeIdx + 1).trim() || null,
+        mdPos: 'before',
+      };
     }
-
-    args.forEach((arg) => {
-      if (isSegmentMatrix(arg)) {
-        addSegments(arg);
-        return;
-      }
-      const pair = pairItems(arg);
-      if (pair && pair.length === 2) {
-        addSeriesPair(pair[0], pair[1]);
-        return;
-      }
-      if (isV(arg) && arg.items.every(isC)) {
-        const ys = asRealList(arg, 'Plot');
-        series.push({ xs: ys.map((_, i) => i + 1), ys });
-        return;
-      }
-      throw new Error('Plot(y), Plot(x, y), Plot([x, y], …), or Plot(segments)');
-    });
-    return { k: 'plot', series, segments };
+    let body = raw.slice(1);
+    if (body.startsWith(' ')) body = body.slice(1);
+    if (body.endsWith("'") && body.length > 0) body = body.slice(0, -1).trimEnd();
+    return { md: body, rest: null, mdPos: 'before' };
   }
 
-  function applyFormat(fmt, mode, args) {
-    const digits = args[0] !== undefined ? Math.round(asReal(args[0])) : 7;
-    if (!Number.isFinite(digits) || digits < 0 || digits > 16) throw new Error('Digits must be 0–16');
-    const trim = args[1] === undefined ? true : asBool(args[1]);
-    fmt.mode = mode;
-    fmt.digits = digits;
-    fmt.trim = trim;
-    return { k: 'fmt' };
+  function parseCalcsMdLine(raw) {
+    const quoted = parseCalcsQuotedLine(raw);
+    if (!quoted || quoted.rest) return null;
+    return quoted.md;
   }
 
-  function createFuns(fmt) {
-    return {
-      inv: (args) => { if (args.length !== 1) throw new Error('inv(x)'); return invVal(args[0]); },
-      sqrt: (args) => { if (args.length !== 1) throw new Error('sqrt(x)'); return mapC(args[0], sqrtC); },
-      sqr: (args) => { if (args.length !== 1) throw new Error('sqr(x)'); return mulVal(args[0], args[0]); },
-      exp: (args) => { if (args.length !== 1) throw new Error('exp(x)'); return mapC(args[0], expC); },
-      ln: (args) => { if (args.length !== 1) throw new Error('ln(x)'); return mapC(args[0], lnC); },
-      log: (args) => { if (args.length !== 1) throw new Error('log(x)'); return mapC(args[0], lnC); },
-      sin: (args) => { if (args.length !== 1) throw new Error('sin(x)'); return mapC(args[0], sinC); },
-      cos: (args) => { if (args.length !== 1) throw new Error('cos(x)'); return mapC(args[0], cosC); },
-      tan: (args) => { if (args.length !== 1) throw new Error('tan(x)'); return mapC(args[0], tanC); },
-      asin: (args) => { if (args.length !== 1) throw new Error('asin(x)'); return mapC(args[0], asinC); },
-      atan: (args) => { if (args.length !== 1) throw new Error('atan(x)'); return mapC(args[0], atanC); },
-      abs: (args) => { if (args.length !== 1) throw new Error('abs(x)'); return absVal(args[0]); },
-      sum: (args) => { if (args.length !== 1) throw new Error('sum(x)'); return sumVal(args[0]); },
-      conj: (args) => { if (args.length !== 1) throw new Error('conj(x)'); return mapC(args[0], conjC); },
-      re: (args) => { if (args.length !== 1) throw new Error('re(x)'); return mapC(args[0], (z) => C(z.re, 0)); },
-      im: (args) => { if (args.length !== 1) throw new Error('im(x)'); return mapC(args[0], (z) => C(z.im, 0)); },
-      plot: (args) => buildPlot(args),
-      sci: (args) => applyFormat(fmt, 'sci', args),
-      eng: (args) => applyFormat(fmt, 'eng', args),
-      fix: (args) => applyFormat(fmt, 'fix', args),
-    };
-  }
-
-  function stripLineComment(line) {
-    let out = '';
-    for (let i = 0; i < line.length; i += 1) {
-      if (line[i] === '#' || (line[i] === '/' && line[i + 1] === '/')) break;
-      out += line[i];
-    }
-    return out;
-  }
-
-  function stripBlockComments(text) {
-    return String(text || '')
-      .replace(/\(\*[\s\S]*?\*\)/g, ' ')
-      .replace(/\{[^{}]*\}/g, ' ');
-  }
-
-  function countDepth(text) {
-    let d = 0;
-    for (const ch of text) {
-      if (ch === '(' || ch === '[') d += 1;
-      else if (ch === ')' || ch === ']') d -= 1;
-    }
-    return d;
-  }
-
-  function logicalLines(content) {
-    const raw = stripBlockComments(String(content || '').replace(/\r\n/g, '\n')).split('\n');
-    const out = [];
-    let buf = '';
-    let depth = 0;
-    raw.forEach((line) => {
-      const code = stripLineComment(line);
-      depth += countDepth(code);
-      buf = buf ? `${buf}\n${line}` : line;
-      if (depth <= 0) {
-        out.push(buf);
-        buf = '';
-        depth = 0;
-      }
-    });
-    if (buf.trim()) out.push(buf);
-    return out;
-  }
-
-  const ID_RE = /^(?:[\p{L}_])[\p{L}\p{N}_]*/u;
-
-  function tokenize(src) {
-    let s = stripLineComment(String(src || '')).replace(/\s+/g, ' ').trim();
-    s = s.replace(/^=\s*/, '').replace(/\s*=\s*$/, '');
-    const tokens = [];
-    let i = 0;
-    while (i < s.length) {
-      const ch = s[i];
-      if (/\s/.test(ch)) { i += 1; continue; }
-      if (s.startsWith(':=', i)) { tokens.push({ t: ':=' }); i += 2; continue; }
-      if (s.startsWith('..', i)) { tokens.push({ t: '..' }); i += 2; continue; }
-      if (ch === '%') { tokens.push({ t: 'unit', v: '%' }); i += 1; continue; }
-      if ('+-*/^(),[]'.includes(ch)) { tokens.push({ t: ch }); i += 1; continue; }
-      if (/\d/.test(ch) || (ch === '.' && /\d/.test(s[i + 1] || ''))) {
-        const time = s.slice(i).match(/^(\d+):(\d{2})(?::(\d{2}))?/);
-        if (time) {
-          const h = parseInt(time[1], 10);
-          const m = parseInt(time[2], 10);
-          const sec = time[3] ? parseInt(time[3], 10) : 0;
-          if (m > 59 || sec > 59) throw new Error(`Invalid time ${time[0]}`);
-          tokens.push({ t: 'time', v: T(h * 3600 + m * 60 + sec) });
-          i += time[0].length;
-          continue;
-        }
-        // Do not treat `10..20` as `10.` + `.20` — `..` is the range operator.
-        let lex;
-        if (ch === '.') {
-          lex = (s.slice(i).match(/^\.\d+(?:[eE][+-]?\d+)?/) || [])[0];
-        } else {
-          lex = (s.slice(i).match(/^\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/) || [])[0];
-        }
-        if (!lex) throw new Error('Bad number');
-        i += lex.length;
-        if (/^[ij](?![\p{L}\p{N}_])/u.test(s.slice(i))) {
-          tokens.push({ t: 'num', v: C(0, parseFloat(lex)) });
-          i += 1;
-          continue;
-        }
-        tokens.push({ t: 'num', v: C(parseFloat(lex), 0) });
-        continue;
-      }
-      const id = s.slice(i).match(ID_RE);
-      if (id) {
-        const name = id[0];
-        const low = name.toLowerCase();
-        if (low === 'true' || low === 'false') tokens.push({ t: 'bool', v: { k: 'b', v: low === 'true' } });
-        else tokens.push({ t: 'id', v: name });
-        i += name.length;
-        continue;
-      }
-      throw new Error(`Unexpected “${ch}”`);
-    }
-    return tokens;
-  }
-
-  function lookupConst(name) {
-    const low = name.toLowerCase();
-    if (low === 'pi' || name === 'π') return C(Math.PI, 0);
-    if (low === 'e') return C(Math.E, 0);
-    if (low === 'i' || low === 'j') return C(0, 1);
-    return null;
-  }
-
-  function parseTokens(tokens, env, fmt) {
-    const funs = createFuns(fmt);
-    let p = 0;
-    const peek = () => tokens[p] || { t: 'eof' };
-    const peekAt = (off) => tokens[p + off] || { t: 'eof' };
-    const eat = (t) => {
-      const tok = peek();
-      if (t && tok.t !== t) throw new Error(`Expected ${t}`);
-      p += 1;
-      return tok;
-    };
-
-    function knownName(name) {
-      if (Object.prototype.hasOwnProperty.call(env, name)) return true;
-      if (lookupConst(name)) return true;
-      if (funs[name.toLowerCase()]) return true;
-      return false;
-    }
-
-    function parseList(close) {
-      const items = [];
-      if (peek().t === close) { eat(close); return items; }
-      items.push(parseExpr());
-      while (peek().t === ',') {
-        eat(',');
-        items.push(parseExpr());
-      }
-      eat(close);
-      return items;
-    }
-
-    function packTuple(items) {
-      if (items.length === 1) return items[0];
-      if (items.length && items.every(isV)) {
-        const n = vecLen(items[0]);
-        if (items.every((v) => vecLen(v) === n && v.items.every(isC))) {
-          return M(items.map((v) => v.items.map(cloneVal)));
-        }
-      }
-      if (items.every(isC)) return V(items);
-      return L(items);
-    }
-
-    function parsePrimary() {
-      const tok = peek();
-      if (tok.t === 'num' || tok.t === 'time' || tok.t === 'bool') { eat(); return tok.v; }
-      if (tok.t === 'id') {
-        const name = eat().v;
-        if (peek().t === '(') {
-          eat('(');
-          const args = parseList(')');
-          const fn = funs[name.toLowerCase()];
-          if (!fn) throw new Error(`Unknown function ${name}`);
-          return fn(args);
-        }
-        if (Object.prototype.hasOwnProperty.call(env, name)) return cloneVal(env[name]);
-        const cnst = lookupConst(name);
-        if (cnst) return cnst;
-        throw new Error(`Unknown name ${name}`);
-      }
-      if (tok.t === '(') {
-        eat('(');
-        return packTuple(parseList(')'));
-      }
-      if (tok.t === '[') {
-        eat('[');
-        const items = parseList(']');
-        if (items.every(isC)) return V(items);
-        return L(items);
-      }
-      throw new Error('Expected a value');
-    }
-
-    function parsePostfix() {
-      let left = parsePrimary();
-      while (peek().t === '[') {
-        eat('[');
-        const idx = parseExpr();
-        eat(']');
-        left = indexGet(left, idx);
-      }
-      return left;
-    }
-
-    function parseUnary() {
-      if (peek().t === '+' || peek().t === '-') {
-        const op = eat().t;
-        const v = parseUnary();
-        return op === '-' ? negVal(v) : v;
-      }
-      return parsePostfix();
-    }
-
-    function parsePow() {
-      const left = parseUnary();
-      if (peek().t === '^') {
-        eat('^');
-        return powVal(left, parsePow());
-      }
-      return left;
-    }
-
-    function startsImplicitValue(tok) {
-      if (tok.t === 'num' || tok.t === 'time' || tok.t === '(' || tok.t === '[') return true;
-      if (tok.t !== 'id') return false;
-      if (peekAt(1).t === ':=') return false;
-      if (peekAt(1).t === '[') return false;
-      if (!knownName(tok.v)) return false;
-      return true;
-    }
-
-    function parseMul() {
-      let left = parsePow();
-      while (true) {
-        const tok = peek();
-        if (tok.t === '*' || tok.t === '/') {
-          const op = eat().t;
-          const right = parsePow();
-          left = op === '*' ? mulVal(left, right) : divVal(left, right);
-          continue;
-        }
-        if (startsImplicitValue(tok)) {
-          left = mulVal(left, parsePow());
-          continue;
-        }
-        break;
-      }
-      return left;
-    }
-
-    function parseAdd() {
-      let left = parseMul();
-      while (peek().t === '+' || peek().t === '-') {
-        const op = eat().t;
-        const right = parseMul();
-        left = op === '+' ? addVal(left, right) : subVal(left, right);
-      }
-      return left;
-    }
-
-    function parseExpr() {
-      const left = parseAdd();
-      if (peek().t === '..') {
-        eat('..');
-        return makeRange(left, parseAdd());
-      }
-      return left;
-    }
-
-    function skipUnits() {
-      while (peek().t === 'unit' || (peek().t === 'id' && !knownName(peek().v) && peekAt(1).t !== ':=' && peekAt(1).t !== '(' && peekAt(1).t !== '[')) {
-        eat();
-      }
-    }
-
-    function parseStatement() {
-      if (peek().t === 'id' && peekAt(1).t === ':=') {
-        const name = eat().v;
-        eat(':=');
-        const val = parseExpr();
-        skipUnits();
-        if (val.k === 'plot') throw new Error('Cannot assign a plot');
-        env[name] = cloneVal(val);
-        return val;
-      }
-      if (peek().t === 'id' && peekAt(1).t === '[') {
-        const name = eat().v;
-        eat('[');
-        const idx = parseExpr();
-        eat(']');
-        if (peek().t === ':=') {
-          eat(':=');
-          const val = parseExpr();
-          skipUnits();
-          return indexSet(env, name, idx, val);
-        }
-        if (!Object.prototype.hasOwnProperty.call(env, name)) {
-          throw new Error(`Unknown name ${name}`);
-        }
-        let left = indexGet(env[name], idx);
-        while (peek().t === '[') {
-          eat('[');
-          left = indexGet(left, parseExpr());
-          eat(']');
-        }
-        skipUnits();
-        return left;
-      }
-      const val = parseExpr();
-      skipUnits();
-      return val;
-    }
-
-    function parseLine() {
-      const values = [];
-      values.push(parseStatement());
-      while (peek().t !== 'eof') {
-        if (peek().t === 'id' && (peekAt(1).t === ':=' || peekAt(1).t === '[' || peekAt(1).t === 'eof')) {
-          values.push(parseStatement());
-          continue;
-        }
-        throw new Error('Unexpected input');
-      }
-      const plot = [...values].reverse().find((v) => v && v.k === 'plot');
-      return plot || values[values.length - 1];
-    }
-
-    return parseLine();
-  }
-
-  function parseFormatCommand(line) {
-    const m = String(line || '').trim().match(/^(FIX|SCI|ENG)\s*(\d+)?\s*$/i);
-    if (!m) return null;
-    const digits = m[2] !== undefined ? parseInt(m[2], 10) : 4;
-    if (!Number.isFinite(digits) || digits < 0 || digits > 16) throw new Error('Digits must be 0–16');
-    return { mode: m[1].toLowerCase(), digits };
-  }
-
-  function trimZeros(text) {
-    if (!text.includes('.')) return text;
-    return text.replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
-  }
-
-  function formatSciExp(exp) {
-    const sign = exp >= 0 ? '+' : '-';
-    return `E${sign}${String(Math.abs(exp)).padStart(3, '0')}`;
-  }
-
-  function formatNumber(n, fmt) {
-    if (!Number.isFinite(n)) return String(n);
-    const d = fmt.digits;
-    const trim = fmt.trim !== false;
-    if (fmt.mode === 'sci') {
-      if (n === 0) {
-        const mant = (0).toFixed(Math.max(0, d - 1));
-        return `${trim ? trimZeros(mant) : mant}${formatSciExp(0)}`;
-      }
-      const exp = Math.floor(Math.log10(Math.abs(n)));
-      const mant = n / (10 ** exp);
-      const text = mant.toFixed(Math.max(0, d - 1));
-      return `${trim ? trimZeros(text) : text}${formatSciExp(exp)}`;
-    }
-    if (fmt.mode === 'eng') {
-      if (n === 0) {
-        const mant = (0).toFixed(d);
-        return `${trim ? trimZeros(mant) : mant}E0`;
-      }
-      const exp = Math.floor(Math.log10(Math.abs(n)));
-      const eng = Math.floor(exp / 3) * 3;
-      const mant = n / (10 ** eng);
-      const text = mant.toFixed(d);
-      return `${trim ? trimZeros(text) : text}E${eng}`;
-    }
-    const text = n.toFixed(d);
-    return trim ? trimZeros(text) : text;
-  }
-
-  function formatComplex(z, fmt) {
-    const re = formatNumber(z.re, fmt);
-    if (Math.abs(z.im) < EPS) return re;
-    const imAbs = formatNumber(Math.abs(z.im), fmt);
-    const sign = z.im < 0 ? '-' : '+';
-    if (Math.abs(z.re) < EPS) return `${z.im < 0 ? '-' : ''}${imAbs}i`;
-    return `${re}${sign}${imAbs}i`;
-  }
-
-  function formatTime(t) {
-    const sign = t.sec < 0 ? '-' : '';
-    let sec = Math.round(Math.abs(t.sec));
-    const h = Math.floor(sec / 3600);
-    sec -= h * 3600;
-    const m = Math.floor(sec / 60);
-    const s = sec - m * 60;
-    const mm = String(m).padStart(2, '0');
-    if (s) return `${sign}${h}:${mm}:${String(s).padStart(2, '0')}`;
-    return `${sign}${h}:${mm}`;
-  }
-
-  function formatValueHtml(val, fmt) {
-    if (!val) return '';
-    if (val.k === 'plot') return renderPlotSvg(val);
-    if (isT(val)) return escapeHtml(formatTime(val));
-    if (isC(val)) return escapeHtml(formatComplex(val, fmt));
-    if (isB(val)) return val.v ? 'true' : 'false';
-    if (isV(val) || isL(val)) {
-      const inner = val.items.map((x) => {
-        if (isC(x)) return formatComplex(x, fmt);
-        if (isV(x) || isL(x) || isM(x)) return formatValueHtml(x, fmt).replace(/<[^>]+>/g, '');
-        return '?';
-      }).join(', ');
-      return escapeHtml(`(${inner})`);
-    }
-    if (isM(val)) {
-      const rows = val.rows.map((row) => (
-        `<tr>${row.map((x) => `<td>${escapeHtml(isC(x) ? formatComplex(x, fmt) : '?')}</td>`).join('')}</tr>`
-      )).join('');
-      return `<table class="calcs-matrix">${rows}</table>`;
-    }
-    return escapeHtml(String(val));
-  }
-
-  const PLOT_COLORS = ['#2563eb', '#ea580c', '#16a34a', '#dc2626', '#7c3aed', '#0891b2'];
-
-  function renderPlotSvg(plot) {
-    const w = 460;
-    const h = 200;
-    const pad = { l: 40, r: 12, t: 10, b: 24 };
-    const series = plot.series || (plot.xs ? [{ xs: plot.xs, ys: plot.ys }] : []);
-    const segments = plot.segments || [];
-    const xs = [
-      ...series.flatMap((s) => s.xs),
-      ...segments.flatMap((s) => [s.x0, s.x1]),
-    ];
-    const ys = [
-      ...series.flatMap((s) => s.ys),
-      ...segments.flatMap((s) => [s.y0, s.y1]),
-    ];
-    if (!xs.length) return '<span class="calcs-empty">empty plot</span>';
-    const minX = Math.min(...xs);
-    const maxX = Math.max(...xs);
-    const minY = Math.min(...ys);
-    const maxY = Math.max(...ys);
-    const spanX = maxX - minX || 1;
-    const spanY = maxY - minY || 1;
-    const x0 = pad.l;
-    const y0 = pad.t;
-    const iw = w - pad.l - pad.r;
-    const ih = h - pad.t - pad.b;
-    const px = (x) => x0 + ((x - minX) / spanX) * iw;
-    const py = (y) => y0 + ih - ((y - minY) / spanY) * ih;
-    const ticks = [0, 0.5, 1].map((t) => {
-      const yv = minY + spanY * t;
-      const y = py(yv);
-      return `<line class="calcs-plot-grid" x1="${x0}" y1="${y}" x2="${x0 + iw}" y2="${y}"/>`
-        + `<text class="calcs-plot-tick" x="${x0 - 4}" y="${y + 3}" text-anchor="end">${escapeHtml(String(Number(yv.toPrecision(4))))}</text>`;
-    }).join('');
-    const lines = series.map((s, i) => {
-      const color = PLOT_COLORS[i % PLOT_COLORS.length];
-      const pts = s.xs.map((x, j) => `${px(x).toFixed(1)},${py(s.ys[j]).toFixed(1)}`).join(' ');
-      return `<polyline class="calcs-plot-line" stroke="${color}" points="${pts}"/>`;
-    }).join('');
-    const segColor = PLOT_COLORS[series.length % PLOT_COLORS.length];
-    const segs = segments.map((s) => (
-      `<line class="calcs-plot-line" stroke="${segColor}" x1="${px(s.x0).toFixed(1)}" y1="${py(s.y0).toFixed(1)}" x2="${px(s.x1).toFixed(1)}" y2="${py(s.y1).toFixed(1)}"/>`
-    )).join('');
-    return [
-      `<svg class="calcs-plot" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" role="img" aria-label="plot">`,
-      `<rect class="calcs-plot-bg" x="0" y="0" width="${w}" height="${h}"/>`,
-      ticks,
-      lines,
-      segs,
-      '</svg>',
-    ].join('');
-  }
-
-  function formatLabel(fmt) {
-    const trim = fmt.trim === false ? ' pad' : ' trim';
-    return `${fmt.mode.toUpperCase()} ${fmt.digits}${trim}`;
-  }
-
-  function initialFormat(cfg) {
-    const trim = String(cfg.trim || '').toLowerCase();
-    const base = { trim: !(trim === 'false' || trim === '0' || trim === 'no') };
-    if (cfg.sci !== undefined) return { ...base, mode: 'sci', digits: clampDigits(cfg.sci) };
-    if (cfg.eng !== undefined) return { ...base, mode: 'eng', digits: clampDigits(cfg.eng) };
-    if (cfg.fix !== undefined) return { ...base, mode: 'fix', digits: clampDigits(cfg.fix) };
-    return { ...base, mode: 'fix', digits: 7 };
-  }
-
-  function clampDigits(raw) {
-    const n = parseInt(raw, 10);
-    if (!Number.isFinite(n)) return 4;
-    return Math.max(0, Math.min(12, n));
-  }
-
-  function themeClass(cfg) {
-    const col = String(cfg.col || cfg.color || 'info').toLowerCase();
-    return THEMES.includes(col) ? col : 'info';
-  }
-
-  function evaluateLine(raw, env, fmt) {
-    const trimmed = String(raw || '').trim();
-    if (!trimmed) return { kind: 'empty' };
-    if (/^(#|\/\/)/.test(trimmed)) return { kind: 'empty' };
-    const fmtCmd = parseFormatCommand(stripLineComment(trimmed));
-    if (fmtCmd) {
-      fmt.mode = fmtCmd.mode;
-      fmt.digits = fmtCmd.digits;
-      return { kind: 'format', fmt: { ...fmt } };
-    }
-    const tokens = tokenize(trimmed);
-    if (!tokens.length) return { kind: 'empty' };
-    const value = parseTokens(tokens, env, fmt);
-    if (value && value.k === 'fmt') return { kind: 'format', fmt: { ...fmt } };
-    return { kind: 'value', value };
-  }
-
-  function renderBlock(content, fenceAttrs) {
-    const cfg = parseFenceAttrs(fenceAttrs);
-    const fmt = initialFormat(cfg);
-    const startFmt = formatLabel(fmt);
-    const env = Object.create(null);
-    const lines = logicalLines(content);
-    const rows = [];
-    lines.forEach((line) => {
-      const src = line.replace(/\s+$/, '');
-      if (!src.trim()) return;
+  function renderCalcsMarkdown(text) {
+    const src = String(text || '');
+    if (!src) return '';
+    if (typeof marked !== 'undefined') {
       try {
-        const out = evaluateLine(src, env, fmt);
-        if (out.kind === 'empty') return;
-        if (out.kind === 'format') {
-          rows.push(`<div class="calcs-row"><div class="calcs-src"><code>${escapeHtml(src)}</code></div>`
-            + `<div class="calcs-out calcs-format">${escapeHtml(formatLabel(out.fmt))}</div></div>`);
+        const inlineOk = typeof marked.parseInline === 'function'
+          && !/[\r\n]/.test(src)
+          && !/<[a-z][^>]*>/i.test(src);
+        if (inlineOk) {
+          return marked.parseInline(src, { async: false });
+        }
+        return marked.parse(src, { async: false })
+          .replace(/^<p>\s*/i, '')
+          .replace(/\s*<\/p>$/i, '');
+      } catch (_) {
+        /* fall through */
+      }
+    }
+    return escapeHtml(src);
+  }
+
+  function renderCalcsPartsInline(parts, fmt) {
+    return parts.map((part, idx) => {
+      const sep = idx ? '<span class="calcs-out-sep">, </span>' : '';
+      if (!part.ok) {
+        return `${sep}<span class="calcs-out-line calcs-out-line--error">${escapeHtml(part.text)}</span>`;
+      }
+      const inner = valueHtml({ ...part, ok: true }, part.format || fmt);
+      if (part.kind === 'plot') {
+        return `${sep}<span class="calcs-out-line calcs-out-line--plot">${inner}</span>`;
+      }
+      return `${sep}<span class="calcs-out-line">${inner}</span>`;
+    }).join('');
+  }
+
+  function renderCalcsMixedOutput(row, fmt) {
+    const results = row.parts?.length ? renderCalcsPartsInline(row.parts, fmt) : '';
+    const mdPart = row.html ? `<span class="calcs-md-inline">${row.html}</span>` : '';
+    const gap = row.html && row.parts?.length ? '<span class="calcs-out-sep"> </span>' : '';
+    if (row.mdPos === 'after') return results + gap + mdPart;
+    return mdPart + gap + results;
+  }
+
+  function joinContinuedLines(lines) {
+    const logical = [];
+    let pending = '';
+    for (const line of lines) {
+      const trimmed = String(line || '').trim();
+      if (!trimmed) continue;
+      pending = pending ? `${pending} ${trimmed}` : trimmed;
+      if (!pending.endsWith(',')) {
+        logical.push(pending);
+        pending = '';
+      }
+    }
+    if (pending) logical.push(pending.replace(/,\s*$/, '').trim());
+    return logical;
+  }
+
+  function splitCalcsStatements(src) {
+    const s = String(src || '').trim();
+    if (!s) return [];
+    const parts = [];
+    let depth = 0;
+    let bracket = 0;
+    let start = 0;
+    for (let i = 0; i < s.length; i += 1) {
+      const ch = s[i];
+      if (ch === '(') depth += 1;
+      else if (ch === ')' && depth > 0) depth -= 1;
+      else if (ch === '[') bracket += 1;
+      else if (ch === ']' && bracket > 0) bracket -= 1;
+      else if (ch === ',' && depth === 0 && bracket === 0) {
+        const part = s.slice(start, i).trim();
+        if (part) parts.push(part);
+        start = i + 1;
+      }
+    }
+    const tail = s.slice(start).trim();
+    if (tail) parts.push(tail);
+    return parts.length ? parts : [s];
+  }
+
+  function normalizeCalcsStmt(stmt) {
+    let s = String(stmt || '').trim();
+    // Optional leading/trailing "=" (result marker). Do not touch ":=".
+    if (s.startsWith('=') && !s.startsWith(':=')) s = s.slice(1).trim();
+    if (s.endsWith('=') && !s.endsWith(':=')) s = s.replace(/=\s*$/, '').trim();
+    return s;
+  }
+
+  function runCalcsStatement(stmt, env) {
+    const ast = parseLine(normalizeCalcsStmt(stmt));
+    if (ast.type === 'empty') return null;
+    if (ast.type === 'format') {
+      env.format = {
+        mode: ast.mode,
+        digits: ast.digits == null ? env.format.digits : clampDigits(ast.digits),
+      };
+      return {
+        ok: true,
+        kind: 'format',
+        text: `${ast.mode.toUpperCase()} ${env.format.digits}`,
+        format: { ...env.format },
+      };
+    }
+    if (ast.type === 'indexed_assign') {
+      const value = evalIndexedAssign(ast.name, ast.index, ast.expr, env);
+      return {
+        ok: true,
+        kind: isPlot(value) ? 'plot' : 'assign',
+        name: ast.name,
+        value,
+        format: { ...env.format },
+        text: formatValue(value, env.format),
+      };
+    }
+    if (ast.type === 'assign') {
+      const value = evalAst(ast.expr, env);
+      const stored = cloneVal(value);
+      if (isV(stored)) stored.__plotName = ast.name;
+      env.vars[ast.name] = stored;
+      return {
+        ok: true,
+        kind: isPlot(stored) ? 'plot' : 'assign',
+        name: ast.name,
+        value: stored,
+        format: { ...env.format },
+        text: formatValue(stored, env.format),
+      };
+    }
+    const value = evalAst(ast.expr, env);
+    return {
+      ok: true,
+      kind: isPlot(value) ? 'plot' : 'expr',
+      value,
+      format: { ...env.format },
+      text: formatValue(value, env.format),
+    };
+  }
+
+  function evaluate(source, options = {}) {
+    const env = defaultEnv();
+    const cfg = applyFenceFormat(env, options.fenceAttrs || '');
+    const logicalLines = joinContinuedLines(String(source || '').replace(/\r\n/g, '\n').split('\n'));
+    const rows = [];
+
+    function pushExprWithMd(raw, idx, md, rest, mdPos) {
+      const statements = splitCalcsStatements(rest);
+      const parts = [];
+      for (const stmt of statements) {
+        try {
+          const result = runCalcsStatement(stmt, env);
+          if (result) parts.push({ ...result, stmt });
+        } catch (err) {
+          parts.push({
+            ok: false,
+            kind: 'error',
+            text: err.message || String(err),
+            stmt,
+          });
+        }
+      }
+      rows.push({
+        source: raw,
+        line: idx + 1,
+        ok: parts.every(p => p.ok),
+        kind: parts.length > 1 ? 'multi' : 'mixed',
+        md,
+        html: renderCalcsMarkdown(md),
+        mdPos,
+        parts,
+      });
+    }
+
+    logicalLines.forEach((raw, idx) => {
+      if (!raw || raw.startsWith('#') || raw.startsWith('//')) return;
+      const quoted = parseCalcsQuotedLine(raw);
+      if (quoted) {
+        if (quoted.rest) {
+          pushExprWithMd(raw, idx, quoted.md, quoted.rest, quoted.mdPos);
           return;
         }
-        rows.push(`<div class="calcs-row"><div class="calcs-src"><code>${escapeHtml(src)}</code></div>`
-          + `<div class="calcs-out">${formatValueHtml(out.value, fmt)}</div></div>`);
-      } catch (err) {
-        rows.push(`<div class="calcs-row"><div class="calcs-src"><code>${escapeHtml(src)}</code></div>`
-          + `<div class="calcs-out calcs-error">${escapeHtml(err.message || String(err))}</div></div>`);
+        if (quoted.md) {
+          rows.push({
+            ok: true,
+            source: raw,
+            kind: 'md',
+            text: quoted.md,
+            html: renderCalcsMarkdown(quoted.md),
+          });
+        }
+        return;
       }
+      const trailing = parseCalcsTrailingQuote(raw);
+      if (trailing) {
+        pushExprWithMd(raw, idx, trailing.md, trailing.rest, trailing.mdPos);
+        return;
+      }
+      const exprSrc = normalizeCalcsStmt(raw);
+      if (!exprSrc || exprSrc.startsWith('#') || exprSrc.startsWith('//')) return;
+      const statements = splitCalcsStatements(exprSrc);
+      const parts = [];
+      for (const stmt of statements) {
+        try {
+          const result = runCalcsStatement(stmt, env);
+          if (result) parts.push({ ...result, stmt });
+        } catch (err) {
+          parts.push({
+            ok: false,
+            kind: 'error',
+            text: err.message || String(err),
+            stmt,
+          });
+        }
+      }
+      if (!parts.length) return;
+      if (parts.length === 1) {
+        rows.push({ source: raw, line: idx + 1, ...parts[0] });
+        return;
+      }
+      rows.push({
+        source: raw,
+        line: idx + 1,
+        ok: parts.every(p => p.ok),
+        kind: 'multi',
+        parts,
+      });
     });
-    const title = String(cfg.title || 'Calc').trim() || 'Calc';
-    const theme = themeClass(cfg);
-    const body = rows.length ? rows.join('') : '<div class="calcs-empty">No expressions.</div>';
+    return { rows, format: { ...env.format }, config: cfg };
+  }
+
+  function niceNum(span, ticks) {
+    const rough = span / Math.max(1, ticks);
+    const mag = 10 ** Math.floor(Math.log10(Math.max(rough, 1e-12)));
+    const norm = rough / mag;
+    let nice = 10;
+    if (norm < 1.5) nice = 1;
+    else if (norm < 3) nice = 2;
+    else if (norm < 7) nice = 5;
+    return nice * mag;
+  }
+
+  function ticks(min, max, count) {
+    if (!Number.isFinite(min) || !Number.isFinite(max)) return [0, 1];
+    if (nearly(min, max)) {
+      const pad = Math.abs(min) * 0.1 || 1;
+      min -= pad;
+      max += pad;
+    }
+    const step = niceNum(max - min, count);
+    const start = Math.floor(min / step) * step;
+    const end = Math.ceil(max / step) * step;
+    const out = [];
+    for (let v = start; v <= end + step * 0.5; v += step) out.push(v);
+    return out;
+  }
+
+  function measurePlotLegend(series) {
+    const labels = series.map((s, i) => plotLegendLabel(s.name, i));
+    const rowH = 18;
+    const boxPadX = 10;
+    const boxPadY = 8;
+    const swatchW = 18;
+    const labelPad = 6;
+    const maxLabelLen = Math.max(...labels.map(l => l.length), 1);
+    const textW = Math.max(24, Math.ceil(maxLabelLen * 7.4));
+    return {
+      labels,
+      rowH,
+      boxPadX,
+      boxPadY,
+      swatchW,
+      labelPad,
+      boxW: boxPadX * 2 + swatchW + labelPad + textW,
+      boxH: boxPadY * 2 + series.length * rowH - 2,
+    };
+  }
+
+  function renderPlotLegend(series, colors, W, pad, metrics) {
+    if (!series.length || !metrics) return '';
+    const boxX = W - pad.r + 8;
+    const boxY = pad.t;
+    const bg = `<rect class="calcs-plot-legend-box" x="${boxX.toFixed(1)}" y="${boxY.toFixed(1)}" width="${metrics.boxW.toFixed(1)}" height="${metrics.boxH.toFixed(1)}" rx="4"/>`;
+    const items = series.map((s, i) => {
+      const y = boxY + metrics.boxPadY + i * metrics.rowH + 10;
+      const color = colors[i % colors.length];
+      const lineX1 = boxX + metrics.boxPadX;
+      const lineX2 = lineX1 + metrics.swatchW;
+      const textX = lineX2 + metrics.labelPad;
+      return [
+        `<line class="calcs-plot-legend-swatch" x1="${lineX1.toFixed(1)}" y1="${y.toFixed(1)}" x2="${lineX2.toFixed(1)}" y2="${y.toFixed(1)}" stroke="${color}"/>`,
+        `<text class="calcs-plot-legend-label" x="${textX.toFixed(1)}" y="${(y + 3.5).toFixed(1)}">${escapeHtml(metrics.labels[i])}</text>`,
+      ].join('');
+    }).join('');
+    return `<g class="calcs-plot-legend">${bg}${items}</g>`;
+  }
+
+  const PLOT_COLORS = ['#dc2626', '#16a34a', '#ca8a04', '#2563eb', '#9333ea', '#0891b2'];
+
+  function renderPlotSvg(series, size, withMeta) {
+    const dims = size || { w: 420, h: 220 };
+    const W = dims.w;
+    const H = dims.h;
+    const colors = PLOT_COLORS;
+    const legend = series.length ? measurePlotLegend(series) : null;
+    const pad = { l: 42, r: legend ? legend.boxW + 16 : 12, t: 12, b: 28 };
+    const xs = series.flatMap(s => s.x);
+    const ys = series.flatMap(s => s.y);
+    let xmin = Math.min(...xs);
+    let xmax = Math.max(...xs);
+    let ymin = Math.min(...ys);
+    let ymax = Math.max(...ys);
+    const xt = ticks(xmin, xmax, 5);
+    const yt = ticks(ymin, ymax, 4);
+    xmin = xt[0];
+    xmax = xt[xt.length - 1];
+    ymin = yt[0];
+    ymax = yt[yt.length - 1];
+    const iw = W - pad.l - pad.r;
+    const ih = H - pad.t - pad.b;
+    const sx = x => pad.l + ((x - xmin) / (xmax - xmin || 1)) * iw;
+    const sy = y => pad.t + (1 - (y - ymin) / (ymax - ymin || 1)) * ih;
+    const grid = [];
+    xt.forEach(x => {
+      grid.push(`<line class="calcs-plot-grid" x1="${sx(x)}" y1="${pad.t}" x2="${sx(x)}" y2="${pad.t + ih}"/>`);
+      grid.push(`<text class="calcs-plot-tick" x="${sx(x)}" y="${H - 8}" text-anchor="middle">${formatReal(x, { mode: 'fix', digits: 2 })}</text>`);
+    });
+    yt.forEach(y => {
+      grid.push(`<line class="calcs-plot-grid" x1="${pad.l}" y1="${sy(y)}" x2="${pad.l + iw}" y2="${sy(y)}"/>`);
+      grid.push(`<text class="calcs-plot-tick" x="${pad.l - 6}" y="${sy(y) + 3}" text-anchor="end">${formatReal(y, { mode: 'fix', digits: 2 })}</text>`);
+    });
+    const paths = series.map((s, i) => {
+      const d = s.x.map((x, k) => `${k ? 'L' : 'M'}${sx(x).toFixed(1)},${sy(s.y[k]).toFixed(1)}`).join(' ');
+      return `<path class="calcs-plot-line" d="${d}" stroke="${colors[i % colors.length]}" fill="none"/>`;
+    }).join('');
+    const legendSvg = renderPlotLegend(series, colors, W, pad, legend);
+    const svg = [
+      `<svg class="calcs-plot" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="plot">`,
+      `<rect class="calcs-plot-bg" x="0" y="0" width="${W}" height="${H}"/>`,
+      grid.join(''),
+      paths,
+      legendSvg,
+      '<g class="calcs-plot-snap" aria-hidden="true"></g>',
+      `</svg>`,
+    ].join('');
+    if (!withMeta) return svg;
+    return {
+      svg,
+      meta: buildPlotMeta(series, dims, pad, xmin, xmax, ymin, ymax),
+    };
+  }
+
+  function buildPlotMeta(series, dims, pad, xmin, xmax, ymin, ymax) {
+    return {
+      series: series.map(s => ({ name: s.name || '', x: s.x.slice(), y: s.y.slice() })),
+      colors: PLOT_COLORS.slice(),
+      w: dims.w,
+      h: dims.h,
+      pad: { ...pad },
+      xmin,
+      xmax,
+      ymin,
+      ymax,
+    };
+  }
+
+  function encodePlotMeta(meta) {
+    return encodeURIComponent(JSON.stringify(meta));
+  }
+
+  function decodePlotMeta(raw) {
+    return JSON.parse(decodeURIComponent(raw));
+  }
+
+  function plotDataToSvg(meta, x, y) {
+    const plotW = meta.w - meta.pad.l - meta.pad.r;
+    const plotH = meta.h - meta.pad.t - meta.pad.b;
+    return {
+      x: meta.pad.l + ((x - meta.xmin) / (meta.xmax - meta.xmin || 1)) * plotW,
+      y: meta.pad.t + (1 - (y - meta.ymin) / (meta.ymax - meta.ymin || 1)) * plotH,
+    };
+  }
+
+  function plotDataToClient(svg, meta, x, y) {
+    const rect = svg.getBoundingClientRect();
+    const pt = plotDataToSvg(meta, x, y);
+    return {
+      x: rect.left + (pt.x / meta.w) * rect.width,
+      y: rect.top + (pt.y / meta.h) * rect.height,
+    };
+  }
+
+  function clientXToPlotX(svg, meta, clientX) {
+    const rect = svg.getBoundingClientRect();
+    if (!rect.width) return meta.xmin;
+    const xSvg = ((clientX - rect.left) / rect.width) * meta.w;
+    const plotW = meta.w - meta.pad.l - meta.pad.r;
+    const ratio = (xSvg - meta.pad.l) / (plotW || 1);
+    return meta.xmin + ratio * (meta.xmax - meta.xmin);
+  }
+
+  function snapPlotIndex(meta, xData) {
+    const s0 = meta.series[0];
+    if (!s0 || !s0.x.length) return 0;
+    let pointIdx = 0;
+    let bestDist = Infinity;
+    for (let k = 0; k < s0.x.length; k += 1) {
+      const dist = Math.abs(s0.x[k] - xData);
+      if (dist < bestDist) {
+        bestDist = dist;
+        pointIdx = k;
+      }
+    }
+    return pointIdx;
+  }
+
+  function plotSnapHits(meta, pointIdx) {
+    return meta.series.map((s, seriesIdx) => {
+      const idx = Math.min(Math.max(0, pointIdx), Math.max(0, s.x.length - 1));
+      return {
+        seriesIdx,
+        pointIdx: idx,
+        x: s.x[idx],
+        y: s.y[idx],
+        name: s.name,
+      };
+    });
+  }
+
+  function plotTipLinesFromIndex(meta, pointIdx) {
+    const hits = plotSnapHits(meta, pointIdx);
+    const fmtY = { mode: 'fix', digits: 4 };
+    const fmtX = { mode: 'fix', digits: 2 };
+    const lines = hits.map((h, i) => `${plotLegendLabel(h.name, i)}: ${formatReal(h.y, fmtY)}`);
+    if (hits.length) lines.push(`x: ${formatReal(hits[0].x, fmtX)}`);
+    return lines.join('\n');
+  }
+
+  function plotSnapSvg(meta, pointIdx) {
+    const hits = plotSnapHits(meta, pointIdx);
+    if (!hits.length) return '';
+    const anchor = plotDataToSvg(meta, hits[0].x, hits[0].y);
+    const yTop = meta.pad.t;
+    const yBot = meta.h - meta.pad.b;
+    const colors = meta.colors || PLOT_COLORS;
+    const parts = [
+      `<line class="calcs-plot-snap-line" x1="${anchor.x.toFixed(1)}" y1="${yTop}" x2="${anchor.x.toFixed(1)}" y2="${yBot}"/>`,
+    ];
+    hits.forEach((h, i) => {
+      const pt = plotDataToSvg(meta, h.x, h.y);
+      const color = colors[i % colors.length];
+      parts.push(
+        `<circle class="calcs-plot-snap-point" cx="${pt.x.toFixed(1)}" cy="${pt.y.toFixed(1)}" r="4.5" fill="${color}" stroke="#fff" stroke-width="1.5"/>`,
+      );
+    });
+    return parts.join('');
+  }
+
+  function nearestPlotPoints(meta, xData) {
+    return plotSnapHits(meta, snapPlotIndex(meta, xData));
+  }
+
+  function plotTipLines(meta, xData) {
+    return plotTipLinesFromIndex(meta, snapPlotIndex(meta, xData));
+  }
+
+  function renderPlotWrap(series, size) {
+    const built = renderPlotSvg(series, size, true);
+    const payload = encodePlotMeta(built.meta);
+    return `<div class="calcs-plot-wrap" data-calcs-plot="${payload}">${built.svg}</div>`;
+  }
+
+  function matrixHtml(v, fmt) {
+    const rows = v.rows.map(row => (
+      `<tr>${row.map(cell => `<td>${escapeHtml(formatValue(cell, fmt))}</td>`).join('')}</tr>`
+    )).join('');
+    return `<table class="calcs-matrix"><tbody>${rows}</tbody></table>`;
+  }
+
+  function valueHtml(row, fmt) {
+    if (row.kind === 'mixed' || (row.kind === 'multi' && row.html)) {
+      return renderCalcsMixedOutput(row, fmt);
+    }
+    if (row.kind === 'multi') {
+      return renderCalcsPartsInline(row.parts, fmt);
+    }
+    if (!row.ok) return `<span class="calcs-error">${escapeHtml(row.text)}</span>`;
+    if (row.kind === 'md') return row.html || escapeHtml(row.text || '');
+    if (row.kind === 'format') return `<span class="calcs-format">${escapeHtml(row.text)}</span>`;
+    if (row.kind === 'plot' && row.value) return renderPlotWrap(row.value.series);
+    if (row.value && isM(row.value)) return matrixHtml(row.value, row.format || fmt);
+    return `<span class="calcs-value">${escapeHtml(row.text)}</span>`;
+  }
+
+  function renderBlock(source, fenceAttrs) {
+    const result = evaluate(source, { fenceAttrs });
+    const cfg = result.config || {};
+    const style = resolveCalcsStyle(cfg);
+    const title = cfg.title || 'Calcs';
+    const fmtLabel = `${result.format.mode.toUpperCase()} ${result.format.digits}`;
+    const body = result.rows.length
+      ? result.rows.map(row => {
+        if (row.kind === 'md') {
+          return `<div class="calcs-row calcs-row--md"><div class="calcs-md">${valueHtml(row, result.format)}</div></div>`;
+        }
+        const outClass = row.kind === 'multi' || row.kind === 'mixed' ? ' calcs-out--multi' : '';
+        return `<div class="calcs-row${row.ok ? '' : ' calcs-row--error'}">`
+          + `<div class="calcs-src"><code>${escapeHtml(row.source)}</code></div>`
+          + `<div class="calcs-out${outClass}">${valueHtml(row, result.format)}</div>`
+          + `</div>`;
+      }).join('')
+      : '<div class="calcs-empty">Empty calculator block</div>';
+    const themeClass = style.theme ? ` calcs-block--${style.theme}` : '';
+    const customClass = (style.colorCss || style.bgCss) ? ' calcs-block--custom' : '';
+    const styleVars = [];
+    if (style.colorCss) styleVars.push(`--calcs-custom-color:${style.colorCss}`);
+    if (style.bgCss) styleVars.push(`--calcs-custom-bg:${style.bgCss}`);
+    const styleAttr = styleVars.length
+      ? ` style="${styleVars.map(v => escapeHtml(v)).join(';')}"`
+      : '';
     return [
-      `<div class="calcs-block calcs-block--${escapeHtml(theme)}">`,
-      `<div class="calcs-block-header"><span class="calcs-block-title">${escapeHtml(title)}</span>`,
-      `<span class="calcs-block-meta">${escapeHtml(startFmt)}</span></div>`,
-      `<div class="calcs-rows">${body}</div></div>`,
+      `<div class="calcs-block${themeClass}${customClass}"${styleAttr}>`,
+      `<div class="calcs-block-header">`,
+      `<div class="calcs-block-title">${escapeHtml(title)}</div>`,
+      `<div class="calcs-block-meta">${escapeHtml(fmtLabel)}</div>`,
+      `</div>`,
+      `<div class="calcs-block-body">${body}</div>`,
+      `</div>`,
     ].join('');
   }
 
-  const api = {
-    parseFenceAttrs,
-    renderBlock,
-    evaluateLine,
-    formatValueHtml,
-  };
+  function selfTest() {
+    const fails = [];
+    const check = (label, cond, detail) => {
+      if (!cond) fails.push(detail ? `${label}: ${detail}` : label);
+    };
+    const run = (src, attrs) => evaluate(src, { fenceAttrs: attrs || '' });
 
-  if (typeof module !== 'undefined' && module.exports) module.exports = api;
-  global.NotesProCalcs = api;
-})(typeof window !== 'undefined' ? window : globalThis);
+    let r = run('x:=5\nx');
+    check('assign real', r.rows[0].ok && nearly(r.rows[0].value.re, 5) && nearly(r.rows[0].value.im, 0));
+    check('read x', r.rows[1].ok && nearly(r.rows[1].value.re, 5));
+
+    r = run('c:=5.0+7.0i\nc');
+    check('complex assign', r.rows[0].ok && nearly(r.rows[0].value.re, 5) && nearly(r.rows[0].value.im, 7));
+
+    r = run('v:=(1,2+6i,3)\nsum(v)');
+    check('vector', r.rows[0].ok && isV(r.rows[0].value) && r.rows[0].value.items.length === 3);
+    check('sum(v)', r.rows[1].ok && nearly(r.rows[1].value.re, 6) && nearly(r.rows[1].value.im, 6));
+
+    r = run('A:=((1,2),(3,4))\ninv(A)\nA^-1');
+    check('matrix', r.rows[0].ok && isM(r.rows[0].value));
+    const invA = r.rows[1].value;
+    check('inv(A)', r.rows[1].ok && isM(invA) && nearly(invA.rows[0][0].re, -2) && nearly(invA.rows[0][1].re, 1));
+    check('A^-1', r.rows[2].ok && nearly(r.rows[2].value.rows[1][0].re, 1.5));
+
+    r = run('sqrt(x)\nx:=4\nsqrt(x)\nsqr(2)\nexp(0)\nln(e)');
+    check('unknown then ok', !r.rows[0].ok && r.rows[1].ok && nearly(r.rows[2].value.re, 2));
+    check('sqr', nearly(r.rows[3].value.re, 4));
+    check('exp/ln', nearly(r.rows[4].value.re, 1) && nearly(r.rows[5].value.re, 1));
+
+    r = run('sin(0)\ncos(0)\natan(0)\nabs(-3)\ninv(4)');
+    check('trig/abs/inv', nearly(r.rows[0].value.re, 0) && nearly(r.rows[1].value.re, 1)
+      && nearly(r.rows[3].value.re, 3) && nearly(r.rows[4].value.re, 0.25));
+
+    r = run('sqrt(-1)');
+    check('sqrt(-1)', r.rows[0].ok && nearly(r.rows[0].value.re, 0) && nearly(r.rows[0].value.im, 1));
+
+    r = run('FIX 2\n1/3\nSCI 3\n12345\nENG 3\n12345');
+    check('FIX', r.rows[1].text === '0.33');
+    check('SCI', /^1\.235e4$/i.test(r.rows[3].text));
+    check('ENG', /12\.345e3/i.test(r.rows[5].text));
+
+    r = run('plot([1,4,9])');
+    check('plot', r.rows[0].ok && isPlot(r.rows[0].value) && r.rows[0].value.series[0].y[2] === 9);
+
+    r = run('= 17:34 - 13:23 + 3:33');
+    check('time calc', r.rows[0].ok && isT(r.rows[0].value) && r.rows[0].value.sec === 7 * 3600 + 44 * 60, r.rows[0].text);
+    check('time format', r.rows[0].text === '7:44');
+    r = run('12:44 +13:23=');
+    check('time trailing =', r.rows[0].ok && isT(r.rows[0].value) && r.rows[0].text === '26:07');
+    r = run('start:=17:34\nstart - 13:23');
+    check('time assign', r.rows[1].ok && r.rows[1].text === '4:11');
+    r = run('2 * 1:30\n3:00 / 2\n1:00:30 + 0:00:45');
+    check('time scale', r.rows[0].text === '3:00' && r.rows[1].text === '1:30');
+    check('time seconds', r.rows[2].text === '1:01:15');
+
+    r = run([
+      'f:=50',
+      'A:=1',
+      'w:=2*Pi*f',
+      'SR:=96*3',
+      'i:=0..2*SR',
+      'y1[i]:=exp(-i/SR)*A',
+      'y2[i]:=sin(20*w*i/SR)*exp(-i/SR)*A',
+      'Plot([i,y1],[i,y2])',
+    ].join('\n'));
+    check('signal setup', r.rows.slice(0, 7).every(row => row.ok));
+    check('range length', isV(r.rows[4].value) && r.rows[4].value.items.length === 577);
+    check('y1 length', isV(r.rows[5].value) && r.rows[5].value.items.length === 577);
+    check('large array preview', /,\s*\.\.\)$/.test(r.rows[5].text));
+    check('dual plot pairs', r.rows[7].ok && isPlot(r.rows[7].value) && r.rows[7].value.series.length === 2);
+
+    r = run('y1:=(1,2,3)\ny2:=(3,2,1)\nPlot(y1,y2)');
+    check('Plot(y1,y2)', r.rows[2].ok && isPlot(r.rows[2].value) && r.rows[2].value.series.length === 2
+      && r.rows[2].value.series[0].name === 'y1' && r.rows[2].value.series[1].name === 'y2');
+
+    r = run('SR:=288\nj:=0..2*SR\ny1[j]:=exp(-j/SR)');
+    check('j range assign', r.rows[1].ok && isV(r.rows[1].value) && r.rows[1].value.items.length === 577);
+    check('j indexed assign', r.rows[2].ok && isV(r.rows[2].value) && r.rows[2].value.items.length === 577);
+
+    r = run('j:=0..10');
+    check('0..10 range', r.rows[0].ok && isV(r.rows[0].value) && r.rows[0].value.items.length === 11);
+
+    r = run('j:=-10..10\ny3[j]:=(j*j)/100\nPlot([j, y3])');
+    check('neg domain j', r.rows[0].ok && isV(r.rows[0].value) && r.rows[0].value.items.length === 21);
+    check('neg domain y3', r.rows[1].ok && isV(r.rows[1].value) && r.rows[1].value.items.length === 21
+      && nearly(r.rows[1].value.items[0].re, 1) && nearly(r.rows[1].value.items[10].re, 0));
+    check('neg domain plot', r.rows[2].ok && isPlot(r.rows[2].value));
+
+    r = run("' **Montag**");
+    check('md line', r.rows[0].ok && r.rows[0].kind === 'md' && r.rows[0].text === '**Montag**');
+
+    r = run('a:=12:30-8:08\nb:=17:00-13:13,a+b');
+    check('time a', r.rows[0].ok && isT(r.rows[0].value) && r.rows[0].text === '4:22');
+    check('multi comma', r.rows[1].kind === 'multi' && r.rows[1].parts.length === 2);
+    check('time b', r.rows[1].parts[0].text === '3:47');
+    check('time sum', r.rows[1].parts[1].text === '8:09');
+
+    r = run('a:=12:30-8:08\nb:=17:00-13:13\nd[1]:=a+b\nd[3]:=a+b\nd');
+    check('scalar idx assign len', r.rows[4].ok && isV(r.rows[4].value) && r.rows[4].value.items.length === 3);
+    check('scalar idx d[1]', r.rows[2].text === '(8:09)');
+    check('scalar idx d[3]', r.rows[3].text === '(8:09, 0, 8:09)');
+    check('scalar idx read', r.rows[5].text === '(8:09, 0, 8:09)');
+
+    r = run('dSoll[1..3]:=6:24\ndSoll[3]');
+    check('range idx assign', r.rows[0].ok && r.rows[0].text === '(6:24, 6:24, 6:24)');
+    check('range idx origin', r.rows[0].value.__indexOrigin === 1);
+    check('range idx read', r.rows[1].ok && r.rows[1].text === '6:24');
+
+    r = run('v:=(10,20,30)\nv[2]');
+    check('subscript read 0-based', r.rows[1].ok && r.rows[1].text === '20');
+
+    r = run("a:=12:30-8:08\nb:=17:00-13:13\n'**Total:**'   a+b");
+    check('mixed md+expr prefix', r.rows[2].kind === 'mixed' && r.rows[2].mdPos === 'before' && r.rows[2].parts[0].text === '8:09');
+
+    r = run("a:=12:30-8:08\nb:=17:00-13:13\na+b '**Total:**'");
+    check('mixed md+expr suffix', r.rows[2].kind === 'mixed' && r.rows[2].mdPos === 'after' && r.rows[2].parts[0].text === '8:09');
+
+    r = run("' **Montag**");
+    check('md only quote', r.rows[0].kind === 'md');
+
+    const html = renderBlock("' **Montag**\\nx:=5", 'title=Demo;color=red,;bkcol=silver');
+    check('html color+bg', html.includes('calcs-block--custom')
+      && html.includes('--calcs-custom-color:red')
+      && html.includes('--calcs-custom-bg:silver'));
+
+    r = run('y1:=(1,2,3)\nPlot(y1)');
+    check('plot wrap', r.rows[1].kind === 'plot' && renderPlotWrap(r.rows[1].value.series).includes('calcs-plot-wrap'));
+    check('plot tip', plotTipLines(
+      decodePlotMeta(encodePlotMeta(buildPlotMeta(
+        [{ name: 'y1', x: [0, 1], y: [1, 2] }],
+        { w: 420, h: 220 },
+        { l: 42, r: 12, t: 12, b: 28 },
+        0, 1, 1, 2,
+      ))),
+      0.9,
+    ).includes('Y1: 2'));
+    check('plot snap index', snapPlotIndex(decodePlotMeta(encodePlotMeta(buildPlotMeta(
+      [{ name: 'y1', x: [0, 10, 20], y: [1, 2, 3] }],
+      { w: 420, h: 220 },
+      { l: 42, r: 12, t: 12, b: 28 },
+      0, 20, 1, 3,
+    ))), 11) === 1);
+    check('plot snap svg', plotSnapSvg(decodePlotMeta(encodePlotMeta(buildPlotMeta(
+      [{ name: 'y1', x: [0, 1], y: [1, 2] }],
+      { w: 420, h: 220 },
+      { l: 42, r: 12, t: 12, b: 28 },
+      0, 1, 1, 2,
+    ))), 1).includes('calcs-plot-snap-point'));
+
+    return fails;
+  }
+
+  return {
+    evaluate,
+    renderBlock,
+    renderPlotWrap,
+    renderPlotSvg,
+    decodePlotMeta,
+    clientXToPlotX,
+    snapPlotIndex,
+    plotSnapHits,
+    plotTipLines,
+    plotTipLinesFromIndex,
+    plotSnapSvg,
+    plotDataToClient,
+    formatValue,
+    parseFenceAttrs,
+    selfTest,
+    complex,
+    vector,
+    matrix,
+  };
+}));
+
+if (typeof require !== 'undefined' && typeof module !== 'undefined' && require.main === module) {
+  const fails = module.exports.selfTest();
+  if (fails.length) {
+    console.error(`calcs self-test failed (${fails.length}):`);
+    fails.forEach(f => console.error(' -', f));
+    process.exit(1);
+  }
+  console.log('calcs self-test ok');
+}

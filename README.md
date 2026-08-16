@@ -293,6 +293,27 @@ Mar	200
 
 Cells starting with `=` are formulas. Invalid formulas show `#ERR!`.
 
+#### Absolute cell reference
+
+`c[$col, $row]` — **1-based** coordinates matching the row/column band numbers.
+
+| Reference | Meaning |
+|-----------|---------|
+| `c[$5, $7]` | Column 5, row 7 |
+
+#### Cross-sheet reference
+
+Reference a cell on another sheet on the same page by sheet id:
+
+```text
+=!sheet-2!c[$5, $7]
+=c[-1, 0] * !rates!c[$1, $2]
+```
+
+Sheet id comes from `` `id=…` `` on the sheet config line. Sheets without an id are named `sheet-0`, `sheet-1`, … in page order.
+
+**Shift+click** a cell on another sheet inserts `!sheetId!c[$col, $row]` automatically.
+
 #### Relative cell reference
 
 `c[col, row]` — offsets relative to the **current** cell. **Column first**, then row.
@@ -357,7 +378,7 @@ Formulas are evaluated **row by row, left to right**. References to cells not ye
 1. Click **Edit** on the page (markdown + preview side by side).
 2. Click a sheet cell in the preview to edit inline.
 3. Press **Enter** or click away to save; press **Esc** to undo changes since focus (restores the cell value from when you clicked it).
-4. While a cell is focused (empty or formula starting with `=`), **Shift+click another cell** in the same sheet to insert a relative reference (`c[col, row]`, e.g. `c[-1, 0]`). Empty cells get `=` prepended automatically.
+4. While a cell is focused (empty or formula starting with `=`), **Shift+click another cell** to insert a reference (`c[col, row]` on the same sheet, or `!sheetId!c[$col, $row]` on another sheet). Empty cells get `=` prepended automatically.
 
 **Numbers** — cells without a leading `=` are shown as plain text (`2026` stays `2026`, not `2026.00`). Formula cells (`=…`) are evaluated and formatted with `frlen`. Formulas still parse Swiss/European number formats in referenced cells, such as `1'356.788` or `1'356,788`.
 
@@ -764,35 +785,52 @@ Plot([j, y3])
 
 | Example | Meaning |
 |---------|---------|
-| `(* … *)` / `{…}` | Block comments (may span lines) |
-| `x:=5` | Assign `5` to `x` (spaces around `:=` are fine) |
-| `a:= 3 + 4i` | Complex (`1i` is always the imaginary unit) |
-| `V1:=(1,3,4, 8)` | Vector |
-| `Sum(V1)` | Sum of elements (`16`) |
-| `D:=((…),(…))` | Matrix (rows are nested tuples; lines may wrap) |
-| `Inv(D)` / `D^-1` | Matrix inverse; `D*Inv(D)` is identity |
-| `j:=-10..10` | Inclusive range vector |
-| `y3[j]:=(j*j)/100` | Define `y3` over the same length as `j` |
-| `Plot([j, y3])` | Curve from two vectors |
-| `Plot([j, y2], [j, y3])` | Several curves |
-| `Plot(V)` | `V` is an *n*×4 matrix of segments `(x0,y0,x1,y1)` |
-| `SCI(7, true)` / `ENG(7, false)` / `FIX(7, true)` | Display digits + trim trailing zeros |
-| `sqrt` / `sqr` / `exp` / `ln` / `sin` / `asin` / `cos` / `tan` / `atan` / `abs` | Functions (names are case-insensitive) |
-| `H:= 180E3 kFr` | Trailing units (`kFr`, `%`) are ignored labels |
-| `ω:= 2*Pi*50` | Unicode names; `Pi` / `π` / `e` |
-| `sin(x)/x=` | Trailing `=` is optional |
-| `17:34 - 13:23` | Time durations (`H:MM` or `H:MM:SS`) |
-
-`SCI(7, true)` prints `640*15.7` as `1.0048E+004`; `false` keeps padded digits (`1.004800E+004`). `ENG` uses exponents that are multiples of 3 (`10.048E3`). `FIX(7, true)` drops trailing zeros (`10048`).
+| `x:=5` | Assign real value `5.0` to `x` |
+| `c:=5.0+7.0i` | Complex assignment |
+| `v:=(1,2+6i,3)` | Vector with complex entries |
+| `A:=((1,3,4,5),(7,1+2i,4,5),…)` | Matrix (rows are nested tuples) |
+| `inv(A)` / `A^-1` | Inverse of matrix `A` |
+| `sqrt(x)` | Square root (real or complex) |
+| `sqr(x)` | Square, `x²` |
+| `exp(x)` / `ln(x)` | Exponential and natural log |
+| `sin` / `asin` / `cos` / `tan` / `atan` | Trigonometry |
+| `abs(x)` / `inv(x)` | Absolute value / inverse (including matrices) |
+| `sum(v)` | Sum of vector (or matrix) elements |
+| `plot([...])` | Graph a list, or `plot(x, y)` for two vectors |
+| `i:=0..n` | Integer range vector (`0, 1, …, n`) |
+| `y[i]:=expr` | Build array by evaluating `expr` for each index in `i` |
+| `d[1]:= …` / `d[3]:= …` | 1-based element assign — auto-creates vector `1..max(index)` (gaps = `0`) |
+| `d[1..3]:= …` | Same, range fill at indices 1..3 (`d[3]` reads the third slot) |
+| `Plot(y1, y2)` | Two (or more) curves — hover snaps to nearest data point |
+| `Plot([i,y1],[i,y2])` | X/Y pairs with shared legend |
+| `FIX` / `ENG` / `SCI` | Display format (`FIX 4`, `SCI 3`, `ENG 3`) |
+| `= 17:34 - 13:23 + 3:33` | Time arithmetic (`H:MM` or `H:MM:SS`); result `7:44` |
 
 | Option | Description |
 |--------|-------------|
-| `fix` / `sci` / `eng` | Initial display digits, e.g. `fix=7` |
-| `trim` | `true` / `false` — strip trailing zeros |
-| `col` | Theme: `info` / `success` / `warning` / `danger` / `note` |
-| `title` | Optional title (default `ThGMaths`) |
+| `fix` / `sci` / `eng` | Initial display digits, e.g. `fix=4` |
+| `color` / `col` | Text & accent color (`color=red`, `color=#778800`, or theme `info` / `success` / …) |
+| `bkcol` | Background color (`bkcol=silver`, `bkcol=#eee`; `bgcol` also works) |
+| `title` | Optional title (default `Calcs`) |
 
-Also `#` and `//` line comments. Use the toolbar **calculator** button to insert a sample.
+Constants: `pi`, `e`, `i` / `j` (imaginary unit). Prefix a line with `'` for **markdown text** — HTML allowed (`'<span style="font-size:87.5%"> **Montag**</span>`). Combine label + result: `'**Total:**'   a+b` (label first) or `a+b '**Total:**'` (result first). Separate statements with **commas** or a trailing comma on the next line. Comments: `#` or `//`. A leading `=` is optional (`= 17:34 - 13:23` same as without `=`). Times are durations (`H:MM` or `H:MM:SS`); a bare number mixed with a time is hours. Vectors longer than 10 elements show the first 10 values followed by `..`. Use the toolbar **calculator** button to insert a sample.
+
+Example (decaying envelope + sine, dual plot):
+
+````markdown
+```calcs{fix=4;col=info}
+f:=50
+A:=1
+w:=2*Pi*f
+SR:=96*3
+i:=0..2*SR
+y1[i]:=exp(-i/SR)*A
+y2[i]:=sin(20*w*i/SR)*exp(-i/SR)*A
+Plot(y1)
+Plot(y2)
+Plot([i,y1],[i,y2],[i,y3],[i,y4])
+```
+````
 
 ### News / RSS (Magpie-style)
 

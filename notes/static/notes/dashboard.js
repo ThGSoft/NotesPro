@@ -1296,7 +1296,7 @@
     return normalized;
   }
 
-  function parseSheetContent(content, fenceAttrs = '') {
+  function parseSheetRaw(content, fenceAttrs = '') {
     const config = {};
     const dataRows = [];
     const fence = parseSheetFenceAttrs(fenceAttrs);
@@ -1313,23 +1313,64 @@
     });
     const rawGrid = dataRows.map(row => row.replace(/\t \t/g, '\t&emsp;\t').split('\t').map(c => c.trim()));
     const { values, styles } = buildSheetStyleGrid(rawGrid, config, initialFormatParts);
-    const grid = evaluateSheetGrid(values, config, styles);
-    return { config, dataRows, grid, rawGrid: values, cellStyles: styles };
+    return { config, dataRows, rawGrid: values, cellStyles: styles };
   }
 
-  function sheetRelCellValue(out, baseR, baseC, colOff, rowOff) {
-    const rr = baseR + parseInt(rowOff, 10);
-    const cc = baseC + parseInt(colOff, 10);
-    if (!out[rr] || out[rr][cc] === undefined) return 0;
-    const val = parseSheetNumber(out[rr][cc]);
+  function parseSheetContent(content, fenceAttrs = '', evalCtx = null) {
+    const parsed = parseSheetRaw(content, fenceAttrs);
+    parsed.grid = evaluateSheetGrid(parsed.rawGrid, parsed.config, parsed.cellStyles, evalCtx);
+    return parsed;
+  }
+
+  /** Resolve c[…] tokens: `$5` = 1-based absolute (matches band labels); otherwise relative offset. */
+  function sheetResolveCoord(token, base) {
+    const t = String(token ?? '').trim();
+    if (t.startsWith('$')) {
+      const n = parseInt(t.slice(1), 10);
+      return Number.isNaN(n) ? NaN : n - 1;
+    }
+    const off = parseInt(t, 10);
+    return Number.isNaN(off) ? NaN : base + off;
+  }
+
+  function sheetGridCellNumber(grid, row, col) {
+    if (!grid?.[row] || grid[row][col] === undefined) return 0;
+    const val = parseSheetNumber(grid[row][col]);
     return Number.isNaN(val) ? 0 : val;
   }
 
+  function sheetRelCellValue(out, baseR, baseC, colTok, rowTok) {
+    const cc = sheetResolveCoord(colTok, baseC);
+    const rr = sheetResolveCoord(rowTok, baseR);
+    if (!Number.isFinite(rr) || !Number.isFinite(cc)) return 0;
+    return sheetGridCellNumber(out, rr, cc);
+  }
+
+  function sheetLookupById(sheetsById, sheetId) {
+    if (!sheetsById || !sheetId) return null;
+    const key = String(sheetId).trim();
+    if (sheetsById.has(key)) return sheetsById.get(key);
+    const lower = key.toLowerCase();
+    for (const [id, sheet] of sheetsById.entries()) {
+      if (String(id).toLowerCase() === lower) return sheet;
+    }
+    return null;
+  }
+
+  function sheetCrossCellValue(sheetsById, sheetId, baseR, baseC, colTok, rowTok) {
+    const sheet = sheetLookupById(sheetsById, sheetId);
+    if (!sheet?.grid) {
+      throw new Error(`Unknown sheet: ${sheetId}`);
+    }
+    return sheetRelCellValue(sheet.grid, baseR, baseC, colTok, rowTok);
+  }
+
   function sheetSumArea(out, baseR, baseC, col1, row1, col2, row2) {
-    const absC1 = baseC + parseInt(col1, 10);
-    const absR1 = baseR + parseInt(row1, 10);
-    const absC2 = baseC + parseInt(col2, 10);
-    const absR2 = baseR + parseInt(row2, 10);
+    const absC1 = sheetResolveCoord(col1, baseC);
+    const absR1 = sheetResolveCoord(row1, baseR);
+    const absC2 = sheetResolveCoord(col2, baseC);
+    const absR2 = sheetResolveCoord(row2, baseR);
+    if (![absC1, absR1, absC2, absR2].every(Number.isFinite)) return 0;
     const minCol = Math.min(absC1, absC2);
     const maxCol = Math.max(absC1, absC2);
     const minRow = Math.min(absR1, absR2);
@@ -1337,17 +1378,30 @@
     let total = 0;
     for (let rr = minRow; rr <= maxRow; rr++) {
       for (let cc = minCol; cc <= maxCol; cc++) {
-        if (!out[rr] || out[rr][cc] === undefined) continue;
-        const val = parseSheetNumber(out[rr][cc]);
-        if (!Number.isNaN(val)) total += val;
+        total += sheetGridCellNumber(out, rr, cc);
       }
     }
     return total;
   }
 
-  function evaluateSheetGrid(grid, config, cellStyles) {
+  const SHEET_CELL_REF_TOKEN = '\\$?-?\\d+';
+  const SHEET_CROSS_REF_RE = new RegExp(
+    `!([^\\s!\\[\\]]+)!c\\[\\s*(${SHEET_CELL_REF_TOKEN})\\s*,\\s*(${SHEET_CELL_REF_TOKEN})\\s*\\]`,
+    'gi',
+  );
+  const SHEET_SUM_REF_RE = new RegExp(
+    `sum\\s*\\(\\s*c\\[\\s*(${SHEET_CELL_REF_TOKEN})\\s*,\\s*(${SHEET_CELL_REF_TOKEN})\\s*\\]\\s*,\\s*c\\[\\s*(${SHEET_CELL_REF_TOKEN})\\s*,\\s*(${SHEET_CELL_REF_TOKEN})\\s*\\]\\s*\\)`,
+    'gi',
+  );
+  const SHEET_CELL_REF_RE = new RegExp(
+    `c\\[\\s*(${SHEET_CELL_REF_TOKEN})\\s*,\\s*(${SHEET_CELL_REF_TOKEN})\\s*\\]`,
+    'gi',
+  );
+
+  function evaluateSheetGrid(grid, config, cellStyles, evalCtx = null) {
     const defaultFrLen = parseInt(config.frLen, 10);
     const frLen = Number.isNaN(defaultFrLen) ? 2 : defaultFrLen;
+    const sheetsById = evalCtx?.sheetsById || null;
     const out = grid.map(row => [...row]);
     for (let r = 0; r < out.length; r++) {
       for (let c = 0; c < out[r].length; c++) {
@@ -1372,13 +1426,18 @@
               frac = parseInt(digits, 10);
               return prefix;
             });
-            formula = formula.replace(
-              /sum\s*\(\s*c\[\s*(-?\d+)\s*,\s*(-?\d+)\s*\]\s*,\s*c\[\s*(-?\d+)\s*,\s*(-?\d+)\s*\]\s*\)/gi,
-              (_, col1, row1, col2, row2) => sheetSumArea(out, r, c, col1, row1, col2, row2),
-            );
-            formula = formula.replace(/c\[\s*(-?\d+)\s*,\s*(-?\d+)\s*\]/g, (_, colOff, rowOff) => {
-              return sheetRelCellValue(out, r, c, colOff, rowOff);
-            });
+            SHEET_CROSS_REF_RE.lastIndex = 0;
+            formula = formula.replace(SHEET_CROSS_REF_RE, (_, sheetId, colTok, rowTok) => (
+              sheetCrossCellValue(sheetsById, sheetId, r, c, colTok, rowTok)
+            ));
+            SHEET_SUM_REF_RE.lastIndex = 0;
+            formula = formula.replace(SHEET_SUM_REF_RE, (_, col1, row1, col2, row2) => (
+              sheetSumArea(out, r, c, col1, row1, col2, row2)
+            ));
+            SHEET_CELL_REF_RE.lastIndex = 0;
+            formula = formula.replace(SHEET_CELL_REF_RE, (_, colTok, rowTok) => (
+              sheetRelCellValue(out, r, c, colTok, rowTok)
+            ));
             const timeRewrite = replaceSheetTimeLiterals(formula);
             formula = timeRewrite.formula;
             const mathScope = `
@@ -1412,6 +1471,43 @@
     return out;
   }
 
+  function evaluateSheetListWithCrossRefs(sheets) {
+    const sheetsById = new Map();
+    sheets.forEach((parsed, i) => {
+      const id = (parsed.config.id || parsed.config.sheet || `sheet-${i}`).trim();
+      parsed.id = id;
+      parsed.grid = (parsed.rawGrid || []).map(row => [...row]);
+      sheetsById.set(id, parsed);
+    });
+    const maxPass = Math.max(2, Math.min(12, sheets.length + 2));
+    for (let pass = 0; pass < maxPass; pass += 1) {
+      let changed = false;
+      sheets.forEach((parsed) => {
+        const next = evaluateSheetGrid(parsed.rawGrid, parsed.config, parsed.cellStyles, {
+          sheetsById,
+          sheetId: parsed.id,
+        });
+        const prevSig = (parsed.grid || []).map(row => row.join('\u0001')).join('\u0000');
+        const nextSig = next.map(row => row.join('\u0001')).join('\u0000');
+        if (prevSig !== nextSig) changed = true;
+        parsed.grid = next;
+        sheetsById.set(parsed.id, parsed);
+      });
+      if (!changed) break;
+    }
+    return sheetsById;
+  }
+
+  function collectParsedSheets(markdown) {
+    const sheets = [];
+    String(markdown || '').replace(SHEET_BLOCK_RE, (_, fenceAttrs, content) => {
+      sheets.push(parseSheetRaw(content, fenceAttrs));
+      return _;
+    });
+    evaluateSheetListWithCrossRefs(sheets);
+    return sheets;
+  }
+
   function sheetHasHeader(config) {
     const h = config.header;
     if (h === '0' || h === 'false' || h === 'no') return false;
@@ -1419,7 +1515,7 @@
   }
 
   function sheetGridToHtml(grid, config, options = {}, cellStyles, rawGrid) {
-    const { sheetIndex = 0, editable = false, bandSelection = null } = options;
+    const { sheetIndex = 0, sheetId = '', editable = false, bandSelection = null } = options;
     const fontSize = config['font-size'] || 'medium';
     const hasHeader = sheetHasHeader(config) && grid.length > 0;
     const colCount = Math.max(...grid.map(row => row.length), 0);
@@ -1431,16 +1527,21 @@
       fixedCols ? 'spreadsheet-table--fixed-cols' : '',
       editable ? 'spreadsheet-table--bands' : '',
     ].filter(Boolean).join(' ');
+    const sheetIdAttr = sheetId ? ` data-sheet-id="${escapeHtml(sheetId)}"` : '';
     let html = editable ? '<div class="sheet-table-wrap">' : '';
-    html += `<table class="${tableClass}" style="font-size:${fontSize}">`;
+    html += `<table class="${tableClass}" style="font-size:${fontSize}"${sheetIdAttr}>`;
     if (hasColWidths) {
       html += '<colgroup>';
-      if (editable) html += '<col style="width:28px">';
+      if (editable) html += '<col class="sheet-band-col" style="width:32px">';
       html += colWidths.map(w => (
         w ? `<col style="width:${w}">` : '<col>'
       )).join('');
       html += '</colgroup>';
     }
+    const renderBandLabel = (index) => (
+      `<span class="sheet-band-label">${index + 1}</span>`
+    );
+
     if (editable && colCount > 0) {
       html += '<thead><tr class="sheet-band-row sheet-band-row--cols">';
       html += '<th class="sheet-band-corner" aria-hidden="true"></th>';
@@ -1449,7 +1550,9 @@
         html += [
           `<th class="sheet-col-band${colSelected ? ' sheet-col-band--selected' : ''}"`,
           ` data-sheet-index="${sheetIndex}" data-col="${col}"`,
-          ` tabindex="0" role="button" aria-label="Select column ${col + 1}"></th>`,
+          ` tabindex="0" role="button" aria-label="Select column ${col + 1}">`,
+          renderBandLabel(col),
+          '</th>',
         ].join('');
       }
       html += '</tr></thead>';
@@ -1462,7 +1565,9 @@
       return [
         `<${bandTag} class="sheet-row-band${rowSelected ? ' sheet-row-band--selected' : ''}"`,
         ` data-sheet-index="${sheetIndex}" data-row="${row}"`,
-        ` tabindex="0" role="button" aria-label="Select row ${row + 1}"></${bandTag}>`,
+        ` tabindex="0" role="button" aria-label="Select row ${row + 1}">`,
+        renderBandLabel(row),
+        `</${bandTag}>`,
       ].join('');
     };
 
@@ -1483,7 +1588,7 @@
           ? ` data-sheet-formula="${escapeHtml(rawCell)}"`
           : '';
         const errClass = isErr ? ' sheet-cell-err' : '';
-        return `<${tag} contenteditable="plaintext-only" class="sheet-cell-editable${errClass}${bandClass}" data-sheet-index="${sheetIndex}" data-row="${row}" data-col="${col}" spellcheck="false" tabindex="0"${formulaAttr}${styleAttr}>${display}</${tag}>`;
+        return `<${tag} contenteditable="plaintext-only" class="sheet-cell-editable${errClass}${bandClass}" data-sheet-index="${sheetIndex}"${sheetId ? ` data-sheet-id="${escapeHtml(sheetId)}"` : ''} data-row="${row}" data-col="${col}" spellcheck="false" tabindex="0"${formulaAttr}${styleAttr}>${display}</${tag}>`;
       }
       if (isImage) {
         return `<${tag} class="sheet-cell-image${bandClass}"${styleAttr}>${display}</${tag}>`;
@@ -1537,7 +1642,7 @@
     let idx = 0;
     return markdown.replace(SHEET_BLOCK_RE, (match, fenceAttrs, content) => {
       if (idx++ !== sheetIndex) return match;
-      const parsed = parseSheetContent(content, fenceAttrs);
+      const parsed = parseSheetRaw(content, fenceAttrs);
       if (!parsed.dataRows[row]) return match;
       const cols = parsed.dataRows[row].split('\t');
       while (cols.length <= col) cols.push('');
@@ -1552,7 +1657,7 @@
     let idx = 0;
     return markdown.replace(SHEET_BLOCK_RE, (match, fenceAttrs, content) => {
       if (idx++ !== sheetIndex) return match;
-      const parsed = parseSheetContent(content, fenceAttrs);
+      const parsed = parseSheetRaw(content, fenceAttrs);
       const rows = [...(parsed.dataRows || [])];
       const insertAt = Math.min(Math.max(0, atRow), rows.length);
       const colCount = Math.max(...rows.map(r => r.split('\t').length), 1);
@@ -1571,7 +1676,7 @@
     let changed = false;
     const updated = markdown.replace(SHEET_BLOCK_RE, (match, fenceAttrs, content) => {
       if (idx++ !== sheetIndex) return match;
-      const parsed = parseSheetContent(content, fenceAttrs);
+      const parsed = parseSheetRaw(content, fenceAttrs);
       const before = serializeSheetContent(parsed);
       mutateFn(parsed);
       const after = serializeSheetContent(parsed);
@@ -1654,30 +1759,59 @@
     });
   }
 
-  function applySheetStructureFromBand(action) {
-    if (!easyMDE || !isPreviewInteractionEnabled() || !sheetBandSelection) return false;
-    const { sheetIndex, type, index } = sheetBandSelection;
+  function getSheetDimensions(sheetIndex) {
+    if (!easyMDE) return { rows: 0, cols: 0 };
+    let idx = 0;
+    let rows = 0;
+    let cols = 0;
+    easyMDE.value().replace(SHEET_BLOCK_RE, (match, fenceAttrs, content) => {
+      if (idx++ !== sheetIndex) return match;
+      const parsed = parseSheetRaw(content, fenceAttrs);
+      const dataRows = parsed.dataRows || [];
+      rows = dataRows.length;
+      cols = Math.max(...dataRows.map(r => String(r).split('\t').length), 0);
+      return match;
+    });
+    return { rows, cols };
+  }
+
+  function applySheetStructureFromBand(action, selection = sheetBandSelection, placement = 'this') {
+    if (!easyMDE || !isPreviewInteractionEnabled() || !selection) return false;
+    const { sheetIndex, type, index } = selection;
+    if (!Number.isFinite(sheetIndex) || !Number.isFinite(index)) return false;
+    const dims = getSheetDimensions(sheetIndex);
     const oldMarkdown = easyMDE.value();
     let updated = oldMarkdown;
     let nextIndex = index;
+    const nextType = type;
 
     if (type === 'col') {
       if (action === 'addCol') {
-        updated = addSheetColumnInMarkdown(oldMarkdown, sheetIndex, index, { copyFromLeft: true });
-        nextIndex = index;
+        const at = placement === 'after' ? index + 1 : index;
+        updated = addSheetColumnInMarkdown(oldMarkdown, sheetIndex, at, { copyFromLeft: true });
+        nextIndex = at;
       } else if (action === 'removeCol') {
-        updated = removeSheetColumnInMarkdown(oldMarkdown, sheetIndex, index);
-        nextIndex = Math.max(0, index - 1);
+        let del = index;
+        if (placement === 'before') del = index - 1;
+        else if (placement === 'after') del = index + 1;
+        if (del < 0 || del >= dims.cols) return false;
+        updated = removeSheetColumnInMarkdown(oldMarkdown, sheetIndex, del);
+        nextIndex = Math.min(del, Math.max(0, dims.cols - 2));
       } else {
         return false;
       }
     } else if (type === 'row') {
       if (action === 'addRow') {
-        updated = addSheetRowInMarkdown(oldMarkdown, sheetIndex, index, { copyFromAbove: true });
-        nextIndex = index;
+        const at = placement === 'after' ? index + 1 : index;
+        updated = addSheetRowInMarkdown(oldMarkdown, sheetIndex, at, { copyFromAbove: true });
+        nextIndex = at;
       } else if (action === 'removeRow') {
-        updated = removeSheetRowInMarkdown(oldMarkdown, sheetIndex, index);
-        nextIndex = Math.max(0, index - 1);
+        let del = index;
+        if (placement === 'before') del = index - 1;
+        else if (placement === 'after') del = index + 1;
+        if (del < 0 || del >= dims.rows) return false;
+        updated = removeSheetRowInMarkdown(oldMarkdown, sheetIndex, del);
+        nextIndex = Math.min(del, Math.max(0, dims.rows - 2));
       } else {
         return false;
       }
@@ -1688,35 +1822,163 @@
     if (updated === oldMarkdown) return false;
     easyMDE.value(updated);
     scheduleSave();
-    setSheetBandSelection(sheetIndex, type, nextIndex);
+    setSheetBandSelection(sheetIndex, nextType, nextIndex);
     renderPreview();
-    focusSheetBandAfterEdit(sheetIndex, type, nextIndex);
+    focusSheetBandAfterEdit(sheetIndex, nextType, nextIndex);
+    return true;
+  }
+
+  let sheetStructureMenuEl = null;
+
+  function hideSheetStructureMenu() {
+    sheetStructureMenuEl?.remove();
+    sheetStructureMenuEl = null;
+  }
+
+  function showSheetStructurePlacementMenu(anchorEl, { action, sheetIndex, type, index }) {
+    hideSheetStructureMenu();
+    if (!anchorEl || !isPreviewInteractionEnabled()) return;
+
+    const dims = getSheetDimensions(sheetIndex);
+    const isAdd = action === 'addRow' || action === 'addCol';
+    const isRow = type === 'row';
+    const choices = [];
+
+    if (isAdd) {
+      if (isRow) {
+        choices.push({ placement: 'before', label: 'Insert above' });
+        choices.push({ placement: 'after', label: 'Insert below' });
+      } else {
+        choices.push({ placement: 'before', label: 'Insert left' });
+        choices.push({ placement: 'after', label: 'Insert right' });
+      }
+    } else if (isRow) {
+      choices.push({ placement: 'this', label: 'Delete this row' });
+      if (index > 0) choices.push({ placement: 'before', label: 'Delete row above' });
+      if (index < dims.rows - 1) choices.push({ placement: 'after', label: 'Delete row below' });
+    } else {
+      choices.push({ placement: 'this', label: 'Delete this column' });
+      if (index > 0) choices.push({ placement: 'before', label: 'Delete column left' });
+      if (index < dims.cols - 1) choices.push({ placement: 'after', label: 'Delete column right' });
+    }
+
+    if (!choices.length) return;
+
+    const menu = document.createElement('div');
+    menu.className = 'sheet-structure-menu';
+    menu.setAttribute('role', 'menu');
+    menu.innerHTML = choices.map((c) => (
+      `<button type="button" class="sheet-structure-menu-btn" data-placement="${c.placement}" role="menuitem">${escapeHtml(c.label)}</button>`
+    )).join('');
+
+    const onPick = (placement) => {
+      hideSheetStructureMenu();
+      applySheetStructureFromBand(action, { sheetIndex, type, index }, placement);
+    };
+
+    menu.addEventListener('click', (e) => {
+      const btn = e.target.closest?.('.sheet-structure-menu-btn');
+      if (!btn || !menu.contains(btn)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      onPick(btn.dataset.placement || 'this');
+    });
+
+    document.body.appendChild(menu);
+    sheetStructureMenuEl = menu;
+
+    const rect = anchorEl.getBoundingClientRect();
+    const menuRect = menu.getBoundingClientRect();
+    let left = rect.left;
+    let top = rect.bottom + 4;
+    if (left + menuRect.width > window.innerWidth - 8) {
+      left = Math.max(8, window.innerWidth - menuRect.width - 8);
+    }
+    if (top + menuRect.height > window.innerHeight - 8) {
+      top = Math.max(8, rect.top - menuRect.height - 4);
+    }
+    menu.style.left = `${Math.round(left)}px`;
+    menu.style.top = `${Math.round(top)}px`;
+
+    const dismiss = (e) => {
+      if (e.type === 'keydown' && e.key !== 'Escape') return;
+      if (e.type === 'mousedown' && menu.contains(e.target)) return;
+      hideSheetStructureMenu();
+      document.removeEventListener('mousedown', dismiss, true);
+      document.removeEventListener('keydown', dismiss, true);
+    };
+    requestAnimationFrame(() => {
+      document.addEventListener('mousedown', dismiss, true);
+      document.addEventListener('keydown', dismiss, true);
+    });
+  }
+
+  function handleSheetBandActionClick(btn) {
+    if (!btn || !isPreviewInteractionEnabled()) return false;
+    const action = btn.dataset.sheetAction;
+    const sheetIndex = parseInt(btn.dataset.sheetIndex, 10);
+    const col = parseInt(btn.dataset.col, 10);
+    const row = parseInt(btn.dataset.row, 10);
+    if (!action || !Number.isFinite(sheetIndex)) return false;
+
+    let type = null;
+    let index = null;
+    if (action === 'addCol' || action === 'removeCol') {
+      if (!Number.isFinite(col)) return false;
+      type = 'col';
+      index = col;
+    } else if (action === 'addRow' || action === 'removeRow') {
+      if (!Number.isFinite(row)) return false;
+      type = 'row';
+      index = row;
+    } else {
+      return false;
+    }
+
+    setSheetBandSelection(sheetIndex, type, index);
+    showSheetStructurePlacementMenu(btn, { action, sheetIndex, type, index });
     return true;
   }
 
   function handleSheetBandStructureKey(e) {
     if (!sheetBandSelection || !isPreviewInteractionEnabled()) return false;
-    const { type } = sheetBandSelection;
+    const { type, sheetIndex, index } = sheetBandSelection;
+    const dims = getSheetDimensions(sheetIndex);
+    const isLastRow = type === 'row' && index === dims.rows - 1;
+    const isLastCol = type === 'col' && index === dims.cols - 1;
+    const preview = document.getElementById('preview-content');
+    const anchor = type === 'col'
+      ? preview?.querySelector(`.sheet-col-band[data-sheet-index="${sheetIndex}"][data-col="${index}"]`)
+      : preview?.querySelector(`.sheet-row-band[data-sheet-index="${sheetIndex}"][data-row="${index}"]`);
+
     if (type === 'col') {
       if (isSheetColPlusKey(e)) {
         e.preventDefault();
-        applySheetStructureFromBand('addCol');
+        if (isLastCol) {
+          showSheetStructurePlacementMenu(anchor, { action: 'addCol', sheetIndex, type, index });
+        } else {
+          applySheetStructureFromBand('addCol', sheetBandSelection, 'before');
+        }
         return true;
       }
       if (isSheetColMinusKey(e)) {
         e.preventDefault();
-        applySheetStructureFromBand('removeCol');
+        showSheetStructurePlacementMenu(anchor, { action: 'removeCol', sheetIndex, type, index });
         return true;
       }
     } else if (type === 'row') {
       if (isSheetRowPlusKey(e)) {
         e.preventDefault();
-        applySheetStructureFromBand('addRow');
+        if (isLastRow) {
+          showSheetStructurePlacementMenu(anchor, { action: 'addRow', sheetIndex, type, index });
+        } else {
+          applySheetStructureFromBand('addRow', sheetBandSelection, 'before');
+        }
         return true;
       }
       if (isSheetRowMinusKey(e)) {
         e.preventDefault();
-        applySheetStructureFromBand('removeRow');
+        showSheetStructurePlacementMenu(anchor, { action: 'removeRow', sheetIndex, type, index });
         return true;
       }
     }
@@ -1831,6 +2093,24 @@
     return `c[${colOff}, ${rowOff}]`;
   }
 
+  function formatSheetAbsoluteRef(targetCell) {
+    const tgtRow = parseInt(targetCell.dataset.row, 10);
+    const tgtCol = parseInt(targetCell.dataset.col, 10);
+    if ([tgtRow, tgtCol].some(n => Number.isNaN(n))) return null;
+    return `c[$${tgtCol + 1}, $${tgtRow + 1}]`;
+  }
+
+  function formatSheetCellRef(sourceCell, targetCell) {
+    if (!sourceCell || !targetCell) return null;
+    const sameSheet = sourceCell.dataset.sheetIndex === targetCell.dataset.sheetIndex;
+    if (sameSheet) return formatSheetRelativeRef(sourceCell, targetCell);
+    const sheetId = (targetCell.dataset.sheetId || '').trim();
+    if (!sheetId) return null;
+    const abs = formatSheetAbsoluteRef(targetCell);
+    if (!abs) return null;
+    return `!${sheetId}!${abs}`;
+  }
+
   function insertTextAtSheetCellCursor(cell, text) {
     cell.focus();
     const sel = window.getSelection();
@@ -1849,7 +2129,7 @@
   }
 
   function insertSheetCellRelativeRef(sourceCell, targetCell) {
-    const ref = formatSheetRelativeRef(sourceCell, targetCell);
+    const ref = formatSheetCellRef(sourceCell, targetCell);
     if (!ref) return false;
     const text = sourceCell.textContent || '';
     if (!text.trim()) {
@@ -1867,7 +2147,6 @@
   function tryInsertSheetCellRefFromClick(targetCell) {
     const sourceCell = getActiveSheetCell();
     if (!sourceCell || !targetCell || sourceCell === targetCell) return false;
-    if (sourceCell.dataset.sheetIndex !== targetCell.dataset.sheetIndex) return false;
     if (!insertSheetCellRelativeRef(sourceCell, targetCell)) return false;
     syncSheetCellToMarkdown(sourceCell, { skipRender: true });
     return true;
@@ -1919,7 +2198,7 @@
     let value = '';
     easyMDE.value().replace(SHEET_BLOCK_RE, (match, fenceAttrs, content) => {
       if (idx++ !== sheetIndex) return match;
-      const parsed = parseSheetContent(content, fenceAttrs);
+      const parsed = parseSheetRaw(content, fenceAttrs);
       if (!parsed.dataRows[row]) return match;
       const cols = parsed.dataRows[row].split('\t');
       while (cols.length <= col) cols.push('');
@@ -1930,6 +2209,89 @@
   }
 
   let sheetCellEditCancelled = false;
+
+  let sheetCellStructureToolbarEl = null;
+  let sheetCellStructureToolbarCell = null;
+
+  function hideSheetCellStructureToolbar() {
+    sheetCellStructureToolbarEl?.remove();
+    sheetCellStructureToolbarEl = null;
+    sheetCellStructureToolbarCell = null;
+  }
+
+  function positionSheetCellStructureToolbar(cell = sheetCellStructureToolbarCell) {
+    const toolbar = sheetCellStructureToolbarEl;
+    if (!toolbar || !cell?.isConnected) return;
+    const rect = cell.getBoundingClientRect();
+    const tb = toolbar.getBoundingClientRect();
+    let top = rect.top - tb.height - 6;
+    if (top < 8) top = Math.min(rect.bottom + 6, window.innerHeight - tb.height - 8);
+    let left = rect.left;
+    if (left + tb.width > window.innerWidth - 8) {
+      left = window.innerWidth - tb.width - 8;
+    }
+    if (left < 8) left = 8;
+    toolbar.style.top = `${Math.max(8, top)}px`;
+    toolbar.style.left = `${left}px`;
+  }
+
+  function showSheetCellStructureToolbar(cell) {
+    if (!cell?.dataset || !isPreviewInteractionEnabled()) {
+      hideSheetCellStructureToolbar();
+      return;
+    }
+    const sheetIndex = parseInt(cell.dataset.sheetIndex, 10);
+    const row = parseInt(cell.dataset.row, 10);
+    const col = parseInt(cell.dataset.col, 10);
+    if ([sheetIndex, row, col].some(n => Number.isNaN(n))) {
+      hideSheetCellStructureToolbar();
+      return;
+    }
+
+    if (
+      sheetCellStructureToolbarEl
+      && sheetCellStructureToolbarCell === cell
+      && sheetCellStructureToolbarEl.isConnected
+    ) {
+      positionSheetCellStructureToolbar(cell);
+      return;
+    }
+
+    hideSheetCellStructureToolbar();
+    const el = document.createElement('div');
+    el.className = 'sheet-cell-structure-toolbar';
+    el.setAttribute('role', 'toolbar');
+    el.setAttribute('aria-label', 'Insert or delete row and column');
+    el.innerHTML = [
+      '<div class="sheet-cell-structure-group">',
+      '<span class="sheet-cell-structure-label">Row</span>',
+      `<button type="button" class="sheet-band-btn sheet-band-btn--add"`,
+      ` data-sheet-action="addRow" data-sheet-index="${sheetIndex}" data-row="${row}"`,
+      ` title="Insert row" aria-label="Insert row">+</button>`,
+      `<button type="button" class="sheet-band-btn sheet-band-btn--remove"`,
+      ` data-sheet-action="removeRow" data-sheet-index="${sheetIndex}" data-row="${row}"`,
+      ` title="Delete row" aria-label="Delete row">−</button>`,
+      '</div>',
+      '<div class="sheet-cell-structure-group">',
+      '<span class="sheet-cell-structure-label">Col</span>',
+      `<button type="button" class="sheet-band-btn sheet-band-btn--add"`,
+      ` data-sheet-action="addCol" data-sheet-index="${sheetIndex}" data-col="${col}"`,
+      ` title="Insert column" aria-label="Insert column">+</button>`,
+      `<button type="button" class="sheet-band-btn sheet-band-btn--remove"`,
+      ` data-sheet-action="removeCol" data-sheet-index="${sheetIndex}" data-col="${col}"`,
+      ` title="Delete column" aria-label="Delete column">−</button>`,
+      '</div>',
+    ].join('');
+    document.body.appendChild(el);
+    sheetCellStructureToolbarEl = el;
+    sheetCellStructureToolbarCell = cell;
+    // Keep cell focused while tapping toolbar buttons.
+    el.addEventListener('mousedown', e => {
+      e.preventDefault();
+      e.stopPropagation();
+    });
+    positionSheetCellStructureToolbar(cell);
+  }
 
   function beginSheetCellEdit(cell) {
     if (!cell?.dataset) return;
@@ -1942,6 +2304,7 @@
     cell.classList.add('sheet-cell--ref-pick');
     const formula = cell.dataset.sheetFormula;
     if (formula) cell.textContent = formula;
+    showSheetCellStructureToolbar(cell);
   }
 
   function cancelSheetCellEdit(cell) {
@@ -1950,6 +2313,7 @@
     const row = parseInt(cell.dataset.row, 10);
     const col = parseInt(cell.dataset.col, 10);
     const original = cell.dataset.sheetEditOriginal;
+    hideSheetCellStructureToolbar();
     if ([sheetIndex, row, col].some(n => Number.isNaN(n)) || original === undefined) {
       cell.blur();
       return;
@@ -2035,6 +2399,7 @@
   }
 
   function commitSheetCellEdit(cell) {
+    hideSheetCellStructureToolbar();
     if (cell?.dataset) delete cell.dataset.sheetEditOriginal;
     syncSheetCellToMarkdown(cell);
   }
@@ -2044,8 +2409,45 @@
     if (!preview || preview.dataset.sheetEditBound === '1') return;
     preview.dataset.sheetEditBound = '1';
 
+    preview.addEventListener('click', e => {
+      if (!isPreviewInteractionEnabled()) return;
+      const actionBtn = e.target.closest?.('.sheet-band-btn');
+      if (actionBtn && preview.contains(actionBtn)) {
+        e.preventDefault();
+        e.stopPropagation();
+        handleSheetBandActionClick(actionBtn);
+      }
+    });
+
+    document.addEventListener('click', e => {
+      if (!isPreviewInteractionEnabled()) return;
+      const actionBtn = e.target.closest?.('.sheet-cell-structure-toolbar .sheet-band-btn');
+      if (!actionBtn) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const cell = sheetCellStructureToolbarCell;
+      if (cell?.isConnected) {
+        // Commit in-progress edit before changing structure.
+        if (cell.dataset) delete cell.dataset.sheetEditOriginal;
+        syncSheetCellToMarkdown(cell, { skipRender: true });
+      }
+      hideSheetCellStructureToolbar();
+      handleSheetBandActionClick(actionBtn);
+    });
+
+    const repositionCellToolbar = () => {
+      if (sheetCellStructureToolbarEl) positionSheetCellStructureToolbar();
+    };
+    window.addEventListener('scroll', repositionCellToolbar, true);
+    window.addEventListener('resize', repositionCellToolbar);
+
     preview.addEventListener('mousedown', e => {
       if (!isPreviewInteractionEnabled()) return;
+      if (e.target.closest?.('.sheet-band-btn, .sheet-cell-structure-toolbar')) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
       if (e.target.closest?.('.md-tag, .md-tags, .calendar-unit, a, button, input, select, textarea')) return;
       const colBand = e.target.closest?.('.sheet-col-band');
       const rowBand = e.target.closest?.('.sheet-row-band');
@@ -2119,8 +2521,10 @@
         cell.classList.remove('sheet-cell--ref-pick');
         if (sheetCellEditCancelled) {
           sheetCellEditCancelled = false;
+          hideSheetCellStructureToolbar();
           return;
         }
+        // Toolbar mousedown is prevented; any other blur commits and hides controls.
         commitSheetCellEdit(cell);
       }
     }, true);
@@ -2159,14 +2563,10 @@
   }
 
   function buildSheetRegistry(markdown) {
+    const sheets = collectParsedSheets(markdown);
     const registry = new Map();
-    let autoIdx = 0;
-    markdown.replace(SHEET_BLOCK_RE, (_, fenceAttrs, content) => {
-      const parsed = parseSheetContent(content, fenceAttrs);
-      const id = (parsed.config.id || parsed.config.sheet || `sheet-${autoIdx++}`).trim();
-      parsed.id = id;
-      registry.set(id, parsed);
-      return _;
+    sheets.forEach((parsed) => {
+      registry.set(parsed.id, parsed);
     });
     return registry;
   }
@@ -2175,24 +2575,30 @@
     return `\n\n${html}\n\n`;
   }
 
-  function parseSheetBlocks(plainText, options = {}) {
+  function renderParsedSheetBlocks(plainText, sheets, options = {}) {
     let sheetIndex = 0;
-    return plainText.replace(SHEET_BLOCK_RE, (_, fenceAttrs, content) => {
-      const parsed = parseSheetContent(content, fenceAttrs);
+    return plainText.replace(SHEET_BLOCK_RE, () => {
+      const parsed = sheets[sheetIndex];
       const idx = sheetIndex++;
-      const id = parsed.config.id || parsed.config.sheet || '';
+      if (!parsed) return '';
+      const id = parsed.id || '';
       const title = id
         ? `<div class="sheet-block-meta">Sheet: <strong>${escapeHtml(id)}</strong></div>`
         : '';
       const sheetHtml = sheetGridToHtml(parsed.grid, parsed.config, {
         sheetIndex: idx,
+        sheetId: id,
         editable: !!options.sheetEditable,
         bandSelection: sheetBandSelection?.sheetIndex === idx ? sheetBandSelection : null,
       }, parsed.cellStyles, parsed.rawGrid);
       return wrapRichPreviewBlock(
-        `<div class="sheet-preview-block" data-sheet-index="${idx}">${title}${sheetHtml}</div>`,
+        `<div class="sheet-preview-block" data-sheet-index="${idx}"${id ? ` data-sheet-id="${escapeHtml(id)}"` : ''}>${title}${sheetHtml}</div>`,
       );
     });
+  }
+
+  function parseSheetBlocks(plainText, options = {}) {
+    return renderParsedSheetBlocks(plainText, collectParsedSheets(plainText), options);
   }
 
   function resolveColumnIndex(headers, key, fallback) {
@@ -6380,6 +6786,90 @@ function formatTextWithMarkup(rawText) {
     document.getElementById('chat-messages')?.addEventListener('click', onPreviewImageClick);
   }
 
+  function ensureCalcsPlotTooltip() {
+    let tip = document.getElementById('calcs-plot-tooltip');
+    if (!tip) {
+      tip = document.createElement('div');
+      tip.id = 'calcs-plot-tooltip';
+      tip.className = 'calcs-plot-tooltip chart-tooltip';
+      tip.setAttribute('role', 'tooltip');
+      document.body.appendChild(tip);
+    }
+    return tip;
+  }
+
+  function moveCalcsPlotTooltipAt(anchor, tip) {
+    const gap = 12;
+    const pad = 8;
+    tip.style.left = '0px';
+    tip.style.top = '0px';
+    const tipW = tip.offsetWidth;
+    const tipH = tip.offsetHeight;
+    let left = anchor.x + gap;
+    let top = anchor.y - tipH - 8;
+    if (left + tipW > window.innerWidth - pad) left = anchor.x - tipW - gap;
+    if (top < pad) top = anchor.y + gap;
+    if (left < pad) left = pad;
+    if (top + tipH > window.innerHeight - pad) top = Math.max(pad, window.innerHeight - tipH - pad);
+    tip.style.left = `${left}px`;
+    tip.style.top = `${top}px`;
+  }
+
+  function clearCalcsPlotSnap(wrap) {
+    wrap?.querySelector('.calcs-plot-snap')?.replaceChildren();
+  }
+
+  function hideCalcsPlotTooltip(wrap) {
+    document.getElementById('calcs-plot-tooltip')?.classList.remove('visible');
+    clearCalcsPlotSnap(wrap);
+  }
+
+  function onCalcsPlotMove(e) {
+    const wrap = e.target?.closest?.('.calcs-plot-wrap');
+    if (!wrap) return;
+    const raw = wrap.getAttribute('data-calcs-plot');
+    const engine = window.NotesProCalcs;
+    if (!raw || !engine?.decodePlotMeta) return;
+    let meta;
+    try {
+      meta = engine.decodePlotMeta(raw);
+    } catch (_) {
+      return;
+    }
+    const svg = wrap.querySelector('.calcs-plot');
+    if (!svg) return;
+    const xData = engine.clientXToPlotX(svg, meta, e.clientX);
+    const pointIdx = engine.snapPlotIndex(meta, xData);
+    const hits = engine.plotSnapHits(meta, pointIdx);
+    const snapLayer = svg.querySelector('.calcs-plot-snap');
+    if (snapLayer) snapLayer.innerHTML = engine.plotSnapSvg(meta, pointIdx);
+    const tip = ensureCalcsPlotTooltip();
+    tip.textContent = engine.plotTipLinesFromIndex(meta, pointIdx);
+    tip.classList.add('visible');
+    const anchor = hits.length
+      ? engine.plotDataToClient(svg, meta, hits[0].x, hits[0].y)
+      : { x: e.clientX, y: e.clientY };
+    moveCalcsPlotTooltipAt(anchor, tip);
+  }
+
+  function onCalcsPlotLeave(e) {
+    const from = e.target?.closest?.('.calcs-plot-wrap');
+    const to = e.relatedTarget?.closest?.('.calcs-plot-wrap');
+    if (from && from !== to) hideCalcsPlotTooltip(from);
+  }
+
+  function initCalcsPlotTooltips() {
+    ['preview-content', 'markdown-wrap'].forEach(id => {
+      const root = document.getElementById(id);
+      if (!root) return;
+      root.addEventListener('mousemove', onCalcsPlotMove);
+      root.addEventListener('mouseleave', () => {
+        root.querySelectorAll('.calcs-plot-wrap').forEach(wrap => hideCalcsPlotTooltip(wrap));
+      });
+      root.addEventListener('mouseout', onCalcsPlotLeave);
+    });
+  }
+
   function onPreviewTagClick(e) {
     const target = e.target?.closest?.('.md-tag');
     if (!target) return;
@@ -6400,7 +6890,7 @@ function formatTextWithMarkup(rawText) {
   function replaceRichBlocksWithPlaceholders(markdown) {
     let md = markdown;
     md = md.replace(SHEET_BLOCK_RE, (_, fenceAttrs, content) => {
-      const parsed = parseSheetContent(content, fenceAttrs);
+      const parsed = parseSheetRaw(content, fenceAttrs);
       const id = (parsed.config.id || parsed.config.sheet || '').trim();
       const label = id ? `Sheet: ${id}` : 'Sheet';
       return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
@@ -6485,9 +6975,12 @@ function formatTextWithMarkup(rawText) {
     md = expandLeadingTabsForPreview(md);
     const richBlocks = options.richBlocks !== false;
     md = linkifyFileUrls(md);
+    let sheetRegistry = null;
     if (richBlocks) {
-      const sheetRegistry = buildSheetRegistry(md);
-      md = parseSheetBlocks(md, options);
+      const sheets = collectParsedSheets(md);
+      sheetRegistry = new Map();
+      sheets.forEach((parsed) => sheetRegistry.set(parsed.id, parsed));
+      md = renderParsedSheetBlocks(md, sheets, options);
       md = parseChartBlocks(md, sheetRegistry);
       md = parsePanelBlocks(md);
       md = parseNewsBlocks(md);
@@ -6508,6 +7001,7 @@ function formatTextWithMarkup(rawText) {
       tagsHtml: buildTagsHtml(tags),
       styledSpanHtml: styled.rendered,
       imageSpecs: images.imageSpecs,
+      sheetRegistry,
     };
   }
 
@@ -6533,12 +7027,12 @@ function formatTextWithMarkup(rawText) {
   }
 
   function isEditorPreviewSplit() {
-    return isEditing && !isMobileLayout()
+    return isEditing
       && document.querySelector('.editor-wrap')?.classList.contains('editor-wrap--split');
   }
 
   function shouldShowEditPreview() {
-    return isEditing && !isMobileLayout();
+    return isEditing;
   }
 
   function isPreviewInteractionEnabled() {
@@ -6820,11 +7314,8 @@ function formatTextWithMarkup(rawText) {
   function renderPreview() {
     const preview = document.getElementById('preview-content');
     if (!preview) return;
-    if (isMobileLayout() && isEditing) {
-      buildFloatingToc();
-      syncMobileContentMenu();
-      return;
-    }
+    hideSheetCellStructureToolbar();
+    hideSheetStructureMenu();
     const raw = easyMDE ? (easyMDE.value() || '') : '';
     const savedPreviewScrollTop = preservedPreviewScrollTop ?? preview.scrollTop;
     preservedPreviewScrollTop = null;
@@ -6853,7 +7344,6 @@ function formatTextWithMarkup(rawText) {
       && !floatingToc.classList.contains('is-hidden');
     editorWrap?.classList.toggle('has-page-toc', tocShown);
 
-    const sheetRegistry = buildSheetRegistry(raw);
     const processed = preprocessMarkdown(raw, {
       sheetEditable: isPreviewInteractionEnabled(),
       richBlocks: true,
@@ -6866,7 +7356,7 @@ function formatTextWithMarkup(rawText) {
     applyPreviewImageStyles(preview);
     preview.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(h => { h.id = slugifyHeading(h.textContent); });
     markFileLinks(preview);
-    renderD3Charts(preview, sheetRegistry);
+    renderD3Charts(preview, processed.sheetRegistry || new Map());
     hydrateNewsBlocks(preview);
     buildFloatingToc();
     annotatePreviewSourceLines(raw, preview);
@@ -6909,7 +7399,8 @@ function formatTextWithMarkup(rawText) {
     if (!list) return;
 
     const raw = easyMDE ? (easyMDE.value() || '') : '';
-    const useMarkdown = isMobileLayout() && isEditing;
+    // Prefer preview headings when the preview pane is visible (incl. mobile edit split).
+    const useMarkdown = isMobileLayout() && isEditing && !isEditorPreviewSplit();
     let items = [];
 
     if (!useMarkdown && preview) {
@@ -7005,25 +7496,18 @@ function formatTextWithMarkup(rawText) {
     editorWrap?.classList.toggle('editor-wrap--split', splitEdit);
     editorWrap?.classList.toggle('editor-wrap--preview-only', !isEditing);
 
-    if (isMobileLayout() && isEditing) {
-      resetEasyMdePreviewState();
-      markdownWrap?.classList.remove('hidden');
-      previewWrap?.classList.add('hidden');
-      scheduleMarkdownEditorLayoutRefresh();
-      syncMobileContentMenu();
-      if (isMobileLayout()) buildFloatingToc();
-      return;
-    }
-
     if (splitEdit) {
-      ensureEditorSplitWidth(editorWrap);
+      if (!isMobileLayout()) ensureEditorSplitWidth(editorWrap);
+      else editorWrap?.style.removeProperty('--editor-markdown-width');
       markdownWrap?.classList.remove('hidden');
       previewWrap?.classList.remove('hidden');
-      updateEditorSplitRangeBounds();
+      if (!isMobileLayout()) updateEditorSplitRangeBounds();
       renderPreview();
       initEditorPreviewScrollSync();
       applyEditorTypographyFromSettings();
-      scheduleMarkdownEditorLayoutRefresh({ syncScroll: true });
+      scheduleMarkdownEditorLayoutRefresh({ syncScroll: !isMobileLayout() });
+      syncMobileContentMenu();
+      if (isMobileLayout()) buildFloatingToc();
       return;
     }
 
@@ -7038,6 +7522,7 @@ function formatTextWithMarkup(rawText) {
       renderPreview();
     }
     syncMobileContentMenu();
+    if (isMobileLayout()) buildFloatingToc();
   }
 
   function setEditing(editing) {
@@ -10390,15 +10875,14 @@ function formatTextWithMarkup(rawText) {
           name: 'insert-calcs',
           action: (editor) => {
             const body = [
-              '(* ThGMaths *)',
-              'FIX(7, true)',
-              'x:=5',
-              'a:= 3 + 4i',
-              'V1:=(1,3,4, 8)',
-              'Sum(V1)',
-              'j:=-10..10',
-              'y3[j]:=(j*j)/100',
-              'Plot([j, y3])',
+              'f:=50',
+              'A:=1',
+              'w:=2*Pi*f',
+              'SR:=96*3',
+              'i:=0..2*SR',
+              'y1[i]:=exp(-i/SR)*A',
+              'y2[i]:=sin(20*w*i/SR)*exp(-i/SR)*A',
+              'Plot(y1, y2)',
             ].join('\n');
             insertFenceBlock(editor, 'calcs{fix=7;col=info}', body);
           },
@@ -11188,22 +11672,13 @@ function formatTextWithMarkup(rawText) {
     if (active?.classList?.contains('sheet-cell-editable')) return;
     capturePreviewScrollPosition();
     clearTimeout(previewRefreshTimer);
-    if (isMobileLayout() && !isEditing) {
-      previewRefreshTimer = setTimeout(() => {
-        renderPreview();
+    previewRefreshTimer = setTimeout(() => {
+      renderPreview();
+      if (isMobileLayout()) {
         buildFloatingToc();
         syncMobileContentMenu();
-      }, 300);
-      return;
-    }
-    if (isMobileLayout()) {
-      previewRefreshTimer = setTimeout(() => {
-        buildFloatingToc();
-        syncMobileContentMenu();
-      }, 300);
-      return;
-    }
-    previewRefreshTimer = setTimeout(renderPreview, 300);
+      }
+    }, 300);
   }
 
   async function createNode(isFolder, parentId = null) {
@@ -12780,6 +13255,7 @@ function formatTextWithMarkup(rawText) {
   initEditorFindBar();
   initFileLinkDialog();
   initPreviewImageClicks();
+  initCalcsPlotTooltips();
   initPreviewTagClicks();
   initSheetCellEditors();
   initCalendarNoteEditors();
