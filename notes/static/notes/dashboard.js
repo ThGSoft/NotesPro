@@ -1296,19 +1296,29 @@
     return normalized;
   }
 
+  function expandSheetTabEscapes(text) {
+    return String(text ?? '').replace(/\\t/g, '\t');
+  }
+
   function parseSheetRaw(content, fenceAttrs = '') {
     const config = {};
     const dataRows = [];
     const fence = parseSheetFenceAttrs(fenceAttrs);
     Object.assign(config, fence.config);
     const initialFormatParts = [...fence.formatParts];
-    content.split('\n').forEach(line => {
-      const trimmed = line.trim();
-      if (!trimmed) return;
+    expandSheetTabEscapes(content).split('\n').forEach(line => {
+      // Keep leading/trailing tabs so empty cells at the start/end of a row survive.
+      const rawLine = String(line || '').replace(/\r$/, '').replace(/^\uFEFF/, '');
+      if (rawLine === '') return;
+      const trimmed = rawLine.trim();
+      if (!trimmed) {
+        if (rawLine.includes('\t')) dataRows.push(rawLine);
+        return;
+      }
       if (isSheetMetaLine(trimmed)) {
         parseSheetMetaLine(trimmed, config, initialFormatParts);
       } else {
-        dataRows.push(trimmed);
+        dataRows.push(rawLine);
       }
     });
     const rawGrid = dataRows.map(row => row.replace(/\t \t/g, '\t&emsp;\t').split('\t').map(c => c.trim()));
@@ -1398,75 +1408,93 @@
     'gi',
   );
 
-  function evaluateSheetGrid(grid, config, cellStyles, evalCtx = null) {
+  function sheetSumAboveColumn(out, row, col) {
+    let total = 0;
+    for (let prevR = 0; prevR < row; prevR++) {
+      total += sheetGridCellNumber(out, prevR, col);
+    }
+    return total;
+  }
+
+  function expandSheetSumAbove(formula, out, row, col) {
+    return formula.replace(/\bSUM_ABOVE\b/gi, () => String(sheetSumAboveColumn(out, row, col)));
+  }
+
+  function evaluateSheetFormulaCell(source, row, col, out, config, cellStyles, evalCtx) {
     const defaultFrLen = parseInt(config.frLen, 10);
     const frLen = Number.isNaN(defaultFrLen) ? 2 : defaultFrLen;
     const sheetsById = evalCtx?.sheetsById || null;
+    if (!String(source).startsWith('=')) return String(source);
+
+    let formula = String(source).substring(1);
+    const cellFrLen = cellStyles?.[row]?.[col]?.frlen;
+    let frac = cellFrLen !== undefined ? cellFrLen : frLen;
+
+    formula = expandSheetSumAbove(formula, out, row, col);
+
+    // Only strip a trailing .N format suffix after a cell ref or group — not decimals like *0.35
+    formula = formula.replace(/(\]|\))\.(\d+)$/, (_, prefix, digits) => {
+      frac = parseInt(digits, 10);
+      return prefix;
+    });
+    SHEET_CROSS_REF_RE.lastIndex = 0;
+    formula = formula.replace(SHEET_CROSS_REF_RE, (_, sheetId, colTok, rowTok) => (
+      sheetCrossCellValue(sheetsById, sheetId, row, col, colTok, rowTok)
+    ));
+    SHEET_SUM_REF_RE.lastIndex = 0;
+    formula = formula.replace(SHEET_SUM_REF_RE, (_, col1, row1, col2, row2) => (
+      sheetSumArea(out, row, col, col1, row1, col2, row2)
+    ));
+    SHEET_CELL_REF_RE.lastIndex = 0;
+    formula = formula.replace(SHEET_CELL_REF_RE, (_, colTok, rowTok) => (
+      sheetRelCellValue(out, row, col, colTok, rowTok)
+    ));
+    const timeRewrite = replaceSheetTimeLiterals(formula);
+    formula = timeRewrite.formula;
+    const mathScope = `
+      const sqrt = Math.sqrt;
+      const sqr = (n) => Math.pow(n, 2);
+      const abs = Math.abs;
+      const round = Math.round;
+      const pow = Math.pow;
+      const ln = Math.log;
+      const log = Math.log10;
+      const PI = Math.PI;
+      const E = Math.E;
+      const exp = Math.exp;
+      const ceil = Math.ceil;
+      const floor = Math.floor;
+      return ${formula};
+    `;
+    const result = new Function(mathScope)();
+    if (timeRewrite.found && Number.isFinite(result)) {
+      return formatSheetHoursAsTime(result, timeRewrite.withSeconds);
+    }
+    return !isNaN(result) ? Number(result).toFixed(frac) : String(result);
+  }
+
+  function evaluateSheetGrid(grid, config, cellStyles, evalCtx = null) {
     const out = grid.map(row => [...row]);
-    for (let r = 0; r < out.length; r++) {
-      for (let c = 0; c < out[r].length; c++) {
-        let cell = out[r][c];
-        if (!cell.startsWith('=')) continue;
-        try {
-          let formula = cell.substring(1);
-          if (formula.trim() === 'SUM_ABOVE') {
-            let total = 0;
-            for (let prevR = 0; prevR < r; prevR++) {
-              const val = parseSheetNumber(out[prevR][c]);
-              if (!Number.isNaN(val)) total += val;
-            }
-            const cellFrLen = cellStyles?.[r]?.[c]?.frlen;
-            const frac = cellFrLen !== undefined ? cellFrLen : frLen;
-            cell = Number(total).toFixed(frac);
-          } else {
-            const cellFrLen = cellStyles?.[r]?.[c]?.frlen;
-            let frac = cellFrLen !== undefined ? cellFrLen : frLen;
-            // Only strip a trailing .N format suffix after a cell ref or group — not decimals like *0.35
-            formula = formula.replace(/(\]|\))\.(\d+)$/, (_, prefix, digits) => {
-              frac = parseInt(digits, 10);
-              return prefix;
-            });
-            SHEET_CROSS_REF_RE.lastIndex = 0;
-            formula = formula.replace(SHEET_CROSS_REF_RE, (_, sheetId, colTok, rowTok) => (
-              sheetCrossCellValue(sheetsById, sheetId, r, c, colTok, rowTok)
-            ));
-            SHEET_SUM_REF_RE.lastIndex = 0;
-            formula = formula.replace(SHEET_SUM_REF_RE, (_, col1, row1, col2, row2) => (
-              sheetSumArea(out, r, c, col1, row1, col2, row2)
-            ));
-            SHEET_CELL_REF_RE.lastIndex = 0;
-            formula = formula.replace(SHEET_CELL_REF_RE, (_, colTok, rowTok) => (
-              sheetRelCellValue(out, r, c, colTok, rowTok)
-            ));
-            const timeRewrite = replaceSheetTimeLiterals(formula);
-            formula = timeRewrite.formula;
-            const mathScope = `
-              const sqrt = Math.sqrt;
-              const sqr = (n) => Math.pow(n, 2);
-              const abs = Math.abs;
-              const round = Math.round;
-              const pow = Math.pow;
-              const ln = Math.log;
-              const log = Math.log10;
-              const PI = Math.PI;
-              const E = Math.E;
-              const exp = Math.exp;
-              const ceil = Math.ceil;
-              const floor = Math.floor;
-              return ${formula};
-            `;
-            const result = new Function(mathScope)();
-            if (timeRewrite.found && Number.isFinite(result)) {
-              cell = formatSheetHoursAsTime(result, timeRewrite.withSeconds);
-            } else {
-              cell = !isNaN(result) ? Number(result).toFixed(frac) : result;
-            }
+    const colCount = Math.max(...out.map(row => row.length), 0);
+    const maxSweep = Math.max(1, out.length * Math.max(colCount, 1));
+
+    for (let sweep = 0; sweep < maxSweep; sweep += 1) {
+      let changed = false;
+      for (let r = 0; r < out.length; r += 1) {
+        for (let c = 0; c < out[r].length; c += 1) {
+          const source = grid[r][c];
+          if (!String(source).startsWith('=')) continue;
+          try {
+            const next = evaluateSheetFormulaCell(source, r, c, out, config, cellStyles, evalCtx);
+            if (String(next) !== String(out[r][c])) changed = true;
+            out[r][c] = next;
+          } catch (e) {
+            if (out[r][c] !== '#ERR!') changed = true;
+            out[r][c] = '#ERR!';
           }
-          out[r][c] = String(cell);
-        } catch (e) {
-          out[r][c] = '#ERR!';
         }
       }
+      if (!changed) break;
     }
     return out;
   }
@@ -1823,7 +1851,7 @@
     easyMDE.value(updated);
     scheduleSave();
     setSheetBandSelection(sheetIndex, nextType, nextIndex);
-    renderPreview();
+    renderPreviewWithScrollPreserved();
     focusSheetBandAfterEdit(sheetIndex, nextType, nextIndex);
     return true;
   }
@@ -1835,9 +1863,12 @@
     sheetStructureMenuEl = null;
   }
 
-  function showSheetStructurePlacementMenu(anchorEl, { action, sheetIndex, type, index }) {
+  function showSheetStructurePlacementMenu(anchorEl, { action, sheetIndex, type, index, anchorRect = null } = {}) {
     hideSheetStructureMenu();
-    if (!anchorEl || !isPreviewInteractionEnabled()) return;
+    hideSheetCellStructureToolbar();
+    if (!isPreviewInteractionEnabled()) return;
+    const rect = anchorRect || anchorEl?.getBoundingClientRect?.();
+    if (!rect) return;
 
     const dims = getSheetDimensions(sheetIndex);
     const isAdd = action === 'addRow' || action === 'addCol';
@@ -1887,7 +1918,6 @@
     document.body.appendChild(menu);
     sheetStructureMenuEl = menu;
 
-    const rect = anchorEl.getBoundingClientRect();
     const menuRect = menu.getBoundingClientRect();
     let left = rect.left;
     let top = rect.bottom + 4;
@@ -1913,7 +1943,7 @@
     });
   }
 
-  function handleSheetBandActionClick(btn) {
+  function handleSheetBandActionClick(btn, { anchorEl = btn, anchorRect = null } = {}) {
     if (!btn || !isPreviewInteractionEnabled()) return false;
     const action = btn.dataset.sheetAction;
     const sheetIndex = parseInt(btn.dataset.sheetIndex, 10);
@@ -1936,7 +1966,9 @@
     }
 
     setSheetBandSelection(sheetIndex, type, index);
-    showSheetStructurePlacementMenu(btn, { action, sheetIndex, type, index });
+    showSheetStructurePlacementMenu(anchorEl || btn, {
+      action, sheetIndex, type, index, anchorRect,
+    });
     return true;
   }
 
@@ -2240,6 +2272,7 @@
       hideSheetCellStructureToolbar();
       return;
     }
+    hideSheetStructureMenu();
     const sheetIndex = parseInt(cell.dataset.sheetIndex, 10);
     const row = parseInt(cell.dataset.row, 10);
     const col = parseInt(cell.dataset.col, 10);
@@ -2304,7 +2337,10 @@
     cell.classList.add('sheet-cell--ref-pick');
     const formula = cell.dataset.sheetFormula;
     if (formula) cell.textContent = formula;
-    showSheetCellStructureToolbar(cell);
+    // Hide structure popup when switching cells; double-click shows it again.
+    if (sheetCellStructureToolbarCell && sheetCellStructureToolbarCell !== cell) {
+      hideSheetCellStructureToolbar();
+    }
   }
 
   function cancelSheetCellEdit(cell) {
@@ -2327,7 +2363,7 @@
       easyMDE.value(updated);
       scheduleSave();
     }
-    renderPreview();
+    renderPreviewWithScrollPreserved();
   }
 
   function syncSheetCellToMarkdown(cell, { skipRender = false } = {}) {
@@ -2342,7 +2378,7 @@
     if (updated === oldMarkdown) return false;
     easyMDE.value(updated);
     scheduleSave();
-    if (!skipRender) renderPreview();
+    if (!skipRender) renderPreviewWithScrollPreserved();
     return true;
   }
 
@@ -2409,6 +2445,15 @@
     if (!preview || preview.dataset.sheetEditBound === '1') return;
     preview.dataset.sheetEditBound = '1';
 
+    document.addEventListener('mousedown', e => {
+      if (!isPreviewInteractionEnabled()) return;
+      const activeCell = getActiveSheetCell();
+      if (!activeCell) return;
+      if (e.target.closest?.('.sheet-cell-editable') === activeCell) return;
+      if (e.target.closest?.('.sheet-cell-structure-toolbar, .sheet-structure-menu')) return;
+      capturePreviewScrollPosition();
+    }, true);
+
     preview.addEventListener('click', e => {
       if (!isPreviewInteractionEnabled()) return;
       const actionBtn = e.target.closest?.('.sheet-band-btn');
@@ -2419,6 +2464,15 @@
       }
     });
 
+    document.addEventListener('mousedown', e => {
+      if (!isPreviewInteractionEnabled()) return;
+      const activeCell = getActiveSheetCell();
+      if (!activeCell) return;
+      if (e.target.closest?.('.sheet-cell-editable') === activeCell) return;
+      if (e.target.closest?.('.sheet-cell-structure-toolbar, .sheet-structure-menu')) return;
+      capturePreviewScrollPosition();
+    }, true);
+
     document.addEventListener('click', e => {
       if (!isPreviewInteractionEnabled()) return;
       const actionBtn = e.target.closest?.('.sheet-cell-structure-toolbar .sheet-band-btn');
@@ -2426,13 +2480,17 @@
       e.preventDefault();
       e.stopPropagation();
       const cell = sheetCellStructureToolbarCell;
+      const anchorRect = actionBtn.getBoundingClientRect();
       if (cell?.isConnected) {
         // Commit in-progress edit before changing structure.
         if (cell.dataset) delete cell.dataset.sheetEditOriginal;
         syncSheetCellToMarkdown(cell, { skipRender: true });
       }
       hideSheetCellStructureToolbar();
-      handleSheetBandActionClick(actionBtn);
+      handleSheetBandActionClick(actionBtn, {
+        anchorEl: cell?.isConnected ? cell : actionBtn,
+        anchorRect,
+      });
     });
 
     const repositionCellToolbar = () => {
@@ -2443,6 +2501,16 @@
 
     preview.addEventListener('mousedown', e => {
       if (!isPreviewInteractionEnabled()) return;
+      const activeCell = getActiveSheetCell();
+      if (activeCell && preview.contains(activeCell)) {
+        const clickCell = e.target.closest?.('.sheet-cell-editable');
+        const inSheetUi = e.target.closest?.(
+          '.sheet-cell-structure-toolbar, .sheet-structure-menu, .sheet-band-btn',
+        );
+        if (!inSheetUi && clickCell !== activeCell) {
+          capturePreviewScrollPosition();
+        }
+      }
       if (e.target.closest?.('.sheet-band-btn, .sheet-cell-structure-toolbar')) {
         e.preventDefault();
         e.stopPropagation();
@@ -2457,7 +2525,7 @@
         const col = parseInt(colBand.dataset.col, 10);
         if (Number.isFinite(sheetIndex) && Number.isFinite(col)) {
           setSheetBandSelection(sheetIndex, 'col', col);
-          renderPreview();
+          renderPreviewWithScrollPreserved();
           focusSheetBandAfterEdit(sheetIndex, 'col', col);
         }
         return;
@@ -2468,7 +2536,7 @@
         const row = parseInt(rowBand.dataset.row, 10);
         if (Number.isFinite(sheetIndex) && Number.isFinite(row)) {
           setSheetBandSelection(sheetIndex, 'row', row);
-          renderPreview();
+          renderPreviewWithScrollPreserved();
           focusSheetBandAfterEdit(sheetIndex, 'row', row);
         }
         return;
@@ -2515,6 +2583,15 @@
       setPreviewContextFromEvent(e);
     }, true);
 
+    preview.addEventListener('dblclick', e => {
+      if (!isPreviewInteractionEnabled()) return;
+      const cell = e.target.closest?.('.sheet-cell-editable');
+      if (!cell || !preview.contains(cell)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      showSheetCellStructureToolbar(cell);
+    });
+
     preview.addEventListener('blur', e => {
       const cell = e.target.closest?.('.sheet-cell-editable');
       if (cell && preview.contains(cell)) {
@@ -2536,11 +2613,13 @@
       if (cell && preview.contains(cell)) {
         if (e.key === 'Escape') {
           e.preventDefault();
+          capturePreviewScrollPosition();
           cancelSheetCellEdit(cell);
           return;
         }
         if (e.key === 'Enter') {
           e.preventDefault();
+          capturePreviewScrollPosition();
           cell.blur();
           return;
         }
@@ -6239,7 +6318,7 @@
   function convertSheetToMd(text) {
     // Regex sucht nach Inhalten zwischen ```sheet und ``` (global, über Zeilen hinweg)
     return text.replace(SHEET_BLOCK_RE, (match, fenceAttrs, content) => {
-      const lines = content.trim().split('\n');
+      const lines = expandSheetTabEscapes(content).trim().split('\n');
       if (lines.length === 0) return "";
 
       // 1. Spalten bei jedem Tabulator (\t) trennen und in Pipes (|) einbetten
@@ -7093,6 +7172,11 @@ function formatTextWithMarkup(rawText) {
     if (preview) preservedPreviewScrollTop = preview.scrollTop;
   }
 
+  function renderPreviewWithScrollPreserved() {
+    capturePreviewScrollPosition();
+    renderPreview();
+  }
+
   function restorePreviewScrollPosition(preview) {
     if (!preview || preservedPreviewScrollTop == null) return;
     const top = preservedPreviewScrollTop;
@@ -7264,7 +7348,7 @@ function formatTextWithMarkup(rawText) {
       editorPreviewResizeObserver = new ResizeObserver(() => {
         if (!isEditorPreviewSplit()) return;
         rebuildPreviewScrollAnchors();
-        syncPreviewScrollFromEditor();
+        if (!isEditorPreviewScrollLocked()) syncPreviewScrollFromEditor();
       });
       editorPreviewResizeObserver.observe(previewWrap);
       editorPreviewResizeObserver.observe(preview);
@@ -7364,13 +7448,15 @@ function formatTextWithMarkup(rawText) {
     else preview.removeAttribute('tabindex');
     rebuildPreviewScrollAnchors();
     syncMobileContentMenu();
-    lockEditorPreviewScroll(600);
+    lockEditorPreviewScroll(800);
     const applyPreviewScroll = () => {
       const previewMax = Math.max(0, preview.scrollHeight - preview.clientHeight);
       preview.scrollTop = Math.min(savedPreviewScrollTop, previewMax);
     };
     applyPreviewScroll();
     requestAnimationFrame(applyPreviewScroll);
+    setTimeout(applyPreviewScroll, 50);
+    setTimeout(applyPreviewScroll, 200);
   }
 
   function collectMarkdownHeadings(raw) {
