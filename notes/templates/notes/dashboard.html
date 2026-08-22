@@ -35,12 +35,8 @@
         <div class="mobile-topbar-menu-title">Menu</div>
         <button id="view-keep-toggle" class="btn btn-sm btn-outline-light" type="button" title="Quick notes (Keep)">Keep</button>
         <button id="edit-toggle" class="btn btn-primary btn-sm">Edit</button>
-        {% if user.is_staff %}
-        <a id="admin-link" href="{% url 'admin:index' %}" class="btn btn-sm btn-outline-light d-none" target="_blank" rel="noopener noreferrer" title="Django Admin">Admin</a>
-        {% endif %}
         <button id="toggle-right" class="btn btn-sm btn-outline-light" type="button" title="Chat &amp; Mail">Chat &amp; Mail</button>
         <button id="app-settings-btn" class="btn btn-sm btn-outline-light" type="button" title="Settings">Settings</button>
-        <a href="{% url 'setup_2fa' %}" class="btn btn-sm btn-outline-light" title="Two-factor authentication">2FA</a>
         <form action="{% url 'logout' %}" method="post">
           {% csrf_token %}
           <button class="btn btn-sm btn-outline-light">Logout</button>
@@ -922,6 +918,15 @@
             {% endfor %}
           </select>
           <p class="small dashboard-modal-hint mt-2 mb-0">Affects calendar date and time formatting. Choose browser default to follow your device locale.</p>
+        </div>
+        <div class="app-settings-links mt-3 pt-3 border-top border-secondary-subtle">
+          <div class="small fw-semibold mb-2">Go to</div>
+          <div class="d-flex flex-wrap gap-2">
+            {% if user.is_staff %}
+            <a id="admin-link" href="{% url 'admin:index' %}" class="btn btn-sm btn-outline-light d-none" target="_blank" rel="noopener noreferrer" title="Django Admin">Admin</a>
+            {% endif %}
+            <a id="app-settings-2fa-link" href="{% url 'setup_2fa' %}" class="btn btn-sm btn-outline-light" title="Two-factor authentication">2FA</a>
+          </div>
         </div>
       </div>
       <div class="modal-footer">
