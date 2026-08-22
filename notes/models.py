@@ -487,6 +487,54 @@ class UserSettings(models.Model):
     def __str__(self):
         return f"Settings for {self.user.username}"
 
+
+class IpVisitLog(models.Model):
+    EVENT_VISIT = 'visit'
+    EVENT_LOGIN = 'login'
+    EVENT_CHOICES = [
+        (EVENT_VISIT, 'Visit'),
+        (EVENT_LOGIN, 'Login'),
+    ]
+
+    ip_address = models.GenericIPAddressField(db_index=True)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='ip_visits',
+    )
+    method = models.CharField(max_length=10, blank=True, default='')
+    path = models.CharField(max_length=512, blank=True, default='')
+    query_string = models.CharField(max_length=512, blank=True, default='')
+    user_agent = models.CharField(max_length=512, blank=True, default='')
+    event_type = models.CharField(max_length=16, choices=EVENT_CHOICES, default=EVENT_VISIT, db_index=True)
+    country = models.CharField(max_length=120, blank=True, default='')
+    country_code = models.CharField(max_length=8, blank=True, default='')
+    region = models.CharField(max_length=120, blank=True, default='')
+    city = models.CharField(max_length=120, blank=True, default='')
+    latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    isp = models.CharField(max_length=255, blank=True, default='')
+    org = models.CharField(max_length=255, blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'IP visit log'
+        verbose_name_plural = 'IP visit logs'
+
+    def __str__(self):
+        where = self.city or self.country or '?'
+        user = self.user.username if self.user_id else 'anonymous'
+        return f'{self.ip_address} · {where} · {user}'
+
+    @property
+    def geo_label(self):
+        parts = [p for p in (self.city, self.region, self.country) if p]
+        return ', '.join(parts) or '—'
+
+
 @receiver(post_save, sender=settings.AUTH_USER_MODEL)
 def create_user_settings(sender, instance, created, **kwargs):
     if created:

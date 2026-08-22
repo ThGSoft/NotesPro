@@ -9,8 +9,11 @@ from django.shortcuts import redirect
 from django.template.response import TemplateResponse
 from django.urls import path, reverse
 
+from django.utils.html import format_html
+
 from .models import (
     IncomingMail,
+    IpVisitLog,
     Page,
     PageTag,
     Tag,
@@ -169,3 +172,40 @@ class UserSettingsAdmin(admin.ModelAdmin):
         'totp_enabled',
     )
     search_fields = ('user__username',)
+
+
+@admin.register(IpVisitLog)
+class IpVisitLogAdmin(admin.ModelAdmin):
+    list_display = (
+        'created_at', 'ip_address', 'geo_display', 'map_link', 'user', 'event_type',
+        'method', 'path',
+    )
+    list_filter = ('event_type', 'country', 'country_code', 'method')
+    search_fields = ('ip_address', 'user__username', 'path', 'city', 'region', 'country', 'isp', 'org')
+    date_hierarchy = 'created_at'
+    readonly_fields = (
+        'created_at', 'ip_address', 'user', 'method', 'path', 'query_string', 'user_agent',
+        'event_type', 'country', 'country_code', 'region', 'city', 'latitude', 'longitude',
+        'isp', 'org', 'map_link',
+    )
+    ordering = ('-created_at',)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    @admin.display(description='Location')
+    def geo_display(self, obj):
+        label = obj.geo_label
+        if obj.country_code:
+            return f'{label} ({obj.country_code})'
+        return label
+
+    @admin.display(description='Map')
+    def map_link(self, obj):
+        if obj.latitude is None or obj.longitude is None:
+            return '—'
+        url = f'https://www.openstreetmap.org/?mlat={obj.latitude}&mlon={obj.longitude}#map=10/{obj.latitude}/{obj.longitude}'
+        return format_html('<a href="{}" target="_blank" rel="noopener noreferrer">Open map</a>', url)

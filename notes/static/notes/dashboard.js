@@ -12859,6 +12859,7 @@ function formatTextWithMarkup(rawText) {
     document.getElementById('keep-composer')?.classList.toggle('d-none', !userCanEdit);
 
     document.getElementById('view-keep-toggle')?.addEventListener('click', () => {
+      closeMobileTopbarMenu();
       setMainView(mainView === 'keep' ? 'pages' : 'keep');
     });
 

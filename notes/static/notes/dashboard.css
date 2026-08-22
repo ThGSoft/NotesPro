@@ -2140,6 +2140,10 @@ body.mobile-layout .sheet-structure-menu-btn {
   --calendar-accent: #64748b;
 }
 
+.app-settings-links .btn {
+  min-width: 4.5rem;
+}
+
 .calendar-block-header {
   display: flex;
   align-items: baseline;

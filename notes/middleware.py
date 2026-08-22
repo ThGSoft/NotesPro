@@ -1,6 +1,9 @@
 """HTTP middleware for NotesPro."""
 
+from django.conf import settings
 from django.http import JsonResponse
+
+from .ip_logging import _normalized_path, log_ip_visit, should_log_request
 
 
 class ApiLoginRequiredJsonMiddleware:
@@ -34,3 +37,32 @@ class ApiLoginRequiredJsonMiddleware:
                 )
 
         return self.get_response(request)
+
+
+class IpVisitLogMiddleware:
+    """Log client IP and geolocation for authenticated visits and logins."""
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        track_login = False
+        if should_log_request(request):
+            user = getattr(request, 'user', None)
+            norm = _normalized_path(request.path)
+            login_base = _normalized_path(getattr(settings, 'LOGIN_URL', '/login/'))
+            track_login = (
+                request.method == 'POST'
+                and norm in (login_base, f'{login_base}/2fa')
+                and user is not None
+                and not user.is_authenticated
+            )
+            if user is not None and user.is_authenticated:
+                log_ip_visit(request, event_type='visit')
+
+        response = self.get_response(request)
+
+        if track_login and getattr(request, 'user', None) and request.user.is_authenticated:
+            log_ip_visit(request, event_type='login')
+
+        return response
