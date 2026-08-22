@@ -103,6 +103,7 @@ def _normalize_page_rows(pages):
             'is_folder': _page_is_folder(row),
             'sort_order': int(row.get('sort_order') or row.get('position') or 0),
             'markdown_content': _page_markdown(row),
+            'archive': row.get('archive') or '',
         })
     return normalized
 
@@ -180,6 +181,7 @@ def _serialize_page_rows(pages):
             'type': 'folder' if page.is_folder else 'page',
             'sort_order': page.sort_order,
             'markdown_content': page.markdown_content,
+            'archive': page.archive,
         })
     return page_rows
 
@@ -188,7 +190,10 @@ def _files_referenced_in_pages(workspace, page_rows):
     all_files = _collect_workspace_files(workspace)
     if not all_files:
         return []
-    text = '\n'.join(row.get('markdown_content') or '' for row in page_rows)
+    text = '\n'.join(
+        (row.get('markdown_content') or '') + '\n' + (row.get('archive') or '')
+        for row in page_rows
+    )
     referenced = []
     for entry in all_files:
         relpath = entry['media_relpath']
@@ -458,6 +463,10 @@ def _import_pages_into_workspace(owner, workspace, data, archive=None, root_pare
                     row.get('markdown_content') or '',
                     path_map,
                 )
+                archive = _rewrite_media_paths(
+                    row.get('archive') or '',
+                    path_map,
+                )
                 page = Page.objects.create(
                     workspace=workspace,
                     parent=parent,
@@ -466,6 +475,7 @@ def _import_pages_into_workspace(owner, workspace, data, archive=None, root_pare
                     is_folder=bool(row.get('is_folder')),
                     sort_order=int(row.get('sort_order') or 0),
                     markdown_content=markdown,
+                    archive=archive,
                 )
                 ref_to_page[ref] = page
                 created.append(page)

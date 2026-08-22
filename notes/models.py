@@ -39,6 +39,7 @@ class Workspace(models.Model):
     slug = models.SlugField(max_length=140)
     created_at = models.DateTimeField(auto_now_add=True)
     deleted = models.BooleanField(default=False, db_index=True)
+    groups = models.ManyToManyField('auth.Group', blank=True, related_name='workspaces')
 
     members = models.ManyToManyField(
         User,
@@ -328,6 +329,7 @@ class Page(models.Model):
     is_folder = models.BooleanField(default=False)
     sort_order = models.IntegerField(default=0)
     markdown_content = EncryptedTextField(blank=True, default='')
+    archive = EncryptedTextField(blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     deleted = models.BooleanField(default=False, db_index=True)

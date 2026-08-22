@@ -13,7 +13,9 @@ from .views import _user_has_write_access, _workspace_qs
 
 def _quick_note_qs(user):
     return QuickNote.objects.filter(
-        Q(workspace__owner=user) | Q(workspace__workspacemembership__user=user),
+        Q(workspace__owner=user) |
+        Q(workspace__workspacemembership__user=user) |
+        Q(workspace__groups__in=user.groups.all()),
         deleted=False,
         workspace__deleted=False,
     ).distinct()

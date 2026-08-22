@@ -21,6 +21,34 @@ from django.contrib.auth.models import User
 from django.db.models import Q
 from django.utils.text import slugify
 from .workspace_io import export_workspace_archive, import_workspace_archive
+
+APP_LANGUAGE_CHOICES = (
+    ('browser', 'Browser default'),
+    ('en', 'English'),
+    ('de', 'Deutsch'),
+    ('fr', 'Français'),
+    ('it', 'Italiano'),
+    ('es', 'Español'),
+)
+ALLOWED_APP_LANGUAGE_VALUES = {code for code, _ in APP_LANGUAGE_CHOICES}
+
+
+def normalize_app_language(value):
+    raw = str(value or '').strip().lower().replace('_', '-')
+    if not raw or raw == 'browser':
+        return 'browser'
+    if raw in ALLOWED_APP_LANGUAGE_VALUES:
+        return raw
+    primary = raw.split('-', 1)[0]
+    if primary in ALLOWED_APP_LANGUAGE_VALUES:
+        return primary
+    return 'browser'
+
+
+def stored_app_language(extra_configs):
+    extra = extra_configs if isinstance(extra_configs, dict) else {}
+    return normalize_app_language(extra.get('language') or extra.get('locale') or 'browser')
+
 from .tags import (
     list_workspace_tag_names,
     page_tag_names,
@@ -36,10 +64,17 @@ from .workspace_members import (
 )
 
 
+def _workspace_access_q(user):
+    return (
+        Q(owner=user) |
+        Q(workspacemembership__user=user) |
+        Q(groups__in=user.groups.all())
+    )
+
+
 def _workspace_qs(user):
     return Workspace.objects.filter(
-        Q(owner=user) |
-        Q(workspacemembership__user=user),
+        _workspace_access_q(user),
         deleted=False,
     ).distinct()
 
@@ -51,7 +86,8 @@ def _page_qs(user):
     """
     return Page.objects.filter(
         Q(workspace__owner=user) |
-        Q(workspace__workspacemembership__user=user),
+        Q(workspace__workspacemembership__user=user) |
+        Q(workspace__groups__in=user.groups.all()),
         deleted=False,
         workspace__deleted=False,
     ).distinct()
@@ -113,9 +149,13 @@ def _page_subtree_ids(root):
 def _user_has_write_access(user, workspace):
     if workspace.owner_id == user.id:
         return True
-    return WorkspaceMembership.objects.filter(
+    if WorkspaceMembership.objects.filter(
         workspace=workspace, user=user, role='write',
-    ).exists()
+    ).exists():
+        return True
+    if user.groups.filter(name='Group Admin').exists():
+        return True
+    return False
 
 
 def _reindex_page_siblings(workspace, parent):
@@ -199,6 +239,7 @@ def _page_to_dict(page):
         'is_folder': page.is_folder,
         'sort_order': page.sort_order,
         'markdown_content': page.markdown_content,
+        'archive': page.archive,
         'tags': page_tag_names(page),
     }
 
@@ -320,11 +361,21 @@ def dashboard(request):
             _set_workspace_page(settings, current_workspace.id, page.id)
         settings.save()
 
+    extra = settings.extra_configs if isinstance(settings.extra_configs, dict) else {}
+    app_language_stored = stored_app_language(extra)
+    if app_language_stored == 'browser':
+        app_language = django_settings.LANGUAGE_CODE or 'en'
+    else:
+        app_language = app_language_stored
+
     return render(request, 'notes/dashboard.html', {
         'workspaces': workspaces_list,
         'current_workspace': current_workspace,
         'page': page,
         'user_settings': settings,
+        'app_language': app_language,
+        'app_language_stored': app_language_stored,
+        'app_language_choices': APP_LANGUAGE_CHOICES,
         'app_base': (getattr(django_settings, 'FORCE_SCRIPT_NAME', None) or request.META.get('SCRIPT_NAME') or '').rstrip('/'),
         'local_file_open_enabled': getattr(django_settings, 'LOCAL_FILE_OPEN_ENABLED', False),
         'tag_websocket_enabled': getattr(django_settings, 'ENABLE_TAG_WEBSOCKET', False),
@@ -716,6 +767,8 @@ def page_update(request, pk):
         page.title = title.strip() or 'Untitled'
     if not page.is_folder and 'markdown_content' in payload:
         page.markdown_content = payload.get('markdown_content') or ''
+    if not page.is_folder and 'archive' in payload:
+        page.archive = payload.get('archive') or ''
     page.slug = ''
     page.save()
     sync_page_tags(page)
@@ -996,6 +1049,9 @@ def updateUserSettings(request, workspace_id):
                             charts = dict(merged.get('chart_settings') or {})
                             charts.update(value)
                             merged['chart_settings'] = charts
+                        elif key in ('language', 'locale'):
+                            merged['language'] = normalize_app_language(value)
+                            merged.pop('locale', None)
                         else:
                             merged[key] = value
                     settings.extra_configs = merged

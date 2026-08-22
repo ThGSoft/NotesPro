@@ -45,6 +45,10 @@
   let treeMovePointerListener = null;
   let suppressTreeMovePersist = false;
   let treeMoveConfirmModal = null;
+  let treeDragScrollActive = false;
+  let treeDragScrollRaf = null;
+  let treeDragScrollPointerY = 0;
+  let treeDragScrollPointerX = 0;
   let chartSettingsCache = { ...(window.APP_BOOT?.extraConfigs?.chart_settings || {}) };
   let chartSettingsSaveTimer = null;
   let snippetsCache = normalizeSnippetsList(window.APP_BOOT?.extraConfigs?.snippets);
@@ -3167,8 +3171,103 @@
 
   const CALENDAR_BLOCK_RE = /```(?:calendar|calender)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
   const CALENDAR_MODES = ['day', 'week', 'month', 'year'];
-  const WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  const MONTH_LABELS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+  function getAppLocale() {
+    const cfg = window.APP_BOOT?.extraConfigs || {};
+    const stored = cfg.language || cfg.locale || window.APP_BOOT?.language || 'browser';
+    if (!stored || stored === 'browser') {
+      return navigator.language || document.documentElement.lang || 'en';
+    }
+    return stored;
+  }
+
+  function getStoredAppLanguage() {
+    const cfg = window.APP_BOOT?.extraConfigs || {};
+    const stored = cfg.language || cfg.locale || window.APP_BOOT?.language || 'browser';
+    return stored || 'browser';
+  }
+
+  function documentLangFromAppLanguage(language) {
+    const locale = (!language || language === 'browser')
+      ? (navigator.language || 'en')
+      : language;
+    return String(locale).split('-')[0] || 'en';
+  }
+
+  function applyAppLanguage(language, options = {}) {
+    const lang = language || 'browser';
+    if (!window.APP_BOOT) window.APP_BOOT = {};
+    if (!window.APP_BOOT.extraConfigs) window.APP_BOOT.extraConfigs = {};
+    window.APP_BOOT.extraConfigs.language = lang;
+    window.APP_BOOT.language = lang;
+    document.documentElement.lang = documentLangFromAppLanguage(lang);
+    if (options.rerenderPreview !== false && easyMDE) renderPreview();
+  }
+
+  async function saveAppLanguage(language) {
+    applyAppLanguage(language, { rerenderPreview: true });
+    const ok = await updateUserSettings({ extra_configs: { language } });
+    if (ok) setStatus('Settings saved');
+    return ok;
+  }
+
+  function openAppSettingsModal() {
+    const sel = document.getElementById('app-settings-language');
+    if (sel) sel.value = getStoredAppLanguage();
+    const modalEl = document.getElementById('app-settings-modal');
+    if (modalEl) openDashboardModal(modalEl);
+  }
+
+  function initAppSettings() {
+    document.getElementById('app-settings-btn')?.addEventListener('click', () => {
+      closeMobileTopbarMenu();
+      openAppSettingsModal();
+    });
+    document.getElementById('app-settings-save')?.addEventListener('click', async () => {
+      const lang = document.getElementById('app-settings-language')?.value || 'browser';
+      const modalEl = document.getElementById('app-settings-modal');
+      const ok = await saveAppLanguage(lang);
+      if (ok && modalEl && window.bootstrap?.Modal) {
+        bootstrap.Modal.getInstance(modalEl)?.hide();
+      }
+    });
+    applyAppLanguage(getStoredAppLanguage(), { rerenderPreview: false });
+  }
+
+  function calendarWeekdayLabels() {
+    const locale = getAppLocale();
+    const labels = [];
+    const monday = new Date(2024, 0, 1);
+    for (let i = 0; i < 7; i += 1) {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      labels.push(d.toLocaleDateString(locale, { weekday: 'short' }));
+    }
+    return labels;
+  }
+
+  function calendarMonthYearLabel(year, month) {
+    return new Date(year, month, 1).toLocaleDateString(getAppLocale(), {
+      month: 'long',
+      year: 'numeric',
+    });
+  }
+
+  function calendarMonthShortLabel(month, year) {
+    return new Date(year, month, 1).toLocaleDateString(getAppLocale(), { month: 'short' });
+  }
+
+  function calendarAllDayLabel() {
+    const lang = String(getAppLocale()).split('-')[0].toLowerCase();
+    const labels = {
+      de: 'Ganztägig',
+      fr: 'Toute la journée',
+      it: 'Tutto il giorno',
+      es: 'Todo el día',
+      en: 'All day',
+    };
+    return labels[lang] || labels.en;
+  }
 
   function parseCalendarDate(value) {
     const raw = String(value || '').trim();
@@ -3200,6 +3299,42 @@
     const mm = String(d.getMonth() + 1).padStart(2, '0');
     const yy = String(d.getFullYear()).slice(-2);
     return `${dd}.${mm}.${yy}`;
+  }
+
+  function formatCalendarDateDisplay(d) {
+    if (!d) return '';
+    return d.toLocaleDateString(getAppLocale(), {
+      day: '2-digit',
+      month: '2-digit',
+      year: '2-digit',
+    });
+  }
+
+  function formatCalendarDateRangeDisplay(from, to) {
+    if (!from) return '';
+    if (!to || startOfDay(from).getTime() === startOfDay(to).getTime()) {
+      return formatCalendarDateDisplay(from);
+    }
+    return `${formatCalendarDateDisplay(from)} – ${formatCalendarDateDisplay(to)}`;
+  }
+
+  function formatCalendarTimeDisplay(hhmm) {
+    if (!hhmm) return '';
+    const parts = String(hhmm).split(':');
+    if (parts.length < 2) return hhmm;
+    const h = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10);
+    if (!Number.isFinite(h) || !Number.isFinite(m)) return hhmm;
+    return new Date(2000, 0, 1, h, m).toLocaleTimeString(getAppLocale(), {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }
+
+  function formatCalendarTimeRangeDisplay(from, to) {
+    if (!from) return '';
+    if (to) return `${formatCalendarTimeDisplay(from)}–${formatCalendarTimeDisplay(to)}`;
+    return formatCalendarTimeDisplay(from);
   }
 
   function formatDateInputValue(d) {
@@ -3281,14 +3416,15 @@
 
   function formatCalendarEntryTimeLabel(entry) {
     if (!entry) return '';
+    const allDayLabel = calendarAllDayLabel();
     if (entry.allday !== false) {
-      return '<span class="calendar-unit-allday" title="All day" aria-label="All day"></span>';
+      return `<span class="calendar-unit-allday" title="${escapeHtml(allDayLabel)}" aria-label="${escapeHtml(allDayLabel)}"></span>`;
     }
     if (entry.timeFrom && entry.timeTo) {
-      return `<span class="calendar-unit-time">${escapeHtml(entry.timeFrom)}–${escapeHtml(entry.timeTo)}</span>`;
+      return `<span class="calendar-unit-time">${escapeHtml(formatCalendarTimeRangeDisplay(entry.timeFrom, entry.timeTo))}</span>`;
     }
     if (entry.timeFrom) {
-      return `<span class="calendar-unit-time">${escapeHtml(entry.timeFrom)}</span>`;
+      return `<span class="calendar-unit-time">${escapeHtml(formatCalendarTimeDisplay(entry.timeFrom))}</span>`;
     }
     return '';
   }
@@ -3340,14 +3476,14 @@
     const titles = [];
     related.forEach(e => {
       const title = calendarEntryPlainTitle(e);
-      const time = formatCalendarTimeToken(e);
+      const time = formatCalendarEntryTooltipTime(e);
       if (title && time) titles.push(`${title} (${time})`);
       else if (title) titles.push(title);
       else if (time) titles.push(time);
     });
     const uniqueTitles = [...new Set(titles.filter(Boolean))];
     const range = (entry.dateFrom && entry.dateTo)
-      ? `${formatCalendarDate(entry.dateFrom)} – ${formatCalendarDate(entry.dateTo)}`
+      ? formatCalendarDateRangeDisplay(entry.dateFrom, entry.dateTo)
       : '';
     if (uniqueTitles.length && range) return `${uniqueTitles.join('\n')}\n${range}`;
     if (uniqueTitles.length) return uniqueTitles.join('\n');
@@ -3611,22 +3747,27 @@
     }));
   }
 
+  function formatCalendarEntryTooltipTime(entry) {
+    if (!entry || entry.allday !== false) return '';
+    return formatCalendarTimeRangeDisplay(entry.timeFrom, entry.timeTo);
+  }
+
   function calendarEntryTooltipText(entry) {
     if (!entry) return '';
     const title = calendarEntryPlainTitle(entry);
-    const time = formatCalendarTimeToken(entry);
+    const time = formatCalendarEntryTooltipTime(entry);
     if (title && time) return `${time}\n${title}`;
     if (title && entry.allday !== false) return title;
     if (title) return title;
     if (time) return time;
-    if (entry.allday !== false) return 'All day';
+    if (entry.allday !== false) return calendarAllDayLabel();
     return '';
   }
 
   function formatCalendarPeriodBarWrap(entry, dayEntries = [], { showTitle = null } = {}) {
     const related = (dayEntries.length ? dayEntries : [entry]).filter(e => e?.key === entry.key);
     const titles = [...new Set(related.map(calendarEntryPlainTitle).filter(Boolean))];
-    const time = related.map(formatCalendarTimeToken).find(Boolean) || '';
+    const time = related.map(formatCalendarEntryTooltipTime).find(Boolean) || '';
     const titleCore = titles.join(' · ');
     const titleText = [time, titleCore].filter(Boolean).join(' ');
     const labeled = showTitle == null
@@ -3658,7 +3799,7 @@
     const noteKey = entry.key ? ` data-calendar-key="${escapeHtml(entry.key)}"` : '';
     const timed = entry.allday === false && entry.timeFrom;
     const timeText = timed
-      ? (entry.timeTo ? `${entry.timeFrom}–${entry.timeTo}` : entry.timeFrom)
+      ? formatCalendarTimeRangeDisplay(entry.timeFrom, entry.timeTo)
       : '';
     const mobile = typeof isMobileLayout === 'function' && isMobileLayout();
 
@@ -3844,7 +3985,7 @@
     const rangeFrom = startOfDay(from);
     const rangeTo = startOfDay(to);
     const months = collectCalendarMonths(from, to);
-    const weekdayHeader = WEEKDAY_LABELS
+    const weekdayHeader = calendarWeekdayLabels()
       .map(label => `<div class="calendar-weekday-label">${escapeHtml(label)}</div>`)
       .join('');
 
@@ -3879,7 +4020,7 @@
 
       return [
         `<div class="calendar-group">`,
-        `<div class="calendar-group-title">${escapeHtml(`${MONTH_LABELS_SHORT[month]} ${year}`)}</div>`,
+        `<div class="calendar-group-title">${escapeHtml(calendarMonthYearLabel(year, month))}</div>`,
         `<div class="calendar-units calendar-units--weeks">`,
         `<div class="calendar-week-row calendar-week-row--header">${weekdayHeader}</div>`,
         weekRows.join(''),
@@ -3890,31 +4031,58 @@
   }
 
   function renderCalendarUnitsWeek(from, to, entries = {}, editable = false) {
+    const today = startOfDay(new Date());
     const weeks = collectCalendarWeeks(from, to);
     const months = collectCalendarMonths(from, to);
+    const weekdayHeader = calendarWeekdayLabels()
+      .map(label => `<div class="calendar-weekday-label">${escapeHtml(label)}</div>`)
+      .join('');
+
     return months.map(({ year, month }) => {
-      const unitHtml = weeks
-        .filter(week => weekBelongsToMonth(week, year, month))
-        .map(week => {
-          const payload = `${week.year}-W${String(week.week).padStart(2, '0')}`;
-          const key = calendarEntryKey('week', payload);
-          const entry = entries[key];
-          const label = `W${String(week.week).padStart(2, '0')}`;
-          const range = `${formatCalendarDate(week.start)} – ${formatCalendarDate(week.end)}`;
-          const classes = [
-            'calendar-unit',
-            'calendar-unit--week',
-            calendarEntryHasContent(entry) ? 'calendar-unit--has-note' : '',
-            editable ? 'calendar-unit--editable' : '',
-          ].filter(Boolean).join(' ');
-          return `<div class="${classes}"${calendarUnitAttrs(key, editable, entry)}>`
-            + `<span class="calendar-unit-primary">${escapeHtml(label)}</span>`
-            + `<span class="calendar-unit-secondary">${escapeHtml(range)}</span>`
-            + calendarEntryMarkup(entry)
-            + `</div>`;
-        }).join('');
-      if (!unitHtml) return '';
-      return renderCalendarGroup(`${MONTH_LABELS_SHORT[month]} ${year}`, unitHtml);
+      const monthWeeks = weeks.filter(week => weekBelongsToMonth(week, year, month));
+      if (!monthWeeks.length) return '';
+
+      const weekBlocks = monthWeeks.map(week => {
+        const payload = `${week.year}-W${String(week.week).padStart(2, '0')}`;
+        const weekKey = calendarEntryKey('week', payload);
+        const weekEntry = entries[weekKey];
+        const label = `W${String(week.week).padStart(2, '0')}`;
+        const range = formatCalendarDateRangeDisplay(week.start, week.end);
+        const weekHeaderClasses = [
+          'calendar-week-header',
+          calendarEntryHasContent(weekEntry) ? 'calendar-week-header--has-note' : '',
+          editable ? 'calendar-week-header--editable' : '',
+        ].filter(Boolean).join(' ');
+        const weekHeader = `<div class="${weekHeaderClasses}"${calendarUnitAttrs(weekKey, editable, weekEntry)}>`
+          + `<span class="calendar-unit-primary">${escapeHtml(label)}</span>`
+          + `<span class="calendar-unit-secondary">${escapeHtml(range)}</span>`
+          + (calendarEntryHasContent(weekEntry) ? calendarEntryMarkup(weekEntry) : '')
+          + `</div>`;
+
+        const cells = [];
+        const cursor = new Date(week.start);
+        for (let i = 0; i < 7; i += 1) {
+          cells.push(renderCalendarDayUnit(new Date(cursor), from, to, entries, editable, today));
+          cursor.setDate(cursor.getDate() + 1);
+        }
+
+        return [
+          `<div class="calendar-week-block">`,
+          weekHeader,
+          `<div class="calendar-week-row">${cells.join('')}</div>`,
+          `</div>`,
+        ].join('');
+      }).join('');
+
+      return [
+        `<div class="calendar-group">`,
+        `<div class="calendar-group-title">${escapeHtml(calendarMonthYearLabel(year, month))}</div>`,
+        `<div class="calendar-units calendar-units--weeks">`,
+        `<div class="calendar-week-row calendar-week-row--header">${weekdayHeader}</div>`,
+        weekBlocks,
+        `</div>`,
+        `</div>`,
+      ].join('');
     }).join('');
   }
 
@@ -3935,7 +4103,7 @@
             editable ? 'calendar-unit--editable' : '',
           ].filter(Boolean).join(' ');
           return `<div class="${classes}"${calendarUnitAttrs(key, editable, entry)}>`
-            + `<span class="calendar-unit-primary">${MONTH_LABELS_SHORT[month]}</span>`
+            + `<span class="calendar-unit-primary">${escapeHtml(calendarMonthShortLabel(month, y))}</span>`
             + calendarEntryMarkup(entry)
             + `</div>`;
         }).join('');
@@ -3962,6 +4130,131 @@
     return renderCalendarGroup('Years', items);
   }
 
+  function calendarModeLabel(mode) {
+    const lang = String(getAppLocale()).split('-')[0].toLowerCase();
+    const labels = {
+      de: { day: 'Tag', week: 'Woche', month: 'Monat', year: 'Jahr' },
+      fr: { day: 'Jour', week: 'Semaine', month: 'Mois', year: 'Année' },
+      it: { day: 'Giorno', week: 'Settimana', month: 'Mese', year: 'Anno' },
+      es: { day: 'Día', week: 'Semana', month: 'Mes', year: 'Año' },
+      en: { day: 'Day', week: 'Week', month: 'Month', year: 'Year' },
+    };
+    const map = labels[lang] || labels.en;
+    return map[mode] || mode;
+  }
+
+  function isCalendarSpecOld(spec) {
+    if (!spec?.to) return false;
+    return startOfDay(spec.to).getTime() < startOfDay(new Date()).getTime();
+  }
+
+  function getCalendarBlockMarkdownAtIndex(markdown, calendarIndex) {
+    let idx = 0;
+    let found = '';
+    const re = new RegExp(CALENDAR_BLOCK_RE.source, CALENDAR_BLOCK_RE.flags);
+    String(markdown || '').replace(re, (match) => {
+      if (idx === calendarIndex) found = match;
+      idx += 1;
+      return match;
+    });
+    return found;
+  }
+
+  function removeCalendarBlockFromMarkdown(markdown, calendarIndex) {
+    let idx = 0;
+    const re = new RegExp(CALENDAR_BLOCK_RE.source, CALENDAR_BLOCK_RE.flags);
+    return String(markdown || '').replace(re, (match) => {
+      const thisIndex = idx;
+      idx += 1;
+      if (thisIndex !== calendarIndex) return match;
+      return '';
+    }).replace(/\n{3,}/g, '\n\n');
+  }
+
+  function appendCalendarToPageArchive(blockMarkdown) {
+    const block = String(blockMarkdown || '').trim();
+    if (!block) return '';
+    const existing = String(currentPage?.archive || '').trim();
+    return existing ? `${existing}\n\n${block}` : block;
+  }
+
+  function renderCalendarArchiveButton(spec, calendarIndex, editable) {
+    if (!editable || !isCalendarSpecOld(spec)) return '';
+    return `<button type="button" class="calendar-archive-btn" data-calendar-index="${calendarIndex}" title="Move calendar to page archive">Archive</button>`;
+  }
+
+  function renderArchivedCalendarsSection(archiveMarkdown, options = {}) {
+    const trimmed = String(archiveMarkdown || '').trim();
+    if (!trimmed) return '';
+    const re = new RegExp(CALENDAR_BLOCK_RE.source, CALENDAR_BLOCK_RE.flags);
+    if (!re.test(trimmed)) return '';
+    re.lastIndex = 0;
+    const html = parseCalendarBlocks(trimmed, {
+      ...options,
+      sheetEditable: false,
+      calendarEditable: false,
+    });
+    if (!html || html === trimmed) return '';
+    return [
+      '<details class="calendar-archive-section">',
+      '<summary>Archived calendars</summary>',
+      '<div class="calendar-archive-section-body">',
+      html,
+      '</div>',
+      '</details>',
+    ].join('');
+  }
+
+  async function archiveCalendarBlock(calendarIndex) {
+    if (!easyMDE || !currentPage || !Number.isFinite(calendarIndex)) return;
+    const markdown = easyMDE.value();
+    const spec = getCalendarBlockSpec(markdown, calendarIndex);
+    if (!spec || !isCalendarSpecOld(spec)) return;
+    const block = getCalendarBlockMarkdownAtIndex(markdown, calendarIndex);
+    if (!block) return;
+
+    const nextMarkdown = removeCalendarBlockFromMarkdown(markdown, calendarIndex);
+    currentPage.archive = appendCalendarToPageArchive(block);
+    easyMDE.value(nextMarkdown);
+    setStatus('Archiving calendar…');
+    try {
+      currentPage = await api(`api/pages/${currentPageId}/update/`, 'POST', {
+        title: document.getElementById('page-title')?.value || currentPage.title || 'Untitled',
+        markdown_content: nextMarkdown,
+        archive: currentPage.archive,
+      });
+      renderPreview();
+      setStatus('Calendar archived');
+    } catch (err) {
+      console.warn('archiveCalendarBlock failed:', err);
+      setStatus(err.network ? 'Server offline — not saved' : 'Archive failed');
+    }
+  }
+
+  function renderCalendarModeSelector(mode, editable) {
+    const buttons = CALENDAR_MODES.map(m => {
+      const active = m === mode ? ' calendar-mode-btn--active' : '';
+      const disabled = editable ? '' : ' disabled';
+      return `<button type="button" class="calendar-mode-btn${active}" data-calendar-mode="${escapeHtml(m)}"${disabled} aria-pressed="${m === mode ? 'true' : 'false'}">${escapeHtml(calendarModeLabel(m))}</button>`;
+    }).join('');
+    return `<div class="calendar-mode-selector" role="group" aria-label="Calendar view">${buttons}</div>`;
+  }
+
+  function updateCalendarModeInMarkdown(markdown, calendarIndex, mode) {
+    if (!CALENDAR_MODES.includes(mode)) return String(markdown || '');
+    let idx = 0;
+    const re = /```(?:calendar|calender)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+    return String(markdown || '').replace(re, (match, fenceAttrs, content = '') => {
+      const thisIndex = idx;
+      idx += 1;
+      if (thisIndex !== calendarIndex) return match;
+      const nextAttrs = setGanttFenceAttr(fenceAttrs || '', 'mode', mode);
+      const fence = `calendar{${nextAttrs}}`;
+      const body = content ? `\n${String(content).replace(/^\n/, '').replace(/\s+$/, '')}\n` : '\n';
+      return `\`\`\`${fence}${body}\`\`\``;
+    });
+  }
+
   function renderCalendarBlockHtml(spec, options = {}) {
     if (!spec.from || !spec.to) {
       return `<div class="calendar-block calendar-block--error">Calendar: invalid <code>from</code>/<code>to</code> (use <code>D.M.YY</code> or <code>D.M.YYYY</code>).</div>`;
@@ -3969,7 +4262,7 @@
     const editable = !!options.editable;
     const entries = spec.entries || {};
     const title = spec.title
-      || `${formatCalendarDate(spec.from)} – ${formatCalendarDate(spec.to)}`;
+      || formatCalendarDateRangeDisplay(spec.from, spec.to);
     let bodyHtml = '';
     if (spec.mode === 'week') bodyHtml = renderCalendarUnitsWeek(spec.from, spec.to, entries, editable);
     else if (spec.mode === 'month') bodyHtml = renderCalendarUnitsMonth(spec.from, spec.to, entries, editable);
@@ -3977,11 +4270,16 @@
     else bodyHtml = renderCalendarUnitsDay(spec.from, spec.to, entries, editable);
     const colClass = spec.col ? ` calendar-block--${escapeHtml(spec.col)}` : '';
     const colStyle = spec.colCss ? ` style="--calendar-bg:${escapeHtml(spec.colCss)}"` : '';
+    const oldClass = isCalendarSpecOld(spec) ? ' calendar-block--old' : '';
+    const calendarIndex = options.calendarIndex ?? 0;
     return [
-      `<div class="calendar-block${colClass}${editable ? ' calendar-block--editable' : ''}" data-calendar-mode="${escapeHtml(spec.mode)}" data-calendar-index="${options.calendarIndex ?? 0}"${colStyle}>`,
+      `<div class="calendar-block${colClass}${oldClass}${editable ? ' calendar-block--editable' : ''}" data-calendar-mode="${escapeHtml(spec.mode)}" data-calendar-index="${calendarIndex}"${colStyle}>`,
       `<div class="calendar-block-header">`,
       `<div class="calendar-block-title">${escapeHtml(title)}</div>`,
-      `<div class="calendar-block-meta">mode: ${escapeHtml(spec.mode)}</div>`,
+      `<div class="calendar-block-meta">`,
+      renderCalendarArchiveButton(spec, calendarIndex, editable),
+      renderCalendarModeSelector(spec.mode, editable),
+      `</div>`,
       `</div>`,
       bodyHtml,
       `</div>`,
@@ -4174,7 +4472,7 @@
         const monthEnd = monthEndDate > to ? to : monthEndDate;
         const left = ((monthStart - from) / 86400000) / Math.max(1, days - 1) * 100;
         const width = (daysBetweenInclusive(monthStart, monthEnd) / days) * 100;
-        ticks += `<div class="gantt-scale-tick" style="left:${left}%;width:${width}%"><span>${MONTH_LABELS_SHORT[cursor.getMonth()]} ${cursor.getFullYear()}</span></div>`;
+        ticks += `<div class="gantt-scale-tick" style="left:${left}%;width:${width}%"><span>${escapeHtml(calendarMonthShortLabel(cursor.getMonth(), cursor.getFullYear()))} ${cursor.getFullYear()}</span></div>`;
         cursor.setMonth(cursor.getMonth() + 1);
       }
     } else {
@@ -7436,6 +7734,9 @@ function formatTextWithMarkup(rawText) {
     html = restoreStyledSpanTokens(html, processed.styledSpanHtml);
     html = html.replace(/<p>\s*(<div class="md-styled-block"[\s\S]*?<\/div>)\s*<\/p>/gi, '$1');
     html = restoreMarkdownImageTokens(html, processed.imageSpecs);
+    html += renderArchivedCalendarsSection(currentPage?.archive, {
+      sheetEditable: isPreviewInteractionEnabled(),
+    });
     preview.innerHTML = html;
     applyPreviewImageStyles(preview);
     preview.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(h => { h.id = slugifyHeading(h.textContent); });
@@ -9209,9 +9510,7 @@ function formatTextWithMarkup(rawText) {
     const title = document.getElementById('calendar-note-modal-title');
     if (title) {
       const label = dayRange
-        ? (startOfDay(dayRange.from).getTime() === startOfDay(dayRange.to).getTime()
-          ? formatCalendarDate(dayRange.from)
-          : `${formatCalendarDate(dayRange.from)} – ${formatCalendarDate(dayRange.to)}`)
+        ? formatCalendarDateRangeDisplay(dayRange.from, dayRange.to)
         : key.replace(/^@[dwmy]:/i, '');
       title.textContent = `Calendar note · ${label}`;
     }
@@ -9334,7 +9633,38 @@ function formatTextWithMarkup(rawText) {
 
     preview.addEventListener('click', e => {
       if (!isPreviewInteractionEnabled()) return;
-      const unit = e.target.closest?.('.calendar-unit--editable');
+
+      const modeBtn = e.target.closest?.('.calendar-mode-btn');
+      if (modeBtn && preview.contains(modeBtn) && !modeBtn.disabled) {
+        e.preventDefault();
+        e.stopPropagation();
+        hideCalendarHoverTooltip();
+        const block = modeBtn.closest('.calendar-block');
+        const calendarIndex = parseInt(block?.dataset.calendarIndex, 10);
+        const mode = modeBtn.dataset.calendarMode;
+        if (!easyMDE || !block || !Number.isFinite(calendarIndex) || !CALENDAR_MODES.includes(mode)) return;
+        if (block.dataset.calendarMode === mode) return;
+        const oldMarkdown = easyMDE.value();
+        const updated = updateCalendarModeInMarkdown(oldMarkdown, calendarIndex, mode);
+        if (updated !== oldMarkdown) {
+          easyMDE.value(updated);
+          scheduleSave();
+          renderPreview();
+        }
+        return;
+      }
+
+      const archiveBtn = e.target.closest?.('.calendar-archive-btn');
+      if (archiveBtn && preview.contains(archiveBtn)) {
+        e.preventDefault();
+        e.stopPropagation();
+        hideCalendarHoverTooltip();
+        const calendarIndex = parseInt(archiveBtn.dataset.calendarIndex, 10);
+        if (Number.isFinite(calendarIndex)) void archiveCalendarBlock(calendarIndex);
+        return;
+      }
+
+      const unit = e.target.closest?.('.calendar-unit--editable, .calendar-week-header--editable');
       if (!unit || !preview.contains(unit)) return;
       if (e.target.closest('a, button, input, textarea, img.md-image-link')) return;
       e.preventDefault();
@@ -11298,6 +11628,100 @@ function formatTextWithMarkup(rawText) {
     return currentPageId;
   }
 
+  function isNotesTreeDnd(data) {
+    const origin = data?.data?.origin;
+    if (!origin?.get_container) return false;
+    try {
+      return origin.get_container()[0]?.id === 'tree';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function getTreeDragScrollContainers() {
+    const treeEl = document.getElementById('tree');
+    if (!treeEl) return [];
+    const containers = [];
+    const seen = new Set();
+    const add = (el) => {
+      if (!el || seen.has(el)) return;
+      if (el.scrollHeight <= el.clientHeight + 1) return;
+      seen.add(el);
+      containers.push(el);
+    };
+    add(treeEl);
+    add(document.getElementById('left-panel'));
+    let node = treeEl.parentElement;
+    while (node && node !== document.body) {
+      const style = window.getComputedStyle(node);
+      if (/auto|scroll|overlay/.test(style.overflowY)) add(node);
+      node = node.parentElement;
+    }
+    return containers;
+  }
+
+  function autoScrollTreeDragContainers(clientY, clientX) {
+    const edge = 44;
+    const maxStep = 18;
+    getTreeDragScrollContainers().forEach(el => {
+      const rect = el.getBoundingClientRect();
+      if (clientX < rect.left - 8 || clientX > rect.right + 8) return;
+      if (clientY < rect.top + edge) {
+        const dist = rect.top + edge - clientY;
+        el.scrollTop -= Math.min(maxStep, Math.max(2, Math.ceil((dist / edge) * maxStep)));
+      } else if (clientY > rect.bottom - edge) {
+        const dist = clientY - (rect.bottom - edge);
+        el.scrollTop += Math.min(maxStep, Math.max(2, Math.ceil((dist / edge) * maxStep)));
+      }
+    });
+  }
+
+  function treeDragScrollTick() {
+    if (!treeDragScrollActive) {
+      treeDragScrollRaf = null;
+      return;
+    }
+    autoScrollTreeDragContainers(treeDragScrollPointerY, treeDragScrollPointerX);
+    treeDragScrollRaf = requestAnimationFrame(treeDragScrollTick);
+  }
+
+  function startTreeDragAutoScroll() {
+    if (!treeDragScrollActive) {
+      treeDragScrollActive = true;
+      if (!treeDragScrollRaf) treeDragScrollRaf = requestAnimationFrame(treeDragScrollTick);
+    }
+  }
+
+  function stopTreeDragAutoScroll() {
+    treeDragScrollActive = false;
+    if (treeDragScrollRaf) {
+      cancelAnimationFrame(treeDragScrollRaf);
+      treeDragScrollRaf = null;
+    }
+  }
+
+  function initTreeDragAutoScroll() {
+    if (document.body.dataset.treeDragScrollBound === '1') return;
+    document.body.dataset.treeDragScrollBound = '1';
+
+    $(document)
+      .on('dnd_start.vakata', (_e, data) => {
+        if (!isNotesTreeDnd(data)) return;
+        treeDragScrollPointerY = data.event?.clientY ?? 0;
+        treeDragScrollPointerX = data.event?.clientX ?? 0;
+        startTreeDragAutoScroll();
+      })
+      .on('dnd_move.vakata', (_e, data) => {
+        if (!isNotesTreeDnd(data)) return;
+        treeDragScrollPointerY = data.event?.clientY ?? 0;
+        treeDragScrollPointerX = data.event?.clientX ?? 0;
+        startTreeDragAutoScroll();
+      })
+      .on('dnd_stop.vakata', () => {
+        stopTreeDragAutoScroll();
+      });
+  }
+
   function clearTreeMoveConfirmSchedule() {
     if (treeMoveConfirmTimer) {
       clearTimeout(treeMoveConfirmTimer);
@@ -11503,6 +11927,7 @@ function formatTextWithMarkup(rawText) {
   }
 
   function bindTreeEvents() {
+    initTreeDragAutoScroll();
     const $tree = $('#tree');
 
     $tree.off('select_node.jstree').on('select_node.jstree', function (e, data) {
@@ -11726,7 +12151,8 @@ function formatTextWithMarkup(rawText) {
 
     const payload = {
       title: titleInput ? titleInput.value : (currentPage.title || 'Untitled'),
-      markdown_content: easyMDE ? easyMDE.value() : ''
+      markdown_content: easyMDE ? easyMDE.value() : '',
+      archive: currentPage.archive || '',
     };
 
     try {
@@ -13345,6 +13771,7 @@ function formatTextWithMarkup(rawText) {
   initPreviewTagClicks();
   initSheetCellEditors();
   initCalendarNoteEditors();
+  initAppSettings();
   initGanttNoteEditors();
   initKanbanEditors();
   initKanbanganttEditors();

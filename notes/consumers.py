@@ -63,7 +63,9 @@ class WorkspaceTagsConsumer(AsyncJsonWebsocketConsumer):
     @database_sync_to_async
     def _user_has_workspace_access(self):
         return Workspace.objects.filter(
-            Q(owner=self.user) | Q(workspacemembership__user=self.user),
+            Q(owner=self.user) |
+            Q(workspacemembership__user=self.user) |
+            Q(groups__in=self.user.groups.all()),
             pk=self.workspace_id,
             deleted=False,
         ).exists()

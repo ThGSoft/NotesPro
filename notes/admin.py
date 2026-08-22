@@ -1,5 +1,9 @@
+from django import forms
 from django.contrib import admin, messages
+from django.contrib.admin.widgets import FilteredSelectMultiple
 from django.contrib.auth import get_user_model
+from django.contrib.auth.admin import GroupAdmin as BaseGroupAdmin
+from django.contrib.auth.models import Group
 from django.http import HttpResponse
 from django.shortcuts import redirect
 from django.template.response import TemplateResponse
@@ -28,11 +32,50 @@ from .workspace_io import (
 )
 
 
+admin.site.unregister(Group)
+
+
+class GroupAdminForm(forms.ModelForm):
+    workspaces = forms.ModelMultipleChoiceField(
+        queryset=Workspace.objects.none(),
+        required=False,
+        label='Workspaces',
+        widget=FilteredSelectMultiple('workspaces', is_stacked=False),
+    )
+
+    class Meta:
+        model = Group
+        fields = ('name', 'permissions')
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        qs = Workspace.objects.filter(deleted=False).select_related('owner').order_by(
+            'owner__username', 'name',
+        )
+        self.fields['workspaces'].queryset = qs
+        self.fields['workspaces'].label_from_instance = lambda ws: f'{ws.owner.username}: {ws.name}'
+        if self.instance.pk:
+            self.fields['workspaces'].initial = self.instance.workspaces.all()
+
+    def save(self, commit=True):
+        group = super().save(commit=commit)
+        if commit:
+            group.workspaces.set(self.cleaned_data.get('workspaces', []))
+        return group
+
+
+@admin.register(Group)
+class GroupAdmin(BaseGroupAdmin):
+    form = GroupAdminForm
+    filter_horizontal = ('permissions',)
+
+
 @admin.register(Workspace)
 class WorkspaceAdmin(admin.ModelAdmin):
     list_display = ('name', 'slug', 'owner', 'deleted', 'created_at')
-    list_filter = ('deleted', 'owner')
+    list_filter = ('deleted', 'owner', 'groups')
     search_fields = ('name', 'slug', 'owner__username')
+    filter_horizontal = ('groups',)
     actions = ['export_workspace_action']
     change_list_template = 'admin/notes/workspace/change_list.html'
 

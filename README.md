@@ -346,7 +346,7 @@ Example — total of three cells in the same row:
 =SUM_ABOVE
 
 
-Adds all numeric values above the current cell in the same column.
+Adds all numeric values above the current cell in the same column. Case-insensitive (`sum_above`, `Sum_Above`, …). Can be used alone or inside a formula (e.g. `=sum_above/12`).
 
 #### Math expressions
 

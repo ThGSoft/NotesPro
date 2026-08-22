@@ -1,6 +1,6 @@
 {% load static %}
 <!doctype html>
-<html>
+<html lang="{{ app_language|default:'en' }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -39,6 +39,7 @@
         <a id="admin-link" href="{% url 'admin:index' %}" class="btn btn-sm btn-outline-light d-none" target="_blank" rel="noopener noreferrer" title="Django Admin">Admin</a>
         {% endif %}
         <button id="toggle-right" class="btn btn-sm btn-outline-light" type="button" title="Chat &amp; Mail">Chat &amp; Mail</button>
+        <button id="app-settings-btn" class="btn btn-sm btn-outline-light" type="button" title="Settings">Settings</button>
         <a href="{% url 'setup_2fa' %}" class="btn btn-sm btn-outline-light" title="Two-factor authentication">2FA</a>
         <form action="{% url 'logout' %}" method="post">
           {% csrf_token %}
@@ -381,6 +382,7 @@
         rightPanelWidth: {% if user_settings.right_panel_width %}{{ user_settings.right_panel_width }}{% else %}null{% endif %},
         rightPanelExpanded: {{ user_settings.right_panel_expanded|yesno:"true,false" }},
         fontSize: {{ user_settings.font_size|default:14 }},
+        language: "{{ app_language_stored|escapejs }}",
         extraConfigs: appExtraConfigs,
         workspacePages: appWorkspacePages,
         isStaff: {% if user.is_staff %}true{% else %}false{% endif %},
@@ -899,6 +901,32 @@
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-sm btn-outline-light" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade dashboard-modal-root" id="app-settings-modal" tabindex="-1" aria-labelledby="app-settings-modal-title" aria-hidden="true" data-bs-theme="dark">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content dashboard-modal">
+      <div class="modal-header">
+        <h5 class="modal-title" id="app-settings-modal-title">Settings</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-2">
+          <label class="form-label small fw-semibold" for="app-settings-language">Language</label>
+          <select id="app-settings-language" class="form-select form-select-sm">
+            {% for code, label in app_language_choices %}
+            <option value="{{ code }}"{% if code == app_language_stored %} selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+          <p class="small dashboard-modal-hint mt-2 mb-0">Affects calendar date and time formatting. Choose browser default to follow your device locale.</p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-sm btn-outline-light" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-sm btn-primary" id="app-settings-save">Save</button>
       </div>
     </div>
   </div>
