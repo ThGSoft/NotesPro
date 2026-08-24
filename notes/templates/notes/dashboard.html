@@ -382,6 +382,8 @@
         extraConfigs: appExtraConfigs,
         workspacePages: appWorkspacePages,
         isStaff: {% if user.is_staff %}true{% else %}false{% endif %},
+        isGroupAdmin: {% if is_group_admin %}true{% else %}false{% endif %},
+        canWrite: {% if can_write_workspace %}true{% else %}false{% endif %},
         localFileOpenEnabled: {{ local_file_open_enabled|yesno:"true,false" }},
         tagWebSocketEnabled: {{ tag_websocket_enabled|yesno:"true,false" }},
     };

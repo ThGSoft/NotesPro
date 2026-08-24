@@ -5627,10 +5627,16 @@ table {
 }
 
 .keep-card--draggable {
-  cursor: grab;
+  cursor: default;
 }
 
-.keep-card--dragging {
+.keep-note-drag {
+  cursor: grab;
+  touch-action: none;
+}
+
+.keep-card--dragging,
+.keep-card--dragging .keep-note-drag {
   opacity: 0.45;
   cursor: grabbing;
 }

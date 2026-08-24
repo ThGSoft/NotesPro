@@ -79,7 +79,9 @@
   let editorPreviewResizeObserver = null;
   let tocSpyScrollHandler = null;
   let isEditing = false;
-  let userCanEdit = Boolean(window.APP_BOOT?.isStaff);
+  let userCanEdit = Boolean(
+    window.APP_BOOT?.canWrite || window.APP_BOOT?.isStaff || window.APP_BOOT?.isGroupAdmin
+  );
   let rightPanelWasExpandedBeforePreview = null;
   let currentEditor = null; // Speichert den Editor-Kontext für den Callback
   let chatPollTimer = null;
@@ -8058,16 +8060,24 @@ function formatTextWithMarkup(rawText) {
     });
   }
 
-  function syncUserEditAccess(isOwner, role) {
-    userCanEdit = Boolean(isOwner || role === 'write' || window.APP_BOOT?.isStaff);
+  function syncUserEditAccess(isOwner, role, canWrite = null) {
+    const writeFromServer = canWrite == null
+      ? Boolean(isOwner || role === 'write' || role === 'owner')
+      : Boolean(canWrite);
+    userCanEdit = Boolean(
+      writeFromServer
+      || window.APP_BOOT?.isStaff
+      || window.APP_BOOT?.isGroupAdmin
+    );
     const editToggle = document.getElementById('edit-toggle');
-    if (editToggle) editToggle.classList.toggle('d-none', !userCanEdit);
+    if (editToggle) editToggle.classList.toggle('d-none', !userCanEdit || mainView === 'keep');
     ['create-page', 'create-folder', 'delete-page'].forEach(id => {
       const btn = document.getElementById(id);
       if (btn) btn.disabled = !userCanEdit;
     });
     if (!userCanEdit && isEditing) setEditing(false);
     document.getElementById('keep-composer')?.classList.toggle('d-none', !userCanEdit);
+    if (mainView === 'keep') renderKeepGrid();
     if (isMobileLayout() && !isEditing) renderPreview();
   }
 
@@ -11977,6 +11987,10 @@ function formatTextWithMarkup(rawText) {
     if (!userCanEdit && ['move_node', 'rename_node', 'create_node', 'delete_node'].includes(operation)) {
       return false;
     }
+    if (operation === 'move_node' && parent && parent.id !== '#') {
+      // Pages are not containers — drop before/after them to reorder in the same folder.
+      if (!isTreeFolder(parent)) return false;
+    }
     return true;
   }
 
@@ -12069,6 +12083,8 @@ function formatTextWithMarkup(rawText) {
       const saved = await persistTreeMove(data);
       if (!saved) return;
 
+      const sameFolder = String(data.old_parent) === String(data.parent);
+      if (sameFolder) return;
       scheduleTreeMoveConfirm(data);
     });
   }
@@ -12180,7 +12196,12 @@ function formatTextWithMarkup(rawText) {
       $('#tree').jstree({
         core: { data, check_callback: treeCheckCallback },
         plugins: ['dnd', 'search', 'types', 'contextmenu'],
-        types: { folder: { icon: 'jstree-folder' }, page: { icon: 'jstree-file' } },
+        dnd: { copy: false },
+        types: {
+          default: { valid_children: ['folder', 'page'] },
+          folder: { icon: 'jstree-folder', valid_children: ['folder', 'page'] },
+          page: { icon: 'jstree-file', valid_children: [] },
+        },
         contextmenu: {
           items: function (node) {
             return {
@@ -12546,7 +12567,7 @@ function formatTextWithMarkup(rawText) {
     editorWrap?.classList.toggle('d-none', mainView === 'keep');
     keepBtn?.classList.toggle('btn-primary', mainView === 'keep');
     keepBtn?.classList.toggle('btn-outline-light', mainView !== 'keep');
-    editToggle?.classList.toggle('d-none', mainView === 'keep');
+    editToggle?.classList.toggle('d-none', mainView === 'keep' || !userCanEdit);
 
     if (mainView === 'keep') {
       if (titlePreview) titlePreview.textContent = 'Keep';
@@ -12663,7 +12684,6 @@ function formatTextWithMarkup(rawText) {
       const checklistHtml = hasChecklist
         ? `<div class="keep-checklist">${renderKeepChecklistItems(note.checklist, { editable: expanded && userCanEdit, noteId: note.id })}</div>`
         : '';
-      const dragAttr = canDrag && !expanded ? ' draggable="true"' : '';
       if (expanded && userCanEdit) {
         return `
           <article class="keep-card ${colorClass} keep-card--expanded" data-note-id="${note.id}" data-pinned="${note.pinned ? '1' : '0'}">
@@ -12683,14 +12703,22 @@ function formatTextWithMarkup(rawText) {
       }
       const titleHtml = note.title ? `<div class="keep-card-title">${escapeHtml(note.title)}</div>` : '';
       const bodyHtml = note.body ? `<div class="keep-card-body keep-md">${renderKeepMarkdown(note.body)}</div>` : '';
+      const dragHandle = canDrag
+        ? '<button type="button" class="keep-icon-btn keep-note-drag" title="Drag to reorder" draggable="true" aria-label="Drag to reorder">⠿</button>'
+        : '';
+      const editBtn = userCanEdit
+        ? '<button type="button" class="keep-icon-btn keep-note-edit" title="Edit">✏️</button>'
+        : '';
       return `
-        <article class="keep-card ${colorClass}${canDrag && !expanded ? ' keep-card--draggable' : ''}" data-note-id="${note.id}" data-pinned="${note.pinned ? '1' : '0'}"${dragAttr}>
+        <article class="keep-card ${colorClass}${canDrag ? ' keep-card--draggable' : ''}" data-note-id="${note.id}" data-pinned="${note.pinned ? '1' : '0'}">
           <div class="keep-card-inner keep-card-view">
             ${titleHtml}
             ${bodyHtml}
             ${checklistHtml}
           </div>
           <div class="keep-card-footer">
+            ${dragHandle}
+            ${editBtn}
             <button type="button" class="keep-icon-btn keep-note-pin${note.pinned ? ' active' : ''}" title="Pin">📌</button>
             <button type="button" class="keep-icon-btn keep-note-checklist" title="Checklist">☑</button>
             <button type="button" class="keep-icon-btn keep-note-archive" title="${note.archived ? 'Unarchive' : 'Archive'}">📥</button>
@@ -12992,6 +13020,18 @@ function formatTextWithMarkup(rawText) {
       const noteId = parseInt(card.dataset.noteId, 10);
       if (!Number.isFinite(noteId)) return;
 
+      if (e.target.closest('.keep-note-drag')) {
+        e.preventDefault();
+        return;
+      }
+      if (e.target.closest('.keep-note-edit')) {
+        e.stopPropagation();
+        if (!userCanEdit) return;
+        expandedKeepCardId = noteId;
+        renderKeepGrid();
+        focusExpandedKeepNote();
+        return;
+      }
       if (e.target.closest('.keep-note-pin')) {
         e.stopPropagation();
         const note = quickNotesCache.find(n => n.id === noteId);
@@ -13023,7 +13063,11 @@ function formatTextWithMarkup(rawText) {
         return;
       }
       if (e.target.closest('.keep-card-footer') || e.target.closest('.keep-color-dot')) return;
-      if (e.target.closest('a, button, input, textarea, label, .md-image-link')) return;
+      if (card.classList.contains('keep-card--expanded')) {
+        if (e.target.closest('a, button, input, textarea, label')) return;
+        return;
+      }
+      if (e.target.closest('a[href]')) return;
       if (!userCanEdit) return;
       if (expandedKeepCardId !== noteId) {
         expandedKeepCardId = noteId;
@@ -13065,14 +13109,18 @@ function formatTextWithMarkup(rawText) {
     const keepGrid = document.getElementById('keep-grid');
     keepGrid?.addEventListener('dragstart', e => {
       if (!userCanEdit || keepSearchActive()) return;
-      const card = e.target.closest?.('.keep-card');
-      if (!card || !keepGrid.contains(card) || card.classList.contains('keep-card--expanded')) return;
-      if (e.target.closest('button, input, textarea, a, .keep-color-dot')) {
+      const handle = e.target.closest?.('.keep-note-drag');
+      if (!handle || !keepGrid.contains(handle)) return;
+      const card = handle.closest('.keep-card');
+      if (!card || card.classList.contains('keep-card--expanded')) {
         e.preventDefault();
         return;
       }
       const noteId = parseInt(card.dataset.noteId, 10);
-      if (!Number.isFinite(noteId)) return;
+      if (!Number.isFinite(noteId)) {
+        e.preventDefault();
+        return;
+      }
       keepDragState = { noteId, moved: false };
       card.classList.add('keep-card--dragging');
       e.dataTransfer.effectAllowed = 'move';
@@ -13083,7 +13131,8 @@ function formatTextWithMarkup(rawText) {
     });
 
     keepGrid?.addEventListener('dragend', e => {
-      const card = e.target.closest?.('.keep-card');
+      const handle = e.target.closest?.('.keep-note-drag');
+      const card = handle?.closest('.keep-card') || e.target.closest?.('.keep-card');
       card?.classList.remove('keep-card--dragging');
       clearKeepDropTargets(keepGrid);
       setTimeout(() => { keepDragState = null; }, 50);
@@ -13726,7 +13775,11 @@ function formatTextWithMarkup(rawText) {
 
           const currentUserMembership = data.members.find(m => m.id === currentUserId);
           const currentUserRole = currentUserMembership ? currentUserMembership.role : 'read';
-          syncUserEditAccess(data.is_current_user_owner, currentUserRole);
+          syncUserEditAccess(
+            data.is_current_user_owner,
+            currentUserRole,
+            data.can_write,
+          );
 
           workspaceMemberIds.clear();
           cachedWorkspaceMembers = [...data.members].sort((a, b) =>

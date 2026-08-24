@@ -379,6 +379,10 @@ def dashboard(request):
         'app_base': (getattr(django_settings, 'FORCE_SCRIPT_NAME', None) or request.META.get('SCRIPT_NAME') or '').rstrip('/'),
         'local_file_open_enabled': getattr(django_settings, 'LOCAL_FILE_OPEN_ENABLED', False),
         'tag_websocket_enabled': getattr(django_settings, 'ENABLE_TAG_WEBSOCKET', False),
+        'can_write_workspace': bool(
+            current_workspace and _user_has_write_access(request.user, current_workspace)
+        ),
+        'is_group_admin': request.user.groups.filter(name='Group Admin').exists(),
     })
 
 @login_required
@@ -553,11 +557,12 @@ def remove_workspace_member(request):
 @login_required
 def get_workspace_members(request, workspace_id):
     workspace = get_object_or_404(_workspace_qs(request.user), id=workspace_id)
-    # Zugriffsschutz: Nur der Besitzer oder bestehende Mitglieder dürfen die Liste sehen
+    # Zugriffsschutz: Besitzer, Mitglied, oder Workspace-Gruppe
     is_owner = (workspace.owner == request.user)
     is_member = WorkspaceMembership.objects.filter(workspace_id=workspace.id, user_id=request.user.id).exists()
+    has_group_access = workspace.groups.filter(pk__in=request.user.groups.all()).exists()
     print("get_workspace_members", request.user.username, "Owner:", workspace.owner, "WS_ID:", workspace.id, "IsOwner:", is_owner, "IsMember:", is_member)
-    if not is_owner and not is_member:
+    if not is_owner and not is_member and not has_group_access:
         return JsonResponse({'status': 'error', 'message': 'Access restricted.'}, status=403)
         
     members_list = []
@@ -604,6 +609,7 @@ def get_workspace_members(request, workspace_id):
         'members': members_list,
         'pending_invites': pending_invites,
         'is_current_user_owner': is_owner,
+        'can_write': _user_has_write_access(request.user, workspace),
     })
 
 
@@ -809,16 +815,16 @@ def page_reorder(request):
     )
     if parent is not None:
         if not parent.is_folder:
-            return JsonResponse(
-                {'status': 'error', 'message': 'Pages can only be moved into folders or the workspace root.'},
-                status=400,
-            )
-        subtree_ids = set(_page_subtree_ids(page))
-        if parent.id == page.id or parent.id in subtree_ids:
-            return JsonResponse(
-                {'status': 'error', 'message': 'Cannot move a folder into itself or its descendants.'},
-                status=400,
-            )
+            # Dropped onto a page: reorder as a sibling in the same folder.
+            position = parent.sort_order
+            parent = parent.parent
+        if parent is not None:
+            subtree_ids = set(_page_subtree_ids(page))
+            if parent.id == page.id or parent.id in subtree_ids:
+                return JsonResponse(
+                    {'status': 'error', 'message': 'Cannot move a folder into itself or its descendants.'},
+                    status=400,
+                )
 
     with transaction.atomic():
         old_parent_id = page.parent_id
