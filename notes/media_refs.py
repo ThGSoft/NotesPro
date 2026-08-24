@@ -90,6 +90,86 @@ def collect_referenced_media_paths(texts) -> set[str]:
     return referenced
 
 
+def media_markdown_href(url_or_path: str | None) -> str:
+    """Canonical markdown href for a managed media file: media/uploads/…"""
+    relpath = normalize_media_relpath(url_or_path)
+    if relpath:
+        return f'media/{relpath}'
+    return (url_or_path or '').strip()
+
+
+def _process_outside_fences(text: str, processor) -> str:
+    parts = re.split(r'(```[\s\S]*?```)', text)
+    return ''.join(part if part.startswith('```') else processor(part) for part in parts)
+
+
+def normalize_media_paths_in_text(
+    text: str | None,
+    *,
+    wrap_bare_paths: bool = True,
+) -> tuple[str, int]:
+    """Rewrite /media/… targets to media/… and optionally wrap bare paths as links."""
+    if not text:
+        return text or '', 0
+
+    changes = 0
+
+    def rewrite_url(url: str) -> tuple[str, bool]:
+        relpath = normalize_media_relpath(url)
+        if not relpath:
+            return url, False
+        canonical = f'media/{relpath}'
+        raw = url.split(' ', 1)[0].strip()
+        return canonical, raw != canonical
+
+    def fix_image(match: re.Match) -> str:
+        nonlocal changes
+        alt, url = match.group(1), match.group(2)
+        attrs = match.group(3) or ''
+        new_url, changed = rewrite_url(url)
+        if changed:
+            changes += 1
+        return f'![{alt}]({new_url}){attrs}'
+
+    def fix_link(match: re.Match) -> str:
+        nonlocal changes
+        label, url = match.group(1), match.group(2)
+        new_url, changed = rewrite_url(url)
+        if changed:
+            changes += 1
+        return f'[{label}]({new_url})'
+
+    def fix_segment(segment: str) -> str:
+        nonlocal changes
+        updated = IMAGE_LINK_RE.sub(fix_image, segment)
+        updated = LINK_RE.sub(fix_link, updated)
+        if not wrap_bare_paths:
+            return updated
+
+        def wrap_bare(match: re.Match) -> str:
+            nonlocal changes
+            relpath = normalize_media_relpath(match.group(1))
+            if not relpath:
+                return match.group(0)
+            changes += 1
+            label = Path(relpath).name or relpath
+            return f'[{label}](media/{relpath})'
+
+        return BARE_MEDIA_PATH_RE.sub(wrap_bare, updated)
+
+    updated = _process_outside_fences(text, fix_segment)
+    return updated, changes
+
+
+def normalize_media_attachment_url(url_or_path: str | None) -> tuple[str, bool]:
+    relpath = normalize_media_relpath(url_or_path)
+    if not relpath:
+        return (url_or_path or '').strip(), False
+    canonical = f'media/{relpath}'
+    raw = (url_or_path or '').strip()
+    return canonical, raw != canonical
+
+
 def clear_broken_media_links_in_text(
     text: str | None,
     *,

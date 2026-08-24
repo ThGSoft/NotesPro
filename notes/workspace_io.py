@@ -381,7 +381,7 @@ def _rewrite_media_paths(text, path_map):
         new_norm = new_path.replace('\\', '/')
         replacements = {
             old_norm: new_norm,
-            f'/media/{old_norm}': f'/media/{new_norm}',
+            f'/media/{old_norm}': f'media/{new_norm}',
             f'media/{old_norm}': f'media/{new_norm}',
         }
         for old, new in replacements.items():

@@ -53,6 +53,7 @@ MIDDLEWARE = [
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'notes.middleware.ApiLoginRequiredJsonMiddleware',
+    'notes.middleware.IpVisitLogMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
 ]
 
@@ -140,5 +141,9 @@ INCOMING_MAIL_IMAP_SSL = _env_bool('INCOMING_MAIL_IMAP_SSL', True)
 
 # Tag search WebSocket (Channels/Daphne). Off by default in production — Gunicorn/WSGI cannot serve /ws/.
 ENABLE_TAG_WEBSOCKET = _env_bool('ENABLE_TAG_WEBSOCKET', DEBUG)
+
+IP_VISIT_LOG_ENABLED = _env_bool('IP_VISIT_LOG_ENABLED', True)
+IP_VISIT_LOG_GEO = _env_bool('IP_VISIT_LOG_GEO', True)
+IP_VISIT_LOG_GEO_TIMEOUT = float(os.environ.get('IP_VISIT_LOG_GEO_TIMEOUT', '2.0'))
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

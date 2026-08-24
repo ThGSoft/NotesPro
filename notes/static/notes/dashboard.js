@@ -2,7 +2,7 @@
   const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
   const appBase = (window.APP_BASE || '').replace(/\/$/, '');
 
-  /** Normalize upload/paste URL to markdown path: {appBase}/media/relative/path */
+  /** Normalize upload/paste URL to markdown path: media/relative/path */
   function mediaMarkdownPath(urlOrPath) {
     if (!urlOrPath) return '';
     let path = String(urlOrPath).replace(/\\/g, '/');
@@ -13,12 +13,25 @@
       path = path.slice(appBase.length);
     }
     let rel = '';
-    const mediaMatch = path.match(/\/media\/(.+)$/i);
+    const mediaMatch = path.match(/(?:^|\/)media\/(.+)$/i);
     if (mediaMatch) rel = mediaMatch[1];
-    else if (/^media\/(.+)$/i.test(path)) rel = path.replace(/^media\//i, '');
+    else if (/^(uploads|pasted_images|incoming_mail)\//i.test(path)) rel = path.replace(/^\/+/, '');
     else rel = path.replace(/^\/+/, '');
-    const prefix = appBase ? `${appBase}/media/` : '/media/';
-    return prefix + rel;
+    return `media/${rel}`;
+  }
+
+  /** Resolve stored media/… markdown href to a browser path (/media/… or /subpath/media/…). */
+  function resolveMediaHref(href) {
+    if (!href) return '';
+    if (/^https?:\/\//i.test(href) || /^file:/i.test(href)) return href;
+    let path = String(href).replace(/\\/g, '/');
+    if (/^media\//i.test(path)) {
+      return appBase ? `${appBase}/${path}` : `/${path}`;
+    }
+    if (path.startsWith('/')) {
+      return appBase && !path.startsWith(appBase + '/') ? `${appBase}${path}` : path;
+    }
+    return appBase ? `${appBase}/${path}` : `/${path}`;
   }
 
   let workspaceId = window.APP_BOOT?.workspaceId || null;
@@ -716,7 +729,8 @@
     }
     const isFullWidth = Boolean(width && /^100%$/.test(String(width).trim()));
     const imgClass = `md-image${isFullWidth ? ' md-image--full' : ''}`;
-    const img = `<img class="${imgClass}" src="${src}" alt="${alt}" style="${styles.join('; ')}"${width ? ` data-md-width="${width}"` : ''}>`;
+    const resolvedSrc = resolveMediaHref(src);
+    const img = `<img class="${imgClass}" src="${escapeHtml(resolvedSrc)}" alt="${escapeHtml(alt)}" style="${styles.join('; ')}"${width ? ` data-md-width="${width}"` : ''}>`;
     const tabHref = imageTabHref(src);
     const linkedImg = tabHref
       ? `<a href="${String(tabHref).replace(/"/g, '&quot;')}" target="_blank" rel="noopener noreferrer" class="md-image-link${isFullWidth ? ' md-image-link--full' : ''}">${img}</a>`
@@ -3218,6 +3232,83 @@
     if (modalEl) openDashboardModal(modalEl);
   }
 
+  function closeAppSettingsModal() {
+    const modalEl = document.getElementById('app-settings-modal');
+    if (modalEl && window.bootstrap?.Modal) {
+      bootstrap.Modal.getInstance(modalEl)?.hide();
+    }
+  }
+
+  let leaveHistoryGuardArmed = true;
+  let ignoreNextLeavePopstate = false;
+
+  function hasPendingPageSave() {
+    return Boolean(autosaveTimer);
+  }
+
+  function confirmLeavePage(message) {
+    const msg = message || (
+      hasPendingPageSave()
+        ? 'You have unsaved changes. Leave NotesPro anyway?'
+        : 'Leave NotesPro?'
+    );
+    return window.confirm(msg);
+  }
+
+  function armLeaveHistoryTrap() {
+    if (!leaveHistoryGuardArmed) return;
+    try {
+      history.pushState({ notesproGuard: true }, '', location.href);
+    } catch (_) { /* ignore */ }
+  }
+
+  async function flushPendingPageSave() {
+    if (!hasPendingPageSave()) return;
+    clearTimeout(autosaveTimer);
+    autosaveTimer = null;
+    try {
+      await savePage();
+    } catch (_) { /* continue */ }
+  }
+
+  async function leavePageTo(url) {
+    if (!url) return;
+    if (!confirmLeavePage()) return;
+    leaveHistoryGuardArmed = false;
+    closeAppSettingsModal();
+    await flushPendingPageSave();
+    window.location.href = url;
+  }
+
+  function initLeavePageGuard() {
+    armLeaveHistoryTrap();
+
+    window.addEventListener('popstate', async () => {
+      if (ignoreNextLeavePopstate) {
+        ignoreNextLeavePopstate = false;
+        return;
+      }
+      if (!leaveHistoryGuardArmed) return;
+
+      const leave = confirmLeavePage();
+      if (!leave) {
+        armLeaveHistoryTrap();
+        return;
+      }
+
+      leaveHistoryGuardArmed = false;
+      await flushPendingPageSave();
+      ignoreNextLeavePopstate = true;
+      history.back();
+    });
+
+    window.addEventListener('beforeunload', (e) => {
+      if (!leaveHistoryGuardArmed || !hasPendingPageSave()) return;
+      e.preventDefault();
+      e.returnValue = '';
+    });
+  }
+
   function initAppSettings() {
     document.getElementById('app-settings-btn')?.addEventListener('click', () => {
       closeMobileTopbarMenu();
@@ -3225,11 +3316,16 @@
     });
     document.getElementById('app-settings-save')?.addEventListener('click', async () => {
       const lang = document.getElementById('app-settings-language')?.value || 'browser';
-      const modalEl = document.getElementById('app-settings-modal');
       const ok = await saveAppLanguage(lang);
-      if (ok && modalEl && window.bootstrap?.Modal) {
-        bootstrap.Modal.getInstance(modalEl)?.hide();
-      }
+      if (ok) closeAppSettingsModal();
+    });
+    document.getElementById('admin-link')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      leavePageTo(e.currentTarget.href);
+    });
+    document.getElementById('app-settings-2fa-link')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      leavePageTo(e.currentTarget.href);
     });
     applyAppLanguage(getStoredAppLanguage(), { rerenderPreview: false });
   }
@@ -3871,7 +3967,7 @@
         }
       }
       const image = entry.image
-        ? `<img class="calendar-unit-image md-image" src="${escapeHtml(entry.image)}" alt="">`
+        ? `<img class="calendar-unit-image md-image" src="${escapeHtml(resolveMediaHref(entry.image))}" alt="">`
         : '';
       const timeLabel = formatCalendarEntryTimeLabel(entry);
       const tip = calendarEntryTooltipText(entry);
@@ -4453,7 +4549,7 @@
       }
     }
     const image = task.image
-      ? `<img class="gantt-task-image md-image" src="${escapeHtml(task.image)}" alt="">`
+      ? `<img class="gantt-task-image md-image" src="${escapeHtml(resolveMediaHref(task.image))}" alt="">`
       : '';
     if (!textHtml && !image) return '';
     return `<div class="gantt-task-note">${image}${textHtml ? `<div class="gantt-task-text">${textHtml}</div>` : ''}</div>`;
@@ -4785,7 +4881,7 @@
     const textHtml = renderCardMarkdown(card.text, { inline: false });
     const labelHtml = renderCardMarkdown(card.label, { inline: true }) || escapeHtml(card.label || '');
     const image = card.image
-      ? `<img class="kanban-card-image md-image" src="${escapeHtml(card.image)}" alt="" draggable="false">`
+      ? `<img class="kanban-card-image md-image" src="${escapeHtml(resolveMediaHref(card.image))}" alt="" draggable="false">`
       : '';
     return [
       image,
@@ -5240,7 +5336,7 @@
     const textHtml = renderCardMarkdown(raw, { inline: false });
     const labelHtml = renderCardMarkdown(card.label, { inline: true }) || escapeHtml(card.label || '');
     const image = card.image
-      ? `<img class="kg-card-image md-image" src="${escapeHtml(card.image)}" alt="" draggable="false">`
+      ? `<img class="kg-card-image md-image" src="${escapeHtml(resolveMediaHref(card.image))}" alt="" draggable="false">`
       : '';
 
     const actions = [];
@@ -5840,7 +5936,7 @@
       }
     }
     const image = node.image
-      ? `<img class="mindmap-node-image md-image" src="${escapeHtml(node.image)}" alt="">`
+      ? `<img class="mindmap-node-image md-image" src="${escapeHtml(resolveMediaHref(node.image))}" alt="">`
       : '';
     return [
       `<div class="mindmap-node-label">${escapeHtml(node.label || 'Node')}</div>`,
@@ -6783,7 +6879,8 @@ function formatTextWithMarkup(rawText) {
   function resolveFileHrefAbsolute(href) {
     if (!href) return '';
     if (/^https?:\/\//i.test(href) || /^file:/i.test(href)) return href;
-    const normalized = href.startsWith('/') ? href : `/${href}`;
+    const path = resolveMediaHref(href);
+    const normalized = path.startsWith('/') ? path : `/${path}`;
     return `${window.location.origin}${normalized}`;
   }
 
@@ -7019,6 +7116,7 @@ function formatTextWithMarkup(rawText) {
         return;
       }
       a.classList.remove('file-link-app');
+      a.setAttribute('href', resolveMediaHref(href));
       a.setAttribute('target', '_blank');
       a.setAttribute('rel', 'noopener noreferrer');
     });
@@ -9470,7 +9568,7 @@ function formatTextWithMarkup(rawText) {
       return;
     }
     wrap.classList.remove('d-none');
-    wrap.innerHTML = `<img src="${escapeHtml(image)}" alt="" class="calendar-note-preview-img">`;
+    wrap.innerHTML = `<img src="${escapeHtml(resolveMediaHref(image))}" alt="" class="calendar-note-preview-img">`;
   }
 
   function openCalendarNoteModal(unitEl, preferredKey = null) {
@@ -9731,7 +9829,7 @@ function formatTextWithMarkup(rawText) {
       return;
     }
     wrap.classList.remove('d-none');
-    wrap.innerHTML = `<img src="${escapeHtml(image)}" alt="" class="calendar-note-preview-img">`;
+    wrap.innerHTML = `<img src="${escapeHtml(resolveMediaHref(image))}" alt="" class="calendar-note-preview-img">`;
   }
 
   function openGanttTitleModal(titleEl) {
@@ -9908,7 +10006,7 @@ function formatTextWithMarkup(rawText) {
       return;
     }
     wrap.classList.remove('d-none');
-    wrap.innerHTML = `<img src="${escapeHtml(image)}" alt="" class="calendar-note-preview-img">`;
+    wrap.innerHTML = `<img src="${escapeHtml(resolveMediaHref(image))}" alt="" class="calendar-note-preview-img">`;
   }
 
   function fillKanbanColumnSelect(selectEl, columns, selected) {
@@ -10184,7 +10282,7 @@ function formatTextWithMarkup(rawText) {
       return;
     }
     wrap.classList.remove('d-none');
-    wrap.innerHTML = `<img src="${escapeHtml(image)}" alt="" class="calendar-note-preview-img">`;
+    wrap.innerHTML = `<img src="${escapeHtml(resolveMediaHref(image))}" alt="" class="calendar-note-preview-img">`;
   }
 
   function fillKgColumnSelect(selectEl, columns, selected) {
@@ -10704,7 +10802,7 @@ function formatTextWithMarkup(rawText) {
       return;
     }
     wrap.classList.remove('d-none');
-    wrap.innerHTML = `<img src="${escapeHtml(image)}" alt="" class="calendar-note-preview-img">`;
+    wrap.innerHTML = `<img src="${escapeHtml(resolveMediaHref(image))}" alt="" class="calendar-note-preview-img">`;
   }
 
   function openMindmapTitleModal(titleEl) {
@@ -11248,7 +11346,7 @@ function formatTextWithMarkup(rawText) {
               'Todo | Design wireframes | **First draft**',
               'Todo | Write copy',
               'Doing | Build API',
-              'Done | Kickoff | ![](/media/uploads/photo.png)',
+              'Done | Kickoff | ![](media/uploads/photo.png)',
             ].join('\n');
             insertFenceBlock(editor, 'kanban{cols=Todo,Doing,Done;col=info}', body);
           },
@@ -13773,6 +13871,7 @@ function formatTextWithMarkup(rawText) {
   initSheetCellEditors();
   initCalendarNoteEditors();
   initAppSettings();
+  initLeavePageGuard();
   initGanttNoteEditors();
   initKanbanEditors();
   initKanbanganttEditors();

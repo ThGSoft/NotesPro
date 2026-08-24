@@ -559,7 +559,7 @@
         <textarea id="calendar-note-text" class="form-control form-control-sm mb-3" rows="4" placeholder="**bold**, _italic_, lists…"></textarea>
         <label class="form-label small fw-semibold" for="calendar-note-image">Image URL / markdown path</label>
         <div class="d-flex gap-2 mb-2">
-          <input type="text" class="form-control form-control-sm font-monospace" id="calendar-note-image" placeholder="/media/uploads/photo.png" autocomplete="off" spellcheck="false">
+          <input type="text" class="form-control form-control-sm font-monospace" id="calendar-note-image" placeholder="media/uploads/photo.png" autocomplete="off" spellcheck="false">
           <button type="button" class="btn btn-sm btn-outline-light flex-shrink-0" id="calendar-note-upload-btn">Upload</button>
         </div>
         <input type="file" id="calendar-note-file" class="visually-hidden-file-input" accept="image/*" tabindex="-1" aria-hidden="true">
@@ -632,7 +632,7 @@
         <textarea id="gantt-note-text" class="form-control form-control-sm mb-3" rows="3" placeholder="**bold**, _italic_…"></textarea>
         <label class="form-label small fw-semibold" for="gantt-note-image">Image URL / markdown path</label>
         <div class="d-flex gap-2 mb-2">
-          <input type="text" class="form-control form-control-sm font-monospace" id="gantt-note-image" placeholder="/media/uploads/photo.png" autocomplete="off" spellcheck="false">
+          <input type="text" class="form-control form-control-sm font-monospace" id="gantt-note-image" placeholder="media/uploads/photo.png" autocomplete="off" spellcheck="false">
           <button type="button" class="btn btn-sm btn-outline-light flex-shrink-0" id="gantt-note-upload-btn">Upload</button>
         </div>
         <input type="file" id="gantt-note-file" class="visually-hidden-file-input" accept="image/*" tabindex="-1" aria-hidden="true">
@@ -689,7 +689,7 @@
         <textarea id="kanban-card-text" class="form-control form-control-sm mb-3" rows="3" placeholder="**bold**, _italic_…"></textarea>
         <label class="form-label small fw-semibold" for="kanban-card-image">Image URL / markdown path</label>
         <div class="d-flex gap-2 mb-2">
-          <input type="text" class="form-control form-control-sm font-monospace" id="kanban-card-image" placeholder="/media/uploads/photo.png" autocomplete="off" spellcheck="false">
+          <input type="text" class="form-control form-control-sm font-monospace" id="kanban-card-image" placeholder="media/uploads/photo.png" autocomplete="off" spellcheck="false">
           <button type="button" class="btn btn-sm btn-outline-light flex-shrink-0" id="kanban-card-upload-btn">Upload</button>
         </div>
         <input type="file" id="kanban-card-file" class="visually-hidden-file-input" accept="image/*" tabindex="-1" aria-hidden="true">
@@ -777,7 +777,7 @@
         <textarea id="kg-card-text" class="form-control form-control-sm mb-3" rows="3" placeholder="**bold**, _italic_…"></textarea>
         <label class="form-label small fw-semibold" for="kg-card-image">Image URL / markdown path</label>
         <div class="d-flex gap-2 mb-2">
-          <input type="text" class="form-control form-control-sm font-monospace" id="kg-card-image" placeholder="/media/uploads/photo.png" autocomplete="off" spellcheck="false">
+          <input type="text" class="form-control form-control-sm font-monospace" id="kg-card-image" placeholder="media/uploads/photo.png" autocomplete="off" spellcheck="false">
           <button type="button" class="btn btn-sm btn-outline-light flex-shrink-0" id="kg-card-upload-btn">Upload</button>
         </div>
         <input type="file" id="kg-card-file" class="visually-hidden-file-input" accept="image/*" tabindex="-1" aria-hidden="true">
@@ -835,7 +835,7 @@
         <textarea id="mindmap-node-text" class="form-control form-control-sm mb-3" rows="3" placeholder="**bold**, _italic_…"></textarea>
         <label class="form-label small fw-semibold" for="mindmap-node-image">Image URL / markdown path</label>
         <div class="d-flex gap-2 mb-2">
-          <input type="text" class="form-control form-control-sm font-monospace" id="mindmap-node-image" placeholder="/media/uploads/photo.png" autocomplete="off" spellcheck="false">
+          <input type="text" class="form-control form-control-sm font-monospace" id="mindmap-node-image" placeholder="media/uploads/photo.png" autocomplete="off" spellcheck="false">
           <button type="button" class="btn btn-sm btn-outline-light flex-shrink-0" id="mindmap-node-upload-btn">Upload</button>
         </div>
         <input type="file" id="mindmap-node-file" class="visually-hidden-file-input" accept="image/*" tabindex="-1" aria-hidden="true">
@@ -923,7 +923,7 @@
           <div class="small fw-semibold mb-2">Go to</div>
           <div class="d-flex flex-wrap gap-2">
             {% if user.is_staff %}
-            <a id="admin-link" href="{% url 'admin:index' %}" class="btn btn-sm btn-outline-light d-none" target="_blank" rel="noopener noreferrer" title="Django Admin">Admin</a>
+            <a id="admin-link" href="{% url 'admin:index' %}" class="btn btn-sm btn-outline-light d-none" title="Django Admin">Admin</a>
             {% endif %}
             <a id="app-settings-2fa-link" href="{% url 'setup_2fa' %}" class="btn btn-sm btn-outline-light" title="Two-factor authentication">2FA</a>
           </div>

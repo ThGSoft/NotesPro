@@ -58,15 +58,18 @@ def strip_notespro_lines(text):
     return '\n'.join(lines).strip()
 
 
+from .media_refs import media_markdown_href
+
+
 def build_incoming_page_markdown(title, body, pdf_upload=None, eml_upload=None):
     main, appendix = split_email_body_appendix(body)
     main = strip_notespro_lines(main)
 
     lines = [f'# {title}', '']
     if eml_upload:
-        lines.append(f'[{eml_upload.original_name}]({eml_upload.file.url})')
+        lines.append(f'[{eml_upload.original_name}]({media_markdown_href(eml_upload.file.url)})')
     if pdf_upload:
-        lines.append(f'[{pdf_upload.original_name}]({pdf_upload.file.url})')
+        lines.append(f'[{pdf_upload.original_name}]({media_markdown_href(pdf_upload.file.url)})')
     if eml_upload or pdf_upload:
         lines.append('')
     if main:
