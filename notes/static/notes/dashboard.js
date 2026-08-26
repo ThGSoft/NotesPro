@@ -976,11 +976,20 @@
 
   function sanitizeSheetColor(value) {
     if (!value) return '';
-    const v = String(value).trim();
+    let v = String(value).trim().replace(/,\s*$/, '');
+    if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+      v = v.slice(1, -1).trim();
+    }
+    if (!v) return '';
     const lower = v.toLowerCase();
     if (lower === 'none' || lower === 'default') return '';
+    // Allow any CSS color; block injection (url(), expressions, extra declarations).
+    if (v.length > 160 || /[;{}<>]|url\s*\(|expression\s*\(|@import|javascript:/i.test(v)) return '';
     if (/^#[0-9a-f]{3,8}$/i.test(v)) return v;
-    if (/^[a-zA-Z]+$/.test(v) && v.length <= 20) return v.toLowerCase();
+    if (/^(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|color-mix)\(/i.test(v) && /\)$/.test(v)) {
+      return /^[\w(%#.,/\s+\-degturnradgrad)]+$/i.test(v) ? v : '';
+    }
+    if (/^[a-z][\w-]*$/i.test(v) && v.length <= 40) return lower;
     return '';
   }
 
@@ -7106,6 +7115,68 @@ function formatTextWithMarkup(rawText) {
     document.body.removeChild(ta);
   }
 
+  function codeBlockLanguageLabel(pre) {
+    const code = pre.querySelector('code');
+    const cls = `${pre.className || ''} ${code?.className || ''}`;
+    const match = cls.match(/language-([a-z0-9_+-]+)/i);
+    return match ? match[1] : '';
+  }
+
+  function enhanceMarkdownCodeBlocks(root) {
+    if (!root) return;
+    root.querySelectorAll('pre').forEach(pre => {
+      if (pre.closest('.md-code-block')) return;
+      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .calcs-block')) {
+        return;
+      }
+      const wrap = document.createElement('div');
+      wrap.className = 'md-code-block';
+      const lang = codeBlockLanguageLabel(pre);
+      const header = document.createElement('div');
+      header.className = 'md-code-block__header';
+      header.innerHTML = [
+        `<span class="md-code-block__lang">${escapeHtml(lang || 'code')}</span>`,
+        '<button type="button" class="md-code-copy" title="Copy code" aria-label="Copy code">Copy</button>',
+      ].join('');
+      pre.parentNode.insertBefore(wrap, pre);
+      wrap.appendChild(header);
+      wrap.appendChild(pre);
+      pre.classList.add('md-code-block__pre');
+      pre.querySelector('code')?.classList.add('md-code-block__code');
+    });
+    root.querySelectorAll('code').forEach(code => {
+      if (code.closest('pre, .md-code-block')) return;
+      code.classList.add('md-inline-code');
+    });
+  }
+
+  function initMarkdownCodeCopy() {
+    if (window.__mdCodeCopyBound) return;
+    window.__mdCodeCopyBound = true;
+    document.addEventListener('click', async (e) => {
+      const btn = e.target.closest?.('.md-code-copy');
+      if (!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const block = btn.closest('.md-code-block');
+      const pre = block?.querySelector('pre');
+      const text = pre?.innerText ?? '';
+      if (!text) return;
+      try {
+        await copyTextToClipboard(text);
+        const prev = btn.textContent;
+        btn.textContent = 'Copied';
+        btn.classList.add('is-copied');
+        setTimeout(() => {
+          btn.textContent = prev || 'Copy';
+          btn.classList.remove('is-copied');
+        }, 1500);
+      } catch (_) {
+        showToast('Could not copy code.', 'danger');
+      }
+    });
+  }
+
   function markFileLinks(root) {
     if (!root) return;
     root.querySelectorAll('a[href]').forEach(a => {
@@ -7839,6 +7910,7 @@ function formatTextWithMarkup(rawText) {
     });
     preview.innerHTML = html;
     applyPreviewImageStyles(preview);
+    enhanceMarkdownCodeBlocks(preview);
     preview.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(h => { h.id = slugifyHeading(h.textContent); });
     markFileLinks(preview);
     renderD3Charts(preview, processed.sheetRegistry || new Map());
@@ -11399,13 +11471,14 @@ function formatTextWithMarkup(rawText) {
           name: 'insert-calcs',
           action: (editor) => {
             const body = [
-              'f:=50',
-              'A:=1',
-              'w:=2*Pi*f',
-              'SR:=96*3',
-              'i:=0..2*SR',
-              'y1[i]:=exp(-i/SR)*A',
-              'y2[i]:=sin(20*w*i/SR)*exp(-i/SR)*A',
+              '% Octave-style calcs sample',
+              'f = 50;',
+              'A = 1;',
+              'w = 2*pi*f;',
+              'SR = 96*3;',
+              'i = 0:2*SR;',
+              'y1[i] = exp(-i/SR)*A;',
+              'y2[i] = sin(20*w*i/SR).*exp(-i/SR)*A;',
               'Plot(y1, y2)',
             ].join('\n');
             insertFenceBlock(editor, 'calcs{fix=7;col=info}', body);
@@ -11602,6 +11675,7 @@ function formatTextWithMarkup(rawText) {
           wrap.innerHTML = html;
           markFileLinks(wrap);
           applyPreviewImageStyles(wrap);
+          enhanceMarkdownCodeBlocks(wrap);
           return wrap.innerHTML;
         }
     });
@@ -12737,6 +12811,7 @@ function formatTextWithMarkup(rawText) {
       });
     });
     applyPreviewImageStyles(grid);
+    enhanceMarkdownCodeBlocks(grid);
     requestAnimationFrame(() => {
       if (keepWrap) keepWrap.scrollTop = savedScrollTop;
       if (anchorNoteId != null) {
@@ -13919,6 +13994,7 @@ function formatTextWithMarkup(rawText) {
   initEditorFindBar();
   initFileLinkDialog();
   initPreviewImageClicks();
+  initMarkdownCodeCopy();
   initCalcsPlotTooltips();
   initPreviewTagClicks();
   initSheetCellEditors();

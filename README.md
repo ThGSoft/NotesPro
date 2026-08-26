@@ -767,68 +767,67 @@ Use the toolbar **mindmap** (sitemap) button to insert a sample. In **Edit** mod
 
 ### Calcs (ThGMaths)
 
-Embed an engineering calculator with a fenced `calcs` block. Each line is evaluated top to bottom; results show in **blue** beside the source. Errors are **red** (`Divide by 0`, `Index out of range`). Values can be real, complex, vectors, or matrices. Vector arithmetic is **element-wise**; `*` on two matrices is matrix product.
+Embed an engineering calculator with a fenced `calcs` block. Syntax is **Octave-like** (also accepts the older `:=` / `..` forms). Each line is evaluated top to bottom; results show in **blue** beside the source. Errors are **red**. Values can be real, complex, vectors, or matrices. Use `*` for matrix product and `.*` / `./` / `.^` for element-wise ops.
 
 ````markdown
 ```calcs{fix=7;col=info}
 (* block comment *)
-FIX(7, true)
-x:=5
-a:= 3 + 4i
-V1:=(1,3,4, 8)
-Sum(V1)
-j:=-10..10
-y3[j]:=(j*j)/100
+% line comment
+FIX(7)
+x = 5
+a = 3 + 4i
+V1 = [1 3 4 8]
+sum(V1)
+j = -10:10
+y3[j] = (j.*j)/100
 Plot([j, y3])
 ```
 ````
 
 | Example | Meaning |
 |---------|---------|
-| `x:=5` | Assign real value `5.0` to `x` |
-| `c:=5.0+7.0i` | Complex assignment |
-| `v:=(1,2+6i,3)` | Vector with complex entries |
-| `A:=((1,3,4,5),(7,1+2i,4,5),…)` | Matrix (rows are nested tuples) |
-| `inv(A)` / `A^-1` | Inverse of matrix `A` |
-| `sqrt(x)` | Square root (real or complex) |
-| `sqr(x)` | Square, `x²` |
-| `exp(x)` / `ln(x)` | Exponential and natural log |
+| `x = 5` or `x:=5` | Assign real value to `x` |
+| `c = 5.0+7.0i` | Complex assignment |
+| `v = [1 2 3]` or `v=(1,2,3)` | Row vector |
+| `A = [1 2; 3 4]` | Matrix (semicolon = new row) |
+| `i = 0:10` or `i=0..10` | Integer range `0…10` |
+| `t = 0:0.1:1` | Range with step |
+| `linspace(0,1,100)` | Evenly spaced vector |
+| `ones(m,n)` / `zeros(m,n)` / `eye(n)` | Array constructors |
+| `v .* w` / `v ./ w` / `v .^ 2` | Element-wise multiply / divide / power |
+| `inv(A)` / `A^-1` | Matrix inverse |
+| `sqrt` / `exp` / `ln` / `log10` | Elementary functions |
 | `sin` / `asin` / `cos` / `tan` / `atan` | Trigonometry |
-| `abs(x)` / `inv(x)` | Absolute value / inverse (including matrices) |
-| `sum(v)` | Sum of vector (or matrix) elements |
-| `plot([...])` | Graph a list, or `plot(x, y)` for two vectors |
-| `i:=0..n` | Integer range vector (`0, 1, …, n`) |
-| `y[i]:=expr` | Build array by evaluating `expr` for each index in `i` |
-| `d[1]:= …` / `d[3]:= …` | 1-based element assign — auto-creates vector `1..max(index)` (gaps = `0`) |
-| `d[1..3]:= …` | Same, range fill at indices 1..3 (`d[3]` reads the third slot) |
-| `Plot(y1, y2)` | Two (or more) curves — hover snaps to nearest data point |
-| `Plot([i,y1],[i,y2])` | X/Y pairs with shared legend |
-| `FIX` / `ENG` / `SCI` | Display format (`FIX 4`, `SCI 3`, `ENG 3`) |
-| `= 17:34 - 13:23 + 3:33` | Time arithmetic (`H:MM` or `H:MM:SS`); result `7:44` |
+| `abs` / `real` / `imag` / `conj` | Complex helpers |
+| `sum(v)` / `length(x)` / `size(x)` | Aggregates / shape |
+| `y[i] = expr` | Build array over index vector `i` |
+| `d[1]= …` / `d[1:3]= …` | 1-based element / range fill |
+| `Plot(y1, y2)` | Curves (hover snaps to points) |
+| `FIX` / `ENG` / `SCI` | Display format. `FIX(n)` = *n* decimal places; `ENG(n)` = *n* significant figures with exponent ×3; `SCI(n)` = *n* decimals on a [1,10) mantissa. Second arg `true` strips trailing zeros (`ENG(3, false)` → `1.00e0`; `ENG(3, true)` → `1e0`) |
+| `x = 5;` | Trailing `;` stores the value but hides the result line |
+| `= 17:34 - 13:23` | Time arithmetic (`H:MM` / `H:MM:SS`) |
 
 | Option | Description |
 |--------|-------------|
 | `fix` / `sci` / `eng` | Initial display digits, e.g. `fix=4` |
-| `color` / `col` | Text & accent color (`color=red`, `color=#778800`, or theme `info` / `success` / …) |
-| `bkcol` | Background color (`bkcol=silver`, `bkcol=#eee`; `bgcol` also works) |
+| `color` / `col` | Text & accent: any CSS color (`#444`, `red`, `rgb(68,68,68)`, `hsl(…)`, `oklch(…)`) or theme `info` / `success` / `warning` / `danger` / `note` |
+| `bkcol` | Background: same CSS colors (`bkcol=silver`, `bkcol=#eee`, `bkcol=rgb(…)`; `bgcol` also works) |
 | `title` | Optional title (default `Calcs`) |
 
-Constants: `pi`, `e`, `i` / `j` (imaginary unit). Prefix a line with `'` for **markdown text** — HTML allowed (`'<span style="font-size:87.5%"> **Montag**</span>`). Combine label + result: `'**Total:**'   a+b` (label first) or `a+b '**Total:**'` (result first). Separate statements with **commas** or a trailing comma on the next line. Comments: `#` or `//`. A leading `=` is optional (`= 17:34 - 13:23` same as without `=`). Times are durations (`H:MM` or `H:MM:SS`); a bare number mixed with a time is hours. Vectors longer than 10 elements show the first 10 values followed by `..`. Use the toolbar **calculator** button to insert a sample.
+Constants: `pi`, `e`, `i` / `j` (imaginary unit). Prefix a line with `'` for **markdown text**. Comments: `%`, `#`, `//`, or `(* … *)`. **Times** use `H:MM` / `H:MM:SS` with a **two-digit** minute field (`17:34`, `1:30`). An Octave-style range that would look like a time should use `..` or a step form instead (`1..10`, `1:1:10`). Use the toolbar **calculator** button to insert a sample.
 
 Example (decaying envelope + sine, dual plot):
 
 ````markdown
 ```calcs{fix=4;col=info}
-f:=50
-A:=1
-w:=2*Pi*f
-SR:=96*3
-i:=0..2*SR
-y1[i]:=exp(-i/SR)*A
-y2[i]:=sin(20*w*i/SR)*exp(-i/SR)*A
-Plot(y1)
-Plot(y2)
-Plot([i,y1],[i,y2],[i,y3],[i,y4])
+f = 50;
+A = 1;
+w = 2*pi*f;
+SR = 96*3;
+i = 0:2*SR;
+y1[i] = exp(-i/SR)*A;
+y2[i] = sin(20*w*i/SR).*exp(-i/SR)*A;
+Plot(y1, y2)
 ```
 ````
 

@@ -334,6 +334,7 @@
   }
 
   function realScalar(v, label) {
+    if (isT(v)) return v.sec / 3600;
     if (isC(v) && isReal(v)) return v.re;
     throw new Error(label || 'Expected a real scalar');
   }
@@ -408,15 +409,28 @@
     return evalSlotIndexedAssign(name, [indexVal], exprAst, env);
   }
 
-  function vectorFromRange(start, end) {
-    const a = intScalar(start, 'Range start must be an integer');
-    const b = intScalar(end, 'Range end must be an integer');
-    const items = [];
-    if (a <= b) {
-      for (let n = a; n <= b; n += 1) items.push(complex(n, 0));
+  function vectorFromRange(start, end, step) {
+    const a = realScalar(start, 'Range start');
+    const b = realScalar(end, 'Range end');
+    let d;
+    if (step == null) {
+      d = a <= b ? 1 : -1;
     } else {
-      for (let n = a; n >= b; n -= 1) items.push(complex(n, 0));
+      d = realScalar(step, 'Range step');
     }
+    if (nearly(d, 0)) throw new Error('Range step must be non-zero');
+    const items = [];
+    const maxN = 100000;
+    if (d > 0) {
+      for (let n = a, k = 0; n <= b + EPS && k < maxN; n += d, k += 1) {
+        items.push(complex(n, 0));
+      }
+    } else {
+      for (let n = a, k = 0; n >= b - EPS && k < maxN; n += d, k += 1) {
+        items.push(complex(n, 0));
+      }
+    }
+    if (!items.length) throw new Error('Empty range');
     return vector(items);
   }
 
@@ -507,9 +521,15 @@
     while (i < s.length) {
       const ch = s[i];
       if (ch === ' ' || ch === '\t' || ch === '\r') { i += 1; continue; }
-      if (ch === '#' || (ch === '/' && s[i + 1] === '/')) break;
+      if (ch === '%' || ch === '#' || (ch === '/' && s[i + 1] === '/')) break;
       if (ch === ':' && s[i + 1] === '=') { push('ASSIGN'); i += 2; continue; }
+      if (ch === '=' && s[i + 1] !== '=') { push('ASSIGN'); i += 1; continue; }
       if (ch === '.' && s[i + 1] === '.') { push('RANGE'); i += 2; continue; }
+      if (ch === '.' && s[i + 1] === '*') { push('DOTSTAR'); i += 2; continue; }
+      if (ch === '.' && s[i + 1] === '/') { push('DOTSLASH'); i += 2; continue; }
+      if (ch === '.' && s[i + 1] === '^') { push('DOTCARET'); i += 2; continue; }
+      if (ch === ':') { push('COLON'); i += 1; continue; }
+      if (ch === ';') { push('SEMI'); i += 1; continue; }
       if ('+-*/^(),[]'.includes(ch)) {
         const map = {
           '+': 'PLUS', '-': 'MINUS', '*': 'STAR', '/': 'SLASH', '^': 'CARET',
@@ -520,6 +540,8 @@
         continue;
       }
       if (/[0-9.]/.test(ch)) {
+        // H:MM or H:MM:SS duration (second part must be two digits 00-59).
+        // Octave ranges like 1:10 use a single-digit end and stay COLON-based.
         const time = s.slice(i).match(/^(\d{1,5}):([0-5]\d)(?::([0-5]\d))?/);
         if (time) {
           const hours = parseInt(time[1], 10);
@@ -575,6 +597,11 @@
       return t;
     };
 
+    function startsPrimary() {
+      const t = peek().type;
+      return t === 'NUM' || t === 'ID' || t === 'LP' || t === 'LB' || t === 'MINUS' || t === 'PLUS';
+    }
+
     function parsePrimary() {
       if (eat('NUM')) {
         const n = tokens[p - 1].value;
@@ -598,19 +625,57 @@
         }
         return { type: 'id', name };
       }
-      if (eat('LP') || eat('LB')) {
-        const closer = tokens[p - 1].type === 'LP' ? 'RP' : 'RB';
-        if (peek().type === closer) {
-          eat(closer);
+      if (eat('LP')) {
+        if (peek().type === 'RP') {
+          eat('RP');
           return { type: 'vec', items: [] };
         }
         const items = [parseRangeExpr()];
         while (eat('COMMA')) items.push(parseRangeExpr());
-        expect(closer, 'Missing closing ) or ]');
-        if (items.length === 1 && closer === 'RP') return items[0];
+        expect('RP', 'Missing closing )');
+        if (items.length === 1) return items[0];
         return { type: 'vec', items };
       }
+      if (eat('LB')) {
+        return parseBracketList();
+      }
       throw new Error('Expected a value');
+    }
+
+    function parseBracketList() {
+      if (peek().type === 'RB') {
+        eat('RB');
+        return { type: 'vec', items: [] };
+      }
+      const rows = [];
+      let row = [];
+      const flushRow = () => {
+        if (row.length) {
+          rows.push(row);
+          row = [];
+        }
+      };
+      while (peek().type !== 'RB' && peek().type !== 'EOL') {
+        row.push(parseRangeExpr());
+        if (eat('COMMA')) continue;
+        if (eat('SEMI')) {
+          flushRow();
+          continue;
+        }
+        // Octave-style space separation: [1 2 3]
+        if (startsPrimary()) continue;
+        break;
+      }
+      flushRow();
+      expect('RB', 'Missing closing ]');
+      if (!rows.length) return { type: 'vec', items: [] };
+      if (rows.length === 1) {
+        return rows[0].length === 1 ? rows[0][0] : { type: 'vec', items: rows[0] };
+      }
+      return {
+        type: 'mat',
+        rows: rows.map(items => ({ type: 'vec', items })),
+      };
     }
 
     function parseUnary() {
@@ -621,16 +686,24 @@
 
     function parsePower() {
       let left = parseUnary();
-      while (eat('CARET')) {
-        left = { type: 'pow', left, right: parseUnary() };
+      while (eat('CARET') || eat('DOTCARET')) {
+        const op = tokens[p - 1].type === 'DOTCARET' ? 'epow' : 'pow';
+        left = { type: op, left, right: parseUnary() };
       }
       return left;
     }
 
     function parseTerm() {
       let left = parsePower();
-      while (peek().type === 'STAR' || peek().type === 'SLASH') {
-        const op = eat(peek().type).type === 'STAR' ? 'mul' : 'div';
+      while (
+        peek().type === 'STAR' || peek().type === 'SLASH'
+        || peek().type === 'DOTSTAR' || peek().type === 'DOTSLASH'
+      ) {
+        const t = eat(peek().type).type;
+        const op = t === 'STAR' ? 'mul'
+          : t === 'SLASH' ? 'div'
+            : t === 'DOTSTAR' ? 'emul'
+              : 'ediv';
         left = { type: op, left, right: parsePower() };
       }
       return left;
@@ -647,8 +720,15 @@
 
     function parseRangeExpr() {
       let left = parseAddExpr();
-      while (eat('RANGE')) {
-        left = { type: 'range', left, right: parseAddExpr() };
+      if (eat('RANGE')) {
+        return { type: 'range', left, right: parseAddExpr() };
+      }
+      if (eat('COLON')) {
+        const mid = parseAddExpr();
+        if (eat('COLON')) {
+          return { type: 'range', left, step: mid, right: parseAddExpr() };
+        }
+        return { type: 'range', left, right: mid };
       }
       return left;
     }
@@ -657,12 +737,30 @@
     if (peek().type === 'FMT') {
       const mode = eat('FMT').value;
       let digits = null;
+      let trimZeros = null;
       if (peek().type === 'NUM') digits = Math.round(eat('NUM').value.re);
       else if (eat('LP')) {
         if (peek().type === 'NUM') digits = Math.round(eat('NUM').value.re);
+        // Optional 2nd arg: FIX(7, true) strips trailing zeros; FIX(7, false) keeps all digits.
+        if (eat('COMMA')) {
+          if (peek().type === 'ID') {
+            const flag = eat('ID').value.toLowerCase();
+            if (flag === 'true') trimZeros = true;
+            else if (flag === 'false') trimZeros = false;
+            else throw new Error('Format flag must be true or false');
+          } else if (peek().type === 'NUM') {
+            const n = eat('NUM').value;
+            if (!isC(n) || !isReal(n) || !(nearly(n.re, 0) || nearly(n.re, 1))) {
+              throw new Error('Format flag must be true/false or 1/0');
+            }
+            trimZeros = nearly(n.re, 1);
+          } else {
+            throw new Error('Expected true/false after format comma');
+          }
+        }
         expect('RP', 'Missing ) after format');
       }
-      return { type: 'format', mode, digits };
+      return { type: 'format', mode, digits, trimZeros };
     }
     if (peek().type === 'ID' && tokens[p + 1] && tokens[p + 1].type === 'LB') {
       const saveP = p;
@@ -737,8 +835,29 @@
       case 'sub': return subVal(evalAst(ast.left, env), evalAst(ast.right, env));
       case 'mul': return mulVal(evalAst(ast.left, env), evalAst(ast.right, env));
       case 'div': return divVal(evalAst(ast.left, env), evalAst(ast.right, env));
+      case 'emul': return zipBin(evalAst(ast.left, env), evalAst(ast.right, env), cMul, '.*');
+      case 'ediv': return zipBin(evalAst(ast.left, env), evalAst(ast.right, env), cDiv, './');
+      case 'epow': {
+        const left = evalAst(ast.left, env);
+        const right = evalAst(ast.right, env);
+        if (isC(right)) return mapScalar(left, x => powVal(x, right), '.^');
+        return zipBin(left, right, (a, b) => powVal(a, b), '.^');
+      }
       case 'pow': return powVal(evalAst(ast.left, env), evalAst(ast.right, env));
-      case 'range': return vectorFromRange(evalAst(ast.left, env), evalAst(ast.right, env));
+      case 'range': return vectorFromRange(
+        evalAst(ast.left, env),
+        evalAst(ast.right, env),
+        ast.step ? evalAst(ast.step, env) : null,
+      );
+      case 'mat': {
+        const rows = ast.rows.map(row => {
+          const v = evalAst(row, env);
+          if (isV(v)) return v;
+          if (isC(v) || isT(v)) return vector([v]);
+          throw new Error('Matrix rows must be vectors');
+        });
+        return listToValue(rows);
+      }
       case 'subscript': {
         const arr = lookupVar(env, ast.name);
         if (!arr) throw new Error(`Unknown name "${ast.name}"`);
@@ -785,9 +904,60 @@
         return sumVal(args[0]);
       case 'plot':
         return plotVal(toPlotSeries(args));
-      case 're': return one('re', z => complex(z.re, 0));
-      case 'im': return one('im', z => complex(z.im, 0));
+      case 're': case 'real': return one('real', z => complex(z.re, 0));
+      case 'im': case 'imag': return one('imag', z => complex(z.im, 0));
       case 'conj': return one('conj', cConj);
+      case 'log10': return one('log10', z => cDiv(cLn(z), cLn(complex(10, 0))));
+      case 'log2': return one('log2', z => cDiv(cLn(z), cLn(complex(2, 0))));
+      case 'linspace': {
+        if (args.length < 2 || args.length > 3) throw new Error('linspace(a, b, n=100)');
+        const a = realScalar(args[0], 'linspace start');
+        const b = realScalar(args[1], 'linspace end');
+        const n = args.length === 3 ? intScalar(args[2], 'linspace count') : 100;
+        if (n < 2) throw new Error('linspace: n must be >= 2');
+        const items = [];
+        for (let i = 0; i < n; i += 1) {
+          const t = i / (n - 1);
+          items.push(complex(a + (b - a) * t, 0));
+        }
+        return vector(items);
+      }
+      case 'ones':
+      case 'zeros': {
+        const fill = fn === 'ones' ? 1 : 0;
+        if (args.length < 1 || args.length > 2) throw new Error(`${fn}(m, n?)`);
+        const m = intScalar(args[0], `${fn} rows`);
+        const n = args.length === 2 ? intScalar(args[1], `${fn} cols`) : m;
+        if (m < 1 || n < 1) throw new Error(`${fn}: size must be positive`);
+        return matrix(Array.from({ length: m }, () => (
+          Array.from({ length: n }, () => complex(fill, 0))
+        )));
+      }
+      case 'eye': {
+        if (args.length !== 1) throw new Error('eye(n)');
+        const n = intScalar(args[0], 'eye size');
+        if (n < 1) throw new Error('eye: size must be positive');
+        return identity(n);
+      }
+      case 'length': {
+        if (args.length !== 1) throw new Error('length(x)');
+        const v = args[0];
+        if (isC(v) || isT(v)) return complex(1, 0);
+        if (isV(v)) return complex(v.items.length, 0);
+        if (isM(v)) {
+          const [r, c] = shapeOf(v);
+          return complex(Math.max(r, c), 0);
+        }
+        throw new Error('length: unsupported type');
+      }
+      case 'size': {
+        if (args.length !== 1) throw new Error('size(x)');
+        const [r, c] = shapeOf(args[0]);
+        return vector([complex(r, 0), complex(c, 0)]);
+      }
+      case 'disp':
+        if (args.length !== 1) throw new Error('disp(x)');
+        return cloneVal(args[0]);
       default:
         if (Object.prototype.hasOwnProperty.call(env.vars, name)) {
           throw new Error(`"${name}" is not a function`);
@@ -816,7 +986,7 @@
         i: complex(0, 1),
         j: complex(0, 1),
       },
-      format: { mode: 'fix', digits: 4 },
+      format: { mode: 'fix', digits: 4, trimZeros: false },
     };
   }
 
@@ -826,9 +996,10 @@
       const n = parseInt(cfg[key], 10);
       return Number.isFinite(n) ? clampDigits(n) : fallback;
     };
-    if (cfg.fix != null) env.format = { mode: 'fix', digits: digitsOf('fix', 4) };
-    else if (cfg.sci != null) env.format = { mode: 'sci', digits: digitsOf('sci', 4) };
-    else if (cfg.eng != null) env.format = { mode: 'eng', digits: digitsOf('eng', 3) };
+    const trim = env.format.trimZeros;
+    if (cfg.fix != null) env.format = { mode: 'fix', digits: digitsOf('fix', 4), trimZeros: trim };
+    else if (cfg.sci != null) env.format = { mode: 'sci', digits: digitsOf('sci', 4), trimZeros: trim };
+    else if (cfg.eng != null) env.format = { mode: 'eng', digits: digitsOf('eng', 3), trimZeros: trim };
     return cfg;
   }
 
@@ -851,26 +1022,68 @@
     return Math.max(0, Math.min(12, n));
   }
 
-  function formatMantExp(value, digits, eng) {
+  function formatMantExp(value, digits, eng, trimZeros) {
     if (!Number.isFinite(value)) return String(value);
-    if (value === 0) return `0.${'0'.repeat(digits)}e0`;
+    const d = Math.max(0, digits);
+    if (value === 0) {
+      // ENG digits = significant figures → 0.00e0 for ENG 3; SCI digits = decimals.
+      const zeroPlaces = eng ? Math.max(0, Math.max(1, d) - 1) : d;
+      const zeroMant = zeroPlaces === 0 ? '0' : `0.${'0'.repeat(zeroPlaces)}`;
+      const out = `${zeroMant}e0`;
+      return trimZeros ? stripTrailingZeros(out) : out;
+    }
     const sign = value < 0 ? '-' : '';
     const abs = Math.abs(value);
-    let exp = Math.floor(Math.log10(abs));
+    let exp = Math.floor(Math.log10(abs) + 1e-15);
     if (eng) {
+      // Engineering: exponent is a multiple of 3; `digits` = significant figures.
       const rem = ((exp % 3) + 3) % 3;
       exp -= rem;
+      let mant = abs / (10 ** exp);
+      const sig = Math.max(1, d);
+      const mag = Math.floor(Math.log10(Math.max(mant, 1e-15)) + 1e-15);
+      const scale = 10 ** (sig - mag - 1);
+      let rounded = Math.round(mant * scale) / scale;
+      if (rounded >= 1000 - 1e-12) {
+        rounded /= 1000;
+        exp += 3;
+      }
+      const intDigits = Math.floor(Math.log10(Math.max(rounded, 1e-15)) + 1e-15) + 1;
+      const decPlaces = Math.max(0, sig - intDigits);
+      let mantStr = rounded.toFixed(decPlaces);
+      if (trimZeros) mantStr = stripTrailingZeros(mantStr);
+      return `${sign}${mantStr}e${exp}`;
     }
-    const mant = abs / (10 ** exp);
-    return `${sign}${mant.toFixed(digits)}e${exp}`;
+    // Scientific: mantissa in [1, 10); `digits` = decimal places.
+    let mant = abs / (10 ** exp);
+    if (mant >= 10 - 1e-12) {
+      mant /= 10;
+      exp += 1;
+    }
+    let out = `${sign}${mant.toFixed(d)}e${exp}`;
+    return trimZeros ? stripTrailingZeros(out) : out;
+  }
+
+  function stripTrailingZeros(text) {
+    const s = String(text || '');
+    if (!s.includes('.')) return s;
+    // Keep exponent part intact for SCI/ENG: 1.2300e3 → 1.23e3
+    const expIdx = s.search(/[eE]/);
+    if (expIdx >= 0) {
+      const mant = s.slice(0, expIdx).replace(/\.?0+$/, '');
+      return `${mant || '0'}${s.slice(expIdx)}`;
+    }
+    return s.replace(/\.?0+$/, '') || '0';
   }
 
   function formatReal(value, fmt) {
     if (!Number.isFinite(value)) return String(value);
     const d = clampDigits(fmt.digits);
-    if (fmt.mode === 'sci') return formatMantExp(value, d, false);
-    if (fmt.mode === 'eng') return formatMantExp(value, d, true);
-    return value.toFixed(d);
+    const trim = Boolean(fmt.trimZeros);
+    if (fmt.mode === 'sci') return formatMantExp(value, d, false, trim);
+    if (fmt.mode === 'eng') return formatMantExp(value, d, true, trim);
+    const out = value.toFixed(d);
+    return trim ? stripTrailingZeros(out) : out;
   }
 
   function formatComplex(z, fmt) {
@@ -929,9 +1142,20 @@
 
   function sanitizeCalcsColor(value) {
     if (!value) return '';
-    const v = String(value).trim();
+    let v = String(value).trim().replace(/,\s*$/, '');
+    if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+      v = v.slice(1, -1).trim();
+    }
+    if (!v) return '';
+    const lower = v.toLowerCase();
+    if (lower === 'none' || lower === 'default') return '';
+    // Allow any CSS color; block injection (url(), expressions, extra declarations).
+    if (v.length > 160 || /[;{}<>]|url\s*\(|expression\s*\(|@import|javascript:/i.test(v)) return '';
     if (/^#[0-9a-f]{3,8}$/i.test(v)) return v;
-    if (/^[a-zA-Z]+$/.test(v) && v.length <= 20) return v.toLowerCase();
+    if (/^(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|color-mix)\(/i.test(v) && /\)$/.test(v)) {
+      return /^[\w(%#.,/\s+\-degturnradgrad)]+$/i.test(v) ? v : '';
+    }
+    if (/^[a-z][\w-]*$/i.test(v) && v.length <= 40) return lower;
     return '';
   }
 
@@ -1067,26 +1291,39 @@
     return parts.length ? parts : [s];
   }
 
+  function stripCalcsComments(src) {
+    return String(src || '').replace(/\(\*[\s\S]*?\*\)/g, '');
+  }
+
   function normalizeCalcsStmt(stmt) {
     let s = String(stmt || '').trim();
-    // Optional leading/trailing "=" (result marker). Do not touch ":=".
+    let silent = false;
+    if (s.endsWith(';')) {
+      silent = true;
+      s = s.slice(0, -1).trim();
+    }
+    // Optional leading/trailing "=" result marker. Do not touch ":=".
     if (s.startsWith('=') && !s.startsWith(':=')) s = s.slice(1).trim();
     if (s.endsWith('=') && !s.endsWith(':=')) s = s.replace(/=\s*$/, '').trim();
-    return s;
+    return { text: s, silent };
   }
 
   function runCalcsStatement(stmt, env) {
-    const ast = parseLine(normalizeCalcsStmt(stmt));
+    const { text, silent } = normalizeCalcsStmt(stmt);
+    const ast = parseLine(text);
     if (ast.type === 'empty') return null;
     if (ast.type === 'format') {
       env.format = {
         mode: ast.mode,
         digits: ast.digits == null ? env.format.digits : clampDigits(ast.digits),
+        trimZeros: ast.trimZeros == null ? env.format.trimZeros : Boolean(ast.trimZeros),
       };
+      const flagLabel = env.format.trimZeros ? ', true' : ', false';
       return {
         ok: true,
         kind: 'format',
-        text: `${ast.mode.toUpperCase()} ${env.format.digits}`,
+        silent,
+        text: `${ast.mode.toUpperCase()} ${env.format.digits}${ast.trimZeros == null ? '' : flagLabel}`,
         format: { ...env.format },
       };
     }
@@ -1095,6 +1332,7 @@
       return {
         ok: true,
         kind: isPlot(value) ? 'plot' : 'assign',
+        silent,
         name: ast.name,
         value,
         format: { ...env.format },
@@ -1109,6 +1347,7 @@
       return {
         ok: true,
         kind: isPlot(stored) ? 'plot' : 'assign',
+        silent,
         name: ast.name,
         value: stored,
         format: { ...env.format },
@@ -1119,6 +1358,7 @@
     return {
       ok: true,
       kind: isPlot(value) ? 'plot' : 'expr',
+      silent,
       value,
       format: { ...env.format },
       text: formatValue(value, env.format),
@@ -1128,7 +1368,8 @@
   function evaluate(source, options = {}) {
     const env = defaultEnv();
     const cfg = applyFenceFormat(env, options.fenceAttrs || '');
-    const logicalLines = joinContinuedLines(String(source || '').replace(/\r\n/g, '\n').split('\n'));
+    const cleaned = stripCalcsComments(String(source || '').replace(/\r\n/g, '\n'));
+    const logicalLines = joinContinuedLines(cleaned.split('\n'));
     const rows = [];
 
     function pushExprWithMd(raw, idx, md, rest, mdPos) {
@@ -1137,7 +1378,8 @@
       for (const stmt of statements) {
         try {
           const result = runCalcsStatement(stmt, env);
-          if (result) parts.push({ ...result, stmt });
+          if (result && !result.silent) parts.push({ ...result, stmt });
+          else if (result && result.silent && !result.ok) parts.push({ ...result, stmt });
         } catch (err) {
           parts.push({
             ok: false,
@@ -1147,11 +1389,12 @@
           });
         }
       }
+      if (!parts.length && !md) return;
       rows.push({
         source: raw,
         line: idx + 1,
         ok: parts.every(p => p.ok),
-        kind: parts.length > 1 ? 'multi' : 'mixed',
+        kind: parts.length > 1 ? 'multi' : (parts.length ? (md ? 'mixed' : parts[0].kind) : 'md'),
         md,
         html: renderCalcsMarkdown(md),
         mdPos,
@@ -1160,7 +1403,7 @@
     }
 
     logicalLines.forEach((raw, idx) => {
-      if (!raw || raw.startsWith('#') || raw.startsWith('//')) return;
+      if (!raw || raw.startsWith('#') || raw.startsWith('//') || raw.startsWith('%')) return;
       const quoted = parseCalcsQuotedLine(raw);
       if (quoted) {
         if (quoted.rest) {
@@ -1183,14 +1426,12 @@
         pushExprWithMd(raw, idx, trailing.md, trailing.rest, trailing.mdPos);
         return;
       }
-      const exprSrc = normalizeCalcsStmt(raw);
-      if (!exprSrc || exprSrc.startsWith('#') || exprSrc.startsWith('//')) return;
-      const statements = splitCalcsStatements(exprSrc);
+      const statements = splitCalcsStatements(raw);
       const parts = [];
       for (const stmt of statements) {
         try {
           const result = runCalcsStatement(stmt, env);
-          if (result) parts.push({ ...result, stmt });
+          if (result && !result.silent) parts.push({ ...result, stmt });
         } catch (err) {
           parts.push({
             ok: false,
@@ -1555,7 +1796,20 @@
     r = run('FIX 2\n1/3\nSCI 3\n12345\nENG 3\n12345');
     check('FIX', r.rows[1].text === '0.33');
     check('SCI', /^1\.235e4$/i.test(r.rows[3].text));
-    check('ENG', /12\.345e3/i.test(r.rows[5].text));
+    check('ENG', /^12\.3e3$/i.test(r.rows[5].text));
+
+    r = run('FIX(7, true)\n1.5\nFIX(7, false)\n1.5');
+    check('FIX(7, true) trim', r.rows[1].text === '1.5');
+    check('FIX(7, false) full', r.rows[3].text === '1.5000000');
+    r = run('FIX(7, true)\n1/3');
+    check('FIX(7, true) 1/3', r.rows[1].text === '0.3333333');
+
+    r = run('ENG(3, false)\ni = 1..10\ni');
+    check('ENG(3, false) 1..10', r.rows[2].ok && r.rows[2].text ===
+      '(1.00e0, 2.00e0, 3.00e0, 4.00e0, 5.00e0, 6.00e0, 7.00e0, 8.00e0, 9.00e0, 10.0e0)');
+    r = run('ENG(3, true)\ni = 1..10\ni');
+    check('ENG(3, true) 1..10', r.rows[2].ok && r.rows[2].text ===
+      '(1e0, 2e0, 3e0, 4e0, 5e0, 6e0, 7e0, 8e0, 9e0, 10e0)');
 
     r = run('plot([1,4,9])');
     check('plot', r.rows[0].ok && isPlot(r.rows[0].value) && r.rows[0].value.series[0].y[2] === 9);
@@ -1640,6 +1894,12 @@
     check('html color+bg', html.includes('calcs-block--custom')
       && html.includes('--calcs-custom-color:red')
       && html.includes('--calcs-custom-bg:silver'));
+    const htmlHex = renderBlock('x = 1', 'fix=2;col=#444');
+    check('html hex col', htmlHex.includes('calcs-block--custom')
+      && htmlHex.includes('--calcs-custom-color:#444'));
+    const htmlRgb = renderBlock('x = 1', 'col=rgb(68, 68, 68);bkcol=hsl(200, 20%, 95%)');
+    check('html rgb/hsl', htmlRgb.includes('--calcs-custom-color:rgb(68, 68, 68)')
+      && htmlRgb.includes('--calcs-custom-bg:hsl(200, 20%, 95%)'));
 
     r = run('y1:=(1,2,3)\nPlot(y1)');
     check('plot wrap', r.rows[1].kind === 'plot' && renderPlotWrap(r.rows[1].value.series).includes('calcs-plot-wrap'));
@@ -1664,6 +1924,40 @@
       { l: 42, r: 12, t: 12, b: 28 },
       0, 1, 1, 2,
     ))), 1).includes('calcs-plot-snap-point'));
+
+    r = run('x = 5\nx');
+    check('octave assign =', r.rows[0].ok && nearly(r.rows[0].value.re, 5) && nearly(r.rows[1].value.re, 5));
+
+    r = run('% comment\nx = 1:5');
+    check('octave range :', r.rows[0].ok && isV(r.rows[0].value) && r.rows[0].value.items.length === 5
+      && nearly(r.rows[0].value.items[4].re, 5));
+
+    r = run('t = 0:0.5:2');
+    check('octave range step', r.rows[0].ok && isV(r.rows[0].value) && r.rows[0].value.items.length === 5
+      && nearly(r.rows[0].value.items[2].re, 1));
+
+    r = run('A = [1 2; 3 4]\nA');
+    check('octave matrix', r.rows[0].ok && isM(r.rows[0].value)
+      && nearly(r.rows[0].value.rows[1][0].re, 3));
+
+    r = run('v = [1 2 3]\nw = [10 20 30]\nv .* w');
+    check('octave emul', r.rows[2].ok && nearly(r.rows[2].value.items[1].re, 40));
+
+    r = run('linspace(0,1,5)');
+    check('linspace', r.rows[0].ok && isV(r.rows[0].value) && r.rows[0].value.items.length === 5
+      && nearly(r.rows[0].value.items[2].re, 0.5));
+
+    r = run('eye(2)');
+    check('eye', r.rows[0].ok && isM(r.rows[0].value) && nearly(r.rows[0].value.rows[1][1].re, 1));
+
+    r = run('a = 3;\na');
+    check('silent ;', r.rows.length === 1 && nearly(r.rows[0].value.re, 3));
+
+    r = run('(* block *)\nx = 9');
+    check('block comment', r.rows[0].ok && nearly(r.rows[0].value.re, 9));
+
+    r = run('= 17:34 - 13:23');
+    check('time still works', r.rows[0].ok && r.rows[0].text === '4:11');
 
     return fails;
   }
