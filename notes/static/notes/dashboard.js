@@ -2088,7 +2088,7 @@
   }
 
   function isPreviewRichBlock(el) {
-    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .md-python, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .page-tags');
+    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .md-python, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .gallery-block, .rollercoast-block, .scooter-block, .page-tags');
   }
 
   function getPreviewBlockSourceLine(node) {
@@ -7015,6 +7015,211 @@
     window.NotesProPinball?.hydrate?.(root);
   }
 
+  const GALLERY_BLOCK_RE = /```gallery(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function updateGalleryInMarkdown(markdown, galleryIndex, update) {
+    const engine = window.NotesProGallery;
+    if (!engine) return markdown;
+    let idx = 0;
+    const re = /```gallery(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+    return String(markdown || '').replace(re, (match, fenceAttrs, content = '') => {
+      const thisIndex = idx;
+      idx += 1;
+      if (thisIndex !== galleryIndex) return match;
+      const cfg = engine.parseFenceAttrs(fenceAttrs || '');
+      const photos = engine.parsePhotos(content || '');
+      if (update.addImage) {
+        const nextPhotos = photos.concat([{
+          src: update.addImage,
+          label: update.label || `Photo ${photos.length + 1}`,
+        }]);
+        const attrs = engine.buildFenceAttrsString(cfg);
+        const body = engine.formatGalleryBody(nextPhotos);
+        const fence = attrs ? `gallery{${attrs}}` : 'gallery';
+        return `\`\`\`${fence}\n${body}\n\`\`\``;
+      }
+      return match;
+    });
+  }
+
+  function parseGalleryBlocks(text, options = {}) {
+    let galleryIndex = 0;
+    GALLERY_BLOCK_RE.lastIndex = 0;
+    return text.replace(GALLERY_BLOCK_RE, (_, fenceAttrs, content) => {
+      const engine = window.NotesProGallery;
+      const idx = galleryIndex++;
+      const html = engine?.renderBlock
+        ? engine.renderBlock(content || '', fenceAttrs || '', {
+          galleryIndex: idx,
+          editable: !!options.sheetEditable,
+        })
+        : '<div class="gallery-block gallery-block--error">Gallery engine not loaded.</div>';
+      return wrapRichPreviewBlock(html);
+    });
+  }
+
+  function hydrateGalleryBlocks(root) {
+    const engine = window.NotesProGallery;
+    if (!engine) return;
+    (root || document).querySelectorAll('.gallery-block[data-gallery-spec]').forEach(el => {
+      const galleryIndex = parseInt(el.dataset.galleryIndex, 10);
+      engine.hydrateBlock(el, {
+        onPasteImage: userCanEdit && Number.isFinite(galleryIndex) && easyMDE
+          ? async (file) => {
+            const mediaPath = await uploadPastedImageBlob(file, file.name || 'paste.png');
+            const oldMarkdown = easyMDE.value();
+            const updated = updateGalleryInMarkdown(oldMarkdown, galleryIndex, {
+              addImage: mediaPath,
+              label: file.name ? String(file.name).replace(/\.[^.]+$/, '') : 'Photo',
+            });
+            if (updated === oldMarkdown) return;
+            easyMDE.value(updated);
+            scheduleSave();
+            schedulePreviewRefresh();
+          }
+          : null,
+      });
+    });
+  }
+
+  const ROLLERCOAST_BLOCK_RE = /```(?:rollercoast|rollercoaster|coaster)(?:\{([^}]*)\}|([^\n`]*))?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function updateRollercoastInMarkdown(markdown, rideIndex, update) {
+    const engine = window.NotesProRollercoast;
+    if (!engine) return markdown;
+    let idx = 0;
+    const re = /```(?:rollercoast|rollercoaster|coaster)(?:\{([^}]*)\}|([^\n`]*))?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+    return String(markdown || '').replace(re, (match, braceAttrs, spaceAttrs, content = '') => {
+      const thisIndex = idx;
+      idx += 1;
+      if (thisIndex !== rideIndex) return match;
+      const fenceAttrs = braceAttrs || spaceAttrs || '';
+      const cfg = engine.parseFenceAttrs(fenceAttrs);
+      const photos = engine.parsePhotos(content || '');
+      if (update.addImage) {
+        const nextPhotos = photos.concat([{
+          src: update.addImage,
+          label: update.label || `Photo ${photos.length + 1}`,
+        }]);
+        const attrs = engine.buildFenceAttrsString(cfg);
+        const body = engine.formatGalleryBody(nextPhotos);
+        const fence = attrs ? `rollercoast{${attrs}}` : 'rollercoast';
+        return `\`\`\`${fence}\n${body}\n\`\`\``;
+      }
+      return match;
+    });
+  }
+
+  function parseRollercoastBlocks(text, options = {}) {
+    let rideIndex = 0;
+    ROLLERCOAST_BLOCK_RE.lastIndex = 0;
+    return text.replace(ROLLERCOAST_BLOCK_RE, (_, braceAttrs, spaceAttrs, content) => {
+      const engine = window.NotesProRollercoast;
+      const idx = rideIndex++;
+      const fenceAttrs = braceAttrs || spaceAttrs || '';
+      const html = engine?.renderBlock
+        ? engine.renderBlock(content || '', fenceAttrs, {
+          rideIndex: idx,
+          editable: !!options.sheetEditable,
+        })
+        : '<div class="rollercoast-block rollercoast-block--error">Roller coaster engine not loaded.</div>';
+      return wrapRichPreviewBlock(html);
+    });
+  }
+
+  function hydrateRollercoastBlocks(root) {
+    const engine = window.NotesProRollercoast;
+    if (!engine) return;
+    (root || document).querySelectorAll('.rollercoast-block[data-rollercoast-spec]').forEach(el => {
+      const rideIndex = parseInt(el.dataset.rollercoastIndex, 10);
+      engine.hydrateBlock(el, {
+        onPasteImage: userCanEdit && Number.isFinite(rideIndex) && easyMDE
+          ? async (file) => {
+            const mediaPath = await uploadPastedImageBlob(file, file.name || 'paste.png');
+            const oldMarkdown = easyMDE.value();
+            const updated = updateRollercoastInMarkdown(oldMarkdown, rideIndex, {
+              addImage: mediaPath,
+              label: file.name ? String(file.name).replace(/\.[^.]+$/, '') : 'Photo',
+            });
+            if (updated === oldMarkdown) return;
+            easyMDE.value(updated);
+            scheduleSave();
+            schedulePreviewRefresh();
+          }
+          : null,
+      });
+    });
+  }
+
+  const SCOOTER_BLOCK_RE = /```(?:scooter|autoscooter|bumpercars?)(?:\{([^}]*)\}|([^\n`]*))?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function updateScooterInMarkdown(markdown, scooterIndex, update) {
+    const engine = window.NotesProScooter;
+    if (!engine) return markdown;
+    let idx = 0;
+    const re = /```(?:scooter|autoscooter|bumpercars?)(?:\{([^}]*)\}|([^\n`]*))?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+    return String(markdown || '').replace(re, (match, braceAttrs, spaceAttrs, content = '') => {
+      const thisIndex = idx;
+      idx += 1;
+      if (thisIndex !== scooterIndex) return match;
+      const fenceAttrs = braceAttrs || spaceAttrs || '';
+      const cfg = engine.parseFenceAttrs(fenceAttrs);
+      const photos = engine.parsePhotos(content || '');
+      if (update.addImage) {
+        const nextPhotos = photos.concat([{
+          src: update.addImage,
+          label: update.label || `Photo ${photos.length + 1}`,
+        }]);
+        const attrs = engine.buildFenceAttrsString(cfg);
+        const body = engine.formatGalleryBody(nextPhotos);
+        const fence = attrs ? `scooter{${attrs}}` : 'scooter';
+        return `\`\`\`${fence}\n${body}\n\`\`\``;
+      }
+      return match;
+    });
+  }
+
+  function parseScooterBlocks(text, options = {}) {
+    let scooterIndex = 0;
+    SCOOTER_BLOCK_RE.lastIndex = 0;
+    return text.replace(SCOOTER_BLOCK_RE, (_, braceAttrs, spaceAttrs, content) => {
+      const engine = window.NotesProScooter;
+      const idx = scooterIndex++;
+      const fenceAttrs = braceAttrs || spaceAttrs || '';
+      const html = engine?.renderBlock
+        ? engine.renderBlock(content || '', fenceAttrs, {
+          scooterIndex: idx,
+          editable: !!options.sheetEditable,
+        })
+        : '<div class="scooter-block scooter-block--error">Scooter engine not loaded.</div>';
+      return wrapRichPreviewBlock(html);
+    });
+  }
+
+  function hydrateScooterBlocks(root) {
+    const engine = window.NotesProScooter;
+    if (!engine) return;
+    (root || document).querySelectorAll('.scooter-block[data-scooter-spec]').forEach(el => {
+      const scooterIndex = parseInt(el.dataset.scooterIndex, 10);
+      engine.hydrateBlock(el, {
+        onPasteImage: userCanEdit && Number.isFinite(scooterIndex) && easyMDE
+          ? async (file) => {
+            const mediaPath = await uploadPastedImageBlob(file, file.name || 'paste.png');
+            const oldMarkdown = easyMDE.value();
+            const updated = updateScooterInMarkdown(oldMarkdown, scooterIndex, {
+              addImage: mediaPath,
+              label: file.name ? String(file.name).replace(/\.[^.]+$/, '') : 'Photo',
+            });
+            if (updated === oldMarkdown) return;
+            easyMDE.value(updated);
+            scheduleSave();
+            schedulePreviewRefresh();
+          }
+          : null,
+      });
+    });
+  }
+
   function buildPanelFence(type, title, body) {
     const panelType = PANEL_TYPES.includes(type) ? type : 'info';
     const lines = [];
@@ -8052,7 +8257,7 @@ function formatTextWithMarkup(rawText) {
     if (!root) return;
     root.querySelectorAll('pre').forEach(pre => {
       if (pre.closest('.md-code-block')) return;
-      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .md-python, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block')) {
+      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .md-python, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .gallery-block, .rollercoast-block, .scooter-block')) {
         return;
       }
       const wrap = document.createElement('div');
@@ -8437,6 +8642,21 @@ function formatTextWithMarkup(rawText) {
       const label = cfg.title || 'Pinball';
       return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
     });
+    md = md.replace(/```gallery(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const cfg = window.NotesProGallery?.parseFenceAttrs?.(fenceAttrs) || {};
+      const label = cfg.title || 'Gallery';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
+    md = md.replace(/```(?:rollercoast|rollercoaster|coaster)(?:\{([^}]*)\}|([^\n`]*))?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, braceAttrs, spaceAttrs) => {
+      const cfg = window.NotesProRollercoast?.parseFenceAttrs?.(braceAttrs || spaceAttrs) || {};
+      const label = cfg.title || 'Roller coaster';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
+    md = md.replace(/```(?:scooter|autoscooter|bumpercars?)(?:\{([^}]*)\}|([^\n`]*))?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, braceAttrs, spaceAttrs) => {
+      const cfg = window.NotesProScooter?.parseFenceAttrs?.(braceAttrs || spaceAttrs) || {};
+      const label = cfg.title || 'Auto scooter';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
     md = md.replace(/```(?:python3?|executecode)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
       const cfg = parsePythonFenceAttrs(fenceAttrs);
       const label = cfg.title || 'Python';
@@ -8487,6 +8707,9 @@ function formatTextWithMarkup(rawText) {
       md = parseSudokuBlocks(md);
       md = parsePuzzleBlocks(md);
       md = parsePinballBlocks(md);
+      md = parseGalleryBlocks(md, options);
+      md = parseRollercoastBlocks(md, options);
+      md = parseScooterBlocks(md, options);
       md = parsePythonBlocks(md);
     } else {
       md = replaceRichBlocksWithPlaceholders(md);
@@ -8869,6 +9092,9 @@ function formatTextWithMarkup(rawText) {
     hydrateSudokuBlocks(preview);
     hydratePuzzleBlocks(preview);
     hydratePinballBlocks(preview);
+    hydrateGalleryBlocks(preview);
+    hydrateRollercoastBlocks(preview);
+    hydrateScooterBlocks(preview);
     buildFloatingToc();
     annotatePreviewSourceLines(raw, preview);
     if (isEditing) preview.tabIndex = -1;
@@ -12668,6 +12894,51 @@ function formatTextWithMarkup(rawText) {
           title: 'Insert Space Cadet pinball',
         },
         {
+          name: 'insert-gallery',
+          action: (editor) => {
+            const body = [
+              '![Mountain lake](https://picsum.photos/id/1015/960/720)',
+              '![Flower video](https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4)',
+              '![Forest path](https://picsum.photos/id/1018/960/720)',
+              '![Coast](https://picsum.photos/id/1016/960/720)',
+              '![Valley](https://picsum.photos/id/1043/960/720)',
+              '![Bridge](https://picsum.photos/id/1036/960/720)',
+            ].join('\n');
+            insertFenceBlock(editor, 'gallery{title=Demo walk;mode=walk;demo;col=info}', body);
+          },
+          className: 'fa fa-camera',
+          title: 'Insert walk-in photo gallery demo',
+        },
+        {
+          name: 'insert-rollercoast',
+          action: (editor) => {
+            const body = [
+              '![Canopy](https://picsum.photos/id/1018/960/720)',
+              '![River](https://picsum.photos/id/1015/960/720)',
+              '![Trail](https://picsum.photos/id/1043/960/720)',
+              '![Mist](https://picsum.photos/id/1016/960/720)',
+            ].join('\n');
+            insertFenceBlock(editor, 'rollercoast{mode=jungle;title=Jungle coaster;demo;col=success}', body);
+          },
+          className: 'fa fa-rocket',
+          title: 'Insert jungle roller coaster',
+        },
+        {
+          name: 'insert-scooter',
+          action: (editor) => {
+            const body = [
+              '![Blue](https://picsum.photos/id/1015/640/480)',
+              '![Green](https://picsum.photos/id/1018/640/480)',
+              '![Coast](https://picsum.photos/id/1016/640/480)',
+              '![Valley](https://picsum.photos/id/1043/640/480)',
+              '![Bridge](https://picsum.photos/id/1036/640/480)',
+            ].join('\n');
+            insertFenceBlock(editor, 'scooter{title=Auto scooter;demo;col=warning}', body);
+          },
+          className: 'fa fa-car',
+          title: 'Insert auto scooter rink',
+        },
+        {
           name: 'insert-news',
           action: (editor) => {
             insertFenceBlock(
@@ -15259,7 +15530,7 @@ function formatTextWithMarkup(rawText) {
   }
 
   document.addEventListener('paste', function (event) {
-    if (event.target.closest?.('.puzzle-block')) return;
+    if (event.target.closest?.('.puzzle-block, .gallery-block, .rollercoast-block, .scooter-block')) return;
     const items = (event.clipboardData || event.originalEvent.clipboardData).items;
     for (let index in items) {
       const item = items[index];
