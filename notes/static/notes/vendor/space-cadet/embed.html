@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>3D Pinball Space Cadet</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #000;
+      overflow: hidden;
+      height: 100%;
+    }
+    canvas {
+      position: fixed;
+      left: 0;
+      right: 0;
+      top: -20px;
+      bottom: 0;
+      width: 100%;
+    }
+    .loading {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #94a3b8;
+      font: 14px/1.4 system-ui, sans-serif;
+      background: #000;
+      z-index: 2;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas" tabindex="0"></canvas>
+  <div class="loading" id="loading">Loading Space Cadet…</div>
+  <script>
+    function getBooleanSetting(settingName) {
+      try {
+        var name = 'pinballspacecadet' + settingName;
+        var nameEQ = name + '=';
+        var ca = document.cookie.split(';');
+        for (var i = 0; i < ca.length; i++) {
+          var c = ca[i];
+          while (c.charAt(0) === ' ') c = c.substring(1, c.length);
+          if (c.indexOf(nameEQ) === 0) {
+            return c.substring(nameEQ.length, c.length) === 'true';
+          }
+        }
+      } catch (err) {}
+      return true;
+    }
+
+    var GAME_SOUND_ENABLED = getBooleanSetting('GAME_SOUND_ENABLED');
+
+    var Module = {
+      preRun: [],
+      postRun: [function () {
+        var loading = document.getElementById('loading');
+        if (loading) loading.style.display = 'none';
+        if (!GAME_SOUND_ENABLED && Module.SDL2 && Module.SDL2.audioContext) {
+          Module.SDL2.audioContext.suspend();
+        }
+        document.getElementById('canvas').addEventListener('contextmenu', function (event) {
+          event.preventDefault();
+        });
+      }],
+      print: function () {},
+      printErr: function () {},
+      canvas: (function () {
+        var canvas = document.getElementById('canvas');
+        canvas.addEventListener('webglcontextlost', function () {}, false);
+        return canvas;
+      })(),
+      setStatus: function () {},
+      totalDependencies: 0,
+      monitorRunDependencies: function () {},
+    };
+
+    function resizeCanvas() {
+      var canvas = document.getElementById('canvas');
+      canvas.style.height = (window.innerHeight + 20) + 'px';
+    }
+
+    document.addEventListener('keydown', function (event) {
+      if (event.key === 'c' || event.key === 'C') {
+        var keySlash = new KeyboardEvent('keydown', {
+          key: '/', code: 'Slash', which: 191, keyCode: 191,
+          shiftKey: false, ctrlKey: false, altKey: false, metaKey: false,
+          bubbles: true, cancelable: true,
+        });
+        document.getElementById('canvas').dispatchEvent(keySlash);
+      } else if (event.key === 'r' || event.key === 'R') {
+        var keyF2 = new KeyboardEvent('keydown', {
+          key: 'F2', code: 'F2', which: 113, keyCode: 113,
+          shiftKey: false, ctrlKey: false, altKey: false, metaKey: false,
+          bubbles: true, cancelable: true,
+        });
+        document.getElementById('canvas').dispatchEvent(keyF2);
+      } else if (event.key === 't' || event.key === 'T') {
+        GAME_SOUND_ENABLED = !GAME_SOUND_ENABLED;
+        document.cookie = 'pinballspacecadetGAME_SOUND_ENABLED=' + GAME_SOUND_ENABLED + '; path=/';
+        if (Module.SDL2 && Module.SDL2.audioContext) {
+          if (GAME_SOUND_ENABLED) Module.SDL2.audioContext.resume();
+          else Module.SDL2.audioContext.suspend();
+        }
+      }
+    });
+
+    document.addEventListener('keyup', function (event) {
+      if (event.key === 'c' || event.key === 'C') {
+        var keySlash = new KeyboardEvent('keyup', {
+          key: '/', code: 'Slash', which: 191, keyCode: 191,
+          shiftKey: false, ctrlKey: false, altKey: false, metaKey: false,
+          bubbles: true, cancelable: true,
+        });
+        document.getElementById('canvas').dispatchEvent(keySlash);
+      } else if (event.key === 'r' || event.key === 'R') {
+        var keyF2 = new KeyboardEvent('keyup', {
+          key: 'F2', code: 'F2', which: 113, keyCode: 113,
+          shiftKey: false, ctrlKey: false, altKey: false, metaKey: false,
+          bubbles: true, cancelable: true,
+        });
+        document.getElementById('canvas').dispatchEvent(keyF2);
+      }
+    });
+
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    var scriptGame = document.createElement('script');
+    scriptGame.src = 'https://cdn.jsdelivr.net/gh/lrusso/3DPinballSpaceCadet@main/3DPinballSpaceCadet.js';
+    scriptGame.onerror = function () {
+      var loading = document.getElementById('loading');
+      if (loading) loading.textContent = 'Failed to load Space Cadet.';
+    };
+    document.body.appendChild(scriptGame);
+  </script>
+</body>
+</html>

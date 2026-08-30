@@ -2088,7 +2088,7 @@
   }
 
   function isPreviewRichBlock(el) {
-    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .calcs-block, .page-tags');
+    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .md-python, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .page-tags');
   }
 
   function getPreviewBlockSourceLine(node) {
@@ -3194,6 +3194,168 @@
     });
   }
 
+  // ```python / ```executecode — run in browser Pyodide sandbox; print + matplotlib in preview.
+  const PYTHON_BLOCK_RE = /```(?:python3?|executecode)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+  const PYTHON_THEMES = ['info', 'success', 'warning', 'danger', 'note'];
+
+  function parsePythonFenceAttrs(attrs) {
+    const config = {};
+    String(attrs || '').split(';').forEach(pair => {
+      const trimmed = pair.trim();
+      if (!trimmed) return;
+      const eq = trimmed.indexOf('=');
+      if (eq < 0) {
+        config[trimmed.toLowerCase()] = '';
+        return;
+      }
+      config[trimmed.slice(0, eq).trim().toLowerCase()] = trimmed.slice(eq + 1).trim().replace(/,\s*$/, '');
+    });
+    return config;
+  }
+
+  function resolvePythonBlockStyle(cfg) {
+    const colRaw = String(cfg.col || cfg.color || '').trim();
+    const lower = colRaw.toLowerCase();
+    let theme = '';
+    let colorCss = '';
+    if (PYTHON_THEMES.includes(lower)) theme = lower;
+    else if (colRaw) colorCss = sanitizeSheetColor(colRaw);
+    const bgCss = sanitizeSheetColor(cfg.bkcol || cfg.bgcol || cfg.bg || '');
+    return { theme, colorCss, bgCss };
+  }
+
+  function pythonShellHtml(code, fenceAttrs) {
+    const cfg = parsePythonFenceAttrs(fenceAttrs);
+    const style = resolvePythonBlockStyle(cfg);
+    const title = String(cfg.title || 'Python').trim() || 'Python';
+    const themeClass = style.theme ? ` md-python--${style.theme}` : '';
+    const customClass = (style.colorCss || style.bgCss) ? ' md-python--custom' : '';
+    const styleVars = [];
+    if (style.colorCss) styleVars.push(`--md-python-color:${style.colorCss}`);
+    if (style.bgCss) styleVars.push(`--md-python-bg:${style.bgCss}`);
+    const styleAttr = styleVars.length
+      ? ` style="${styleVars.map(v => escapeHtml(v)).join(';')}"`
+      : '';
+    const src = String(code || '').replace(/\s+$/, '');
+    // Base64 keeps the full source intact: CommonMark ends HTML blocks on blank
+    // lines, so raw newlines inside <code> would truncate the program.
+    const srcB64 = typeof btoa === 'function'
+      ? btoa(unescape(encodeURIComponent(src)))
+      : '';
+    const srcHtml = escapeHtml(src).replace(/\r\n|\n|\r/g, '&#10;');
+    return wrapRichPreviewBlock(
+      `<div class="md-python${themeClass}${customClass}"${styleAttr} data-python-run="1" data-python-src="${srcB64}">`
+      + `<div class="md-python-head"><span class="md-python-badge">Python</span>`
+      + `<strong class="md-python-title">${escapeHtml(title)}</strong>`
+      + `<span class="md-python-meta">sandbox</span></div>`
+      + `<pre class="md-python-src"><code>${srcHtml}</code></pre>`
+      + `<div class="md-python-out"><div class="md-python-loading">Loading Python runtime…</div></div>`
+      + `</div>`,
+    );
+  }
+
+  function parsePythonBlocks(text) {
+    PYTHON_BLOCK_RE.lastIndex = 0;
+    return String(text || '').replace(PYTHON_BLOCK_RE, (_, fenceAttrs, content) => (
+      pythonShellHtml(content || '', fenceAttrs || '')
+    ));
+  }
+
+  function decodePythonSource(el) {
+    const b64 = el?.getAttribute?.('data-python-src') || '';
+    if (b64) {
+      try {
+        return decodeURIComponent(escape(atob(b64)));
+      } catch (_) { /* fall through */ }
+    }
+    const srcEl = el.querySelector('.md-python-src code') || el.querySelector('.md-python-src');
+    return srcEl ? srcEl.textContent : '';
+  }
+
+  function paintPythonResult(el, result) {
+    const out = el.querySelector('.md-python-out');
+    if (!out) return;
+    const parts = [];
+    const stdout = String(result?.stdout || '').replace(/\s+$/, '');
+    const stderr = String(result?.stderr || '').replace(/\s+$/, '');
+    if (stdout) {
+      parts.push(`<pre class="md-python-stdout">${escapeHtml(stdout)}</pre>`);
+    }
+    if (stderr) {
+      parts.push(`<pre class="md-python-stderr">${escapeHtml(stderr)}</pre>`);
+    }
+    const plots = Array.isArray(result?.plots) ? result.plots : [];
+    plots.forEach((b64, i) => {
+      if (!b64 || typeof b64 !== 'string') return;
+      if (!/^[A-Za-z0-9+/=\s]+$/.test(b64)) return;
+      parts.push(
+        `<figure class="md-python-plot">`
+        + `<img src="data:image/png;base64,${b64.replace(/\s+/g, '')}" alt="plot ${i + 1}" loading="lazy">`
+        + `</figure>`,
+      );
+    });
+    if (result && result.ok === false && result.error) {
+      parts.push(`<div class="md-python-error">${escapeHtml(result.error)}</div>`);
+    }
+    if (!parts.length) {
+      parts.push('<div class="md-python-empty">(no output)</div>');
+    }
+    out.innerHTML = parts.join('');
+    el.classList.remove('md-python--loading', 'md-python--error');
+    if (result && result.ok === false) el.classList.add('md-python--error');
+    el.dataset.pythonHydrated = '1';
+  }
+
+  function hydratePythonBlocks(root) {
+    if (!root) return;
+    const engine = window.NotesProPython;
+    root.querySelectorAll('.md-python[data-python-run="1"]').forEach(el => {
+      const code = decodePythonSource(el);
+      if (!String(code).trim()) {
+        paintPythonResult(el, { ok: true, stdout: '', stderr: '', plots: [], error: null });
+        return;
+      }
+      if (!engine?.run) {
+        paintPythonResult(el, {
+          ok: false,
+          stdout: '',
+          stderr: '',
+          plots: [],
+          error: 'Python runtime not loaded.',
+        });
+        return;
+      }
+      if (el.dataset.pythonPending === '1' && el.dataset.pythonCode === code) return;
+      el.dataset.pythonPending = '1';
+      el.dataset.pythonCode = code;
+      el.classList.add('md-python--loading');
+      const out = el.querySelector('.md-python-out');
+      if (out && el.dataset.pythonHydrated !== '1') {
+        out.innerHTML = '<div class="md-python-loading">Loading Python runtime (first run may take a minute)…</div>';
+      }
+      const token = String(Date.now()) + Math.random().toString(36).slice(2, 7);
+      el.dataset.pythonToken = token;
+      engine.run(code).then(result => {
+        if (!el.isConnected || el.dataset.pythonToken !== token) return;
+        if (decodePythonSource(el) !== code) return;
+        paintPythonResult(el, result);
+      }).catch(err => {
+        if (!el.isConnected || el.dataset.pythonToken !== token) return;
+        paintPythonResult(el, {
+          ok: false,
+          stdout: '',
+          stderr: '',
+          plots: [],
+          error: err?.message || String(err),
+        });
+      }).finally(() => {
+        if (el.isConnected && el.dataset.pythonToken === token) {
+          el.dataset.pythonPending = '0';
+        }
+      });
+    });
+  }
+
   const CALENDAR_BLOCK_RE = /```(?:calendar|calender)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
   const CALENDAR_MODES = ['day', 'week', 'month', 'year'];
 
@@ -3528,10 +3690,13 @@
       return `<span class="calendar-unit-allday" title="${escapeHtml(allDayLabel)}" aria-label="${escapeHtml(allDayLabel)}"></span>`;
     }
     if (entry.timeFrom && entry.timeTo) {
-      return `<span class="calendar-unit-time">${escapeHtml(formatCalendarTimeRangeDisplay(entry.timeFrom, entry.timeTo))}</span>`;
+      return `<span class="calendar-unit-time">`
+        + `<span class="calendar-unit-time-start">▶ ${escapeHtml(formatCalendarTimeDisplay(entry.timeFrom))}</span>`
+        + `<span class="calendar-unit-time-stop">■ ${escapeHtml(formatCalendarTimeDisplay(entry.timeTo))}</span>`
+        + `</span>`;
     }
     if (entry.timeFrom) {
-      return `<span class="calendar-unit-time">${escapeHtml(formatCalendarTimeDisplay(entry.timeFrom))}</span>`;
+      return `<span class="calendar-unit-time"><span class="calendar-unit-time-start">▶ ${escapeHtml(formatCalendarTimeDisplay(entry.timeFrom))}</span></span>`;
     }
     return '';
   }
@@ -3564,7 +3729,8 @@
     const label = title
       ? `<span class="calendar-unit-period-bar-label">${escapeHtml(title)}</span>`
       : '';
-    return `<div class="calendar-unit-period-bar calendar-unit-period-bar--${escapeHtml(role)}${title ? ' calendar-unit-period-bar--labeled' : ''}" style="--period-color:${escapeHtml(color)}">${label}</div>`;
+    const bar = `<div class="calendar-unit-period-bar calendar-unit-period-bar--${escapeHtml(role)}" style="--period-color:${escapeHtml(color)}"></div>`;
+    return `<div class="calendar-unit-period-bar-line${title ? ' calendar-unit-period-bar-line--labeled' : ''}">${label}${bar}</div>`;
   }
 
   function calendarEntryPlainTitle(entry) {
@@ -3787,6 +3953,72 @@
     return result;
   }
 
+  function entriesForCalendarMonth(entries, year, month) {
+    const monthStart = startOfDay(new Date(year, month, 1));
+    const monthEnd = startOfDay(new Date(year, month + 1, 0));
+    const result = [];
+    Object.keys(entries || {}).forEach(key => {
+      const dayRange = parseCalendarDayKey(key);
+      if (!dayRange) return;
+      const from = startOfDay(dayRange.from);
+      const to = startOfDay(dayRange.to || dayRange.from);
+      if (to < monthStart || from > monthEnd) return;
+      normalizeCalendarEntryList(entries[key]).forEach(entry => {
+        result.push({
+          ...entry,
+          key,
+          dateFrom: from,
+          dateTo: to,
+          listDate: from,
+        });
+      });
+    });
+    return result.sort((a, b) => {
+      const ad = a.listDate ? startOfDay(a.listDate).getTime() : 0;
+      const bd = b.listDate ? startOfDay(b.listDate).getTime() : 0;
+      if (ad !== bd) return ad - bd;
+      const aAll = a.allday !== false;
+      const bAll = b.allday !== false;
+      if (aAll !== bAll) return aAll ? 1 : -1;
+      const at = a.timeFrom || '';
+      const bt = b.timeFrom || '';
+      if (at !== bt) return at.localeCompare(bt);
+      return (a.sourceIndex ?? 0) - (b.sourceIndex ?? 0);
+    });
+  }
+
+  function calendarMonthEventItemMarkup(entry, editable) {
+    const tip = calendarEntryTooltipText(entry);
+    const tipAttr = tip ? ` data-calendar-tooltip="${escapeHtml(tip)}"` : '';
+    const noteKey = entry.key ? ` data-calendar-key="${escapeHtml(entry.key)}"` : '';
+    const editClass = editable ? ' calendar-month-event--editable' : '';
+    const from = entry.dateFrom || entry.listDate;
+    const to = entry.dateTo || from;
+    let dateLabel = '';
+    if (from) {
+      dateLabel = (!to || startOfDay(from).getTime() === startOfDay(to).getTime())
+        ? formatCalendarDateDisplay(from)
+        : formatCalendarDateRangeDisplay(from, to);
+    }
+    const timeLabel = entry.allday === false && entry.timeFrom
+      ? formatCalendarEntryTooltipTime(entry)
+      : (entry.allday !== false ? calendarAllDayLabel() : '');
+    const title = calendarEntryPlainTitle(entry);
+    const titleHtml = title
+      ? escapeHtml(title)
+      : '<span class="calendar-month-event-empty">—</span>';
+    return `<li class="calendar-month-event${editClass}"${noteKey}${tipAttr}>`
+      + `<span class="calendar-month-event-date">${escapeHtml(dateLabel)}</span>`
+      + `<span class="calendar-month-event-time">${escapeHtml(timeLabel)}</span>`
+      + `<span class="calendar-month-event-title">${titleHtml}</span>`
+      + `</li>`;
+  }
+
+  function calendarMonthEventListMarkup(events, editable) {
+    if (!events.length) return '';
+    return `<ul class="calendar-month-events">${events.map(entry => calendarMonthEventItemMarkup(entry, editable)).join('')}</ul>`;
+  }
+
   function nextCalendarSourceIndex(entries) {
     let max = -1;
     Object.values(entries || {}).forEach(list => {
@@ -3856,7 +4088,11 @@
 
   function formatCalendarEntryTooltipTime(entry) {
     if (!entry || entry.allday !== false) return '';
-    return formatCalendarTimeRangeDisplay(entry.timeFrom, entry.timeTo);
+    if (entry.timeFrom && entry.timeTo) {
+      return `▶ ${formatCalendarTimeDisplay(entry.timeFrom)} · ■ ${formatCalendarTimeDisplay(entry.timeTo)}`;
+    }
+    if (entry.timeFrom) return `▶ ${formatCalendarTimeDisplay(entry.timeFrom)}`;
+    return '';
   }
 
   function calendarEntryTooltipText(entry) {
@@ -3906,7 +4142,7 @@
     const noteKey = entry.key ? ` data-calendar-key="${escapeHtml(entry.key)}"` : '';
     const timed = entry.allday === false && entry.timeFrom;
     const timeText = timed
-      ? formatCalendarTimeRangeDisplay(entry.timeFrom, entry.timeTo)
+      ? formatCalendarEntryTooltipTime(entry)
       : '';
     const mobile = typeof isMobileLayout === 'function' && isMobileLayout();
 
@@ -3958,11 +4194,11 @@
 
     const stackHtml = periods.length
       ? `<div class="calendar-unit-period-stack">${periods.map(entry => formatCalendarPeriodBarWrap(entry, periodItems, {
-        showTitle: !mobile && (entry.periodRole === 'start' || (!compact && entry.periodRole === 'end')),
+        showTitle: !mobile && entry.periodRole === 'start',
       })).join('')}</div>`
       : '';
 
-    return `${singleHtml}${stackHtml}`;
+    return `<div class="calendar-unit-body">${singleHtml}</div>${stackHtml}`;
   }
 
   function calendarEntryMarkup(entryOrList) {
@@ -4197,25 +4433,40 @@
     const months = collectCalendarMonths(from, to);
     const years = collectCalendarYears(from, to);
     return years.map(year => {
-      const unitHtml = months
+      const rows = months
         .filter(m => m.year === year)
         .map(({ year: y, month }) => {
           const payload = `${y}-${month + 1}`;
-          const key = calendarEntryKey('month', payload);
-          const entry = entries[key];
+          const monthKey = calendarEntryKey('month', payload);
+          const monthOwn = normalizeCalendarEntryList(entries[monthKey]);
+          const dayEvents = entriesForCalendarMonth(entries, y, month);
+          const hasContent = calendarEntryHasContent(monthOwn) || dayEvents.length > 0;
           const classes = [
+            'calendar-month-row',
             'calendar-unit',
             'calendar-unit--month',
-            calendarEntryHasContent(entry) ? 'calendar-unit--has-note' : '',
+            hasContent ? 'calendar-unit--has-note' : '',
             editable ? 'calendar-unit--editable' : '',
           ].filter(Boolean).join(' ');
-          return `<div class="${classes}"${calendarUnitAttrs(key, editable, entry)}>`
-            + `<span class="calendar-unit-primary">${escapeHtml(calendarMonthShortLabel(month, y))}</span>`
-            + calendarEntryMarkup(entry)
+          const notesHtml = calendarEntryHasContent(monthOwn)
+            ? `<div class="calendar-month-notes">${calendarEntryMarkup(monthOwn)}</div>`
+            : '';
+          const eventsHtml = calendarMonthEventListMarkup(dayEvents, editable);
+          return `<div class="${classes}"${calendarUnitAttrs(monthKey, editable, monthOwn)}>`
+            + `<div class="calendar-month-row-header">`
+            + `<span class="calendar-unit-primary">${escapeHtml(calendarMonthYearLabel(y, month))}</span>`
+            + `</div>`
+            + notesHtml
+            + eventsHtml
             + `</div>`;
         }).join('');
-      if (!unitHtml) return '';
-      return renderCalendarGroup(String(year), unitHtml);
+      if (!rows) return '';
+      return [
+        `<div class="calendar-group">`,
+        `<div class="calendar-group-title">${escapeHtml(String(year))}</div>`,
+        `<div class="calendar-month-list">${rows}</div>`,
+        `</div>`,
+      ].join('');
     }).join('');
   }
 
@@ -5126,6 +5377,93 @@
     return Number.isNaN(iso.getTime()) ? null : iso;
   }
 
+  function parseKgSessionEntry(part) {
+    const trimmed = String(part || '').trim();
+    if (!trimmed) return null;
+    const gtIdx = trimmed.indexOf('>');
+    if (gtIdx < 0) return null;
+    const started = parseKgDateTime(trimmed.slice(0, gtIdx).trim());
+    if (!started) return null;
+    const stopRaw = trimmed.slice(gtIdx + 1).trim();
+    const stopped = stopRaw ? parseKgDateTime(stopRaw) : null;
+    return { started, stopped: stopped || null };
+  }
+
+  function parseKgSessions(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return [];
+    return raw.split(',').map(parseKgSessionEntry).filter(Boolean);
+  }
+
+  function formatKgSessions(sessions) {
+    return (sessions || []).map(session => {
+      const started = session.started instanceof Date ? session.started : parseKgDateTime(session.started);
+      if (!started) return '';
+      const stopped = session.stopped instanceof Date
+        ? session.stopped
+        : (session.stopped ? parseKgDateTime(session.stopped) : null);
+      const startStr = formatKgDateTime(started);
+      const stopStr = stopped ? formatKgDateTime(stopped) : '';
+      return `${startStr}>${stopStr}`;
+    }).filter(Boolean).join(',');
+  }
+
+  function kgSessionStart(session) {
+    if (!session?.started) return null;
+    return session.started instanceof Date ? session.started : parseKgDateTime(session.started);
+  }
+
+  function kgSessionStop(session) {
+    if (!session?.stopped) return null;
+    return session.stopped instanceof Date ? session.stopped : parseKgDateTime(session.stopped);
+  }
+
+  function kgNormalizeCardSessions(card) {
+    if (!Array.isArray(card.sessions)) card.sessions = parseKgSessions(card.sessions);
+    if (!card.sessions.length && (card.started || card.stopped)) {
+      const started = card.started instanceof Date ? card.started : parseKgDateTime(card.started);
+      const stopped = card.stopped instanceof Date ? card.stopped : parseKgDateTime(card.stopped);
+      if (started) card.sessions.push({ started, stopped: stopped || null });
+    }
+    if (card.status === 'running' && card.started) {
+      const hasOpen = card.sessions.some(s => kgSessionStart(s) && !kgSessionStop(s));
+      if (!hasOpen) {
+        const started = card.started instanceof Date ? card.started : parseKgDateTime(card.started);
+        if (started) card.sessions.push({ started, stopped: null });
+      }
+    }
+    const closed = card.sessions.filter(s => kgSessionStop(s));
+    if (closed.length) {
+      card.stopped = kgSessionStop(closed[closed.length - 1]);
+    }
+    const open = [...card.sessions].reverse().find(s => kgSessionStart(s) && !kgSessionStop(s));
+    if (open) card.started = kgSessionStart(open);
+    else if (card.status !== 'running') card.started = null;
+    return card;
+  }
+
+  function kgCloseOpenSession(card, stopTime = new Date()) {
+    card.sessions = card.sessions || [];
+    const stop = stopTime instanceof Date ? stopTime : parseKgDateTime(stopTime);
+    for (let i = card.sessions.length - 1; i >= 0; i -= 1) {
+      const session = card.sessions[i];
+      if (kgSessionStart(session) && !kgSessionStop(session)) {
+        session.stopped = stop;
+        return session;
+      }
+    }
+    return null;
+  }
+
+  function kgOpenSession(card, startTime = new Date()) {
+    card.sessions = card.sessions || [];
+    const started = startTime instanceof Date ? startTime : parseKgDateTime(startTime);
+    if (!started) return null;
+    card.sessions.push({ started, stopped: null });
+    card.started = started;
+    return started;
+  }
+
   function parseKgMetaPart(part) {
     const text = String(part || '').trim();
     if (!text || !/^[A-Za-z_-]+\s*=/.test(text)) return null;
@@ -5139,6 +5477,20 @@
   }
 
   function kgEffectiveElapsed(card, now = Date.now()) {
+    kgNormalizeCardSessions(card);
+    if (card.sessions?.length) {
+      let total = 0;
+      card.sessions.forEach(session => {
+        const start = kgSessionStart(session);
+        if (!start) return;
+        const stop = kgSessionStop(session);
+        const endMs = stop
+          ? stop.getTime()
+          : (card.status === 'running' ? now : null);
+        if (endMs != null) total += Math.max(0, Math.floor((endMs - start.getTime()) / 1000));
+      });
+      return total;
+    }
     let elapsed = parseKgElapsed(card.elapsed);
     if (card.status === 'running' && card.started) {
       const started = card.started instanceof Date ? card.started : parseKgDateTime(card.started);
@@ -5269,6 +5621,8 @@
           : null,
         elapsed: parseKgElapsed(meta.elapsed || meta.seconds || 0),
         started: parseKgDateTime(meta.started || meta.start || ''),
+        stopped: parseKgDateTime(meta.stopped || meta.stop || meta.end || ''),
+        sessions: parseKgSessions(meta.sessions || meta.log || ''),
       });
     });
 
@@ -5278,6 +5632,7 @@
       : (discoveredCols.length ? discoveredCols : [...KANBANGANTT_DEFAULT_COLS]);
     cards.forEach(card => {
       if (card.col && !columns.includes(card.col)) columns.push(card.col);
+      kgNormalizeCardSessions(card);
     });
 
     const colRaw = String(config.col || config.bg || config.color || '').trim().toLowerCase();
@@ -5308,9 +5663,17 @@
       if (rate > 0) metaParts.push(`rate=${rate}`);
       const elapsed = parseKgElapsed(card.elapsed);
       if (elapsed > 0) metaParts.push(`elapsed=${elapsed}`);
-      if (card.status === 'running' && card.started) {
-        const started = card.started instanceof Date ? card.started : parseKgDateTime(card.started);
-        if (started) metaParts.push(`started=${formatKgDateTime(started)}`);
+      const sessionsStr = formatKgSessions(card.sessions);
+      if (sessionsStr) metaParts.push(`sessions=${sessionsStr}`);
+      else {
+        if (card.started) {
+          const started = card.started instanceof Date ? card.started : parseKgDateTime(card.started);
+          if (started) metaParts.push(`started=${formatKgDateTime(started)}`);
+        }
+        if (card.stopped) {
+          const stopped = card.stopped instanceof Date ? card.stopped : parseKgDateTime(card.stopped);
+          if (stopped) metaParts.push(`stopped=${formatKgDateTime(stopped)}`);
+        }
       }
       const parts = [card.col, card.label, metaParts.join(';')];
       if (card.text) parts.push(String(card.text).replace(/\r?\n/g, ' ').trim());
@@ -5329,6 +5692,316 @@
 
   function setKanbanganttFenceAttr(fenceAttrs, key, value) {
     return setGanttFenceAttr(fenceAttrs, key, value);
+  }
+
+  function kgCardTimesLine(card) {
+    kgNormalizeCardSessions(card);
+    const lines = (card.sessions || []).map(session => {
+      const started = kgSessionStart(session);
+      const stopped = kgSessionStop(session);
+      if (!started) return '';
+      const startText = `▶ ${formatKgDateTime(started)}`;
+      const stopText = stopped ? `■ ${formatKgDateTime(stopped)}` : '■ …';
+      return `${startText} · ${stopText}`;
+    }).filter(Boolean);
+    if (!lines.length) return '';
+    const multi = lines.length > 1 ? ' kg-card-times--multi' : '';
+    return `<div class="kg-card-times${multi}">${lines.map(line => `<span>${escapeHtml(line)}</span>`).join('')}</div>`;
+  }
+
+  function kgSessionEffectiveStop(session, card, now = Date.now()) {
+    const stop = kgSessionStop(session);
+    if (stop) return stop;
+    if (card.status !== 'running') return null;
+    const start = kgSessionStart(session);
+    const open = [...(card.sessions || [])].reverse().find(s => kgSessionStart(s) && !kgSessionStop(s));
+    if (open && kgSessionStart(open)?.getTime() === start?.getTime()) return new Date(now);
+    return null;
+  }
+
+  function formatKgClock(date) {
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
+    return formatCalendarTimeDisplay(
+      `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`,
+    );
+  }
+
+  function kgCollectSessionSpans(cards, now = Date.now()) {
+    const spans = [];
+    (cards || []).forEach(card => {
+      kgNormalizeCardSessions(card);
+      (card.sessions || []).forEach((session, idx) => {
+        const started = kgSessionStart(session);
+        if (!started) return;
+        // Prefer closed/effective stop; still show open starts on the start day.
+        const stopped = kgSessionEffectiveStop(session, card, now) || kgSessionStop(session);
+        const dateFrom = startOfDay(started);
+        let dateTo = stopped ? startOfDay(stopped) : dateFrom;
+        if (dateTo < dateFrom) dateTo = dateFrom;
+        spans.push({
+          id: `${card.id}:${idx}`,
+          cardId: card.id,
+          label: card.label,
+          started,
+          stopped: stopped || null,
+          open: !stopped,
+          dateFrom,
+          dateTo,
+          sourceIndex: idx,
+        });
+      });
+    });
+    return spans.sort((a, b) => a.started.getTime() - b.started.getTime());
+  }
+
+  function kgSessionSpanRole(span, viewDate) {
+    if (!span?.dateFrom || !span?.dateTo || !viewDate) return null;
+    const from = startOfDay(span.dateFrom).getTime();
+    const to = startOfDay(span.dateTo).getTime();
+    const day = startOfDay(viewDate).getTime();
+    if (day < from || day > to) return null;
+    if (from === to) return 'single';
+    if (day === from) return 'start';
+    if (day === to) return 'end';
+    return 'middle';
+  }
+
+  function kgTimeCalBarTooltip(span) {
+    const title = String(span.label || '').trim();
+    const startText = `▶ ${formatKgDateTime(span.started)}`;
+    const stopText = span.stopped ? `■ ${formatKgDateTime(span.stopped)}` : '■ …';
+    const time = `${startText} · ${stopText}`;
+    if (title) return `${time}\n${title}`;
+    return time;
+  }
+
+  function kgTimeCalStartItemMarkup(span) {
+    const title = String(span.label || '').trim();
+    const clock = formatKgClock(span.started);
+    const tip = kgTimeCalBarTooltip(span);
+    const tipAttr = tip ? ` data-calendar-tooltip="${escapeHtml(tip)}"` : '';
+    const color = calendarPeriodBarColor(span.cardId);
+    return `<div class="kg-time-cal-start"${tipAttr} style="--kg-bar-color:${escapeHtml(color)}">`
+      + `<span class="kg-time-cal-start-dot" aria-hidden="true"></span>`
+      + `<span class="kg-time-cal-start-time">▶ ${escapeHtml(clock || formatKgDateTime(span.started))}</span>`
+      + (title ? `<span class="kg-time-cal-start-label">${escapeHtml(title)}</span>` : '')
+      + `</div>`;
+  }
+
+  function kgTimeCalBarMarkup(span, viewDate) {
+    const role = kgSessionSpanRole(span, viewDate);
+    if (!role) return '';
+    const color = calendarPeriodBarColor(span.cardId);
+    // Title only on start/single; times are listed separately as start rows.
+    const title = (role === 'start' || role === 'single')
+      ? String(span.label || '').trim()
+      : '';
+    const label = title
+      ? `<span class="kg-time-cal-bar-label">${escapeHtml(title)}</span>`
+      : '';
+    const bar = `<div class="kg-time-cal-bar kg-time-cal-bar--${escapeHtml(role)}" style="--kg-bar-color:${escapeHtml(color)}"></div>`;
+    const tip = kgTimeCalBarTooltip(span);
+    const tipAttr = tip ? ` data-calendar-tooltip="${escapeHtml(tip)}"` : '';
+    return `<div class="kg-time-cal-bar-wrap${title ? ' kg-time-cal-bar-wrap--labeled' : ''}"${tipAttr}>`
+      + `<div class="kg-time-cal-bar-line${title ? ' kg-time-cal-bar-line--labeled' : ''}">${label}${bar}</div>`
+      + `</div>`;
+  }
+
+  function renderKgTimeCalendar(cards, now = Date.now()) {
+    const weekStart = startOfWeek(new Date(now));
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 6);
+    const weekFrom = startOfDay(weekStart).getTime();
+    const weekTo = startOfDay(weekEnd).getTime();
+    const spans = kgCollectSessionSpans(cards, now).filter(span => (
+      startOfDay(span.dateFrom).getTime() <= weekTo
+      && startOfDay(span.dateTo).getTime() >= weekFrom
+    ));
+    const cells = [];
+    for (let i = 0; i < 7; i += 1) {
+      const day = new Date(weekStart);
+      day.setDate(day.getDate() + i);
+      const dayStart = startOfDay(day).getTime();
+      const daySpans = spans.filter(span => kgSessionSpanRole(span, day));
+      const starts = spans
+        .filter(span => startOfDay(span.started).getTime() === dayStart)
+        .sort((a, b) => a.started.getTime() - b.started.getTime());
+      const active = daySpans.length > 0 || starts.length > 0;
+      const isToday = startOfDay(new Date(now)).getTime() === dayStart;
+      const startsHtml = starts.length
+        ? `<div class="kg-time-cal-starts">${starts.map(kgTimeCalStartItemMarkup).join('')}</div>`
+        : '';
+      const stackHtml = daySpans.length
+        ? `<div class="kg-time-cal-stack">${daySpans.map(span => kgTimeCalBarMarkup(span, day)).join('')}</div>`
+        : '';
+      cells.push(
+        `<div class="kg-time-cal-day${active ? ' kg-time-cal-day--active' : ''}${isToday ? ' kg-time-cal-day--today' : ''}">`
+        + `<div class="kg-time-cal-head">`
+        + `<span class="kg-time-cal-dow">${escapeHtml(day.toLocaleDateString(getAppLocale(), { weekday: 'short' }))}</span>`
+        + `<span class="kg-time-cal-num">${day.getDate()}</span>`
+        + `</div>`
+        + startsHtml
+        + stackHtml
+        + `</div>`,
+      );
+    }
+    return `<div class="kg-time-calendar" aria-label="Task activity this week">${cells.join('')}</div>`;
+  }
+
+  function kgCombineDateTimeInputs(dateInput, timeInput) {
+    const d = readDateInputValue(dateInput);
+    if (!d) return null;
+    const t = String(timeInput?.value || '00:00').trim();
+    const m = t.match(/^(\d{1,2}):(\d{2})/);
+    d.setHours(parseInt(m?.[1] || '0', 10), parseInt(m?.[2] || '0', 10), 0, 0);
+    return d;
+  }
+
+  function kgFillDateTimeInputs(dateInput, timeInput, value) {
+    const d = value instanceof Date ? value : parseKgDateTime(value);
+    setDateInputValue(dateInput, d);
+    if (!timeInput) return;
+    if (d && !Number.isNaN(d.getTime())) {
+      timeInput.value = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    } else {
+      timeInput.value = '';
+    }
+  }
+
+  function syncKgElapsedFromStartStop() {
+    const start = kgCombineDateTimeInputs(
+      document.getElementById('kg-card-start-date'),
+      document.getElementById('kg-card-start-time'),
+    );
+    const stop = kgCombineDateTimeInputs(
+      document.getElementById('kg-card-stop-date'),
+      document.getElementById('kg-card-stop-time'),
+    );
+    const elapsedInput = document.getElementById('kg-card-elapsed');
+    if (!elapsedInput || !start || !stop || stop < start) return;
+    // If multiple sessions exist, keep total from sessions + adjust latest via save.
+    if ((kgCardContext?.sessions || []).length >= 1) {
+      applyKgModalStartStopToSessions();
+      syncKgModalElapsedFromSessions();
+      renderKgCardSessionsList();
+      return;
+    }
+    elapsedInput.value = String(Math.floor((stop.getTime() - start.getTime()) / 1000));
+  }
+
+  function cloneKgSessions(sessions) {
+    return (sessions || []).map(session => {
+      const started = kgSessionStart(session);
+      if (!started) return null;
+      const stopped = kgSessionStop(session);
+      return { started: new Date(started.getTime()), stopped: stopped ? new Date(stopped.getTime()) : null };
+    }).filter(Boolean);
+  }
+
+  function kgSessionsElapsedSeconds(sessions, status = 'idle', now = Date.now()) {
+    let total = 0;
+    (sessions || []).forEach(session => {
+      const start = kgSessionStart(session);
+      if (!start) return;
+      const stop = kgSessionStop(session);
+      const endMs = stop
+        ? stop.getTime()
+        : (status === 'running' ? now : null);
+      if (endMs != null) total += Math.max(0, Math.floor((endMs - start.getTime()) / 1000));
+    });
+    return total;
+  }
+
+  function syncKgModalElapsedFromSessions() {
+    const elapsedInput = document.getElementById('kg-card-elapsed');
+    if (!elapsedInput || !kgCardContext) return;
+    const status = document.getElementById('kg-card-status')?.value || 'idle';
+    elapsedInput.value = String(kgSessionsElapsedSeconds(kgCardContext.sessions || [], status));
+  }
+
+  function syncKgModalFieldsFromSessions() {
+    const sessions = kgCardContext?.sessions || [];
+    const latest = sessions.length ? sessions[sessions.length - 1] : null;
+    kgFillDateTimeInputs(
+      document.getElementById('kg-card-start-date'),
+      document.getElementById('kg-card-start-time'),
+      latest ? kgSessionStart(latest) : null,
+    );
+    kgFillDateTimeInputs(
+      document.getElementById('kg-card-stop-date'),
+      document.getElementById('kg-card-stop-time'),
+      latest ? kgSessionStop(latest) : null,
+    );
+    syncKgModalElapsedFromSessions();
+  }
+
+  function renderKgCardSessionsList() {
+    const host = document.getElementById('kg-card-sessions');
+    if (!host) return;
+    const sessions = kgCardContext?.sessions || [];
+    if (!sessions.length) {
+      host.classList.add('d-none');
+      host.innerHTML = '';
+      return;
+    }
+    host.classList.remove('d-none');
+    host.innerHTML = sessions.map((session, idx) => {
+      const started = kgSessionStart(session);
+      const stopped = kgSessionStop(session);
+      if (!started) return '';
+      const text = stopped
+        ? `▶ ${formatKgDateTime(started)} · ■ ${formatKgDateTime(stopped)}`
+        : `▶ ${formatKgDateTime(started)} · ■ …`;
+      return `<div class="kg-card-session" data-kg-session-index="${idx}">`
+        + `<span class="kg-card-session-text">${escapeHtml(text)}</span>`
+        + `<button type="button" class="kg-card-session-delete" data-kg-session-delete="${idx}" title="Delete session" aria-label="Delete session">✕</button>`
+        + `</div>`;
+    }).join('');
+  }
+
+  function applyKgModalStartStopToSessions() {
+    if (!kgCardContext) return;
+    const started = kgCombineDateTimeInputs(
+      document.getElementById('kg-card-start-date'),
+      document.getElementById('kg-card-start-time'),
+    );
+    const stopped = kgCombineDateTimeInputs(
+      document.getElementById('kg-card-stop-date'),
+      document.getElementById('kg-card-stop-time'),
+    );
+    const sessions = Array.isArray(kgCardContext.sessions) ? [...kgCardContext.sessions] : [];
+    if (!started) {
+      kgCardContext.sessions = sessions;
+      return;
+    }
+    if (!sessions.length) {
+      sessions.push({ started, stopped: stopped || null });
+    } else {
+      const last = { ...sessions[sessions.length - 1] };
+      last.started = started;
+      last.stopped = stopped || null;
+      sessions[sessions.length - 1] = last;
+    }
+    kgCardContext.sessions = sessions;
+  }
+
+  function deleteKgSessionFromModal(index) {
+    if (!kgCardContext || !Array.isArray(kgCardContext.sessions)) return;
+    const idx = Number(index);
+    if (!Number.isFinite(idx) || idx < 0 || idx >= kgCardContext.sessions.length) return;
+    const session = kgCardContext.sessions[idx];
+    const label = session
+      ? `${formatKgDateTime(kgSessionStart(session)) || 'session'}`
+      : 'session';
+    if (!confirm(`Delete session ▶ ${label}?`)) return;
+    kgCardContext.sessions.splice(idx, 1);
+    const statusSelect = document.getElementById('kg-card-status');
+    const hasOpen = kgCardContext.sessions.some(s => kgSessionStart(s) && !kgSessionStop(s));
+    if (statusSelect && statusSelect.value === 'running' && !hasOpen) {
+      statusSelect.value = 'stopped';
+    }
+    renderKgCardSessionsList();
+    syncKgModalFieldsFromSessions();
   }
 
   function kanbanganttCardMarkup(card, spec, now = Date.now(), options = {}) {
@@ -5373,6 +6046,7 @@
       withCost ? `<span class="kg-card-cost">${escapeHtml(formatKgMoney(cost, currency))}</span>` : '',
       `</div>`,
     ].join('');
+    const timesLine = kgCardTimesLine(card);
 
     return [
       handleHtml,
@@ -5380,6 +6054,7 @@
       `<div class="kg-card-label">${labelHtml}</div>`,
       `<div class="kg-card-status kg-card-status--${escapeHtml(status)}">${escapeHtml(status)}</div>`,
       metrics,
+      timesLine,
       `<div class="kg-card-bar" title="Time vs board"><span style="width:${barPct}%"></span></div>`,
       textHtml ? `<div class="kg-card-text">${textHtml}</div>` : '',
       actions.length ? `<div class="kg-card-actions">${actions.join('')}</div>` : '',
@@ -5426,6 +6101,9 @@
         const startedIso = card.started instanceof Date && !Number.isNaN(card.started.getTime())
           ? card.started.toISOString()
           : '';
+        const stoppedIso = card.stopped instanceof Date && !Number.isNaN(card.stopped.getTime())
+          ? card.stopped.toISOString()
+          : '';
         const rate = card.rate != null ? card.rate : defaultRate;
         return [
           `<div class="kg-card kg-card--${escapeHtml(card.status || 'idle')}${hasNote ? ' kg-card--has-note' : ''}${editClass}"`,
@@ -5435,6 +6113,7 @@
           ` data-kg-rate="${escapeHtml(String(rate))}"`,
           ` data-kg-elapsed="${escapeHtml(String(parseKgElapsed(card.elapsed)))}"`,
           startedIso ? ` data-kg-started="${escapeHtml(startedIso)}"` : '',
+          stoppedIso ? ` data-kg-stopped="${escapeHtml(stoppedIso)}"` : '',
           mdAttr,
           imageAttr,
           labelAttr,
@@ -5474,6 +6153,7 @@
       `<div class="kg-block-title${editable ? ' kg-block-title--editable' : ''}"${titleEditAttr}>${escapeHtml(title)}</div>`,
       `<div class="kg-block-meta">${escapeHtml(metaParts.join(' · '))}</div>`,
       `</div>`,
+      renderKgTimeCalendar(cards, now),
       `<div class="kg-board">${colsHtml}</div>`,
       withCost
         ? `<div class="kg-block-footer">Board cost: <strong>${escapeHtml(formatKgMoney(totalCost, currency))}</strong></div>`
@@ -5509,6 +6189,9 @@
     const startedIso = card.started instanceof Date && !Number.isNaN(card.started.getTime())
       ? card.started.toISOString()
       : '';
+    const stoppedIso = card.stopped instanceof Date && !Number.isNaN(card.stopped.getTime())
+      ? card.stopped.toISOString()
+      : '';
     const rate = card.rate != null ? card.rate : (spec.rate || 0);
 
     cardEl.className = [
@@ -5523,6 +6206,8 @@
     cardEl.dataset.kgElapsed = String(parseKgElapsed(card.elapsed));
     if (startedIso) cardEl.dataset.kgStarted = startedIso;
     else delete cardEl.dataset.kgStarted;
+    if (stoppedIso) cardEl.dataset.kgStopped = stoppedIso;
+    else delete cardEl.dataset.kgStopped;
     if (card.text) cardEl.dataset.kgMarkdown = card.text;
     else delete cardEl.dataset.kgMarkdown;
     if (card.image) cardEl.dataset.kgImage = card.image;
@@ -5593,22 +6278,69 @@
         card.rate = r === (spec.rate || 0) ? null : r;
       }
       if (patch.elapsed != null) card.elapsed = parseKgElapsed(patch.elapsed);
-      if (Object.prototype.hasOwnProperty.call(patch, 'started')) {
-        card.started = patch.started instanceof Date
-          ? patch.started
-          : parseKgDateTime(patch.started);
+      if (Object.prototype.hasOwnProperty.call(patch, 'sessions')) {
+        card.sessions = cloneKgSessions(patch.sessions);
+        card.started = null;
+        card.stopped = null;
+        kgNormalizeCardSessions(card);
+        if (patch.elapsed == null) {
+          card.elapsed = kgSessionsElapsedSeconds(card.sessions, card.status);
+        }
+      } else if (Object.prototype.hasOwnProperty.call(patch, 'started') || Object.prototype.hasOwnProperty.call(patch, 'stopped')) {
+        const started = Object.prototype.hasOwnProperty.call(patch, 'started')
+          ? (patch.started instanceof Date ? patch.started : (patch.started ? parseKgDateTime(patch.started) : null))
+          : (card.started instanceof Date ? card.started : parseKgDateTime(card.started));
+        const stopped = Object.prototype.hasOwnProperty.call(patch, 'stopped')
+          ? (patch.stopped instanceof Date ? patch.stopped : (patch.stopped ? parseKgDateTime(patch.stopped) : null))
+          : (card.stopped instanceof Date ? card.stopped : parseKgDateTime(card.stopped));
+        kgNormalizeCardSessions(card);
+        if (started) {
+          if (!card.sessions.length) {
+            card.sessions.push({ started, stopped: stopped || null });
+          } else {
+            const last = card.sessions[card.sessions.length - 1];
+            last.started = started;
+            last.stopped = stopped || null;
+          }
+        } else if (!started && Object.prototype.hasOwnProperty.call(patch, 'started')) {
+          // Clearing start on the latest session removes it if empty.
+          if (card.sessions.length) card.sessions.pop();
+        }
+        card.started = null;
+        card.stopped = null;
+        kgNormalizeCardSessions(card);
+      } else {
+        kgNormalizeCardSessions(card);
       }
       if (card.status === 'running' && !card.started) {
         card.started = new Date();
+        kgOpenSession(card, card.started);
       }
-      if (card.status !== 'running') {
-        card.started = null;
+      if (card.status === 'running') {
+        card.stopped = null;
+        const open = [...(card.sessions || [])].reverse().find(s => kgSessionStart(s) && !kgSessionStop(s));
+        if (open) open.stopped = null;
       }
       if (card.status === 'suspended') {
         card.col = kgEnsureSuspendColumn(spec);
       } else if (card.status === 'running' && card.col === kgSuspendColumn(spec)) {
         card.col = kgDoingColumn(spec);
       }
+      return { spec };
+    });
+  }
+
+  function deleteKanbanganttCardInMarkdown(markdown, kgIndex, cardId, hints = {}) {
+    return rewriteKanbanganttBlock(markdown, kgIndex, (spec) => {
+      let idx = spec.cards.findIndex(c => c.id === cardId);
+      if (idx < 0 && hints._labelHint) {
+        const hintLabel = String(hints._labelHint).trim();
+        const hintCol = String(hints._colHint || '').trim();
+        idx = spec.cards.findIndex(c => c.label === hintLabel && (!hintCol || c.col === hintCol));
+        if (idx < 0) idx = spec.cards.findIndex(c => c.label === hintLabel);
+      }
+      if (idx < 0) return { spec };
+      spec.cards.splice(idx, 1);
       return { spec };
     });
   }
@@ -5642,9 +6374,19 @@
           ? parseKgRate(cardData.rate, defaultRate)
           : null,
         elapsed: parseKgElapsed(cardData.elapsed || 0),
-        started: null,
+        started: cardData.started instanceof Date
+          ? cardData.started
+          : (cardData.started ? parseKgDateTime(cardData.started) : null),
+        stopped: cardData.stopped instanceof Date
+          ? cardData.stopped
+          : (cardData.stopped ? parseKgDateTime(cardData.stopped) : null),
+        sessions: Array.isArray(cardData.sessions) ? cardData.sessions : [],
       };
-      if (card.status === 'running') card.started = new Date();
+      kgNormalizeCardSessions(card);
+      if (card.status === 'running' && !card.started) card.started = new Date();
+      if (card.status === 'running' && !card.sessions.some(s => kgSessionStart(s) && !kgSessionStop(s))) {
+        kgOpenSession(card, card.started);
+      }
       if (card.status === 'suspended') card.col = kgEnsureSuspendColumn(spec);
 
       let insertAt = spec.cards.length;
@@ -5682,14 +6424,17 @@
           card.col = kgDoingColumn(spec);
         }
         card.status = 'running';
-        card.started = now;
+        kgOpenSession(card, now);
+        card.stopped = null;
         return { spec };
       }
 
       if (action === 'suspend') {
         if (status !== 'running') return { spec };
+        kgCloseOpenSession(card, now);
         card.elapsed = kgEffectiveElapsed(card, now.getTime());
         card.started = null;
+        card.stopped = now;
         card.status = 'suspended';
         card.col = kgEnsureSuspendColumn(spec);
         return { spec };
@@ -5697,9 +6442,11 @@
 
       if (action === 'stop') {
         if (status === 'running') {
-          card.elapsed = kgEffectiveElapsed(card, now.getTime());
+          kgCloseOpenSession(card, now);
         }
+        card.elapsed = kgEffectiveElapsed(card, now.getTime());
         card.started = null;
+        card.stopped = now;
         card.status = 'stopped';
         return { spec };
       }
@@ -6087,6 +6834,185 @@
         : '<div class="calcs-block calcs-block--error">Calcs engine not loaded.</div>';
       return wrapRichPreviewBlock(html);
     });
+  }
+
+  const SUDOKU_BLOCK_RE = /```sudoku(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function updateSudokuStateInMarkdown(markdown, sudokuIndex, payload) {
+    const engine = window.NotesProSudoku;
+    if (!engine) return markdown;
+    let idx = 0;
+    const re = /```sudoku(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+    return String(markdown || '').replace(re, (match, fenceAttrs, content = '') => {
+      const thisIndex = idx;
+      idx += 1;
+      if (thisIndex !== sudokuIndex) return match;
+      const cfg = engine.parseFenceAttrs(fenceAttrs || '');
+      const givens = payload.givens || payload.puzzle || [];
+      const values = payload.values || givens;
+      const stateStr = engine.serializeState(values, givens);
+      const nextCfg = { ...cfg };
+      delete nextCfg.state;
+      const attrs = engine.buildFenceAttrsString(nextCfg, stateStr);
+      const body = engine.formatPuzzleBody(givens);
+      const fence = attrs ? `sudoku{${attrs}}` : 'sudoku';
+      return `\`\`\`${fence}\n${body}\n\`\`\``;
+    });
+  }
+
+  function parseSudokuBlocks(text, options = {}) {
+    let sudokuIndex = 0;
+    SUDOKU_BLOCK_RE.lastIndex = 0;
+    return text.replace(SUDOKU_BLOCK_RE, (_, fenceAttrs, content) => {
+      const engine = window.NotesProSudoku;
+      const idx = sudokuIndex++;
+      const html = engine?.renderBlock
+        ? engine.renderBlock(content || '', fenceAttrs || '', {
+          sudokuIndex: idx,
+          editable: !!options.sheetEditable,
+        })
+        : '<div class="sudoku-block sudoku-block--error">Sudoku engine not loaded.</div>';
+      return wrapRichPreviewBlock(html);
+    });
+  }
+
+  function hydrateSudokuBlocks(root) {
+    const engine = window.NotesProSudoku;
+    if (!engine) return;
+    (root || document).querySelectorAll('.sudoku-block[data-sudoku-givens]').forEach(el => {
+      const sudokuIndex = parseInt(el.dataset.sudokuIndex, 10);
+      engine.hydrateBlock(el, {
+        onPersist: userCanEdit && Number.isFinite(sudokuIndex) && easyMDE
+          ? (payload) => {
+            const oldMarkdown = easyMDE.value();
+            const updated = updateSudokuStateInMarkdown(oldMarkdown, sudokuIndex, payload);
+            if (updated === oldMarkdown) return;
+            easyMDE.value(updated);
+            scheduleSave();
+          }
+          : null,
+      });
+    });
+  }
+
+  const PUZZLE_BLOCK_RE = /```puzzle(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function updatePuzzleInMarkdown(markdown, puzzleIndex, update) {
+    const engine = window.NotesProPuzzle;
+    if (!engine) return markdown;
+    let idx = 0;
+    const re = /```puzzle(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+    return String(markdown || '').replace(re, (match, fenceAttrs, content = '') => {
+      const thisIndex = idx;
+      idx += 1;
+      if (thisIndex !== puzzleIndex) return match;
+      const cfg = engine.parseFenceAttrs(fenceAttrs || '');
+      if (update.setImage) {
+        const nextCfg = { ...cfg, image: update.setImage };
+        delete nextCfg.state;
+        const attrs = engine.buildFenceAttrsString(nextCfg);
+        const body = engine.formatPuzzleBody(update.setImage, update.label || 'Jigsaw image');
+        return `\`\`\`puzzle{${attrs}}\n${body}\n\`\`\``;
+      }
+      if (update.clearState || update.statePayload) {
+        const nextCfg = { ...cfg };
+        delete nextCfg.state;
+        const attrs = engine.buildFenceAttrsString(nextCfg);
+        const image = nextCfg.image || engine.resolveImage?.(content, nextCfg) || '';
+        const labelMatch = String(content || '').match(/!\[(.*?)\]\(/);
+        const label = (labelMatch && labelMatch[1]) || 'Jigsaw image';
+        const body = engine.formatPuzzleBody(
+          image,
+          label,
+          update.clearState ? null : update.statePayload,
+        );
+        const fence = attrs ? `puzzle{${attrs}}` : 'puzzle';
+        return body
+          ? `\`\`\`${fence}\n${body}\n\`\`\``
+          : `\`\`\`${fence}\n\`\`\``;
+      }
+      return match;
+    });
+  }
+
+  async function uploadPastedImageBlob(blob, filename = 'paste.png') {
+    syncWorkspaceIdFromDom();
+    const formData = new FormData();
+    formData.append('image', blob, filename || 'paste.png');
+    formData.append('workspace', workspaceId);
+    const data = await api('api/upload_pasted_image/', 'POST', formData, true);
+    if (!data.success) {
+      throw new Error(data.error || 'Image upload failed.');
+    }
+    return mediaMarkdownPath(data.url || data.path || data.file?.mediaName);
+  }
+
+  function parsePuzzleBlocks(text, options = {}) {
+    let puzzleIndex = 0;
+    PUZZLE_BLOCK_RE.lastIndex = 0;
+    return text.replace(PUZZLE_BLOCK_RE, (_, fenceAttrs, content) => {
+      const engine = window.NotesProPuzzle;
+      const idx = puzzleIndex++;
+      const html = engine?.renderBlock
+        ? engine.renderBlock(content || '', fenceAttrs || '', {
+          puzzleIndex: idx,
+          editable: !!options.sheetEditable,
+        })
+        : '<div class="puzzle-block puzzle-block--error">Puzzle engine not loaded.</div>';
+      return wrapRichPreviewBlock(html);
+    });
+  }
+
+  function hydratePuzzleBlocks(root) {
+    const engine = window.NotesProPuzzle;
+    if (!engine) return;
+    (root || document).querySelectorAll('.puzzle-block[data-puzzle-spec]').forEach(el => {
+      const puzzleIndex = parseInt(el.dataset.puzzleIndex, 10);
+      engine.hydrateBlock(el, {
+        onPasteImage: userCanEdit && Number.isFinite(puzzleIndex) && easyMDE
+          ? async (file) => {
+            const mediaPath = await uploadPastedImageBlob(file, file.name || 'paste.png');
+            const oldMarkdown = easyMDE.value();
+            const updated = updatePuzzleInMarkdown(oldMarkdown, puzzleIndex, {
+              setImage: mediaPath,
+              label: 'Jigsaw image',
+            });
+            if (updated === oldMarkdown) return;
+            easyMDE.value(updated);
+            scheduleSave();
+            schedulePreviewRefresh();
+          }
+          : null,
+        onPersist: userCanEdit && Number.isFinite(puzzleIndex) && easyMDE
+          ? (payload) => {
+            const oldMarkdown = easyMDE.value();
+            const updated = updatePuzzleInMarkdown(oldMarkdown, puzzleIndex, payload || {});
+            if (updated === oldMarkdown) return;
+            easyMDE.value(updated);
+            scheduleSave();
+          }
+          : null,
+      });
+    });
+  }
+
+  const PINBALL_BLOCK_RE = /```pinball(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function parsePinballBlocks(text) {
+    let pinballIndex = 0;
+    PINBALL_BLOCK_RE.lastIndex = 0;
+    return text.replace(PINBALL_BLOCK_RE, (_, fenceAttrs, content) => {
+      const engine = window.NotesProPinball;
+      const idx = pinballIndex++;
+      const html = engine?.renderBlock
+        ? engine.renderBlock(content || '', fenceAttrs || '', { pinballIndex: idx })
+        : '<div class="pinball-block pinball-block--error">Pinball engine not loaded.</div>';
+      return wrapRichPreviewBlock(html);
+    });
+  }
+
+  function hydratePinballBlocks(root) {
+    window.NotesProPinball?.hydrate?.(root);
   }
 
   function buildPanelFence(type, title, body) {
@@ -7126,7 +8052,7 @@ function formatTextWithMarkup(rawText) {
     if (!root) return;
     root.querySelectorAll('pre').forEach(pre => {
       if (pre.closest('.md-code-block')) return;
-      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .calcs-block')) {
+      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .md-python, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block')) {
         return;
       }
       const wrap = document.createElement('div');
@@ -7496,6 +8422,26 @@ function formatTextWithMarkup(rawText) {
       const label = cfg.title || 'ThGMaths';
       return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
     });
+    md = md.replace(/```sudoku(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const cfg = window.NotesProSudoku?.parseFenceAttrs?.(fenceAttrs) || {};
+      const label = cfg.title || 'Sudoku';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
+    md = md.replace(/```puzzle(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const cfg = window.NotesProPuzzle?.parseFenceAttrs?.(fenceAttrs) || {};
+      const label = cfg.title || 'Puzzle';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
+    md = md.replace(/```pinball(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const cfg = window.NotesProPinball?.parseFenceAttrs?.(fenceAttrs) || {};
+      const label = cfg.title || 'Pinball';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
+    md = md.replace(/```(?:python3?|executecode)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const cfg = parsePythonFenceAttrs(fenceAttrs);
+      const label = cfg.title || 'Python';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
     return md;
   }
 
@@ -7538,6 +8484,10 @@ function formatTextWithMarkup(rawText) {
       md = parseKanbanBlocks(md, options);
       md = parseMindmapBlocks(md, options);
       md = parseCalcsBlocks(md);
+      md = parseSudokuBlocks(md);
+      md = parsePuzzleBlocks(md);
+      md = parsePinballBlocks(md);
+      md = parsePythonBlocks(md);
     } else {
       md = replaceRichBlocksWithPlaceholders(md);
     }
@@ -7915,6 +8865,10 @@ function formatTextWithMarkup(rawText) {
     markFileLinks(preview);
     renderD3Charts(preview, processed.sheetRegistry || new Map());
     hydrateNewsBlocks(preview);
+    hydratePythonBlocks(preview);
+    hydrateSudokuBlocks(preview);
+    hydratePuzzleBlocks(preview);
+    hydratePinballBlocks(preview);
     buildFloatingToc();
     annotatePreviewSourceLines(raw, preview);
     if (isEditing) preview.tabIndex = -1;
@@ -8149,6 +9103,7 @@ function formatTextWithMarkup(rawText) {
     });
     if (!userCanEdit && isEditing) setEditing(false);
     document.getElementById('keep-composer')?.classList.toggle('d-none', !userCanEdit);
+    document.getElementById('issues-new-btn')?.classList.toggle('d-none', !userCanEdit);
     if (mainView === 'keep') renderKeepGrid();
     if (isMobileLayout() && !isEditing) renderPreview();
   }
@@ -9581,34 +10536,42 @@ function formatTextWithMarkup(rawText) {
 
   function syncCalendarNoteTimeUi() {
     const timed = document.getElementById('calendar-note-timed')?.checked;
+    const isDayMode = Boolean(calendarNoteContext?.isDayMode);
+    document.getElementById('calendar-note-date-range')?.classList.toggle('d-none', !isDayMode);
     document.getElementById('calendar-note-time-range')?.classList.toggle('d-none', !timed);
   }
 
-  function setCalendarNotePeriodFields(startDate, untilDate, { showPeriod = false } = {}) {
-    const wrap = document.getElementById('calendar-note-period-range');
-    const fromInput = document.getElementById('calendar-note-date-from');
-    const untilInput = document.getElementById('calendar-note-date-until');
-    wrap?.classList.toggle('d-none', !showPeriod);
-    setDateInputValue(fromInput, startDate || null);
-    setDateInputValue(untilInput, untilDate || startDate || null);
+  function setCalendarNoteStartStopFields(entry = {}, dayRange = null, { isDayMode = false } = {}) {
+    const startDateInput = document.getElementById('calendar-note-start-date');
+    const endDateInput = document.getElementById('calendar-note-end-date');
+    const start = dayRange?.from || null;
+    const end = dayRange?.to || dayRange?.from || null;
+    setDateInputValue(startDateInput, start);
+    setDateInputValue(endDateInput, end);
+    setCalendarNoteTimeFields(entry);
+    calendarNoteContext = calendarNoteContext
+      ? { ...calendarNoteContext, isDayMode }
+      : calendarNoteContext;
+    syncCalendarNoteTimeUi();
   }
 
-  function readCalendarNotePeriodUntil() {
-    let until = readDateInputValue(document.getElementById('calendar-note-date-until'));
-    let start = readDateInputValue(document.getElementById('calendar-note-date-from'));
+  function readCalendarNoteDateRange() {
+    if (!calendarNoteContext?.isDayMode) return null;
+    let start = readDateInputValue(document.getElementById('calendar-note-start-date'));
+    let end = readDateInputValue(document.getElementById('calendar-note-end-date'));
     if (!start) {
       showToast('Choose a start date.', 'warning');
       return null;
     }
-    if (!until) until = start;
-    if (until < start) {
+    if (!end) end = start;
+    if (end < start) {
       const tmp = start;
-      start = until;
-      until = tmp;
-      setDateInputValue(document.getElementById('calendar-note-date-from'), start);
-      setDateInputValue(document.getElementById('calendar-note-date-until'), until);
+      start = end;
+      end = tmp;
+      setDateInputValue(document.getElementById('calendar-note-start-date'), start);
+      setDateInputValue(document.getElementById('calendar-note-end-date'), end);
     }
-    return { start, until };
+    return { start, end };
   }
 
   function setCalendarNoteTimeFields(entry = {}) {
@@ -9633,8 +10596,8 @@ function formatTextWithMarkup(rawText) {
       showToast('Enter a start time or choose All day.', 'warning');
       return null;
     }
-    if (timeTo && timeTo < timeFrom) {
-      showToast('End time must be after start time.', 'warning');
+    if (timeTo && timeTo < timeFrom && !calendarNoteContext?.isDayMode) {
+      showToast('Stop time must be after start time.', 'warning');
       return null;
     }
     return { allday: false, timeFrom, timeTo: timeTo || null };
@@ -9697,19 +10660,15 @@ function formatTextWithMarkup(rawText) {
     const hint = document.getElementById('calendar-note-modal-hint');
     if (hint) {
       hint.textContent = isDayMode
-        ? 'All day or a time range. Edit Start / Until for a multi-day period. One note per line; image attaches to the first line.'
-        : 'All day or a time range. One note per line for the same slot; image attaches to the first line.';
+        ? 'All day: set start/end dates. Start / Stop: add times. One note per line; image attaches to the first line.'
+        : 'All day or start/stop times for this slot. One note per line; image attaches to the first line.';
     }
     const textInput = document.getElementById('calendar-note-text');
     const imageInput = document.getElementById('calendar-note-image');
     if (textInput) textInput.value = text || calendarEntriesMarkdown(storedEntries);
     if (imageInput) imageInput.value = image || (firstEntry.image || '');
-    setCalendarNoteTimeFields(firstEntry);
-    setCalendarNotePeriodFields(
-      dayRange?.from || null,
-      dayRange?.to || dayRange?.from || null,
-      { showPeriod: isDayMode },
-    );
+    calendarNoteContext.isDayMode = isDayMode;
+    setCalendarNoteStartStopFields(firstEntry, dayRange, { isDayMode });
     refreshCalendarNoteImagePreview();
     const modalEl = document.getElementById('calendar-note-modal');
     if (modalEl) openDashboardModal(modalEl);
@@ -9725,9 +10684,9 @@ function formatTextWithMarkup(rawText) {
     let targetKey = calendarNoteContext.key;
     const oldKey = calendarNoteContext.oldKey || calendarNoteContext.key;
     if (!clear && calendarNoteContext.isDayMode) {
-      const period = readCalendarNotePeriodUntil();
+      const period = readCalendarNoteDateRange();
       if (period === null) return;
-      if (period.start) targetKey = calendarDayKeyFromDates(period.start, period.until);
+      if (period.start) targetKey = calendarDayKeyFromDates(period.start, period.end);
     }
 
     const oldMarkdown = easyMDE.value();
@@ -9850,7 +10809,7 @@ function formatTextWithMarkup(rawText) {
       e.preventDefault();
       e.stopPropagation();
       hideCalendarHoverTooltip();
-      const note = e.target.closest?.('.calendar-unit-note, .calendar-unit-period-bar-wrap, .calendar-unit-event-point-row');
+      const note = e.target.closest?.('.calendar-unit-note, .calendar-unit-period-bar-wrap, .calendar-unit-event-point-row, .calendar-month-event');
       const noteKey = note?.dataset?.calendarKey || null;
       openCalendarNoteModal(unit, noteKey);
     });
@@ -10268,20 +11227,26 @@ function formatTextWithMarkup(rawText) {
       try {
         e.dataTransfer.setData('application/x-kanban-card', JSON.stringify(kanbanDragState));
       } catch (_) { /* ignore */ }
+      startPreviewDragAutoScroll(e.clientX, e.clientY);
     });
 
     preview.addEventListener('dragend', e => {
       const card = e.target.closest?.('.kanban-card');
       card?.classList.remove('kanban-card--dragging');
       clearKanbanDropTargets(preview);
+      stopPreviewDragAutoScroll();
       // Delay clear so click after drag doesn't open modal
       setTimeout(() => { kanbanDragState = null; }, 50);
     });
 
     preview.addEventListener('dragover', e => {
       if (!kanbanDragState || !isPreviewInteractionEnabled()) return;
+      updatePreviewDragAutoScroll(e.clientX, e.clientY);
       const column = e.target.closest?.('.kanban-column');
-      if (!column || !preview.contains(column)) return;
+      if (!column || !preview.contains(column)) {
+        if (preview.contains(e.target)) e.preventDefault();
+        return;
+      }
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
       clearKanbanDropTargets(preview);
@@ -10315,6 +11280,7 @@ function formatTextWithMarkup(rawText) {
       const { cardId, kanbanIndex, fromCol } = kanbanDragState;
       kanbanDragState.moved = true;
       clearKanbanDropTargets(preview);
+      stopPreviewDragAutoScroll();
       if (!targetCol || !cardId) return;
       if (targetCol === fromCol && !beforeCardId) return;
       applyKanbanMove(cardId, kanbanIndex, targetCol, beforeCardId);
@@ -10347,6 +11313,98 @@ function formatTextWithMarkup(rawText) {
   let kgTitleContext = null;
   let kgDragState = null;
   let kgTickTimer = null;
+  let previewDragScrollActive = false;
+  let previewDragScrollRaf = null;
+  let previewDragScrollPointerX = 0;
+  let previewDragScrollPointerY = 0;
+
+  function getPreviewDragScrollContainers() {
+    const preview = document.getElementById('preview-content');
+    if (!preview) return [];
+    const containers = [];
+    const seen = new Set();
+    const add = (el) => {
+      if (!el || seen.has(el)) return;
+      const canY = el.scrollHeight > el.clientHeight + 1;
+      const canX = el.scrollWidth > el.clientWidth + 1;
+      if (!canY && !canX) return;
+      seen.add(el);
+      containers.push(el);
+    };
+    add(preview);
+    preview.querySelectorAll('.kg-board, .kanban-board, .kg-column-cards, .kanban-column-cards').forEach(add);
+    let node = preview.parentElement;
+    while (node && node !== document.body) {
+      const style = window.getComputedStyle(node);
+      if (/auto|scroll|overlay/.test(style.overflowY) || /auto|scroll|overlay/.test(style.overflowX)) {
+        add(node);
+      }
+      node = node.parentElement;
+    }
+    return containers;
+  }
+
+  function autoScrollPreviewDragContainers(clientX, clientY) {
+    const edge = 48;
+    const maxStep = 22;
+    getPreviewDragScrollContainers().forEach(el => {
+      const rect = el.getBoundingClientRect();
+      const nearY = clientY >= rect.top - 8 && clientY <= rect.bottom + 8;
+      const nearX = clientX >= rect.left - 8 && clientX <= rect.right + 8;
+      if (!nearX || !nearY) return;
+
+      if (el.scrollHeight > el.clientHeight + 1) {
+        if (clientY < rect.top + edge) {
+          const dist = rect.top + edge - clientY;
+          el.scrollTop -= Math.min(maxStep, Math.max(2, Math.ceil((dist / edge) * maxStep)));
+        } else if (clientY > rect.bottom - edge) {
+          const dist = clientY - (rect.bottom - edge);
+          el.scrollTop += Math.min(maxStep, Math.max(2, Math.ceil((dist / edge) * maxStep)));
+        }
+      }
+      if (el.scrollWidth > el.clientWidth + 1) {
+        if (clientX < rect.left + edge) {
+          const dist = rect.left + edge - clientX;
+          el.scrollLeft -= Math.min(maxStep, Math.max(2, Math.ceil((dist / edge) * maxStep)));
+        } else if (clientX > rect.right - edge) {
+          const dist = clientX - (rect.right - edge);
+          el.scrollLeft += Math.min(maxStep, Math.max(2, Math.ceil((dist / edge) * maxStep)));
+        }
+      }
+    });
+  }
+
+  function previewDragScrollTick() {
+    if (!previewDragScrollActive) {
+      previewDragScrollRaf = null;
+      return;
+    }
+    autoScrollPreviewDragContainers(previewDragScrollPointerX, previewDragScrollPointerY);
+    previewDragScrollRaf = requestAnimationFrame(previewDragScrollTick);
+  }
+
+  function startPreviewDragAutoScroll(clientX = 0, clientY = 0) {
+    previewDragScrollPointerX = clientX;
+    previewDragScrollPointerY = clientY;
+    if (!previewDragScrollActive) {
+      previewDragScrollActive = true;
+      if (!previewDragScrollRaf) previewDragScrollRaf = requestAnimationFrame(previewDragScrollTick);
+    }
+  }
+
+  function updatePreviewDragAutoScroll(clientX, clientY) {
+    previewDragScrollPointerX = clientX;
+    previewDragScrollPointerY = clientY;
+    startPreviewDragAutoScroll(clientX, clientY);
+  }
+
+  function stopPreviewDragAutoScroll() {
+    previewDragScrollActive = false;
+    if (previewDragScrollRaf) {
+      cancelAnimationFrame(previewDragScrollRaf);
+      previewDragScrollRaf = null;
+    }
+  }
 
   function clearKgDropTargets(preview) {
     preview?.querySelectorAll('.kg-column--drop-target, .kg-card--drop-before, .kg-card--drop-after').forEach(el => {
@@ -10449,8 +11507,16 @@ function formatTextWithMarkup(rawText) {
     const status = cardEl.dataset.kgStatus || 'idle';
     const elapsed = cardEl.dataset.kgElapsed || '0';
     const withCost = block.dataset.kgWithcost !== '0';
+    const startedMs = Date.parse(cardEl.dataset.kgStarted || '');
+    const stoppedMs = Date.parse(cardEl.dataset.kgStopped || '');
+    const liveCard = easyMDE
+      ? parseKanbanganttBlockAt(easyMDE.value(), kgIndex)?.cards?.find(c => c.id === cardId)
+      : null;
+    const sessions = cloneKgSessions(liveCard?.sessions);
 
-    kgCardContext = { kgIndex, cardId, label, col };
+    kgCardContext = { kgIndex, cardId, label, col, sessions };
+    const deleteBtn = document.getElementById('kg-card-delete-btn');
+    deleteBtn?.classList.remove('d-none');
     const title = document.getElementById('kg-card-modal-title');
     if (title) title.textContent = `Task · ${label || cardId}`;
     const labelInput = document.getElementById('kg-card-label');
@@ -10466,9 +11532,28 @@ function formatTextWithMarkup(rawText) {
     rateField?.classList.toggle('d-none', !withCost);
     if (rateInput) rateInput.value = rate;
     if (statusSelect) statusSelect.value = parseKgStatus(status);
-    if (elapsedInput) elapsedInput.value = elapsed;
+    if (elapsedInput) {
+      elapsedInput.value = sessions.length
+        ? String(kgSessionsElapsedSeconds(sessions, status))
+        : elapsed;
+    }
     if (textInput) textInput.value = text;
     if (imageInput) imageInput.value = image;
+    if (sessions.length) {
+      syncKgModalFieldsFromSessions();
+    } else {
+      kgFillDateTimeInputs(
+        document.getElementById('kg-card-start-date'),
+        document.getElementById('kg-card-start-time'),
+        Number.isFinite(startedMs) ? new Date(startedMs) : null,
+      );
+      kgFillDateTimeInputs(
+        document.getElementById('kg-card-stop-date'),
+        document.getElementById('kg-card-stop-time'),
+        Number.isFinite(stoppedMs) ? new Date(stoppedMs) : null,
+      );
+    }
+    renderKgCardSessionsList();
     refreshKgCardImagePreview();
     const modalEl = document.getElementById('kg-card-modal');
     if (modalEl) openDashboardModal(modalEl);
@@ -10484,7 +11569,8 @@ function formatTextWithMarkup(rawText) {
     const withCost = block.dataset.kgWithcost !== '0';
     const defaultRate = block.dataset.kgRate || '0';
 
-    kgCardContext = { kgIndex, cardId: null, isNew: true, col: targetCol };
+    kgCardContext = { kgIndex, cardId: null, isNew: true, col: targetCol, sessions: [] };
+    document.getElementById('kg-card-delete-btn')?.classList.add('d-none');
     const title = document.getElementById('kg-card-modal-title');
     if (title) title.textContent = 'New Kanban Gantt task';
     const labelInput = document.getElementById('kg-card-label');
@@ -10503,6 +11589,9 @@ function formatTextWithMarkup(rawText) {
     if (elapsedInput) elapsedInput.value = '0';
     if (textInput) textInput.value = '';
     if (imageInput) imageInput.value = '';
+    kgFillDateTimeInputs(document.getElementById('kg-card-start-date'), document.getElementById('kg-card-start-time'), null);
+    kgFillDateTimeInputs(document.getElementById('kg-card-stop-date'), document.getElementById('kg-card-stop-time'), null);
+    renderKgCardSessionsList();
     refreshKgCardImagePreview();
     const modalEl = document.getElementById('kg-card-modal');
     if (modalEl) openDashboardModal(modalEl);
@@ -10541,9 +11630,14 @@ function formatTextWithMarkup(rawText) {
       const col = document.getElementById('kg-card-col')?.value || '';
       const rate = !withCost ? null : (document.getElementById('kg-card-rate')?.value || '');
       const status = document.getElementById('kg-card-status')?.value || 'idle';
-      const elapsed = document.getElementById('kg-card-elapsed')?.value || '0';
       const text = document.getElementById('kg-card-text')?.value || '';
       const image = document.getElementById('kg-card-image')?.value || '';
+      applyKgModalStartStopToSessions();
+      const sessions = cloneKgSessions(ctx.sessions);
+      const elapsed = sessions.length
+        ? String(kgSessionsElapsedSeconds(sessions, status))
+        : (document.getElementById('kg-card-elapsed')?.value || '0');
+      const latest = sessions.length ? sessions[sessions.length - 1] : null;
       patch = {
         label,
         col,
@@ -10551,11 +11645,13 @@ function formatTextWithMarkup(rawText) {
         elapsed,
         text,
         image,
+        sessions,
+        started: latest ? kgSessionStart(latest) : null,
+        stopped: latest ? kgSessionStop(latest) : null,
         _labelHint: ctx.label || label,
         _colHint: ctx.col || col,
       };
       if (rate != null) patch.rate = rate;
-      if (status && status !== 'running') patch.started = null;
     }
 
     const oldMarkdown = easyMDE.value();
@@ -10587,6 +11683,27 @@ function formatTextWithMarkup(rawText) {
       schedulePreviewRefresh();
     } else {
       restorePreviewScrollPosition(document.getElementById('preview-content'));
+    }
+    bootstrap.Modal.getInstance(document.getElementById('kg-card-modal'))?.hide();
+    kgCardContext = null;
+  }
+
+  function deleteKgCardFromModal() {
+    if (!easyMDE || !kgCardContext || kgCardContext.isNew || !kgCardContext.cardId) return;
+    const label = document.getElementById('kg-card-label')?.value?.trim()
+      || kgCardContext.label
+      || 'this task';
+    if (!confirm(`Delete task “${label}”?`)) return;
+    const ctx = kgCardContext;
+    const oldMarkdown = easyMDE.value();
+    const updated = deleteKanbanganttCardInMarkdown(oldMarkdown, ctx.kgIndex, ctx.cardId, {
+      _labelHint: ctx.label || label,
+      _colHint: ctx.col || document.getElementById('kg-card-col')?.value || '',
+    });
+    if (updated !== oldMarkdown) {
+      easyMDE.value(updated);
+      scheduleSave();
+      schedulePreviewRefresh();
     }
     bootstrap.Modal.getInstance(document.getElementById('kg-card-modal'))?.hide();
     kgCardContext = null;
@@ -10792,19 +11909,25 @@ function formatTextWithMarkup(rawText) {
       try {
         e.dataTransfer.setData('application/x-kg-card', JSON.stringify(kgDragState));
       } catch (_) { /* ignore */ }
+      startPreviewDragAutoScroll(e.clientX, e.clientY);
     });
 
     preview.addEventListener('dragend', e => {
       const card = e.target.closest?.('.kg-card');
       card?.classList.remove('kg-card--dragging');
       clearKgDropTargets(preview);
+      stopPreviewDragAutoScroll();
       setTimeout(() => { kgDragState = null; }, 50);
     });
 
     preview.addEventListener('dragover', e => {
       if (!kgDragState || !isPreviewInteractionEnabled()) return;
+      updatePreviewDragAutoScroll(e.clientX, e.clientY);
       const column = e.target.closest?.('.kg-column');
-      if (!column || !preview.contains(column)) return;
+      if (!column || !preview.contains(column)) {
+        if (preview.contains(e.target)) e.preventDefault();
+        return;
+      }
       e.preventDefault();
       e.stopPropagation();
       e.dataTransfer.dropEffect = 'move';
@@ -10843,12 +11966,26 @@ function formatTextWithMarkup(rawText) {
       const { cardId, kgIndex } = kgDragState;
       kgDragState.moved = true;
       clearKgDropTargets(preview);
+      stopPreviewDragAutoScroll();
       if (!targetCol || !cardId) return;
       applyKgMove(cardId, kgIndex, targetCol, { beforeCardId, afterCardId });
     });
 
     document.getElementById('kg-card-save-btn')?.addEventListener('click', () => {
       saveKgCardFromModal();
+    });
+    document.getElementById('kg-card-delete-btn')?.addEventListener('click', () => {
+      deleteKgCardFromModal();
+    });
+    document.getElementById('kg-card-sessions')?.addEventListener('click', e => {
+      const btn = e.target.closest?.('[data-kg-session-delete]');
+      if (!btn) return;
+      e.preventDefault();
+      deleteKgSessionFromModal(btn.getAttribute('data-kg-session-delete'));
+    });
+    ['kg-card-start-date', 'kg-card-start-time', 'kg-card-stop-date', 'kg-card-stop-time'].forEach(id => {
+      document.getElementById(id)?.addEventListener('change', syncKgElapsedFromStartStop);
+      document.getElementById(id)?.addEventListener('input', syncKgElapsedFromStartStop);
     });
     document.getElementById('kg-card-clear-btn')?.addEventListener('click', () => {
       saveKgCardFromModal({ clear: true });
@@ -11443,7 +12580,7 @@ function formatTextWithMarkup(rawText) {
               'Todo | Design wireframes | status=idle;rate=60',
               'Doing | Build API | status=idle;rate=75',
               'Suspended | On hold task | status=suspended;rate=75;elapsed=1800',
-              'Done | Kickoff | status=stopped;rate=50;elapsed=7200',
+              'Done | Kickoff | status=stopped;rate=50;started=14.07.26 09:00;stopped=14.07.26 11:00;elapsed=7200',
             ].join('\n');
             insertFenceBlock(editor, 'kanbangantt{cols=Todo,Doing,Suspended,Done;withcost=1;rate=50;currency=EUR;col=info}', body);
           },
@@ -11485,6 +12622,50 @@ function formatTextWithMarkup(rawText) {
           },
           className: 'fa fa-calculator',
           title: 'Insert ThGMaths / calcs',
+        },
+        {
+          name: 'insert-python',
+          action: (editor) => {
+            const body = [
+              'import pandas as pd',
+              '',
+              'df = pd.DataFrame({',
+              '    "name": ["Ada", "Grace", "Alan"],',
+              '    "score": [98, 91, 87],',
+              '})',
+              'print(df)',
+              'print()',
+              'print("mean score:", df["score"].mean())',
+              'print(df.describe())',
+            ].join('\n');
+            insertFenceBlock(editor, 'python{title=Pandas;col=info}', body);
+          },
+          className: 'fa fa-code',
+          title: 'Insert Python (sandbox)',
+        },
+        {
+          name: 'insert-sudoku',
+          action: (editor) => {
+            insertFenceBlock(editor, 'sudoku{fullscreen;difficulty=medium}', '');
+          },
+          className: 'fa fa-th',
+          title: 'Insert sudoku',
+        },
+        {
+          name: 'insert-puzzle',
+          action: (editor) => {
+            insertFenceBlock(editor, 'puzzle{fullscreen;difficulty=medium}', '');
+          },
+          className: 'fa fa-picture-o',
+          title: 'Insert jigsaw puzzle',
+        },
+        {
+          name: 'insert-pinball',
+          action: (editor) => {
+            insertFenceBlock(editor, 'pinball{fullscreen}', '');
+          },
+          className: 'fa fa-circle',
+          title: 'Insert Space Cadet pinball',
         },
         {
           name: 'insert-news',
@@ -13310,6 +14491,7 @@ function formatTextWithMarkup(rawText) {
       disconnectTagWs();
       resetTagTransport();
       if (mainView === 'keep') loadQuickNotes();
+      loadIssuesList();
       if (isEditing) switchMode('markdown');
       else switchMode('preview');
     });
@@ -14022,6 +15204,7 @@ function formatTextWithMarkup(rawText) {
   syncAppShellLayout();
   initChatAndMail();
   initIncomes();
+  initIssues();
 
 
   document.getElementById('toc-toggle')?.addEventListener('click', toggleFloatingToc);
@@ -14076,6 +15259,7 @@ function formatTextWithMarkup(rawText) {
   }
 
   document.addEventListener('paste', function (event) {
+    if (event.target.closest?.('.puzzle-block')) return;
     const items = (event.clipboardData || event.originalEvent.clipboardData).items;
     for (let index in items) {
       const item = items[index];
@@ -14376,6 +15560,260 @@ function formatTextWithMarkup(rawText) {
       row.addEventListener('click', () => showIncomingDetail(item));
       list.appendChild(row);
     });
+  }
+
+  let issuesCache = [];
+  let issuesSearchTimer = null;
+  let editingIssueId = null;
+  let issueMembersCache = [];
+  let issuePagesCache = [];
+
+  const ISSUE_STATUS_LABELS = {
+    open: 'Open',
+    in_progress: 'In progress',
+    review: 'Review',
+    closed: 'Closed',
+  };
+
+  const ISSUE_PRIORITY_LABELS = {
+    low: 'Low',
+    normal: 'Normal',
+    high: 'High',
+    urgent: 'Urgent',
+  };
+
+  function issueStatusBadge(status) {
+    const label = ISSUE_STATUS_LABELS[status] || status;
+    return `<span class="issue-badge issue-badge--status-${escapeHtml(status)}">${escapeHtml(label)}</span>`;
+  }
+
+  function issuePriorityBadge(priority) {
+    const label = ISSUE_PRIORITY_LABELS[priority] || priority;
+    return `<span class="issue-badge issue-badge--priority-${escapeHtml(priority)}">${escapeHtml(label)}</span>`;
+  }
+
+  function updateIssuesOpenBadge(count) {
+    const badge = document.getElementById('issues-open-badge');
+    if (!badge) return;
+    const n = Number(count) || 0;
+    badge.textContent = String(n);
+    badge.classList.toggle('d-none', n <= 0);
+  }
+
+  function renderIssuesList() {
+    const list = document.getElementById('issues-list');
+    if (!list) return;
+    if (!issuesCache.length) {
+      list.innerHTML = '<div class="issues-empty">No issues yet.</div>';
+      return;
+    }
+    list.innerHTML = issuesCache.map(issue => {
+      const title = issue.title || '(untitled)';
+      const assignee = issue.assignee_username
+        ? `<span class="issue-item-assignee">@${escapeHtml(issue.assignee_username)}</span>`
+        : '';
+      return `
+        <div class="issue-item" data-issue-id="${issue.id}">
+          <div class="issue-item-head">
+            <span class="issue-item-num">#${issue.number}</span>
+            <span class="issue-item-title">${escapeHtml(title)}</span>
+          </div>
+          <div class="issue-item-meta">
+            ${issueStatusBadge(issue.status)}
+            ${issuePriorityBadge(issue.priority)}
+            ${assignee}
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  async function loadIssuesList() {
+    if (!workspaceId) return;
+    try {
+      const statusSel = document.getElementById('issues-filter-status');
+      const qInput = document.getElementById('issues-search');
+      const statusVal = statusSel?.value || '';
+      const q = (qInput?.value || '').trim();
+      let statusParam = '';
+      if (statusVal === '__all__') statusParam = '__all__';
+      else if (statusVal) statusParam = statusVal;
+      const data = await api(
+        `api/workspaces/${workspaceId}/issues/?status=${encodeURIComponent(statusParam)}&q=${encodeURIComponent(q)}`,
+      );
+      issuesCache = data.issues || [];
+      updateIssuesOpenBadge(data.open_count);
+      renderIssuesList();
+    } catch (e) {
+      console.warn('issues list', e);
+    }
+  }
+
+  async function loadIssueMembers() {
+    if (!workspaceId) return [];
+    try {
+      const data = await api(`api/workspaces/${workspaceId}/members/`);
+      issueMembersCache = data.members || [];
+      return issueMembersCache;
+    } catch (e) {
+      console.warn('issue members', e);
+      issueMembersCache = [];
+      return [];
+    }
+  }
+
+  async function loadIssuePages() {
+    if (!workspaceId) return [];
+    try {
+      const tree = await api(`api/workspaces/${workspaceId}/tree/`);
+      const nodes = Array.isArray(tree) ? tree : [];
+      issuePagesCache = nodes.filter(n => !(n.type === 'folder' || n.data?.is_folder));
+      return issuePagesCache;
+    } catch (e) {
+      console.warn('issue pages', e);
+      issuePagesCache = [];
+      return [];
+    }
+  }
+
+  async function populateIssueModalSelects(issue) {
+    const assigneeSel = document.getElementById('issue-assignee');
+    const pageSel = document.getElementById('issue-page');
+    const members = await loadIssueMembers();
+    const pages = await loadIssuePages();
+    if (assigneeSel) {
+      assigneeSel.innerHTML = '<option value="">— unassigned —</option>';
+      members.forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = String(m.id);
+        opt.textContent = m.username + (m.is_owner ? ' (owner)' : '');
+        assigneeSel.appendChild(opt);
+      });
+      assigneeSel.value = issue?.assignee ? String(issue.assignee) : '';
+    }
+    if (pageSel) {
+      pageSel.innerHTML = '<option value="">— none —</option>';
+      pages.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = String(p.id);
+        opt.textContent = p.text || p.title || `Page ${p.id}`;
+        pageSel.appendChild(opt);
+      });
+      pageSel.value = issue?.page ? String(issue.page) : (currentPageId ? String(currentPageId) : '');
+    }
+  }
+
+  function readIssueForm() {
+    return {
+      title: document.getElementById('issue-title')?.value.trim() || '',
+      body: document.getElementById('issue-body')?.value.trim() || '',
+      status: document.getElementById('issue-status')?.value || 'open',
+      priority: document.getElementById('issue-priority')?.value || 'normal',
+      assignee: document.getElementById('issue-assignee')?.value || null,
+      page: document.getElementById('issue-page')?.value || null,
+      labels: document.getElementById('issue-labels')?.value.trim() || '',
+    };
+  }
+
+  function fillIssueForm(issue) {
+    const titleEl = document.getElementById('issue-title');
+    const bodyEl = document.getElementById('issue-body');
+    const statusEl = document.getElementById('issue-status');
+    const priorityEl = document.getElementById('issue-priority');
+    const labelsEl = document.getElementById('issue-labels');
+    const metaEl = document.getElementById('issue-modal-meta');
+    const modalTitle = document.getElementById('issue-modal-title');
+    const deleteBtn = document.getElementById('issue-delete-btn');
+    if (titleEl) titleEl.value = issue?.title || '';
+    if (bodyEl) bodyEl.value = issue?.body || '';
+    if (statusEl) statusEl.value = issue?.status || 'open';
+    if (priorityEl) priorityEl.value = issue?.priority || 'normal';
+    if (labelsEl) {
+      labelsEl.value = Array.isArray(issue?.labels) ? issue.labels.join(', ') : '';
+    }
+    if (modalTitle) {
+      modalTitle.textContent = issue?.number ? `Issue #${issue.number}` : 'New issue';
+    }
+    if (metaEl) {
+      if (issue?.reporter_username) {
+        metaEl.textContent = `Reported by @${issue.reporter_username} · updated ${new Date(issue.updated_at).toLocaleString()}`;
+        metaEl.classList.remove('d-none');
+      } else {
+        metaEl.textContent = '';
+        metaEl.classList.add('d-none');
+      }
+    }
+    if (deleteBtn) {
+      deleteBtn.classList.toggle('d-none', !issue?.id || !userCanEdit);
+    }
+    const saveBtn = document.getElementById('issue-save-btn');
+    if (saveBtn) saveBtn.disabled = !userCanEdit;
+  }
+
+  async function openIssueModal(issue) {
+    editingIssueId = issue?.id || null;
+    fillIssueForm(issue || null);
+    await populateIssueModalSelects(issue || null);
+    const modalEl = document.getElementById('issue-modal');
+    if (!modalEl) return;
+    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+  }
+
+  async function saveIssueFromModal() {
+    if (!userCanEdit || !workspaceId) return;
+    const payload = readIssueForm();
+    if (!payload.title) {
+      showToast('Title is required.', 'warning');
+      return;
+    }
+    try {
+      if (editingIssueId) {
+        await api(`api/issues/${editingIssueId}/update/`, 'POST', payload);
+        showToast('Issue updated.', 'success');
+      } else {
+        await api(`api/workspaces/${workspaceId}/issues/create/`, 'POST', payload);
+        showToast('Issue created.', 'success');
+      }
+      bootstrap.Modal.getInstance(document.getElementById('issue-modal'))?.hide();
+      editingIssueId = null;
+      await loadIssuesList();
+    } catch (err) {
+      showToast(err.message || 'Could not save issue.', 'danger');
+    }
+  }
+
+  async function deleteIssueFromModal() {
+    if (!userCanEdit || !editingIssueId) return;
+    if (!confirm('Delete this issue?')) return;
+    try {
+      await api(`api/issues/${editingIssueId}/delete/`, 'POST', {});
+      showToast('Issue deleted.', 'success');
+      bootstrap.Modal.getInstance(document.getElementById('issue-modal'))?.hide();
+      editingIssueId = null;
+      await loadIssuesList();
+    } catch (err) {
+      showToast(err.message || 'Delete failed.', 'danger');
+    }
+  }
+
+  function initIssues() {
+    document.getElementById('issues-new-btn')?.classList.toggle('d-none', !userCanEdit);
+    document.getElementById('issues-new-btn')?.addEventListener('click', () => openIssueModal(null));
+    document.getElementById('issues-list')?.addEventListener('click', e => {
+      const row = e.target.closest('.issue-item');
+      if (!row) return;
+      const id = parseInt(row.dataset.issueId, 10);
+      const issue = issuesCache.find(i => i.id === id);
+      if (issue) openIssueModal(issue);
+    });
+    document.getElementById('issues-filter-status')?.addEventListener('change', () => loadIssuesList());
+    document.getElementById('issues-search')?.addEventListener('input', () => {
+      clearTimeout(issuesSearchTimer);
+      issuesSearchTimer = setTimeout(() => loadIssuesList(), 250);
+    });
+    document.getElementById('issue-save-btn')?.addEventListener('click', saveIssueFromModal);
+    document.getElementById('issue-delete-btn')?.addEventListener('click', deleteIssueFromModal);
+    loadIssuesList();
   }
 
   async function loadIncomingList() {

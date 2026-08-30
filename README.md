@@ -33,6 +33,10 @@ https://thgsoft.online/DjangoNotesPro/
 - **Colored panels** — info / success / warning / danger / note callout blocks in markdown
 - Tab-separated `sheet` blocks (formulas) and D3 `chart` blocks linked by sheet id
 - **ThGMaths / Calcs** blocks — engineering calculator (real/complex, ranges, matrices, multi-curve `Plot`, SCI/ENG/FIX)
+- **Python / executecode** blocks — run in a browser Pyodide sandbox; `print`, pandas, and matplotlib plots show in the preview
+- **Sudoku** blocks — interactive 9×9 puzzles (generated or custom grid in markdown)
+- **Puzzle** blocks — jigsaw puzzle from a pasted image (drag pieces into place)
+- **Pinball** blocks — 3D Pinball Space Cadet (WASM) in preview
 - **Calendar** blocks — list days, weeks, months, or years for a `from`/`to` range
 - **Gantt** / **Kanban** / **Kanban Gantt** / **Mindmap** blocks — project timelines, boards, timed cost tracking, and indented idea trees
 - File manager with drag-and-drop uploads; click images to open in a new tab
@@ -577,6 +581,16 @@ Quick notes are separate from the page tree — lightweight sticky notes for eac
 - Pinned notes stay at the top; your last view (**Pages** vs **Keep**) is saved in user settings.
 - Writers can create and edit notes; read-only members can view them.
 
+### Issues
+
+Workspace issue tracker in the left sidebar **Issues** panel.
+
+- **List** — numbered issues with status, priority, and assignee. Badge shows open count (open, in progress, review).
+- **Filter** — default shows non-closed issues; pick a status or **All statuses**. Search matches title and description.
+- **New issue** — title, markdown description, status, priority, assignee (workspace members), optional related page, comma-separated labels.
+- **Edit** — click an issue to open the modal; writers can update or delete. Read-only members can view.
+- Issue numbers are per workspace (`#1`, `#2`, …).
+
 ### Tags
 
 Tags are indexed per page and shown in a tag bar below the preview. Use brace syntax only:
@@ -614,7 +628,7 @@ markdown
 
 - `mode=day` — days in week rows (Mon–Sun), grouped under each month  
 - `mode=week` — weeks grouped per month  
-- `mode=month` — months grouped per year  
+- `mode=month` — months as a vertical list; day events (`@d:`) listed under each month with date, time, and title  
 - `mode=year` — separate years  
 - `col=success` — green panel-style background (same palette as colored panels)  
 
@@ -622,7 +636,7 @@ Use the toolbar **calendar** button to insert a day-mode block for the current m
 
 In **Edit** mode, click a day / week / month / year chip in the preview to add **markdown text** and an optional **image**. Notes are stored inside the fence. Multiple lines with the same key are all shown on that unit.
 
-Day notes can be **all-day** or timed (`HH:MM` or `HH:MM-HH:MM` after the key). Set **Start** and **Until** in the note dialog (or write a date range in the key) for a **multi-day period**:
+Day notes can be **all-day** or **start/stop** timed (`HH:MM` or `HH:MM-HH:MM` after the key). In day mode the note dialog shows **Start date** / **End date** for all-day events; choose **Start / Stop** to add times as well:
 
 markdown
 ```calendar{from=1.1.26;to=1.7.26;mode=day}
@@ -633,7 +647,7 @@ markdown
 ```
 
 
-Multi-day keys use `@d:from-to` (same `D.M.YY` dates; `..` also works as separator). In preview, a **colored line** runs along the **bottom** of the covered days; overlapping periods stack with the **newest line above** older ones. **Times** stay visible on desktop (time only for daily timed notes; title in the tooltip). On **mobile**, day events show as **points** only (details in the tooltip). Period **titles** stay on the **start** day bar on desktop. Click a time, point, or line to edit.
+Multi-day keys use `@d:from-to` (same `D.M.YY` dates; `..` also works as separator). In preview, a **colored line** runs at the **same height** along the bottom of the covered days; overlapping periods stack with the **newest line above** older ones. **Times** stay visible on desktop (time only for daily timed notes; title in the tooltip). On **mobile**, day events show as **points** only (details in the tooltip). Period **titles** stay on the **start** day bar on desktop. Click a time, point, or line to edit.
 
 markdown
 ```calendar{from=1.1.26;to=1.7.26;mode=year;col=danger}
@@ -724,8 +738,12 @@ Each task line is:
 |--------|---------|
 | `status` | `idle` / `running` / `suspended` / `stopped` |
 | `rate` | Cost per hour for this task (falls back to board `rate`) |
-| `elapsed` | Accumulated seconds (paused time) |
-| `started` | When the current run began (`DD.MM.YY HH:MM`) — only while `running` |
+| `elapsed` | Accumulated seconds (sum of all sessions) |
+| `sessions` | Start/stop log: `DD.MM.YY HH:MM>DD.MM.YY HH:MM,…` (open session ends with `>`) |
+| `started` | Latest start (legacy; use `sessions` for history) |
+| `stopped` | Latest stop (legacy) |
+
+A **week calendar** above the board lists each task **start** (`▶` time + title) on that day, and draws a **colored line** across the covered days for each session. Hover a start or line for full ▶/■ datetimes.
 
 **Suspended column:** default boards include a **Suspended** category. Clicking **Suspend** pauses the timer and moves the task there. **Resume** (Start) moves it back to **Doing** and continues timing.
 
@@ -733,9 +751,9 @@ Each task line is:
 
 Use the toolbar **kanban gantt** button to insert a sample. In **Edit** mode:
 
-- **Start** / **Suspend** / **Stop** on a card update status and elapsed in the markdown
+- **Start** / **Suspend** / **Stop** on a card append each start/stop pair to `sessions` in the markdown
 - **Drag** tasks between columns (or reorder within a column) using the **⠿ handle** on each card
-- Click the **title** for board rate/currency/columns and the **With cost** toggle, or a **card** (outside the buttons) to edit rate, status, note, and image
+- Click the **title** for board rate/currency/columns and the **With cost** toggle, or a **card** (outside the buttons) to edit start/stop dates, rate, status, note, and image — **Delete** removes the task; each session in the list has **✕** to remove that start/stop only
 
 Turn off **With cost** (`withcost=0`) for a time-only board: rates and money totals are hidden; timers still work.
 
@@ -830,6 +848,178 @@ y2[i] = sin(20*w*i/SR).*exp(-i/SR)*A;
 Plot(y1, y2)
 ```
 ````
+
+### Python / executecode (sandbox)
+
+Fenced `python`, `python3`, or `executecode` blocks run in the browser via **Pyodide** (Wasm sandbox). `print` output and matplotlib figures appear under the source in the preview. First run downloads the runtime from a CDN (cached by the browser afterward).
+
+Auto-loaded packages when referenced: **`numpy`**, **`pandas`**, **`matplotlib`**.
+
+````markdown
+```python{title=Pandas;col=info}
+import pandas as pd
+
+df = pd.DataFrame({
+    "name": ["Ada", "Grace", "Alan"],
+    "score": [98, 91, 87],
+})
+print(df)
+print()
+print("mean score:", df["score"].mean())
+print(df.describe())
+```
+````
+
+Plot example:
+
+````markdown
+```python{title=Plot;col=info}
+import matplotlib.pyplot as plt
+import numpy as np
+
+x = np.linspace(0, 2 * np.pi, 200)
+print("points:", len(x))
+plt.plot(x, np.sin(x))
+plt.show()
+```
+````
+
+| Option | Description |
+|--------|-------------|
+| `title` | Block heading (default `Python`) |
+| `col` / `color` | Theme `info` / `success` / … or any CSS color (`#444`, `rgb(…)`) |
+| `bkcol` | Optional background color |
+
+Notes:
+- Use `plt.show()` (or leave a figure open) to render plots as PNG in the preview.
+- Plain documentation samples that should **not** run can use another fence language (e.g. `py` or `text`).
+- Code runs only in your browser; it does not execute on the NotesPro server.
+- Use the toolbar **code** button to insert a Pandas sample.
+
+### Sudoku
+
+Embed an interactive 9×9 Sudoku puzzle with a fenced `sudoku` block. Click a cell, then pick a number (or use keyboard `1`–`9` and arrow keys). **Check** validates your progress; **Clear** removes your entries.
+
+Your entries are saved into the page markdown automatically (`state=` in the fence options, plus the puzzle grid in the body after the first edit).
+
+Generated puzzle (empty body, fullscreen by default):
+
+````markdown
+```sudoku{fullscreen;difficulty=medium;seed=42}
+```
+````
+
+Custom puzzle (`.` or `0` = empty; nine rows or one 81-character line):
+
+````markdown
+```sudoku{fullscreen}
+5 3 . . 7 . . . .
+6 . . 1 9 5 . . .
+. 9 8 . . . . 6 .
+8 . . . 6 . . . 3
+4 . . 8 . 3 . . 1
+7 . . . 2 . . . 6
+. 6 . . . . 2 8 .
+. . . 4 1 9 . . 5
+. . . . 8 . . 7 9
+```
+````
+
+| Option | Description |
+|--------|-------------|
+| `fullscreen` | Edge-to-edge game layout, no title chrome (default on; use `fullscreen=0` for compact card) |
+| `title` | Accessible label only (hidden in fullscreen mode) |
+| `difficulty` | `easy`, `medium`, or `hard` when the body is empty |
+| `seed` | Reproducible random puzzle when generating |
+| `sample=classic` | Built-in classic puzzle instead of random |
+| `state` | 81-character save game (`.` = empty cell you can edit); written automatically |
+| `col` / `bkcol` | Theme or custom colors |
+
+Toolbar: **Insert sudoku** adds a medium puzzle. Use the **⛶** button (top-right) for monitor fullscreen; **Esc** to exit.
+
+### Puzzle (jigsaw)
+
+Paste an image and **jqJigsawPuzzle.js** cuts it into draggable interlocking pieces. Drag pieces near their correct slot to snap them in place. **Check** validates progress; **Reset** reshuffles the pieces. After each piece move, every piece’s position is saved in the fence body (`#pieces` lines) so a reload keeps the layout.
+
+Empty puzzle — paste while editing (saved into markdown):
+
+````markdown
+```puzzle{fullscreen;difficulty=medium}
+```
+````
+
+With an image in the fence body or `image=` option:
+
+````markdown
+```puzzle{fullscreen;image=media/uploads/photo.jpg;difficulty=hard}
+![Jigsaw image](media/uploads/photo.jpg)
+```
+````
+
+| Option | Description |
+|--------|-------------|
+| `fullscreen` | Edge-to-edge layout, no title/hint chrome (default on) |
+| `title` | Accessible label only (hidden in fullscreen mode) |
+
+Body `#pieces` section (auto-written while you play; one line per piece `rowxcol left top type`):
+
+````markdown
+```puzzle{fullscreen;image=media/uploads/photo.jpg;difficulty=medium}
+![Jigsaw image](media/uploads/photo.jpg)
+
+#pieces 480x320 normal
+0x0 12 40 1010
+0x1 180 55 0101
+1x0 30 200 1110
+1x1 210 190 0001
+```
+````
+
+**Reset** clears the `#pieces` section.
+| `difficulty` | `easy`, `medium`, or `hard` (fewer/larger pieces → more/smaller pieces) |
+| `size` | Override piece size: `small`, `normal`, or `big` (takes precedence over `difficulty`) |
+| `image` / `src` | Image URL (or use `![alt](url)` in the body) |
+| `border` | Puzzle frame width in pixels (default 5) |
+| `col` / `bkcol` | Theme colors |
+
+| Difficulty | Piece size | Typical feel |
+|------------|------------|--------------|
+| `easy` | big | Few large pieces |
+| `medium` | normal | Balanced (default) |
+| `hard` | small | Many small pieces |
+
+Piece count is derived from the image size and difficulty. Uses [jqJigsawPuzzle](https://github.com/jfmdev/jqJigsawPuzzle) (jQuery UI draggable, CSS mask shapes).
+
+Toolbar: **Insert jigsaw puzzle** adds an empty sample. Use the **⛶** button for monitor fullscreen.
+
+### Pinball
+
+Embed **3D Pinball for Windows – Space Cadet** with a fenced `pinball` block. The game runs via a WebAssembly port ([lrusso/3DPinballSpaceCadet](https://github.com/lrusso/3DPinballSpaceCadet), based on [alula/SpaceCadetPinball](https://github.com/alula/SpaceCadetPinball)) inside an iframe.
+
+````markdown
+```pinball{fullscreen}
+```
+````
+
+| Option | Description |
+|--------|-------------|
+| `fullscreen` | Edge-to-edge table, no title/hint chrome (default on) |
+| `title` | iframe accessible title (hidden chrome in fullscreen mode) |
+| `src` / `url` | Optional HTTPS URL to a custom embed page (default: bundled `embed.html`) |
+| `col` / `bkcol` | Theme colors |
+
+Click the table to focus, then play with keyboard:
+
+| Key | Action |
+|-----|--------|
+| **⛶ button** / **Esc** | Enter / exit monitor fullscreen |
+| **Z** / **←** | Left flipper |
+| **C** / **→** | Right flipper (C avoids `/` on non-US layouts) |
+| **Space** | Launch ball |
+| **R** | Restart game |
+| **T** | Toggle sound |
+
+Toolbar: **Insert pinball** adds a Space Cadet table. The first load downloads ~9 MB of game data from jsDelivr. Use the **⛶** button for monitor fullscreen.
 
 ### News / RSS (Magpie-style)
 

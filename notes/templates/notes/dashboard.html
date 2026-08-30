@@ -11,6 +11,8 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.css">
   <link rel="shortcut icon" type="image/png" href="{% static 'images/favicon.ico' %}"/>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <link rel="stylesheet" href="https://code.jquery.com/ui/1.13.2/themes/base/jquery-ui.min.css">
+  <link rel="stylesheet" href="{% static 'notes/vendor/jqJigsawPuzzle/jqJigsawPuzzle.css' %}">
   <link rel="stylesheet" href="{% static 'notes/dashboard.css' %}">
 </head>
 <body>
@@ -101,6 +103,28 @@
       <div class="panel-body expanded">
         <button type="button" id="snippets-manage-btn" class="btn btn-sm btn-outline-light w-100 mb-2">Manage snippets…</button>
         <div id="snippets-quick-list" class="snippets-quick-list"></div>
+      </div>
+    </div>
+
+    <div class="panel-card" id="issues-panel">
+      <div class="panel-header">
+        <span class="panel-title">Issues <span id="issues-open-badge" class="badge bg-info d-none">0</span></span>
+        <i class="bi bi-chevron-down toggle-icon"></i>
+      </div>
+      <div class="panel-body expanded">
+        <div class="issues-toolbar d-flex gap-1 mb-2">
+          <select id="issues-filter-status" class="form-select form-select-sm" aria-label="Filter by status">
+            <option value="">All open</option>
+            <option value="open">Open</option>
+            <option value="in_progress">In progress</option>
+            <option value="review">Review</option>
+            <option value="closed">Closed</option>
+            <option value="__all__">All statuses</option>
+          </select>
+          <input type="search" id="issues-search" class="form-control form-control-sm" placeholder="Search…" autocomplete="off" aria-label="Search issues">
+        </div>
+        <button type="button" id="issues-new-btn" class="btn btn-sm btn-primary w-100 mb-2">New issue</button>
+        <div id="issues-list" class="issues-list"></div>
       </div>
     </div>
 
@@ -395,6 +419,7 @@
     window.APP_BASE = "{{ app_base|escapejs }}";
 </script> 
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://code.jquery.com/ui/1.13.2/jquery-ui.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jstree@3.3.17/dist/jstree.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/search/searchcursor.js"></script>
@@ -521,7 +546,7 @@
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <p class="small dashboard-modal-hint mb-2" id="calendar-note-modal-hint">All day or a time range. Edit Start / Until for a multi-day period. One note per line; image attaches to the first line.</p>
+        <p class="small dashboard-modal-hint mb-2" id="calendar-note-modal-hint">All day: start/end dates. Start / Stop: add times. One note per line; image attaches to the first line.</p>
         <fieldset class="mb-3">
           <legend class="form-label small fw-semibold mb-2">When</legend>
           <div class="d-flex flex-wrap gap-3 align-items-center mb-2 calendar-note-when-options">
@@ -533,27 +558,27 @@
             <label class="calendar-note-when-option">
               <input type="radio" name="calendar-note-when" id="calendar-note-timed" value="timed" class="calendar-note-when-input">
               <span class="calendar-note-when-mark" aria-hidden="true"></span>
-              <span class="calendar-note-when-label">Time range</span>
+              <span class="calendar-note-when-label">Start / Stop</span>
             </label>
           </div>
-          <div id="calendar-note-time-range" class="row g-2 d-none">
-            <div class="col-6">
-              <label class="form-label small mb-1" for="calendar-note-time-from">From</label>
-              <input type="time" id="calendar-note-time-from" class="form-control form-control-sm">
+          <div id="calendar-note-date-range" class="row g-2 mb-2 d-none">
+            <div class="col-sm-6">
+              <label class="form-label small mb-1" for="calendar-note-start-date">Start date</label>
+              <input type="date" id="calendar-note-start-date" class="form-control form-control-sm">
             </div>
-            <div class="col-6">
-              <label class="form-label small mb-1" for="calendar-note-time-to">To</label>
-              <input type="time" id="calendar-note-time-to" class="form-control form-control-sm">
+            <div class="col-sm-6">
+              <label class="form-label small mb-1" for="calendar-note-end-date">End date</label>
+              <input type="date" id="calendar-note-end-date" class="form-control form-control-sm">
             </div>
           </div>
-          <div id="calendar-note-period-range" class="row g-2 mt-2 d-none">
-            <div class="col-6">
-              <label class="form-label small mb-1" for="calendar-note-date-from">Start</label>
-              <input type="date" id="calendar-note-date-from" class="form-control form-control-sm">
+          <div id="calendar-note-time-range" class="row g-2 d-none">
+            <div class="col-sm-6">
+              <label class="form-label small mb-1" for="calendar-note-time-from">Start time</label>
+              <input type="time" id="calendar-note-time-from" class="form-control form-control-sm">
             </div>
-            <div class="col-6">
-              <label class="form-label small mb-1" for="calendar-note-date-until">Until</label>
-              <input type="date" id="calendar-note-date-until" class="form-control form-control-sm">
+            <div class="col-sm-6">
+              <label class="form-label small mb-1" for="calendar-note-time-to">Stop time</label>
+              <input type="time" id="calendar-note-time-to" class="form-control form-control-sm">
             </div>
           </div>
         </fieldset>
@@ -753,7 +778,7 @@
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <p class="small dashboard-modal-hint mb-2">Edit task, rate, status, and note. Use Start / Suspend / Stop on the card for time tracking.</p>
+        <p class="small dashboard-modal-hint mb-2">Edit task, rate, status, start/stop times, and note. Use Start / Suspend / Stop on the card for live timing.</p>
         <label class="form-label small fw-semibold" for="kg-card-label">Label</label>
         <input type="text" class="form-control form-control-sm mb-2" id="kg-card-label" placeholder="Task name" autocomplete="off">
         <label class="form-label small fw-semibold" for="kg-card-col">Column</label>
@@ -773,6 +798,25 @@
             </select>
           </div>
         </div>
+        <div class="kg-card-time-panel mb-3">
+          <div class="small fw-semibold mb-2">Start / stop</div>
+          <div id="kg-card-sessions" class="kg-card-sessions d-none" aria-label="Task sessions"></div>
+          <div class="row g-2">
+            <div class="col-sm-6">
+              <label class="form-label small mb-1" for="kg-card-start-date">Start date</label>
+              <input type="date" id="kg-card-start-date" class="form-control form-control-sm mb-1">
+              <label class="form-label small mb-1" for="kg-card-start-time">Start time</label>
+              <input type="time" id="kg-card-start-time" class="form-control form-control-sm">
+            </div>
+            <div class="col-sm-6">
+              <label class="form-label small mb-1" for="kg-card-stop-date">Stop date</label>
+              <input type="date" id="kg-card-stop-date" class="form-control form-control-sm mb-1">
+              <label class="form-label small mb-1" for="kg-card-stop-time">Stop time</label>
+              <input type="time" id="kg-card-stop-time" class="form-control form-control-sm">
+            </div>
+          </div>
+          <p class="small dashboard-modal-hint mt-2 mb-0">Sessions list each start/stop. Delete a session with ✕. Start/stop fields edit the latest session.</p>
+        </div>
         <label class="form-label small fw-semibold" for="kg-card-elapsed">Elapsed seconds</label>
         <input type="number" min="0" step="1" class="form-control form-control-sm mb-3" id="kg-card-elapsed" placeholder="0">
         <label class="form-label small fw-semibold" for="kg-card-text">Markdown text</label>
@@ -785,10 +829,65 @@
         <input type="file" id="kg-card-file" class="visually-hidden-file-input" accept="image/*" tabindex="-1" aria-hidden="true">
         <div id="kg-card-preview" class="calendar-note-preview d-none"></div>
       </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-sm btn-outline-danger me-auto" id="kg-card-clear-btn">Clear note</button>
+      <div class="modal-footer flex-wrap gap-1">
+        <button type="button" class="btn btn-sm btn-outline-danger me-auto" id="kg-card-delete-btn">Delete</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="kg-card-clear-btn">Clear note</button>
         <button type="button" class="btn btn-sm btn-outline-light" data-bs-dismiss="modal">Cancel</button>
         <button type="button" class="btn btn-sm btn-primary" id="kg-card-save-btn">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Issue dialog -->
+<div class="modal fade dashboard-modal-root" id="issue-modal" tabindex="-1" aria-labelledby="issue-modal-title" aria-hidden="true" data-bs-theme="dark">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content dashboard-modal">
+      <div class="modal-header">
+        <h5 class="modal-title" id="issue-modal-title">Issue</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div id="issue-modal-meta" class="small text-muted mb-2 d-none"></div>
+        <label class="form-label small fw-semibold" for="issue-title">Title</label>
+        <input type="text" class="form-control form-control-sm mb-2" id="issue-title" placeholder="Short summary" autocomplete="off">
+        <div class="row g-2 mb-2">
+          <div class="col-sm-6">
+            <label class="form-label small fw-semibold" for="issue-status">Status</label>
+            <select class="form-select form-select-sm" id="issue-status">
+              <option value="open">Open</option>
+              <option value="in_progress">In progress</option>
+              <option value="review">Review</option>
+              <option value="closed">Closed</option>
+            </select>
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label small fw-semibold" for="issue-priority">Priority</label>
+            <select class="form-select form-select-sm" id="issue-priority">
+              <option value="low">Low</option>
+              <option value="normal" selected>Normal</option>
+              <option value="high">High</option>
+              <option value="urgent">Urgent</option>
+            </select>
+          </div>
+        </div>
+        <label class="form-label small fw-semibold" for="issue-assignee">Assignee</label>
+        <select class="form-select form-select-sm mb-2" id="issue-assignee">
+          <option value="">— unassigned —</option>
+        </select>
+        <label class="form-label small fw-semibold" for="issue-page">Related page</label>
+        <select class="form-select form-select-sm mb-2" id="issue-page">
+          <option value="">— none —</option>
+        </select>
+        <label class="form-label small fw-semibold" for="issue-labels">Labels</label>
+        <input type="text" class="form-control form-control-sm mb-2" id="issue-labels" placeholder="bug, ui, docs (comma-separated)" autocomplete="off">
+        <label class="form-label small fw-semibold" for="issue-body">Description</label>
+        <textarea id="issue-body" class="form-control form-control-sm mb-2" rows="5" placeholder="Details (markdown)…"></textarea>
+      </div>
+      <div class="modal-footer flex-wrap gap-1">
+        <button type="button" class="btn btn-sm btn-outline-danger me-auto d-none" id="issue-delete-btn">Delete</button>
+        <button type="button" class="btn btn-sm btn-outline-light" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-sm btn-primary" id="issue-save-btn">Save</button>
       </div>
     </div>
   </div>
@@ -958,6 +1057,12 @@
 
 <script src="{% static 'notes/dm-p2p.js' %}"></script>
 <script src="{% static 'notes/calcs.js' %}?v={% now 'YmdHis' %}"></script>
+<script src="{% static 'notes/game-fullscreen.js' %}?v={% now 'YmdHis' %}"></script>
+<script src="{% static 'notes/sudoku.js' %}?v={% now 'YmdHis' %}"></script>
+<script src="{% static 'notes/vendor/jqJigsawPuzzle/jqJigsawPuzzle.js' %}?v={% now 'YmdHis' %}"></script>
+<script src="{% static 'notes/puzzle.js' %}?v={% now 'YmdHis' %}"></script>
+<script src="{% static 'notes/pinball.js' %}?v={% now 'YmdHis' %}"></script>
+<script src="{% static 'notes/python-exec.js' %}?v={% now 'YmdHis' %}"></script>
 <script src="{% static 'notes/dashboard.js' %}?v={% now 'YmdHis' %}"></script>
 
 

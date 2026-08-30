@@ -7,6 +7,7 @@ from django.core.files.base import ContentFile
 from django.core.management.base import BaseCommand
 
 from notes.models import Page, UploadedFile, Workspace
+from notes.media_refs import media_markdown_href
 
 SCREENSHOT_FILES = (
     'dashboard-overview.png',
@@ -58,7 +59,7 @@ def build_readme_markdown(workspace, user):
 
     text = readme_path.read_text(encoding='utf-8')
     for name, url in ensure_screenshot_uploads(workspace, user).items():
-        text = text.replace(f'docs/screenshots/{name}', url)
+        text = text.replace(f'docs/screenshots/{name}', media_markdown_href(url))
     return text
 
 
@@ -92,7 +93,7 @@ Central topic
 # MidasNano Remote
 Todo | Create 488 Api | **Basis 488 Commmands**
 Todo | Build API
-Done | Kickoff | ![](/media/uploads/photo.png)
+Done | Kickoff | ![](media/uploads/photo.png)
 Done | Define Remote
 ```
 
@@ -136,13 +137,14 @@ Done | Kickoff | status=stopped;rate=50;elapsed=7200
 # Calcs (ThGMaths)
 ```calcs{fix=7;col=info}
 (* sample *)
+% Octave-style syntax
 FIX(7, true)
-V1:=(1,3,4, 8)
-Sum(V1)
-a:= 3 + 4i
+V1 = [1 3 4 8]
+sum(V1)
+a = 3 + 4i
 sqr(1i)
-j:=-10..10
-y3[j]:=(j*j)/100
+j = -10:10
+y3[j] = (j.*j)/100
 Plot([j, y3])
 ```
 """

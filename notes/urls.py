@@ -6,6 +6,7 @@ from . import views_messaging
 from . import views_dm
 from . import views_incoming
 from . import views_quicknotes
+from . import views_issues
 
 urlpatterns = [
     path('', views.dashboard, name='dashboard'),
@@ -23,6 +24,11 @@ urlpatterns = [
     path('api/quick-notes/<int:pk>/', views_quicknotes.quick_note_detail, name='api_quick_note_detail'),
     path('api/quick-notes/<int:pk>/update/', views_quicknotes.quick_note_update, name='api_quick_note_update'),
     path('api/quick-notes/<int:pk>/delete/', views_quicknotes.quick_note_delete, name='api_quick_note_delete'),
+    path('api/workspaces/<int:workspace_id>/issues/', views_issues.issue_list, name='api_issues'),
+    path('api/workspaces/<int:workspace_id>/issues/create/', views_issues.issue_create, name='api_issue_create'),
+    path('api/issues/<int:pk>/', views_issues.issue_detail, name='api_issue_detail'),
+    path('api/issues/<int:pk>/update/', views_issues.issue_update, name='api_issue_update'),
+    path('api/issues/<int:pk>/delete/', views_issues.issue_delete, name='api_issue_delete'),
     path('api/workspaces/<int:workspace_id>/updateUserSettings/', views.updateUserSettings, name='updateUserSettings'),
     path('api/workspaces/create/', views.workspace_create, name='workspace_create'),
     path('api/workspaces/<int:workspace_id>/files/', views.file_manager, name='api_files'),

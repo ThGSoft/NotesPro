@@ -321,6 +321,72 @@ class QuickNote(models.Model):
         return label or f'Quick note {self.pk}'
 
 
+class Issue(models.Model):
+    STATUS_OPEN = 'open'
+    STATUS_IN_PROGRESS = 'in_progress'
+    STATUS_REVIEW = 'review'
+    STATUS_CLOSED = 'closed'
+    STATUS_CHOICES = [
+        (STATUS_OPEN, 'Open'),
+        (STATUS_IN_PROGRESS, 'In progress'),
+        (STATUS_REVIEW, 'Review'),
+        (STATUS_CLOSED, 'Closed'),
+    ]
+    VALID_STATUSES = {c[0] for c in STATUS_CHOICES}
+
+    PRIORITY_LOW = 'low'
+    PRIORITY_NORMAL = 'normal'
+    PRIORITY_HIGH = 'high'
+    PRIORITY_URGENT = 'urgent'
+    PRIORITY_CHOICES = [
+        (PRIORITY_LOW, 'Low'),
+        (PRIORITY_NORMAL, 'Normal'),
+        (PRIORITY_HIGH, 'High'),
+        (PRIORITY_URGENT, 'Urgent'),
+    ]
+    VALID_PRIORITIES = {c[0] for c in PRIORITY_CHOICES}
+
+    workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE, related_name='issues')
+    number = models.PositiveIntegerField(db_index=True)
+    title = EncryptedTextField(blank=True, default='')
+    body = EncryptedTextField(blank=True, default='')
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_OPEN, db_index=True)
+    priority = models.CharField(max_length=16, choices=PRIORITY_CHOICES, default=PRIORITY_NORMAL, db_index=True)
+    assignee = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='assigned_issues',
+    )
+    reporter = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='reported_issues',
+    )
+    page = models.ForeignKey(
+        'Page',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='issues',
+    )
+    labels = models.JSONField(default=list, blank=True)
+    deleted = models.BooleanField(default=False, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-updated_at', '-id']
+        constraints = [
+            models.UniqueConstraint(fields=['workspace', 'number'], name='notes_issue_workspace_number'),
+        ]
+
+    def __str__(self):
+        label = (self.title or '')[:60]
+        return f'#{self.number} {label}' if label else f'Issue #{self.number}'
+
+
 class Page(models.Model):
     workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE, related_name='pages')
     parent = models.ForeignKey('self', null=True, blank=True, related_name='children', on_delete=models.CASCADE)
