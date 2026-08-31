@@ -307,13 +307,14 @@
       `<div class="rollercoast-overlay">`,
       `<p class="rollercoast-hint">${spec.draft
         ? 'Paste your photos to hang them along the track'
-        : 'Auto-ride · track obstacles · paste more photos · ⛶ fullscreen'}</p>`,
+        : 'Ego or chase · C / View · auto-ride · ⛶ fullscreen'}</p>`,
       `<div class="rollercoast-warn" aria-live="assertive" hidden></div>`,
       `<div class="rollercoast-caption" aria-live="polite"></div>`,
       `</div>`,
       `</div>`,
       `<div class="rollercoast-toolbar">`,
       `<button type="button" class="btn btn-sm btn-outline-light" data-action="toggle-ride" aria-pressed="true">Pause</button>`,
+      `<button type="button" class="btn btn-sm btn-outline-secondary" data-action="cycle-camera">View: Ego</button>`,
       `<button type="button" class="btn btn-sm btn-outline-secondary" data-action="boost">Boost</button>`,
       editable
         ? `<button type="button" class="btn btn-sm btn-outline-secondary" data-action="add-photo">Add photo</button>`
@@ -336,25 +337,52 @@
 
   function buildTrackCurve(THREE, mode) {
     const pts = [];
-    const segs = 72;
-    for (let i = 0; i <= segs; i += 1) {
-      const t = (i / segs) * Math.PI * 2;
-      const radius = 16 + Math.sin(t * 2) * 4.2 + Math.cos(t * 3) * 1.6;
-      const x = Math.cos(t) * radius;
-      const z = Math.sin(t) * radius * 0.88;
-      let y = 2.6
-        + Math.sin(t * 2) * 4.4
-        + Math.cos(t * 3) * 1.9
-        + Math.sin(t) * 1.4;
-      if (mode === 'dune') y = 2.0 + Math.sin(t * 2) * 2.8 + Math.cos(t) * 1.3;
-      if (mode === 'snow') y = 3.2 + Math.sin(t * 2.2) * 4.8 + Math.cos(t * 1.5) * 1.7;
-      if (mode === 'alps') y = 4.0 + Math.sin(t * 2.4) * 5.8 + Math.cos(t * 1.3) * 2.4 + Math.sin(t * 5) * 0.7;
-      if (t < 1.35) y += (1.35 - t) * 3.2;
-      // Small dip / valley
-      if (t > 3.4 && t < 4.2) y -= Math.sin((t - 3.4) / 0.8 * Math.PI) * 1.8;
-      pts.push(new THREE.Vector3(x, Math.max(1.1, y), z));
+    const segs = 96;
+    const heightScale = mode === 'dune' ? 0.72 : mode === 'alps' ? 1.18 : mode === 'snow' ? 1.05 : 1;
+    for (let i = 0; i < segs; i += 1) {
+      const u = i / segs;
+      const ang = u * Math.PI * 2;
+      let radius = 17.5;
+      let twist = ang;
+      let y = 2.15;
+      if (u < 0.10) {
+        y = 2.15;
+        radius = 17.2;
+      } else if (u < 0.26) {
+        const t = (u - 0.10) / 0.16;
+        y = 2.15 + t * t * (11.8 * heightScale);
+        radius = 17.2 - t * 1.4;
+      } else if (u < 0.38) {
+        const t = (u - 0.26) / 0.12;
+        const drop = t * t * (0.35 + t);
+        y = 2.15 + 11.8 * heightScale * (1 - drop);
+        radius = 15.8 + t * 2.4;
+      } else if (u < 0.50) {
+        const t = (u - 0.38) / 0.12;
+        y = 3.2 * heightScale + Math.sin(t * Math.PI) * 4.6 * heightScale;
+        radius = 18.2;
+      } else if (u < 0.70) {
+        const t = (u - 0.50) / 0.20;
+        const ease = t * t * (3 - 2 * t);
+        twist = ang + ease * Math.PI * 2.2;
+        const tight = 9.8 + Math.sin(t * Math.PI) * 1.8;
+        radius = 18.2 + (tight - 18.2) * Math.sin(Math.min(1, t * 1.35) * Math.PI * 0.5);
+        y = 5.4 * heightScale + Math.sin(t * Math.PI * 2) * 1.45 * heightScale;
+      } else if (u < 0.86) {
+        const t = (u - 0.70) / 0.16;
+        y = 3.8 * heightScale + Math.sin(t * Math.PI) * 5.8 * heightScale;
+        radius = 16.5 + Math.sin(t * Math.PI) * 1.2;
+      } else {
+        const t = (u - 0.86) / 0.14;
+        const ease = t * t * (3 - 2 * t);
+        y = (3.8 * (1 - ease) + 2.15 * ease) * (mode === 'alps' ? 1 : 1);
+        radius = 17.2;
+      }
+      const x = Math.cos(twist) * radius;
+      const z = Math.sin(twist) * radius * 0.9;
+      pts.push(new THREE.Vector3(x, Math.max(1.25, y), z));
     }
-    return new THREE.CatmullRomCurve3(pts, true, 'catmullrom', 0.42);
+    return new THREE.CatmullRomCurve3(pts, true, 'catmullrom', 0.28);
   }
 
   function addTerrain(THREE, scene, palette, mode) {
@@ -439,116 +467,11 @@
     return pos;
   }
 
-  function tagObstacle(mesh, radius, kind, onTrack) {
+  function tagObstacle(mesh, radius, kind) {
     mesh.userData.isObstacle = true;
     mesh.userData.obstacleRadius = radius;
     mesh.userData.obstacleKind = kind || 'obstacle';
-    if (onTrack) mesh.userData.onTrack = true;
     return mesh;
-  }
-
-  function trackSideVector(tangent) {
-    const side = new THREE.Vector3(-tangent.z, 0, tangent.x);
-    if (side.lengthSq() < 1e-8) side.set(1, 0, 0);
-    return side.normalize();
-  }
-
-  function pushObstacle(obstacles, mesh, radius, kind, onTrack) {
-    tagObstacle(mesh, radius, kind, onTrack);
-    obstacles.push(mesh);
-    return mesh;
-  }
-
-  function addTrackObstacles(THREE, scene, curve, palette, mode, obstacles) {
-    const count = mode === 'jungle' ? 16 : mode === 'alps' ? 14 : 12;
-    const postMat = new THREE.MeshStandardMaterial({ color: palette.tie, roughness: 0.88, metalness: 0.12 });
-    const railMat = new THREE.MeshStandardMaterial({ color: palette.rail, metalness: 0.7, roughness: 0.32 });
-    const warnMat = new THREE.MeshStandardMaterial({
-      color: mode === 'dune' ? 0xf59e0b : 0xfbbf24,
-      emissive: 0xf59e0b,
-      emissiveIntensity: 0.35,
-      roughness: 0.55,
-    });
-    const debrisMat = new THREE.MeshStandardMaterial({
-      color: mode === 'snow' || mode === 'alps' ? palette.rock || 0x7a7f88 : palette.trunk,
-      roughness: 0.95,
-      flatShading: true,
-    });
-
-    for (let i = 0; i < count; i += 1) {
-      const t = ((i * 0.061) + 0.04 + (i % 5) * 0.007) % 1;
-      const pos = curve.getPointAt(t);
-      const tangent = curve.getTangentAt(t).normalize();
-      const side = trackSideVector(tangent);
-      const kindRoll = i % 4;
-
-      if (kindRoll === 0) {
-        const gauge = 0.62;
-        const postH = 2.35 + (i % 3) * 0.25;
-        [-gauge, gauge].forEach((g) => {
-          const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.11, postH, 7), postMat);
-          post.position.copy(pos).add(side.clone().multiplyScalar(g));
-          post.position.y += postH / 2 - 0.35;
-          scene.add(post);
-          pushObstacle(obstacles, post, 0.55, 'gate', true);
-        });
-        const bar = new THREE.Mesh(new THREE.BoxGeometry(gauge * 2 + 0.18, 0.14, 0.14), railMat);
-        bar.position.copy(pos);
-        bar.position.y += postH - 0.45;
-        bar.lookAt(pos.clone().add(tangent));
-        scene.add(bar);
-        pushObstacle(obstacles, bar, 0.75, 'gate', true);
-        const stripe = new THREE.Mesh(new THREE.BoxGeometry(gauge * 2 + 0.08, 0.55, 0.05), warnMat);
-        stripe.position.copy(bar.position);
-        stripe.position.y -= 0.42;
-        stripe.lookAt(pos.clone().add(tangent));
-        scene.add(stripe);
-        pushObstacle(obstacles, stripe, 0.65, 'gate', true);
-      } else if (kindRoll === 1) {
-        const rock = new THREE.Mesh(
-          new THREE.DodecahedronGeometry(0.42 + (i % 4) * 0.12, 0),
-          debrisMat,
-        );
-        rock.position.copy(pos);
-        rock.position.y += 0.28;
-        rock.rotation.set(i * 0.7, i * 1.1, i * 0.4);
-        scene.add(rock);
-        pushObstacle(obstacles, rock, 0.72, 'debris', true);
-        if (i % 2 === 0) {
-          const rock2 = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.32, 0.48), debrisMat);
-          rock2.position.copy(pos).add(side.clone().multiplyScalar(0.22));
-          rock2.position.y += 0.22;
-          rock2.rotation.y = i * 0.5;
-          scene.add(rock2);
-          pushObstacle(obstacles, rock2, 0.58, 'debris', true);
-        }
-      } else if (kindRoll === 2) {
-        const crate = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.62, 0.78), postMat);
-        crate.position.copy(pos);
-        crate.position.y += 0.34;
-        crate.lookAt(pos.clone().add(tangent));
-        scene.add(crate);
-        pushObstacle(obstacles, crate, 0.82, 'barrier', true);
-        const plank = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.12, 0.18), warnMat);
-        plank.position.copy(crate.position);
-        plank.position.y += 0.38;
-        plank.lookAt(pos.clone().add(tangent));
-        scene.add(plank);
-        pushObstacle(obstacles, plank, 0.55, 'barrier', true);
-      } else {
-        const beam = new THREE.Mesh(new THREE.BoxGeometry(1.35, 0.16, 0.16), railMat);
-        beam.position.copy(pos);
-        beam.position.y += 0.52 + (i % 2) * 0.18;
-        beam.lookAt(pos.clone().add(tangent));
-        scene.add(beam);
-        pushObstacle(obstacles, beam, 0.68, 'rail block', true);
-        const cone = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.55, 6), warnMat);
-        cone.position.copy(pos).add(tangent.clone().multiplyScalar(0.55));
-        cone.position.y += 0.3;
-        scene.add(cone);
-        pushObstacle(obstacles, cone, 0.45, 'rail block', true);
-      }
-    }
   }
 
   function addScenery(THREE, scene, palette, mode, curve, obstacles) {
@@ -576,7 +499,7 @@
         );
         trunk.position.set(pos.x, trunkH / 2, pos.z);
         trunk.rotation.z = (Math.random() - 0.5) * 0.12;
-        tagObstacle(trunk, 1.1, 'tree', false);
+        tagObstacle(trunk, 1.1, 'tree');
         scene.add(trunk);
         obstacles.push(trunk);
         for (let c = 0; c < 3; c += 1) {
@@ -593,7 +516,7 @@
             pos.z + (Math.random() - 0.5) * 1.4,
           );
           canopy.scale.set(1, 0.7 + Math.random() * 0.2, 1);
-          tagObstacle(canopy, 2.0, 'canopy', false);
+          tagObstacle(canopy, 2.0, 'canopy');
           scene.add(canopy);
           obstacles.push(canopy);
         }
@@ -604,7 +527,7 @@
         );
         rock.position.set(pos.x, 0.55 + Math.random() * 0.6, pos.z);
         rock.rotation.set(Math.random(), Math.random(), Math.random());
-        tagObstacle(rock, 1.6, 'rock', false);
+        tagObstacle(rock, 1.6, 'rock');
         scene.add(rock);
         obstacles.push(rock);
         if (Math.random() > 0.5) {
@@ -613,7 +536,7 @@
             new THREE.MeshStandardMaterial({ color: 0x3d7a45, roughness: 0.8 }),
           );
           cactus.position.set(pos.x + 1.4, 1.0, pos.z + 0.5);
-          tagObstacle(cactus, 0.7, 'cactus', false);
+          tagObstacle(cactus, 0.7, 'cactus');
           scene.add(cactus);
           obstacles.push(cactus);
         }
@@ -636,7 +559,7 @@
             10,
           );
           peak.position.set(peakPos.x, peakH * 0.32, peakPos.z);
-          tagObstacle(peak, 4.5, 'peak', false);
+          tagObstacle(peak, 4.5, 'peak');
           scene.add(peak);
           obstacles.push(peak);
           const cap = new THREE.Mesh(
@@ -652,7 +575,7 @@
           new THREE.MeshStandardMaterial({ color: palette.trunk, roughness: 1 }),
         );
         trunk.position.set(pos.x, pineH * 0.15, pos.z);
-        tagObstacle(trunk, 0.9, 'pine', false);
+        tagObstacle(trunk, 0.9, 'pine');
         scene.add(trunk);
         obstacles.push(trunk);
         for (let k = 0; k < 4; k += 1) {
@@ -664,7 +587,7 @@
             }),
           );
           cone.position.set(pos.x, pineH * 0.3 + k * 0.7, pos.z);
-          tagObstacle(cone, 1.3, 'pine', false);
+          tagObstacle(cone, 1.3, 'pine');
           scene.add(cone);
           obstacles.push(cone);
         }
@@ -674,7 +597,7 @@
             new THREE.MeshStandardMaterial({ color: palette.rock, roughness: 1, flatShading: true }),
           );
           boulder.position.set(pos.x + 1.3, 0.4, pos.z - 0.7);
-          tagObstacle(boulder, 1.1, 'rock', false);
+          tagObstacle(boulder, 1.1, 'rock');
           scene.add(boulder);
           obstacles.push(boulder);
         }
@@ -685,7 +608,7 @@
           new THREE.MeshStandardMaterial({ color: palette.trunk, roughness: 1 }),
         );
         trunk.position.set(pos.x, pineH * 0.16, pos.z);
-        tagObstacle(trunk, 0.95, 'pine', false);
+        tagObstacle(trunk, 0.95, 'pine');
         scene.add(trunk);
         obstacles.push(trunk);
         for (let k = 0; k < 4; k += 1) {
@@ -697,7 +620,7 @@
             }),
           );
           cone.position.set(pos.x, pineH * 0.34 + k * 0.75, pos.z);
-          tagObstacle(cone, 1.4, 'pine', false);
+          tagObstacle(cone, 1.4, 'pine');
           scene.add(cone);
           obstacles.push(cone);
         }
@@ -705,100 +628,131 @@
     }
   }
 
+  function trackSide(frames, i, fallbackNormal) {
+    const n = frames.normals[i] || fallbackNormal;
+    const b = frames.binormals[i] || fallbackNormal;
+    let side = b.clone();
+    if (Math.abs(side.y) > 0.82) side.copy(n);
+    side.y *= 0.18;
+    if (side.lengthSq() < 1e-6) side.set(1, 0, 0);
+    return side.normalize();
+  }
+
   function addRails(THREE, scene, curve, palette) {
-    const segments = 280;
+    const segments = 360;
     const frames = curve.computeFrenetFrames(segments, true);
     const left = [];
     const right = [];
-    const gauge = 0.42;
+    const spine = [];
+    const gauge = 0.48;
     for (let i = 0; i <= segments; i += 1) {
       const t = i / segments;
       const p = curve.getPointAt(t);
-      const n = frames.normals[i];
-      const b = frames.binormals[i];
-      // Prefer horizontal-ish binormal for rail spacing
-      let side = new THREE.Vector3().copy(b);
-      if (Math.abs(side.y) > 0.85) side.copy(n);
-      side.y *= 0.25;
-      if (side.lengthSq() < 1e-6) side.set(1, 0, 0);
-      side.normalize().multiplyScalar(gauge);
+      const side = trackSide(frames, Math.min(i, frames.normals.length - 1), new THREE.Vector3(1, 0, 0)).multiplyScalar(gauge);
       left.push(p.clone().add(side));
       right.push(p.clone().sub(side));
+      spine.push(p.clone().add(new THREE.Vector3(0, -0.16, 0)));
     }
     const leftCurve = new THREE.CatmullRomCurve3(left, true);
     const rightCurve = new THREE.CatmullRomCurve3(right, true);
+    const spineCurve = new THREE.CatmullRomCurve3(spine, true);
     const railMat = new THREE.MeshStandardMaterial({
-      color: palette.rail,
-      metalness: 0.72,
-      roughness: 0.28,
+      color: 0xb8c0cc,
+      metalness: 0.88,
+      roughness: 0.22,
     });
-    scene.add(new THREE.Mesh(new THREE.TubeGeometry(leftCurve, segments, 0.055, 8, true), railMat));
-    scene.add(new THREE.Mesh(new THREE.TubeGeometry(rightCurve, segments, 0.055, 8, true), railMat));
+    const spineMat = new THREE.MeshStandardMaterial({
+      color: palette.rail,
+      metalness: 0.62,
+      roughness: 0.38,
+    });
+    scene.add(new THREE.Mesh(new THREE.TubeGeometry(leftCurve, segments, 0.048, 10, true), railMat));
+    scene.add(new THREE.Mesh(new THREE.TubeGeometry(rightCurve, segments, 0.048, 10, true), railMat));
+    scene.add(new THREE.Mesh(new THREE.TubeGeometry(spineCurve, segments, 0.07, 8, true), spineMat));
 
-    const tieMat = new THREE.MeshStandardMaterial({ color: palette.tie, roughness: 0.88, metalness: 0.05 });
-    const postMat = new THREE.MeshStandardMaterial({ color: palette.tie, roughness: 0.9, metalness: 0.15 });
-    for (let i = 0; i < 110; i += 1) {
-      const t = i / 110;
+    const tieMat = new THREE.MeshStandardMaterial({ color: 0x3f2a18, roughness: 0.9, metalness: 0.08 });
+    const postMat = new THREE.MeshStandardMaterial({ color: 0x4b5563, metalness: 0.55, roughness: 0.4 });
+    const tieCount = 160;
+    for (let i = 0; i < tieCount; i += 1) {
+      const t = i / tieCount;
       const p = curve.getPointAt(t);
       const tangent = curve.getTangentAt(t);
-      const tie = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.09, 0.22), tieMat);
-      tie.position.copy(p);
+      const idx = Math.min(frames.normals.length - 1, Math.floor(t * frames.normals.length));
+      const side = trackSide(frames, idx, new THREE.Vector3(1, 0, 0));
+      const tie = new THREE.Mesh(new THREE.BoxGeometry(gauge * 2 + 0.22, 0.07, 0.16), tieMat);
+      tie.position.copy(p).add(new THREE.Vector3(0, -0.05, 0));
+      tie.up.copy(side.clone().cross(tangent).normalize());
       tie.lookAt(p.clone().add(tangent));
       scene.add(tie);
 
-      if (i % 3 === 0 && p.y > 2.2) {
-        const postH = p.y + 0.2;
-        const post = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.1, postH, 6), postMat);
-        post.position.set(p.x, postH / 2 - 0.4, p.z);
-        scene.add(post);
-        const brace = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 1.1), postMat);
-        brace.position.set(p.x, Math.max(0.6, p.y * 0.45), p.z);
-        brace.lookAt(p.x + tangent.x, brace.position.y, p.z + tangent.z);
-        scene.add(brace);
+      if (i % 2 === 0 && p.y > 1.8) {
+        const postH = p.y + 0.35;
+        [-0.55, 0.55].forEach((lat) => {
+          const foot = p.clone().add(side.clone().multiplyScalar(lat));
+          const post = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.08, postH, 6), postMat);
+          post.position.set(foot.x, postH / 2 - 0.55, foot.z);
+          scene.add(post);
+        });
+        if (i % 4 === 0) {
+          const cross = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.06, 0.06), postMat);
+          cross.position.set(p.x, Math.max(0.45, p.y * 0.42), p.z);
+          cross.lookAt(p.x + side.x, cross.position.y, p.z + side.z);
+          scene.add(cross);
+        }
       }
     }
   }
 
-  function createCart(THREE, palette) {
-    const train = new THREE.Group();
-    const bodyMat = new THREE.MeshStandardMaterial({ color: 0xb91c1c, metalness: 0.35, roughness: 0.4 });
-    const darkMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.75 });
-    const chromeMat = new THREE.MeshStandardMaterial({ color: palette.rail, metalness: 0.8, roughness: 0.25 });
-    const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111827, metalness: 0.5, roughness: 0.4 });
-
-    [-0.95, 0, 0.95].forEach((zOff, idx) => {
+  function createTrainCars(THREE, palette) {
+    const bodyMat = new THREE.MeshStandardMaterial({ color: 0xc41e3a, metalness: 0.42, roughness: 0.38 });
+    const darkMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.7 });
+    const chromeMat = new THREE.MeshStandardMaterial({ color: 0xd0d7e0, metalness: 0.9, roughness: 0.18 });
+    const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111827, metalness: 0.55, roughness: 0.35 });
+    const cars = [];
+    for (let idx = 0; idx < 4; idx += 1) {
       const car = new THREE.Group();
-      const body = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.42, 0.95), bodyMat);
-      body.position.set(0, 0.42, 0);
-      car.add(body);
-      const nose = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.28, 0.35), bodyMat);
-      nose.position.set(0, 0.38, 0.55);
-      car.add(nose);
-      const seat = new THREE.Mesh(new THREE.BoxGeometry(0.82, 0.22, 0.45), darkMat);
-      seat.position.set(0, 0.62, -0.08);
-      car.add(seat);
-      const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.88, 10), chromeMat);
-      bar.rotation.z = Math.PI / 2;
-      bar.position.set(0, 0.78, 0.28);
-      car.add(bar);
-      [[-0.38, -0.32], [0.38, -0.32], [-0.38, 0.32], [0.38, 0.32]].forEach(([x, z]) => {
-        const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.08, 10), wheelMat);
-        wheel.rotation.z = Math.PI / 2;
-        wheel.position.set(x, 0.14, z);
-        car.add(wheel);
-      });
+      const hull = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.38, 1.12), bodyMat);
+      hull.position.set(0, 0.46, 0);
+      car.add(hull);
+      const skirt = new THREE.Mesh(new THREE.BoxGeometry(0.98, 0.12, 1.16), darkMat);
+      skirt.position.set(0, 0.26, 0);
+      car.add(skirt);
       if (idx === 0) {
+        const nose = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.42, 0.48, 12), bodyMat);
+        nose.rotation.x = Math.PI / 2;
+        nose.position.set(0, 0.44, 0.62);
+        car.add(nose);
         const lamp = new THREE.Mesh(
-          new THREE.SphereGeometry(0.08, 10, 8),
-          new THREE.MeshStandardMaterial({ color: 0xfde68a, emissive: 0xfbbf24, emissiveIntensity: 0.8 }),
+          new THREE.SphereGeometry(0.07, 10, 8),
+          new THREE.MeshStandardMaterial({ color: 0xfff3c4, emissive: 0xfbbf24, emissiveIntensity: 1.1 }),
         );
-        lamp.position.set(0, 0.45, 0.78);
+        lamp.position.set(0, 0.46, 0.92);
         car.add(lamp);
       }
-      car.position.z = zOff;
-      train.add(car);
-    });
-    return train;
+      const seat = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.2, 0.42), darkMat);
+      seat.position.set(0, 0.68, -0.06);
+      car.add(seat);
+      const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.84, 10), chromeMat);
+      bar.rotation.z = Math.PI / 2;
+      bar.position.set(0, 0.84, 0.22);
+      car.add(bar);
+      [[-0.42, -0.34], [0.42, -0.34], [-0.42, 0.34], [0.42, 0.34]].forEach(([x, z]) => {
+        const truck = new THREE.Group();
+        const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.07, 12), wheelMat);
+        wheel.rotation.z = Math.PI / 2;
+        truck.add(wheel);
+        const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.09, 8), chromeMat);
+        hub.rotation.z = Math.PI / 2;
+        truck.add(hub);
+        truck.position.set(x, 0.16, z);
+        car.add(truck);
+      });
+      const coupler = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.22), chromeMat);
+      coupler.position.set(0, 0.28, -0.62);
+      car.add(coupler);
+      cars.push({ mesh: car, gap: idx * 1.22 });
+    }
+    return cars;
   }
 
   function modeFogDensity(mode) {
@@ -816,6 +770,7 @@
     const captionEl = el.querySelector('.rollercoast-caption');
     const warnEl = el.querySelector('.rollercoast-warn');
     const rideBtn = el.querySelector('[data-action="toggle-ride"]');
+    const camBtn = el.querySelector('[data-action="cycle-camera"]');
     if (!viewport || !canvas) return null;
 
     const palette = MODES[spec.mode] || MODES.jungle;
@@ -849,11 +804,25 @@
     const trackFrames = curve.computeFrenetFrames(240, true);
     addTerrain(THREE, scene, palette, spec.mode);
     addScenery(THREE, scene, palette, spec.mode, curve, obstacles);
-    addTrackObstacles(THREE, scene, curve, palette, spec.mode, obstacles);
     addRails(THREE, scene, curve, palette);
 
-    const cart = createCart(THREE, palette);
-    scene.add(cart);
+    const stationPos = curve.getPointAt(0.02);
+    const stationDeck = new THREE.Mesh(
+      new THREE.BoxGeometry(8.4, 0.22, 5.2),
+      new THREE.MeshStandardMaterial({ color: 0x6b7280, roughness: 0.62, metalness: 0.3 }),
+    );
+    stationDeck.position.set(stationPos.x, stationPos.y - 0.78, stationPos.z);
+    scene.add(stationDeck);
+    const canopy = new THREE.Mesh(
+      new THREE.BoxGeometry(8.0, 0.08, 4.6),
+      new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.55 }),
+    );
+    canopy.position.set(stationPos.x, stationPos.y + 2.1, stationPos.z);
+    scene.add(canopy);
+
+    const trainCars = createTrainCars(THREE, palette);
+    trainCars.forEach((car) => scene.add(car.mesh));
+    const trackLen = Math.max(1, curve.getLength());
 
     const raycaster = new THREE.Raycaster();
     raycaster.far = 22;
@@ -1088,18 +1057,45 @@
     }
 
     let riding = spec.demo !== false;
-    let progress = 0;
-    let speed = 0.032;
+    let meters = 0;
+    let alongSpeed = 6.5;
     let boostUntil = 0;
     let raf = 0;
     let last = performance.now();
     let destroyed = false;
+    let camMode = 'ego';
+    const CAM_MODES = ['ego', 'chase'];
+    let camSnap = true;
+    const worldUp = new THREE.Vector3(0, 1, 0);
+    const tmpPrevTan = new THREE.Vector3();
+    const tmpNextTan = new THREE.Vector3();
+    const tmpCross = new THREE.Vector3();
+    const tmpUp = new THREE.Vector3();
 
     function syncRideButton() {
       if (!rideBtn) return;
       rideBtn.textContent = riding ? 'Pause' : 'Ride';
       rideBtn.setAttribute('aria-pressed', riding ? 'true' : 'false');
       rideBtn.classList.toggle('active', riding);
+    }
+
+    function syncCamButton() {
+      if (!camBtn) return;
+      camBtn.textContent = camMode === 'ego' ? 'View: Ego' : 'View: Chase';
+    }
+
+    function syncCarVisibility() {
+      trainCars.forEach((car, i) => {
+        car.mesh.visible = !(camMode === 'ego' && i === 0);
+      });
+    }
+
+    function cycleCamera() {
+      camMode = CAM_MODES[(CAM_MODES.indexOf(camMode) + 1) % CAM_MODES.length];
+      camSnap = true;
+      syncCamButton();
+      syncCarVisibility();
+      viewport.focus({ preventScroll: true });
     }
 
     function resize() {
@@ -1110,48 +1106,84 @@
       camera.updateProjectionMatrix();
     }
 
-    function placeOnTrack(u) {
-      const t = ((u % 1) + 1) % 1;
+    function poseAtDistance(distMeters) {
+      const wrapped = ((distMeters % trackLen) + trackLen) % trackLen;
+      const t = curve.getUtoTmapping(wrapped / trackLen);
       const pos = curve.getPointAt(t);
-      const look = curve.getPointAt((t + 0.012) % 1);
+      const lookDist = (wrapped + 1.4) % trackLen;
+      const look = curve.getPointAt(curve.getUtoTmapping(lookDist / trackLen));
       const tangent = curve.getTangentAt(t).normalize();
       const idx = Math.min(trackFrames.normals.length - 1, Math.floor(t * trackFrames.normals.length));
       const normal = trackFrames.normals[idx];
       const binormal = trackFrames.binormals[idx];
+      tmpPrevTan.copy(curve.getTangentAt((t + 0.985) % 1)).normalize();
+      tmpNextTan.copy(curve.getTangentAt((t + 0.015) % 1)).normalize();
+      tmpCross.copy(tmpPrevTan).cross(tmpNextTan);
+      const turnSign = Math.sign(tmpCross.dot(worldUp)) || 1;
+      const curvature = tmpPrevTan.angleTo(tmpNextTan) / 0.03;
+      const speedBank = Math.max(-0.7, Math.min(0.7, curvature * alongSpeed * 0.014 * turnSign));
+      tmpUp.copy(worldUp).lerp(normal, 0.5).normalize();
+      tmpUp.applyAxisAngle(tangent, speedBank + bankBias * 0.22);
+      return { t, pos, look, tangent, normal, binormal, up: tmpUp.clone(), wrapped };
+    }
 
-      cart.position.copy(pos);
-      const up = new THREE.Vector3(0, 1, 0).lerp(normal, 0.35).normalize();
-      cart.up.copy(up);
-      cart.lookAt(look);
+    function placeOnTrack() {
+      const lead = poseAtDistance(meters);
+      trainCars.forEach((car) => {
+        const pose = car === trainCars[0] ? lead : poseAtDistance(meters - car.gap);
+        car.mesh.position.copy(pose.pos);
+        car.mesh.up.copy(pose.up);
+        car.mesh.lookAt(pose.look);
+      });
 
-      detectObstacles(pos, tangent, up, binormal);
+      detectObstacles(lead.pos, lead.tangent, lead.up, lead.binormal);
+      syncCarVisibility();
 
-      const back = tangent.clone().multiplyScalar(-3.6);
-      const camPos = pos.clone()
-        .add(back)
-        .add(up.clone().multiplyScalar(1.85))
-        .add(binormal.clone().multiplyScalar(0.15 + bankBias * 0.55));
-      camera.position.lerp(camPos, riding ? 0.22 : 0.45);
-      const camLook = pos.clone()
-        .add(tangent.clone().multiplyScalar(6.5))
-        .add(up.clone().multiplyScalar(0.7))
-        .add(binormal.clone().multiplyScalar(bankBias * 0.35));
-      camera.up.copy(up);
-      camera.lookAt(camLook);
+      const lerpAmt = camSnap ? 1 : (riding ? 0.2 : 0.42);
+      if (camMode === 'ego') {
+        const egoPos = lead.pos.clone()
+          .add(lead.up.clone().multiplyScalar(1.08))
+          .add(lead.tangent.clone().multiplyScalar(0.32));
+        const camLook = lead.pos.clone()
+          .add(lead.tangent.clone().multiplyScalar(8.5))
+          .add(lead.up.clone().multiplyScalar(0.28));
+        camera.position.lerp(egoPos, lerpAmt);
+        camera.up.copy(lead.up);
+        camera.lookAt(camLook);
+        camera.fov = 78 + Math.min(8, alongSpeed * 0.18);
+      } else {
+        const back = lead.tangent.clone().multiplyScalar(-4.1);
+        const camPos = lead.pos.clone()
+          .add(back)
+          .add(lead.up.clone().multiplyScalar(1.55))
+          .add(lead.binormal.clone().multiplyScalar(0.12 + bankBias * 0.4));
+        camera.position.lerp(camPos, lerpAmt);
+        const camLook = lead.pos.clone()
+          .add(lead.tangent.clone().multiplyScalar(7.2))
+          .add(lead.up.clone().multiplyScalar(0.55))
+          .add(lead.binormal.clone().multiplyScalar(bankBias * 0.28));
+        camera.up.copy(lead.up);
+        camera.lookAt(camLook);
+        camera.fov = 68 + Math.min(10, alongSpeed * 0.22);
+      }
+      camSnap = false;
+      camera.updateProjectionMatrix();
 
       let nearest = null;
       let best = Infinity;
       billboards.forEach((b) => {
-        const d = b.mesh.position.distanceTo(pos);
+        const d = b.mesh.position.distanceTo(lead.pos);
         if (d < best && d < 12) {
           best = d;
           nearest = b;
         }
       });
+      const lap = Math.floor(meters / trackLen) + 1;
+      const kph = Math.round(alongSpeed * 3.6);
       if (captionEl && !lastWarnKind) {
         captionEl.textContent = nearest
           ? (nearest.photo.label || (nearest.kind === 'video' ? 'Video' : 'Photo'))
-          : `${palette.label} · lap ${Math.floor(progress) + 1}`;
+          : `${palette.label} · ${kph} km/h · lap ${lap}`;
       } else if (captionEl && lastWarnKind) {
         captionEl.textContent = nearest
           ? (nearest.photo.label || (nearest.kind === 'video' ? 'Video' : 'Photo'))
@@ -1164,13 +1196,23 @@
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
       if (riding) {
+        const uArc = ((meters / trackLen) % 1 + 1) % 1;
+        const t = curve.getUtoTmapping(uArc);
+        const tangent = curve.getTangentAt(t);
         const boosted = now < boostUntil;
-        const v = speed * (boosted ? 2.4 : 1) * Math.max(0.18, speedFactor);
-        progress += v * dt;
-        placeOnTrack(progress);
-      } else {
-        placeOnTrack(progress);
+        if (t >= 0.10 && t < 0.27) {
+          alongSpeed += (7.4 - alongSpeed) * Math.min(1, dt * 2.4);
+        } else if (t >= 0.88 || t < 0.08) {
+          alongSpeed += (5.8 - alongSpeed) * Math.min(1, dt * 1.6);
+        } else {
+          alongSpeed += -14.5 * tangent.y * dt;
+          alongSpeed *= Math.pow(0.997, dt * 60);
+        }
+        if (boosted) alongSpeed = Math.max(alongSpeed, 18);
+        alongSpeed = Math.max(3.6, Math.min(32, alongSpeed));
+        meters += alongSpeed * Math.max(0.4, speedFactor) * dt;
       }
+      placeOnTrack();
       renderer.render(scene, camera);
       raf = requestAnimationFrame(tick);
     }
@@ -1188,14 +1230,32 @@
       }
     }
 
+    function onKeyDown(e) {
+      if (!el.contains(document.activeElement) && document.activeElement !== viewport) return;
+      const tag = e.target?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || e.target?.isContentEditable) return;
+      if (e.code === 'KeyC' && !e.repeat) {
+        cycleCamera();
+      }
+    }
+
+    function focusRide() {
+      viewport.focus({ preventScroll: true });
+    }
+
+    window.addEventListener('keydown', onKeyDown);
+    canvas.addEventListener('click', focusRide);
+    viewport.addEventListener('click', focusRide);
     window.addEventListener('resize', resize);
     el.addEventListener('notespro:monitor-fullscreen', () => {
       requestAnimationFrame(resize);
     });
 
     resize();
-    placeOnTrack(0);
+    placeOnTrack();
     syncRideButton();
+    syncCamButton();
+    syncCarVisibility();
     raf = requestAnimationFrame(tick);
     if (!photos.length) {
       setStatus(el, 'Paste photos (Ctrl+V) to place them along the track.');
@@ -1204,9 +1264,11 @@
     return {
       toggleRide,
       boost,
+      cycleCamera,
       destroy() {
         destroyed = true;
         cancelAnimationFrame(raf);
+        window.removeEventListener('keydown', onKeyDown);
         window.removeEventListener('resize', resize);
         mediaNodes.forEach((video) => {
           video.pause();
@@ -1253,6 +1315,10 @@
       const action = e.target.closest('[data-action]')?.dataset.action;
       if (action === 'toggle-ride') {
         ride?.toggleRide();
+        return;
+      }
+      if (action === 'cycle-camera') {
+        ride?.cycleCamera();
         return;
       }
       if (action === 'boost') {

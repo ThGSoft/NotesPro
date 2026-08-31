@@ -71,7 +71,7 @@
     try {
       const parsed = new URL(url, window.location.href);
       parsed.searchParams.set('mobile', parentIsMobile() ? '1' : '0');
-      parsed.searchParams.set('v', '3');
+      parsed.searchParams.set('v', '4');
       return parsed.href;
     } catch (_) {
       return url;
@@ -96,6 +96,19 @@
         mobile: parentIsMobile(),
       }, '*');
     } catch (_) { /* ignore */ }
+  }
+
+  if (!window.__notesproPinballMobileBridge) {
+    window.__notesproPinballMobileBridge = true;
+    window.addEventListener('message', (event) => {
+      if (!event.data || event.data.type !== 'notespro-pinball-mobile-request') return;
+      try {
+        event.source?.postMessage({
+          type: 'notespro-pinball-mobile',
+          mobile: parentIsMobile(),
+        }, '*');
+      } catch (_) { /* ignore */ }
+    });
   }
 
   function resolveFullscreen(cfg) {
@@ -181,8 +194,17 @@
       spec = {};
     }
 
-    if (spec.embedUrl && frame.getAttribute('src') !== spec.embedUrl) {
-      frame.setAttribute('src', withEmbedFlags(spec.embedUrl));
+    const wanted = withEmbedFlags(spec.embedUrl || frame.getAttribute('src') || DEFAULT_EMBED);
+    const current = frame.getAttribute('src') || '';
+    function embedFlag(url, name) {
+      try {
+        return new URL(url, window.location.href).searchParams.get(name);
+      } catch (_) {
+        return null;
+      }
+    }
+    if (!current || embedFlag(current, 'mobile') !== embedFlag(wanted, 'mobile') || embedFlag(current, 'v') !== embedFlag(wanted, 'v')) {
+      frame.setAttribute('src', wanted);
     } else {
       tellFrameMobile(frame);
     }

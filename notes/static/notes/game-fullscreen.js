@@ -10,7 +10,7 @@
 }(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
-  const BLOCK_SELECTOR = '.sudoku-block, .puzzle-block, .pinball-block, .gallery-block, .rollercoast-block, .scooter-block, .ghosttrain-block';
+  const BLOCK_SELECTOR = '.sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .gallery-block, .rollercoast-block, .scooter-block, .ghosttrain-block';
   const bound = new WeakSet();
   let globalListener = false;
 

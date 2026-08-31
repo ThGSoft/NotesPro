@@ -6724,10 +6724,402 @@ table {
 .pinball-status--success { color: #4ade80; }
 .pinball-status--info { color: var(--pinball-meta); }
 
+/* --- Pac-Man --- */
+.pacman-block {
+  --pacman-bg: var(--panel, #1e1e2e);
+  --pacman-border: var(--line, #3b3b52);
+  --pacman-title: var(--text, #e2e8f0);
+  --pacman-meta: var(--muted, #94a3b8);
+  --pacman-accent: #ffe500;
+  border: 1px solid var(--pacman-border);
+  border-left: 4px solid var(--pacman-accent);
+  background: var(--pacman-bg);
+  border-radius: 14px;
+  padding: 14px 16px 16px;
+  margin: 16px 0;
+  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.pacman-block--info { --pacman-accent: #38bdf8; }
+.pacman-block--success { --pacman-accent: #4ade80; }
+.pacman-block--warning { --pacman-accent: #fbbf24; }
+.pacman-block--danger { --pacman-accent: #f87171; }
+.pacman-block--note { --pacman-accent: #94a3b8; }
+
+.pacman-block--custom {
+  background: var(--pacman-bg-custom, var(--pacman-bg));
+}
+
+.pacman-block--error {
+  color: #f87171;
+  padding: 12px 14px;
+}
+
+.pacman-block:focus {
+  outline: 2px solid var(--pacman-accent);
+  outline-offset: 2px;
+}
+
+.pacman-block-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.pacman-block-title {
+  font-weight: 700;
+  color: var(--pacman-title);
+}
+
+.pacman-block-meta {
+  font-size: 12px;
+  color: var(--pacman-meta);
+  text-transform: capitalize;
+}
+
+.pacman-block-hint {
+  font-size: 0.82rem;
+  color: var(--pacman-meta);
+  margin: 0 0 8px;
+}
+
+.pacman-stage {
+  width: min(100%, 448px);
+  border-radius: 10px;
+  overflow: hidden;
+  border: 2px solid var(--pacman-border);
+  background: #000;
+  transform: translateZ(0);
+}
+
+.pacman-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: #000;
+  image-rendering: auto;
+}
+
+.pacman-pad {
+  display: none;
+  margin-top: 10px;
+  grid-template-columns: 72px 72px 72px;
+  grid-template-areas:
+    ". up ."
+    "left down right";
+  justify-content: center;
+  gap: 8px;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.pacman-pad.is-visible {
+  display: grid;
+}
+
+.pacman-pad__btn {
+  touch-action: none;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  background: rgba(15, 23, 42, 0.72);
+  color: #e2e8f0;
+  font: 600 16px/1 system-ui, sans-serif;
+  border-radius: 14px;
+  min-height: 52px;
+}
+
+.pacman-pad__btn--up { grid-area: up; }
+.pacman-pad__btn--left { grid-area: left; }
+.pacman-pad__btn--down { grid-area: down; }
+.pacman-pad__btn--right { grid-area: right; }
+
+.pacman-pad__btn:active,
+.pacman-pad__btn.is-active {
+  background: rgba(255, 229, 0, 0.28);
+  border-color: rgba(255, 229, 0, 0.85);
+  color: #fff;
+}
+
+.pacman-status {
+  min-height: 1.25rem;
+  margin-top: 8px;
+  font-size: 0.85rem;
+  color: var(--pacman-meta);
+}
+
+/* --- Super Mario --- */
+.mario-block {
+  --mario-bg: var(--panel, #1e1e2e);
+  --mario-border: var(--line, #3b3b52);
+  --mario-title: var(--text, #e2e8f0);
+  --mario-meta: var(--muted, #94a3b8);
+  --mario-accent: #e52521;
+  border: 1px solid var(--mario-border);
+  border-left: 4px solid var(--mario-accent);
+  background: var(--mario-bg);
+  border-radius: 14px;
+  padding: 14px 16px 16px;
+  margin: 16px 0;
+  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.mario-block--info { --mario-accent: #38bdf8; }
+.mario-block--success { --mario-accent: #4ade80; }
+.mario-block--warning { --mario-accent: #fbbf24; }
+.mario-block--danger { --mario-accent: #f87171; }
+.mario-block--note { --mario-accent: #94a3b8; }
+
+.mario-block--custom {
+  background: var(--mario-bg-custom, var(--mario-bg));
+}
+
+.mario-block--error {
+  color: #f87171;
+  padding: 12px 14px;
+}
+
+.mario-block:focus {
+  outline: 2px solid var(--mario-accent);
+  outline-offset: 2px;
+}
+
+.mario-block-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.mario-block-title {
+  font-weight: 700;
+  color: var(--mario-title);
+}
+
+.mario-block-meta {
+  font-size: 12px;
+  color: var(--mario-meta);
+  text-transform: capitalize;
+}
+
+.mario-block-hint {
+  font-size: 0.82rem;
+  color: var(--mario-meta);
+  margin: 0 0 8px;
+}
+
+.mario-stage {
+  width: min(100%, 640px);
+  border-radius: 10px;
+  overflow: hidden;
+  border: 2px solid var(--mario-border);
+  background: #5c94fc;
+  transform: translateZ(0);
+}
+
+.mario-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: #5c94fc;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+.mario-pad {
+  display: none;
+  margin-top: 10px;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 10px;
+  align-items: stretch;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.mario-pad.is-visible {
+  display: grid;
+}
+
+.mario-pad__btn {
+  touch-action: none;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  background: rgba(15, 23, 42, 0.72);
+  color: #e2e8f0;
+  font: 600 15px/1 system-ui, sans-serif;
+  border-radius: 16px;
+  min-height: 56px;
+}
+
+.mario-pad__btn--jump {
+  min-width: 88px;
+  background: rgba(229, 37, 33, 0.35);
+  border-color: rgba(229, 37, 33, 0.7);
+}
+
+.mario-pad__btn:active,
+.mario-pad__btn.is-active {
+  background: rgba(252, 188, 24, 0.35);
+  border-color: rgba(252, 188, 24, 0.85);
+  color: #fff;
+}
+
+.mario-status {
+  min-height: 1.25rem;
+  margin-top: 8px;
+  font-size: 0.85rem;
+  color: var(--mario-meta);
+}
+
+/* --- Lemmings --- */
+.lemmings-block {
+  --lemmings-bg: var(--panel, #1e1e2e);
+  --lemmings-border: var(--line, #3b3b52);
+  --lemmings-title: var(--text, #e2e8f0);
+  --lemmings-meta: var(--muted, #94a3b8);
+  --lemmings-accent: #7cfc00;
+  border: 1px solid var(--lemmings-border);
+  border-left: 4px solid var(--lemmings-accent);
+  background: var(--lemmings-bg);
+  border-radius: 14px;
+  padding: 14px 16px 16px;
+  margin: 16px 0;
+  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.lemmings-block--info { --lemmings-accent: #38bdf8; }
+.lemmings-block--success { --lemmings-accent: #4ade80; }
+.lemmings-block--warning { --lemmings-accent: #fbbf24; }
+.lemmings-block--danger { --lemmings-accent: #f87171; }
+.lemmings-block--note { --lemmings-accent: #94a3b8; }
+
+.lemmings-block--custom {
+  background: var(--lemmings-bg-custom, var(--lemmings-bg));
+}
+
+.lemmings-block--error {
+  color: #f87171;
+  padding: 12px 14px;
+}
+
+.lemmings-block:focus {
+  outline: 2px solid var(--lemmings-accent);
+  outline-offset: 2px;
+}
+
+.lemmings-block-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.lemmings-block-title {
+  font-weight: 700;
+  color: var(--lemmings-title);
+}
+
+.lemmings-block-meta {
+  font-size: 12px;
+  color: var(--lemmings-meta);
+  text-transform: capitalize;
+}
+
+.lemmings-block-hint {
+  font-size: 0.82rem;
+  color: var(--lemmings-meta);
+  margin: 0 0 8px;
+}
+
+.lemmings-stage {
+  width: min(100%, 640px);
+  border-radius: 10px 10px 0 0;
+  overflow: hidden;
+  border: 2px solid var(--lemmings-border);
+  border-bottom: none;
+  background: #5aa0d6;
+  transform: translateZ(0);
+}
+
+.lemmings-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: #5aa0d6;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+.lemmings-skills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px;
+  width: min(100%, 640px);
+  box-sizing: border-box;
+  border: 2px solid var(--lemmings-border);
+  border-radius: 0 0 10px 10px;
+  background: #1a1d28;
+}
+
+.lemmings-skill {
+  flex: 1 1 72px;
+  min-height: 52px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.85);
+  color: #e2e8f0;
+  font: 600 11px/1.2 system-ui, sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  cursor: pointer;
+}
+
+.lemmings-skill.is-active {
+  background: rgba(124, 252, 0, 0.22);
+  border-color: #7cfc00;
+  color: #fff;
+}
+
+.lemmings-skill__key {
+  font-size: 9px;
+  opacity: 0.65;
+}
+
+.lemmings-skill__n {
+  font-size: 13px;
+  color: #7cfc00;
+}
+
+.lemmings-skill--ctrl {
+  background: rgba(229, 37, 33, 0.18);
+  border-color: rgba(229, 37, 33, 0.45);
+}
+
+.lemmings-status {
+  min-height: 1.25rem;
+  margin-top: 8px;
+  font-size: 0.85rem;
+  color: var(--lemmings-meta);
+}
+
 /* Fullscreen game blocks */
 .sudoku-block--fullscreen,
 .puzzle-block--fullscreen,
-.pinball-block--fullscreen {
+.pinball-block--fullscreen,
+.pacman-block--fullscreen,
+.mario-block--fullscreen,
+.lemmings-block--fullscreen {
   width: 100%;
   max-width: none;
   margin: 0;
@@ -6751,6 +7143,21 @@ table {
 
 .pinball-block--fullscreen {
   background: #000;
+  min-height: min(90vh, 960px);
+}
+
+.pacman-block--fullscreen {
+  background: #000;
+  min-height: min(90vh, 960px);
+}
+
+.mario-block--fullscreen {
+  background: #5c94fc;
+  min-height: min(90vh, 960px);
+}
+
+.lemmings-block--fullscreen {
+  background: #1a1d28;
   min-height: min(90vh, 960px);
 }
 
@@ -6789,9 +7196,79 @@ table {
   border-radius: 0;
 }
 
+.pacman-block--fullscreen .pacman-stage {
+  flex: 1;
+  width: 100%;
+  max-width: none;
+  min-height: 0;
+  border: none;
+  border-radius: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pacman-block--fullscreen .pacman-canvas {
+  width: auto;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.mario-block--fullscreen .mario-stage {
+  flex: 1;
+  width: 100%;
+  max-width: none;
+  min-height: 0;
+  border: none;
+  border-radius: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mario-block--fullscreen .mario-canvas {
+  width: auto;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.lemmings-block--fullscreen .lemmings-stage {
+  flex: 1;
+  width: 100%;
+  max-width: none;
+  min-height: 0;
+  border: none;
+  border-radius: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lemmings-block--fullscreen .lemmings-canvas {
+  width: auto;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.lemmings-block--fullscreen .lemmings-skills {
+  width: 100%;
+  border-radius: 0;
+  border-left: none;
+  border-right: none;
+}
+
 .sudoku-block--fullscreen .sudoku-status,
 .puzzle-block--fullscreen .puzzle-status,
-.pinball-block--fullscreen .pinball-status {
+.pinball-block--fullscreen .pinball-status,
+.pacman-block--fullscreen .pacman-status,
+.mario-block--fullscreen .mario-status,
+.lemmings-block--fullscreen .lemmings-status {
   min-height: 0;
   padding: 0 12px 8px;
   font-size: 0.8rem;
@@ -6799,7 +7276,10 @@ table {
 
 .editor-wrap--preview-only .preview-content:has(> .sudoku-block--fullscreen:only-child),
 .editor-wrap--preview-only .preview-content:has(> .puzzle-block--fullscreen:only-child),
-.editor-wrap--preview-only .preview-content:has(> .pinball-block--fullscreen:only-child) {
+.editor-wrap--preview-only .preview-content:has(> .pinball-block--fullscreen:only-child),
+.editor-wrap--preview-only .preview-content:has(> .pacman-block--fullscreen:only-child),
+.editor-wrap--preview-only .preview-content:has(> .mario-block--fullscreen:only-child),
+.editor-wrap--preview-only .preview-content:has(> .lemmings-block--fullscreen:only-child) {
   padding: 0;
   overflow: hidden;
   display: flex;
@@ -6808,7 +7288,10 @@ table {
 
 .editor-wrap--preview-only .preview-content > .sudoku-block--fullscreen:only-child,
 .editor-wrap--preview-only .preview-content > .puzzle-block--fullscreen:only-child,
-.editor-wrap--preview-only .preview-content > .pinball-block--fullscreen:only-child {
+.editor-wrap--preview-only .preview-content > .pinball-block--fullscreen:only-child,
+.editor-wrap--preview-only .preview-content > .pacman-block--fullscreen:only-child,
+.editor-wrap--preview-only .preview-content > .mario-block--fullscreen:only-child,
+.editor-wrap--preview-only .preview-content > .lemmings-block--fullscreen:only-child {
   flex: 1;
   min-height: 0;
   height: 100%;
@@ -7855,6 +8338,9 @@ body.gallery-lightbox-open {
 .sudoku-block,
 .puzzle-block,
 .pinball-block,
+.pacman-block,
+.mario-block,
+.lemmings-block,
 .gallery-block,
 .rollercoast-block,
 .scooter-block,
@@ -7905,6 +8391,9 @@ body.gallery-lightbox-open {
 .sudoku-block:fullscreen .game-fullscreen-btn__icon--enter,
 .puzzle-block:fullscreen .game-fullscreen-btn__icon--enter,
 .pinball-block:fullscreen .game-fullscreen-btn__icon--enter,
+.pacman-block:fullscreen .game-fullscreen-btn__icon--enter,
+.mario-block:fullscreen .game-fullscreen-btn__icon--enter,
+.lemmings-block:fullscreen .game-fullscreen-btn__icon--enter,
 .gallery-block:fullscreen .game-fullscreen-btn__icon--enter,
 .rollercoast-block:fullscreen .game-fullscreen-btn__icon--enter,
 .scooter-block:fullscreen .game-fullscreen-btn__icon--enter,
@@ -7912,6 +8401,9 @@ body.gallery-lightbox-open {
 .sudoku-block:-webkit-full-screen .game-fullscreen-btn__icon--enter,
 .puzzle-block:-webkit-full-screen .game-fullscreen-btn__icon--enter,
 .pinball-block:-webkit-full-screen .game-fullscreen-btn__icon--enter,
+.pacman-block:-webkit-full-screen .game-fullscreen-btn__icon--enter,
+.mario-block:-webkit-full-screen .game-fullscreen-btn__icon--enter,
+.lemmings-block:-webkit-full-screen .game-fullscreen-btn__icon--enter,
 .gallery-block:-webkit-full-screen .game-fullscreen-btn__icon--enter,
 .rollercoast-block:-webkit-full-screen .game-fullscreen-btn__icon--enter,
 .scooter-block:-webkit-full-screen .game-fullscreen-btn__icon--enter,
@@ -7923,6 +8415,9 @@ body.gallery-lightbox-open {
 .sudoku-block:fullscreen .game-fullscreen-btn__icon--exit,
 .puzzle-block:fullscreen .game-fullscreen-btn__icon--exit,
 .pinball-block:fullscreen .game-fullscreen-btn__icon--exit,
+.pacman-block:fullscreen .game-fullscreen-btn__icon--exit,
+.mario-block:fullscreen .game-fullscreen-btn__icon--exit,
+.lemmings-block:fullscreen .game-fullscreen-btn__icon--exit,
 .gallery-block:fullscreen .game-fullscreen-btn__icon--exit,
 .rollercoast-block:fullscreen .game-fullscreen-btn__icon--exit,
 .scooter-block:fullscreen .game-fullscreen-btn__icon--exit,
@@ -7930,6 +8425,9 @@ body.gallery-lightbox-open {
 .sudoku-block:-webkit-full-screen .game-fullscreen-btn__icon--exit,
 .puzzle-block:-webkit-full-screen .game-fullscreen-btn__icon--exit,
 .pinball-block:-webkit-full-screen .game-fullscreen-btn__icon--exit,
+.pacman-block:-webkit-full-screen .game-fullscreen-btn__icon--exit,
+.mario-block:-webkit-full-screen .game-fullscreen-btn__icon--exit,
+.lemmings-block:-webkit-full-screen .game-fullscreen-btn__icon--exit,
 .gallery-block:-webkit-full-screen .game-fullscreen-btn__icon--exit,
 .rollercoast-block:-webkit-full-screen .game-fullscreen-btn__icon--exit,
 .scooter-block:-webkit-full-screen .game-fullscreen-btn__icon--exit,
@@ -7940,9 +8438,15 @@ body.gallery-lightbox-open {
 .sudoku-block:fullscreen,
 .puzzle-block:fullscreen,
 .pinball-block:fullscreen,
+.pacman-block:fullscreen,
+.mario-block:fullscreen,
+.lemmings-block:fullscreen,
 .sudoku-block:-webkit-full-screen,
 .puzzle-block:-webkit-full-screen,
-.pinball-block:-webkit-full-screen {
+.pinball-block:-webkit-full-screen,
+.pacman-block:-webkit-full-screen,
+.mario-block:-webkit-full-screen,
+.lemmings-block:-webkit-full-screen {
   width: 100%;
   height: 100%;
   min-height: 100%;
@@ -7960,9 +8464,12 @@ body.gallery-lightbox-open {
 .sudoku-block:fullscreen .sudoku-play-area,
 .puzzle-block:fullscreen .puzzle-play-area,
 .pinball-block:fullscreen .pinball-frame-wrap,
+.pacman-block:fullscreen .pacman-stage,
+.mario-block:fullscreen .mario-stage,
 .sudoku-block:-webkit-full-screen .sudoku-play-area,
 .puzzle-block:-webkit-full-screen .puzzle-play-area,
-.pinball-block:-webkit-full-screen .pinball-frame-wrap {
+.pinball-block:-webkit-full-screen .pinball-frame-wrap,
+.pacman-block:-webkit-full-screen .pacman-stage {
   flex: 1;
   min-height: 0;
 }
@@ -7981,6 +8488,72 @@ body.gallery-lightbox-open {
 .pinball-block:-webkit-full-screen .pinball-frame {
   width: 100%;
   height: 100%;
+}
+
+.pacman-block:fullscreen .pacman-stage,
+.pacman-block:-webkit-full-screen .pacman-stage {
+  width: 100%;
+  max-width: none;
+  border: none;
+  border-radius: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pacman-block:fullscreen .pacman-canvas,
+.pacman-block:-webkit-full-screen .pacman-canvas {
+  width: auto;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.mario-block:fullscreen .mario-stage,
+.mario-block:-webkit-full-screen .mario-stage {
+  width: 100%;
+  max-width: none;
+  border: none;
+  border-radius: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mario-block:fullscreen .mario-canvas,
+.mario-block:-webkit-full-screen .mario-canvas {
+  width: auto;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.lemmings-block:fullscreen .lemmings-stage,
+.lemmings-block:-webkit-full-screen .lemmings-stage {
+  width: 100%;
+  max-width: none;
+  border: none;
+  border-radius: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lemmings-block:fullscreen .lemmings-canvas,
+.lemmings-block:-webkit-full-screen .lemmings-canvas {
+  width: auto;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.lemmings-block:fullscreen .lemmings-skills,
+.lemmings-block:-webkit-full-screen .lemmings-skills {
+  width: 100%;
+  border-radius: 0;
 }
 
 .puzzle-block:fullscreen .puzzle-jq-mount,

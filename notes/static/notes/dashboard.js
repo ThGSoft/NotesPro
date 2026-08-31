@@ -2088,7 +2088,7 @@
   }
 
   function isPreviewRichBlock(el) {
-    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .md-python, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .gallery-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .page-tags');
+    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .md-python, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .gallery-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .page-tags');
   }
 
   function getPreviewBlockSourceLine(node) {
@@ -7015,6 +7015,63 @@
     window.NotesProPinball?.hydrate?.(root);
   }
 
+  const PACMAN_BLOCK_RE = /```pacman(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function parsePacmanBlocks(text) {
+    let pacmanIndex = 0;
+    PACMAN_BLOCK_RE.lastIndex = 0;
+    return text.replace(PACMAN_BLOCK_RE, (_, fenceAttrs, content) => {
+      const engine = window.NotesProPacman;
+      const idx = pacmanIndex++;
+      const html = engine?.renderBlock
+        ? engine.renderBlock(content || '', fenceAttrs || '', { pacmanIndex: idx })
+        : '<div class="pacman-block pacman-block--error">Pac-Man engine not loaded.</div>';
+      return wrapRichPreviewBlock(html);
+    });
+  }
+
+  function hydratePacmanBlocks(root) {
+    window.NotesProPacman?.hydrate?.(root);
+  }
+
+  const MARIO_BLOCK_RE = /```(?:mario|supermario)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function parseMarioBlocks(text) {
+    let marioIndex = 0;
+    MARIO_BLOCK_RE.lastIndex = 0;
+    return text.replace(MARIO_BLOCK_RE, (_, fenceAttrs, content) => {
+      const engine = window.NotesProMario;
+      const idx = marioIndex++;
+      const html = engine?.renderBlock
+        ? engine.renderBlock(content || '', fenceAttrs || '', { marioIndex: idx })
+        : '<div class="mario-block mario-block--error">Mario engine not loaded.</div>';
+      return wrapRichPreviewBlock(html);
+    });
+  }
+
+  function hydrateMarioBlocks(root) {
+    window.NotesProMario?.hydrate?.(root);
+  }
+
+  const LEMMINGS_BLOCK_RE = /```(?:lemmings?)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function parseLemmingsBlocks(text) {
+    let lemmingsIndex = 0;
+    LEMMINGS_BLOCK_RE.lastIndex = 0;
+    return text.replace(LEMMINGS_BLOCK_RE, (_, fenceAttrs, content) => {
+      const engine = window.NotesProLemmings;
+      const idx = lemmingsIndex++;
+      const html = engine?.renderBlock
+        ? engine.renderBlock(content || '', fenceAttrs || '', { lemmingsIndex: idx })
+        : '<div class="lemmings-block lemmings-block--error">Lemmings engine not loaded.</div>';
+      return wrapRichPreviewBlock(html);
+    });
+  }
+
+  function hydrateLemmingsBlocks(root) {
+    window.NotesProLemmings?.hydrate?.(root);
+  }
+
   const GALLERY_BLOCK_RE = /```gallery(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
 
   function updateGalleryInMarkdown(markdown, galleryIndex, update) {
@@ -8350,7 +8407,7 @@ function formatTextWithMarkup(rawText) {
     if (!root) return;
     root.querySelectorAll('pre').forEach(pre => {
       if (pre.closest('.md-code-block')) return;
-      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .md-python, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .gallery-block, .rollercoast-block, .scooter-block, .ghosttrain-block')) {
+      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .md-python, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .gallery-block, .rollercoast-block, .scooter-block, .ghosttrain-block')) {
         return;
       }
       const wrap = document.createElement('div');
@@ -8735,6 +8792,21 @@ function formatTextWithMarkup(rawText) {
       const label = cfg.title || 'Pinball';
       return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
     });
+    md = md.replace(/```pacman(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const cfg = window.NotesProPacman?.parseFenceAttrs?.(fenceAttrs) || {};
+      const label = cfg.title || 'Pac-Man';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
+    md = md.replace(/```(?:mario|supermario)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const cfg = window.NotesProMario?.parseFenceAttrs?.(fenceAttrs) || {};
+      const label = cfg.title || 'Super Mario';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
+    md = md.replace(/```(?:lemmings?)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const cfg = window.NotesProLemmings?.parseFenceAttrs?.(fenceAttrs) || {};
+      const label = cfg.title || 'Lemmings';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
     md = md.replace(/```gallery(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
       const cfg = window.NotesProGallery?.parseFenceAttrs?.(fenceAttrs) || {};
       const label = cfg.title || 'Gallery';
@@ -8805,6 +8877,9 @@ function formatTextWithMarkup(rawText) {
       md = parseSudokuBlocks(md);
       md = parsePuzzleBlocks(md);
       md = parsePinballBlocks(md);
+      md = parsePacmanBlocks(md);
+      md = parseMarioBlocks(md);
+      md = parseLemmingsBlocks(md);
       md = parseGalleryBlocks(md, options);
       md = parseRollercoastBlocks(md, options);
       md = parseScooterBlocks(md, options);
@@ -9191,6 +9266,9 @@ function formatTextWithMarkup(rawText) {
     hydrateSudokuBlocks(preview);
     hydratePuzzleBlocks(preview);
     hydratePinballBlocks(preview);
+    hydratePacmanBlocks(preview);
+    hydrateMarioBlocks(preview);
+    hydrateLemmingsBlocks(preview);
     hydrateGalleryBlocks(preview);
     hydrateRollercoastBlocks(preview);
     hydrateScooterBlocks(preview);
@@ -12994,6 +13072,30 @@ function formatTextWithMarkup(rawText) {
           title: 'Insert Space Cadet pinball',
         },
         {
+          name: 'insert-pacman',
+          action: (editor) => {
+            insertFenceBlock(editor, 'pacman{fullscreen}', '');
+          },
+          className: 'fa fa-dot-circle-o',
+          title: 'Insert Pac-Man',
+        },
+        {
+          name: 'insert-mario',
+          action: (editor) => {
+            insertFenceBlock(editor, 'mario{fullscreen}', '');
+          },
+          className: 'fa fa-male',
+          title: 'Insert Super Mario',
+        },
+        {
+          name: 'insert-lemmings',
+          action: (editor) => {
+            insertFenceBlock(editor, 'lemmings{fullscreen}', '');
+          },
+          className: 'fa fa-users',
+          title: 'Insert Lemmings',
+        },
+        {
           name: 'insert-gallery',
           action: (editor) => {
             const body = [
@@ -15645,7 +15747,7 @@ function formatTextWithMarkup(rawText) {
   }
 
   document.addEventListener('paste', function (event) {
-    if (event.target.closest?.('.puzzle-block, .gallery-block, .rollercoast-block, .scooter-block, .ghosttrain-block')) return;
+    if (event.target.closest?.('.puzzle-block, .gallery-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .pacman-block, .mario-block, .lemmings-block')) return;
     const items = (event.clipboardData || event.originalEvent.clipboardData).items;
     for (let index in items) {
       const item = items[index];

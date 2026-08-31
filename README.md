@@ -37,6 +37,10 @@ https://thgsoft.online/DjangoNotesPro/
 - **Sudoku** blocks — interactive 9×9 puzzles (generated or custom grid in markdown)
 - **Puzzle** blocks — jigsaw puzzle from a pasted image (drag pieces into place)
 - **Pinball** blocks — 3D Pinball Space Cadet (WASM) in preview
+- **Gallery** blocks — walk-in 3D photo corridor with embedded wall frames
+- **Roller coaster** blocks — themed 3D ride (jungle / dune / snow / alps) with your images along the track
+- **Auto scooter** blocks — bumper-car rink; your photos ride on the other cars
+- **Ghost train** blocks — convoy on rails; photos in frames along the track
 - **Calendar** blocks — list days, weeks, months, or years for a `from`/`to` range
 - **Gantt** / **Kanban** / **Kanban Gantt** / **Mindmap** blocks — project timelines, boards, timed cost tracking, and indented idea trees
 - File manager with drag-and-drop uploads; click images to open in a new tab
@@ -1019,7 +1023,163 @@ Click the table to focus, then play with keyboard:
 | **R** | Restart game |
 | **T** | Toggle sound |
 
+On phones (and tablets in portrait), on-screen **Left**, **Launch**, and **Right** buttons appear over the table (hold flippers, tap launch). **Restart** and **Sound** are in a second row. Desktop uses the keyboard only.
+
 Toolbar: **Insert pinball** adds a Space Cadet table. The first load downloads ~9 MB of game data from jsDelivr. Use the **⛶** button for monitor fullscreen.
+
+### Gallery
+
+Embed a **walk-in photo gallery** with a fenced `gallery` block. Paste your own pictures while editing — they hang in **embedded 3D frames** on the walls of a corridor you can walk through. Videos (`.mp4`, `.webm`, …) and **YouTube** embeds play on the walls with sound that gets louder as you approach.
+
+Empty gallery — paste a photo, then walk the hall:
+
+````markdown
+```gallery{title=My photos;mode=walk;col=info}
+```
+````
+
+Demo that auto-walks the corridor (sample photos + video + `demo`):
+
+````markdown
+```gallery{title=Demo walk;mode=walk;demo;col=info}
+![Mountain lake](https://picsum.photos/id/1015/960/720)
+![Flower video](https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4)
+![Forest path](https://picsum.photos/id/1018/960/720)
+```
+````
+
+YouTube — paste a watch/embed URL or the iframe snippet inside the fence:
+
+````markdown
+```gallery{title=YouTube;mode=walk;col=info}
+<iframe width="560" height="315" src="https://www.youtube.com/embed/N9jBlg-GUYM" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+![Same clip](https://youtu.be/N9jBlg-GUYM)
+```
+````
+
+With your own photos / videos:
+
+````markdown
+```gallery{title=Trip;mode=walk}
+![Beach](media/uploads/beach.jpg)
+![Clip](media/uploads/clip.mp4)
+```
+````
+
+| Option | Description |
+|--------|-------------|
+| `mode` | `walk` (default) first-person corridor, or `grid` thumbnail wall |
+| `demo` | Auto-start a looping guided walk that steps close to each frame |
+| `title` | Block heading |
+| `cols` | Thumbnail columns when `mode=grid` (1–6) |
+| `fullscreen` | Edge-to-edge layout (default on) |
+| `col` / `bkcol` | Theme colors |
+
+**Walk controls:** click the view to capture the mouse (also unlocks video sound) · **W A S D** / arrows move · **Shift** sprint · mouse **wheel** zoom closer / wider · **Space** open the media you're looking at · **Esc** release mouse · **Demo tour** starts / stops the auto-walk (closer to each image/video) · **Thumbnails** toggles a strip.
+
+Videos play on the wall when the file has a picture track. If there is no video (audio-only file, or a YouTube clip you are not facing closely enough), **sound still plays**. Stand in front of a YouTube frame to see the video overlay; glance away and you hear the song only. **Only one clip has audio at a time.** Browsers may keep sound muted until you click **Enter gallery** or **Demo tour**. **Space** opens the media in the lightbox.
+
+Toolbar: **Insert walk-in photo gallery demo** adds a sample corridor (with a video) that walks itself.
+
+### Roller coaster
+
+Embed a **themed roller coaster** that rides past your own photos on billboards beside the track.
+
+Jungle ride:
+
+````markdown
+```rollercoast{mode=jungle;title=Jungle coaster;demo;col=success}
+![Canopy](media/uploads/canopy.jpg)
+![River](media/uploads/river.jpg)
+```
+````
+
+Dune / desert:
+
+````markdown
+```rollercoast{mode=dune;title=Sand coaster}
+![Dune](https://picsum.photos/id/1016/960/720)
+```
+````
+
+Snow / alpine:
+
+````markdown
+```rollercoast{mode=snow}
+![Peak](https://picsum.photos/id/1036/960/720)
+```
+````
+
+Alps (peaks + pines):
+
+````markdown
+```rollercoast{mode=alps;title=Alpine coaster;demo}
+![Ridge](https://picsum.photos/id/1015/960/720)
+![Valley](https://picsum.photos/id/1018/960/720)
+```
+````
+
+| Option | Description |
+|--------|-------------|
+| `mode` | `jungle` (default), `dune`, `snow`, or `alps` |
+| `demo` | Auto-start the ride (default on; `demo=0` to start paused) |
+| `title` | Block heading |
+| `fullscreen` | Edge-to-edge layout (default on) |
+| `col` / `bkcol` | Theme colors |
+
+Aliases: `rollercoaster`, `coaster`. Paste or drop images onto the block to hang them along the track. **Ride / Pause**, **Boost**, and ⛶ fullscreen are in the toolbar. The ride uses **track obstacle detection**: gates, debris, and barriers are placed on the rails ahead; the train brakes and banks when they are detected. Scenery beside the track can still trigger near-miss warnings when you pass close to trees or rocks.
+
+Toolbar: **Insert jungle roller coaster** adds a sample jungle ride.
+
+### Auto scooter
+
+Embed a **bumper-car rink** where each of your photos becomes another scooter you can bump into.
+
+````markdown
+```scooter{title=Auto scooter;demo;col=warning}
+![Blue](media/uploads/blue.jpg)
+![Green](media/uploads/green.jpg)
+![Coast](https://picsum.photos/id/1016/640/480)
+```
+````
+
+| Option | Description |
+|--------|-------------|
+| `title` | Block heading |
+| `demo` | Auto-focus the rink on load (default on) |
+| `fullscreen` | Edge-to-edge layout (default on) |
+| `col` / `bkcol` | Theme colors |
+
+Aliases: `autoscooter`, `bumpercar`, `bumpercars`.
+
+**Controls:** click **Drive** (or the rink) · **W A S D** / arrows steer & drive · **C** toggles chase / top camera · **Reset** respawns cars · paste/drop images to add more photo cars · ⛶ fullscreen.
+
+Toolbar: **Insert auto scooter rink** adds a sample rink with photo cars.
+
+### Ghost train
+
+Embed a **haunted train yard** — a ghost convoy runs in one line on dark rails; your photos appear as **spotlit billboards** along the track (roller-coaster style).
+
+````markdown
+```ghosttrain{title=Ghost train;demo;col=note}
+![Phantom](media/uploads/phantom.jpg)
+![Mist](media/uploads/mist.jpg)
+![Night](https://picsum.photos/id/1033/640/480)
+```
+````
+
+| Option | Description |
+|--------|-------------|
+| `title` | Block heading |
+| `demo` | Auto-focus the yard on load (default on) |
+| `fullscreen` | Edge-to-edge layout (default on) |
+| `col` / `bkcol` | Theme colors |
+
+Aliases: `ghost-train`, `hauntedtrain`.
+
+**Controls:** **ego view** (default) turns toward lit photos on curves · auto ride · **Boo!** at each photo · **C** cycles ego / chase / top · **Pause / Ride** · **Reset** · ⛶ fullscreen.
+
+Toolbar: **Insert ghost train yard** adds a sample spooky yard with photo trains.
 
 ### News / RSS (Magpie-style)
 
