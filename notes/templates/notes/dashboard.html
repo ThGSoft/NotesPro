@@ -410,6 +410,7 @@
         canWrite: {% if can_write_workspace %}true{% else %}false{% endif %},
         localFileOpenEnabled: {{ local_file_open_enabled|yesno:"true,false" }},
         tagWebSocketEnabled: {{ tag_websocket_enabled|yesno:"true,false" }},
+        version: "{{ app_version|escapejs }}",
     };
 
     // Falls gar nichts existiert, Fehlermeldung oder Default-Handling
@@ -1029,6 +1030,23 @@
             <a id="app-settings-2fa-link" href="{% url 'setup_2fa' %}" class="btn btn-sm btn-outline-light" title="Two-factor authentication">2FA</a>
           </div>
         </div>
+        <div class="app-settings-about mt-3 pt-3 border-top border-secondary-subtle">
+          <div class="small fw-semibold mb-2">About</div>
+          <p class="app-settings-about-version small mb-2">
+            <strong>NotesPro</strong> <span class="text-muted">v{{ app_version }}</span>
+          </p>
+          <p class="small dashboard-modal-hint mb-2">Collaborative notes with markdown, sheets, charts, and interactive preview blocks.</p>
+          <details class="app-settings-about-credits">
+            <summary class="small app-settings-about-credits-summary">Credits &amp; third-party software</summary>
+            <ul class="app-settings-credits-list small mb-0">
+              {% for item in app_credits %}
+              <li>
+                <a href="{{ item.url }}" target="_blank" rel="noopener noreferrer">{{ item.name }}</a>{% if item.role %}<span class="text-muted"> — {{ item.role }}</span>{% endif %}
+              </li>
+              {% endfor %}
+            </ul>
+          </details>
+        </div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-sm btn-outline-light" data-bs-dismiss="modal">Cancel</button>
@@ -1065,6 +1083,7 @@
 <script src="{% static 'notes/gallery.js' %}?v={% now 'YmdHis' %}"></script>
 <script src="{% static 'notes/rollercoast.js' %}?v={% now 'YmdHis' %}"></script>
 <script src="{% static 'notes/scooter.js' %}?v={% now 'YmdHis' %}"></script>
+<script src="{% static 'notes/ghosttrain.js' %}?v={% now 'YmdHis' %}"></script>
 <script src="{% static 'notes/pinball.js' %}?v={% now 'YmdHis' %}"></script>
 <script src="{% static 'notes/python-exec.js' %}?v={% now 'YmdHis' %}"></script>
 <script src="{% static 'notes/dashboard.js' %}?v={% now 'YmdHis' %}"></script>

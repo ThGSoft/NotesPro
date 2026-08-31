@@ -307,7 +307,7 @@
       `<div class="rollercoast-overlay">`,
       `<p class="rollercoast-hint">${spec.draft
         ? 'Paste your photos to hang them along the track'
-        : 'Auto-ride · obstacle braking · paste more photos · ⛶ fullscreen'}</p>`,
+        : 'Auto-ride · track obstacles · paste more photos · ⛶ fullscreen'}</p>`,
       `<div class="rollercoast-warn" aria-live="assertive" hidden></div>`,
       `<div class="rollercoast-caption" aria-live="polite"></div>`,
       `</div>`,
@@ -439,11 +439,116 @@
     return pos;
   }
 
-  function tagObstacle(mesh, radius, kind) {
+  function tagObstacle(mesh, radius, kind, onTrack) {
     mesh.userData.isObstacle = true;
     mesh.userData.obstacleRadius = radius;
     mesh.userData.obstacleKind = kind || 'obstacle';
+    if (onTrack) mesh.userData.onTrack = true;
     return mesh;
+  }
+
+  function trackSideVector(tangent) {
+    const side = new THREE.Vector3(-tangent.z, 0, tangent.x);
+    if (side.lengthSq() < 1e-8) side.set(1, 0, 0);
+    return side.normalize();
+  }
+
+  function pushObstacle(obstacles, mesh, radius, kind, onTrack) {
+    tagObstacle(mesh, radius, kind, onTrack);
+    obstacles.push(mesh);
+    return mesh;
+  }
+
+  function addTrackObstacles(THREE, scene, curve, palette, mode, obstacles) {
+    const count = mode === 'jungle' ? 16 : mode === 'alps' ? 14 : 12;
+    const postMat = new THREE.MeshStandardMaterial({ color: palette.tie, roughness: 0.88, metalness: 0.12 });
+    const railMat = new THREE.MeshStandardMaterial({ color: palette.rail, metalness: 0.7, roughness: 0.32 });
+    const warnMat = new THREE.MeshStandardMaterial({
+      color: mode === 'dune' ? 0xf59e0b : 0xfbbf24,
+      emissive: 0xf59e0b,
+      emissiveIntensity: 0.35,
+      roughness: 0.55,
+    });
+    const debrisMat = new THREE.MeshStandardMaterial({
+      color: mode === 'snow' || mode === 'alps' ? palette.rock || 0x7a7f88 : palette.trunk,
+      roughness: 0.95,
+      flatShading: true,
+    });
+
+    for (let i = 0; i < count; i += 1) {
+      const t = ((i * 0.061) + 0.04 + (i % 5) * 0.007) % 1;
+      const pos = curve.getPointAt(t);
+      const tangent = curve.getTangentAt(t).normalize();
+      const side = trackSideVector(tangent);
+      const kindRoll = i % 4;
+
+      if (kindRoll === 0) {
+        const gauge = 0.62;
+        const postH = 2.35 + (i % 3) * 0.25;
+        [-gauge, gauge].forEach((g) => {
+          const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.11, postH, 7), postMat);
+          post.position.copy(pos).add(side.clone().multiplyScalar(g));
+          post.position.y += postH / 2 - 0.35;
+          scene.add(post);
+          pushObstacle(obstacles, post, 0.55, 'gate', true);
+        });
+        const bar = new THREE.Mesh(new THREE.BoxGeometry(gauge * 2 + 0.18, 0.14, 0.14), railMat);
+        bar.position.copy(pos);
+        bar.position.y += postH - 0.45;
+        bar.lookAt(pos.clone().add(tangent));
+        scene.add(bar);
+        pushObstacle(obstacles, bar, 0.75, 'gate', true);
+        const stripe = new THREE.Mesh(new THREE.BoxGeometry(gauge * 2 + 0.08, 0.55, 0.05), warnMat);
+        stripe.position.copy(bar.position);
+        stripe.position.y -= 0.42;
+        stripe.lookAt(pos.clone().add(tangent));
+        scene.add(stripe);
+        pushObstacle(obstacles, stripe, 0.65, 'gate', true);
+      } else if (kindRoll === 1) {
+        const rock = new THREE.Mesh(
+          new THREE.DodecahedronGeometry(0.42 + (i % 4) * 0.12, 0),
+          debrisMat,
+        );
+        rock.position.copy(pos);
+        rock.position.y += 0.28;
+        rock.rotation.set(i * 0.7, i * 1.1, i * 0.4);
+        scene.add(rock);
+        pushObstacle(obstacles, rock, 0.72, 'debris', true);
+        if (i % 2 === 0) {
+          const rock2 = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.32, 0.48), debrisMat);
+          rock2.position.copy(pos).add(side.clone().multiplyScalar(0.22));
+          rock2.position.y += 0.22;
+          rock2.rotation.y = i * 0.5;
+          scene.add(rock2);
+          pushObstacle(obstacles, rock2, 0.58, 'debris', true);
+        }
+      } else if (kindRoll === 2) {
+        const crate = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.62, 0.78), postMat);
+        crate.position.copy(pos);
+        crate.position.y += 0.34;
+        crate.lookAt(pos.clone().add(tangent));
+        scene.add(crate);
+        pushObstacle(obstacles, crate, 0.82, 'barrier', true);
+        const plank = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.12, 0.18), warnMat);
+        plank.position.copy(crate.position);
+        plank.position.y += 0.38;
+        plank.lookAt(pos.clone().add(tangent));
+        scene.add(plank);
+        pushObstacle(obstacles, plank, 0.55, 'barrier', true);
+      } else {
+        const beam = new THREE.Mesh(new THREE.BoxGeometry(1.35, 0.16, 0.16), railMat);
+        beam.position.copy(pos);
+        beam.position.y += 0.52 + (i % 2) * 0.18;
+        beam.lookAt(pos.clone().add(tangent));
+        scene.add(beam);
+        pushObstacle(obstacles, beam, 0.68, 'rail block', true);
+        const cone = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.55, 6), warnMat);
+        cone.position.copy(pos).add(tangent.clone().multiplyScalar(0.55));
+        cone.position.y += 0.3;
+        scene.add(cone);
+        pushObstacle(obstacles, cone, 0.45, 'rail block', true);
+      }
+    }
   }
 
   function addScenery(THREE, scene, palette, mode, curve, obstacles) {
@@ -471,7 +576,7 @@
         );
         trunk.position.set(pos.x, trunkH / 2, pos.z);
         trunk.rotation.z = (Math.random() - 0.5) * 0.12;
-        tagObstacle(trunk, 1.1, 'tree');
+        tagObstacle(trunk, 1.1, 'tree', false);
         scene.add(trunk);
         obstacles.push(trunk);
         for (let c = 0; c < 3; c += 1) {
@@ -488,7 +593,7 @@
             pos.z + (Math.random() - 0.5) * 1.4,
           );
           canopy.scale.set(1, 0.7 + Math.random() * 0.2, 1);
-          tagObstacle(canopy, 2.0, 'canopy');
+          tagObstacle(canopy, 2.0, 'canopy', false);
           scene.add(canopy);
           obstacles.push(canopy);
         }
@@ -499,7 +604,7 @@
         );
         rock.position.set(pos.x, 0.55 + Math.random() * 0.6, pos.z);
         rock.rotation.set(Math.random(), Math.random(), Math.random());
-        tagObstacle(rock, 1.6, 'rock');
+        tagObstacle(rock, 1.6, 'rock', false);
         scene.add(rock);
         obstacles.push(rock);
         if (Math.random() > 0.5) {
@@ -508,7 +613,7 @@
             new THREE.MeshStandardMaterial({ color: 0x3d7a45, roughness: 0.8 }),
           );
           cactus.position.set(pos.x + 1.4, 1.0, pos.z + 0.5);
-          tagObstacle(cactus, 0.7, 'cactus');
+          tagObstacle(cactus, 0.7, 'cactus', false);
           scene.add(cactus);
           obstacles.push(cactus);
         }
@@ -531,7 +636,7 @@
             10,
           );
           peak.position.set(peakPos.x, peakH * 0.32, peakPos.z);
-          tagObstacle(peak, 4.5, 'peak');
+          tagObstacle(peak, 4.5, 'peak', false);
           scene.add(peak);
           obstacles.push(peak);
           const cap = new THREE.Mesh(
@@ -547,7 +652,7 @@
           new THREE.MeshStandardMaterial({ color: palette.trunk, roughness: 1 }),
         );
         trunk.position.set(pos.x, pineH * 0.15, pos.z);
-        tagObstacle(trunk, 0.9, 'pine');
+        tagObstacle(trunk, 0.9, 'pine', false);
         scene.add(trunk);
         obstacles.push(trunk);
         for (let k = 0; k < 4; k += 1) {
@@ -559,7 +664,7 @@
             }),
           );
           cone.position.set(pos.x, pineH * 0.3 + k * 0.7, pos.z);
-          tagObstacle(cone, 1.3, 'pine');
+          tagObstacle(cone, 1.3, 'pine', false);
           scene.add(cone);
           obstacles.push(cone);
         }
@@ -569,7 +674,7 @@
             new THREE.MeshStandardMaterial({ color: palette.rock, roughness: 1, flatShading: true }),
           );
           boulder.position.set(pos.x + 1.3, 0.4, pos.z - 0.7);
-          tagObstacle(boulder, 1.1, 'rock');
+          tagObstacle(boulder, 1.1, 'rock', false);
           scene.add(boulder);
           obstacles.push(boulder);
         }
@@ -580,7 +685,7 @@
           new THREE.MeshStandardMaterial({ color: palette.trunk, roughness: 1 }),
         );
         trunk.position.set(pos.x, pineH * 0.16, pos.z);
-        tagObstacle(trunk, 0.95, 'pine');
+        tagObstacle(trunk, 0.95, 'pine', false);
         scene.add(trunk);
         obstacles.push(trunk);
         for (let k = 0; k < 4; k += 1) {
@@ -592,7 +697,7 @@
             }),
           );
           cone.position.set(pos.x, pineH * 0.34 + k * 0.75, pos.z);
-          tagObstacle(cone, 1.4, 'pine');
+          tagObstacle(cone, 1.4, 'pine', false);
           scene.add(cone);
           obstacles.push(cone);
         }
@@ -744,15 +849,17 @@
     const trackFrames = curve.computeFrenetFrames(240, true);
     addTerrain(THREE, scene, palette, spec.mode);
     addScenery(THREE, scene, palette, spec.mode, curve, obstacles);
+    addTrackObstacles(THREE, scene, curve, palette, spec.mode, obstacles);
     addRails(THREE, scene, curve, palette);
 
     const cart = createCart(THREE, palette);
     scene.add(cart);
 
     const raycaster = new THREE.Raycaster();
-    raycaster.far = 14;
+    raycaster.far = 22;
     const obstacleProbe = new THREE.Vector3();
     const obstacleDir = new THREE.Vector3();
+    const trackObstacles = obstacles;
     let bankBias = 0;
     let speedFactor = 1;
     let lastWarnKind = '';
@@ -799,9 +906,7 @@
       );
       frame.position.copy(pos);
       frame.lookAt(p.x, pos.y, p.z);
-      tagObstacle(frame, 3.2, 'photo');
       scene.add(frame);
-      obstacles.push(frame);
 
       const matte = new THREE.Mesh(
         new THREE.PlaneGeometry(4.5, 4.5),
@@ -824,9 +929,7 @@
       mesh.position.copy(pos);
       mesh.quaternion.copy(frame.quaternion);
       mesh.translateZ(0.12);
-      tagObstacle(mesh, 3.2, 'photo');
       scene.add(mesh);
-      obstacles.push(mesh);
 
       const poleH = Math.max(1.2, pos.y);
       const pole = new THREE.Mesh(
@@ -834,9 +937,7 @@
         new THREE.MeshStandardMaterial({ color: palette.tie, roughness: 0.9, metalness: 0.1 }),
       );
       pole.position.set(pos.x, poleH / 2, pos.z);
-      tagObstacle(pole, 0.5, 'pole');
       scene.add(pole);
-      obstacles.push(pole);
 
       const arm = new THREE.Mesh(
         new THREE.BoxGeometry(0.12, 0.12, 1.1),
@@ -897,40 +998,48 @@
     });
 
     function detectObstacles(pos, tangent, up, binormal) {
-      obstacleProbe.copy(pos).add(up.clone().multiplyScalar(0.9));
       obstacleDir.copy(tangent).normalize();
-      raycaster.set(obstacleProbe, obstacleDir);
-      const hits = raycaster.intersectObjects(obstacles, false);
       let closest = null;
-      for (let i = 0; i < hits.length; i += 1) {
-        const h = hits[i];
-        if (!h.object?.userData?.isObstacle) continue;
-        const pad = h.object.userData.obstacleRadius || 0.8;
-        if (h.distance <= raycaster.far + pad) {
-          closest = h;
-          break;
+      const probes = [
+        pos,
+        pos.clone().add(binormal.clone().multiplyScalar(0.35)),
+        pos.clone().add(binormal.clone().multiplyScalar(-0.35)),
+      ];
+      for (let p = 0; p < probes.length; p += 1) {
+        obstacleProbe.copy(probes[p]).add(up.clone().multiplyScalar(0.55));
+        raycaster.set(obstacleProbe, obstacleDir);
+        const hits = raycaster.intersectObjects(trackObstacles, false);
+        for (let i = 0; i < hits.length; i += 1) {
+          const h = hits[i];
+          if (!h.object?.userData?.isObstacle || !h.object.userData.onTrack) continue;
+          const pad = h.object.userData.obstacleRadius || 0.8;
+          if (h.distance <= raycaster.far + pad && (!closest || h.distance < closest.distance)) {
+            closest = h;
+          }
         }
       }
 
-      // Side proximity (sphere checks) for near misses
+      // Side proximity for scenery hugging the track (not photo boards)
       let sideThreat = 0;
       let sideSign = 0;
       let nearKind = '';
-      for (let i = 0; i < obstacles.length; i += 1) {
-        const obj = obstacles[i];
+      for (let i = 0; i < trackObstacles.length; i += 1) {
+        const obj = trackObstacles[i];
+        if (obj.userData.onTrack) continue;
         const radius = obj.userData.obstacleRadius || 1;
-        const d = obj.position.distanceTo(pos);
-        if (d > radius + 5.5) continue;
         const to = obj.position.clone().sub(pos);
         const ahead = to.dot(tangent);
         if (ahead < -0.5 || ahead > 10) continue;
-        const lateral = to.dot(binormal);
+        const lateral = Math.abs(to.dot(binormal));
+        if (lateral > radius + 2.4) continue;
+        const d = obj.position.distanceTo(pos);
+        if (d > radius + 5.5) continue;
         const clearance = d - radius;
-        if (clearance < 3.2) {
-          const threat = 1 - Math.max(0, clearance) / 3.2;
+        if (clearance < 2.4) {
+          const threat = 1 - Math.max(0, clearance) / 2.4;
           if (threat > sideThreat) {
             sideThreat = threat;
-            sideSign = lateral >= 0 ? -1 : 1;
+            sideSign = to.dot(binormal) >= 0 ? -1 : 1;
             nearKind = obj.userData.obstacleKind || 'obstacle';
           }
         }
@@ -941,22 +1050,22 @@
       if (closest) {
         const dist = closest.distance;
         const kind = closest.object.userData.obstacleKind || 'obstacle';
-        if (dist < 3.5) {
-          brake = 0.22;
-          warn = `Obstacle — ${kind} (${dist.toFixed(1)}m)`;
-        } else if (dist < 7) {
-          brake = 0.45;
-          warn = `Slowing — ${kind} ahead`;
-        } else if (dist < 11) {
-          brake = 0.72;
-          warn = `Caution — ${kind}`;
+        if (dist < 4.0) {
+          brake = 0.18;
+          warn = `Track blocked — ${kind} (${dist.toFixed(1)}m)`;
+        } else if (dist < 8) {
+          brake = 0.42;
+          warn = `Slowing — ${kind} on rails`;
+        } else if (dist < 14) {
+          brake = 0.68;
+          warn = `Caution — ${kind} ahead`;
         }
         const lateral = closest.point.clone().sub(pos).dot(binormal);
-        bankBias += ((lateral >= 0 ? -1 : 1) * (1 - Math.min(1, dist / 12)) - bankBias) * 0.18;
-      } else if (sideThreat > 0.15) {
-        brake = Math.min(brake, 1 - sideThreat * 0.55);
-        bankBias += (sideSign * sideThreat - bankBias) * 0.2;
-        warn = `Near miss — ${nearKind || 'obstacle'}`;
+        bankBias += ((lateral >= 0 ? -1 : 1) * (1 - Math.min(1, dist / 14)) - bankBias) * 0.18;
+      } else if (sideThreat > 0.2) {
+        brake = Math.min(brake, 1 - sideThreat * 0.45);
+        bankBias += (sideSign * sideThreat - bankBias) * 0.18;
+        warn = `Near track — ${nearKind || 'obstacle'}`;
       } else {
         bankBias *= 0.9;
       }

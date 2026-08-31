@@ -2088,7 +2088,7 @@
   }
 
   function isPreviewRichBlock(el) {
-    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .md-python, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .gallery-block, .rollercoast-block, .scooter-block, .page-tags');
+    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .md-python, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .gallery-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .page-tags');
   }
 
   function getPreviewBlockSourceLine(node) {
@@ -7028,11 +7028,22 @@
       if (thisIndex !== galleryIndex) return match;
       const cfg = engine.parseFenceAttrs(fenceAttrs || '');
       const photos = engine.parsePhotos(content || '');
+      const additions = [];
       if (update.addImage) {
-        const nextPhotos = photos.concat([{
+        additions.push({
           src: update.addImage,
           label: update.label || `Photo ${photos.length + 1}`,
-        }]);
+        });
+      }
+      if (update.addYoutube) {
+        additions.push({
+          src: update.addYoutube,
+          label: update.label || 'YouTube',
+          kind: 'youtube',
+        });
+      }
+      if (additions.length) {
+        const nextPhotos = photos.concat(additions);
         const attrs = engine.buildFenceAttrsString(cfg);
         const body = engine.formatGalleryBody(nextPhotos);
         const fence = attrs ? `gallery{${attrs}}` : 'gallery';
@@ -7071,6 +7082,19 @@
             const updated = updateGalleryInMarkdown(oldMarkdown, galleryIndex, {
               addImage: mediaPath,
               label: file.name ? String(file.name).replace(/\.[^.]+$/, '') : 'Photo',
+            });
+            if (updated === oldMarkdown) return;
+            easyMDE.value(updated);
+            scheduleSave();
+            schedulePreviewRefresh();
+          }
+          : null,
+        onPasteYoutube: userCanEdit && Number.isFinite(galleryIndex) && easyMDE
+          ? async (youtubeId) => {
+            const oldMarkdown = easyMDE.value();
+            const updated = updateGalleryInMarkdown(oldMarkdown, galleryIndex, {
+              addYoutube: `https://www.youtube.com/embed/${youtubeId}`,
+              label: 'YouTube',
             });
             if (updated === oldMarkdown) return;
             easyMDE.value(updated);
@@ -7207,6 +7231,75 @@
             const mediaPath = await uploadPastedImageBlob(file, file.name || 'paste.png');
             const oldMarkdown = easyMDE.value();
             const updated = updateScooterInMarkdown(oldMarkdown, scooterIndex, {
+              addImage: mediaPath,
+              label: file.name ? String(file.name).replace(/\.[^.]+$/, '') : 'Photo',
+            });
+            if (updated === oldMarkdown) return;
+            easyMDE.value(updated);
+            scheduleSave();
+            schedulePreviewRefresh();
+          }
+          : null,
+      });
+    });
+  }
+
+  const GHOSTTRAIN_BLOCK_RE = /```(?:ghosttrain|ghost-train|hauntedtrain)(?:\{([^}]*)\}|([^\n`]*))?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function updateGhosttrainInMarkdown(markdown, ghosttrainIndex, update) {
+    const engine = window.NotesProGhosttrain;
+    if (!engine) return markdown;
+    let idx = 0;
+    const re = /```(?:ghosttrain|ghost-train|hauntedtrain)(?:\{([^}]*)\}|([^\n`]*))?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+    return String(markdown || '').replace(re, (match, braceAttrs, spaceAttrs, content = '') => {
+      const thisIndex = idx;
+      idx += 1;
+      if (thisIndex !== ghosttrainIndex) return match;
+      const fenceAttrs = braceAttrs || spaceAttrs || '';
+      const cfg = engine.parseFenceAttrs(fenceAttrs);
+      const photos = engine.parsePhotos(content || '');
+      if (update.addImage) {
+        const nextPhotos = photos.concat([{
+          src: update.addImage,
+          label: update.label || `Photo ${photos.length + 1}`,
+        }]);
+        const attrs = engine.buildFenceAttrsString(cfg);
+        const body = engine.formatGalleryBody(nextPhotos);
+        const fence = attrs ? `ghosttrain{${attrs}}` : 'ghosttrain';
+        return `\`\`\`${fence}\n${body}\n\`\`\``;
+      }
+      return match;
+    });
+  }
+
+  function parseGhosttrainBlocks(text, options = {}) {
+    let ghosttrainIndex = 0;
+    GHOSTTRAIN_BLOCK_RE.lastIndex = 0;
+    return text.replace(GHOSTTRAIN_BLOCK_RE, (_, braceAttrs, spaceAttrs, content) => {
+      const engine = window.NotesProGhosttrain;
+      const idx = ghosttrainIndex++;
+      const fenceAttrs = braceAttrs || spaceAttrs || '';
+      const html = engine?.renderBlock
+        ? engine.renderBlock(content || '', fenceAttrs, {
+          ghosttrainIndex: idx,
+          editable: !!options.sheetEditable,
+        })
+        : '<div class="ghosttrain-block ghosttrain-block--error">Ghost train engine not loaded.</div>';
+      return wrapRichPreviewBlock(html);
+    });
+  }
+
+  function hydrateGhosttrainBlocks(root) {
+    const engine = window.NotesProGhosttrain;
+    if (!engine) return;
+    (root || document).querySelectorAll('.ghosttrain-block[data-ghosttrain-spec]').forEach(el => {
+      const ghosttrainIndex = parseInt(el.dataset.ghosttrainIndex, 10);
+      engine.hydrateBlock(el, {
+        onPasteImage: userCanEdit && Number.isFinite(ghosttrainIndex) && easyMDE
+          ? async (file) => {
+            const mediaPath = await uploadPastedImageBlob(file, file.name || 'paste.png');
+            const oldMarkdown = easyMDE.value();
+            const updated = updateGhosttrainInMarkdown(oldMarkdown, ghosttrainIndex, {
               addImage: mediaPath,
               label: file.name ? String(file.name).replace(/\.[^.]+$/, '') : 'Photo',
             });
@@ -8257,7 +8350,7 @@ function formatTextWithMarkup(rawText) {
     if (!root) return;
     root.querySelectorAll('pre').forEach(pre => {
       if (pre.closest('.md-code-block')) return;
-      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .md-python, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .gallery-block, .rollercoast-block, .scooter-block')) {
+      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .md-python, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .gallery-block, .rollercoast-block, .scooter-block, .ghosttrain-block')) {
         return;
       }
       const wrap = document.createElement('div');
@@ -8657,6 +8750,11 @@ function formatTextWithMarkup(rawText) {
       const label = cfg.title || 'Auto scooter';
       return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
     });
+    md = md.replace(/```(?:ghosttrain|ghost-train|hauntedtrain)(?:\{([^}]*)\}|([^\n`]*))?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, braceAttrs, spaceAttrs) => {
+      const cfg = window.NotesProGhosttrain?.parseFenceAttrs?.(braceAttrs || spaceAttrs) || {};
+      const label = cfg.title || 'Ghost train';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
     md = md.replace(/```(?:python3?|executecode)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
       const cfg = parsePythonFenceAttrs(fenceAttrs);
       const label = cfg.title || 'Python';
@@ -8710,6 +8808,7 @@ function formatTextWithMarkup(rawText) {
       md = parseGalleryBlocks(md, options);
       md = parseRollercoastBlocks(md, options);
       md = parseScooterBlocks(md, options);
+      md = parseGhosttrainBlocks(md, options);
       md = parsePythonBlocks(md);
     } else {
       md = replaceRichBlocksWithPlaceholders(md);
@@ -9095,6 +9194,7 @@ function formatTextWithMarkup(rawText) {
     hydrateGalleryBlocks(preview);
     hydrateRollercoastBlocks(preview);
     hydrateScooterBlocks(preview);
+    hydrateGhosttrainBlocks(preview);
     buildFloatingToc();
     annotatePreviewSourceLines(raw, preview);
     if (isEditing) preview.tabIndex = -1;
@@ -12939,6 +13039,21 @@ function formatTextWithMarkup(rawText) {
           title: 'Insert auto scooter rink',
         },
         {
+          name: 'insert-ghosttrain',
+          action: (editor) => {
+            const body = [
+              '![Phantom](https://picsum.photos/id/1011/640/480)',
+              '![Mist](https://picsum.photos/id/1016/640/480)',
+              '![Grave](https://picsum.photos/id/1025/640/480)',
+              '![Night](https://picsum.photos/id/1033/640/480)',
+              '![Fog](https://picsum.photos/id/1044/640/480)',
+            ].join('\n');
+            insertFenceBlock(editor, 'ghosttrain{title=Ghost train;demo;col=note}', body);
+          },
+          className: 'fa fa-train',
+          title: 'Insert ghost train yard',
+        },
+        {
           name: 'insert-news',
           action: (editor) => {
             insertFenceBlock(
@@ -15530,7 +15645,7 @@ function formatTextWithMarkup(rawText) {
   }
 
   document.addEventListener('paste', function (event) {
-    if (event.target.closest?.('.puzzle-block, .gallery-block, .rollercoast-block, .scooter-block')) return;
+    if (event.target.closest?.('.puzzle-block, .gallery-block, .rollercoast-block, .scooter-block, .ghosttrain-block')) return;
     const items = (event.clipboardData || event.originalEvent.clipboardData).items;
     for (let index in items) {
       const item = items[index];

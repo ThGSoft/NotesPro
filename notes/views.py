@@ -21,6 +21,7 @@ from django.contrib.auth.models import User
 from django.db.models import Q
 from django.utils.text import slugify
 from .workspace_io import export_workspace_archive, import_workspace_archive
+from .version import CREDITS, VERSION
 
 APP_LANGUAGE_CHOICES = (
     ('browser', 'Browser default'),
@@ -383,6 +384,8 @@ def dashboard(request):
             current_workspace and _user_has_write_access(request.user, current_workspace)
         ),
         'is_group_admin': request.user.groups.filter(name='Group Admin').exists(),
+        'app_version': VERSION,
+        'app_credits': CREDITS,
     })
 
 @login_required

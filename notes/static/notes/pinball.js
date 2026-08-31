@@ -58,14 +58,44 @@
     return { theme, colorCss, bgCss };
   }
 
+  function parentIsMobile() {
+    try {
+      return document.body.classList.contains('mobile-layout')
+        || window.matchMedia('(max-width: 768px)').matches;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function withEmbedFlags(url) {
+    try {
+      const parsed = new URL(url, window.location.href);
+      parsed.searchParams.set('mobile', parentIsMobile() ? '1' : '0');
+      parsed.searchParams.set('v', '3');
+      return parsed.href;
+    } catch (_) {
+      return url;
+    }
+  }
+
   function resolveEmbedUrl(cfg) {
     const custom = String(cfg.src || cfg.url || '').trim();
-    if (custom && /^https?:\/\//i.test(custom)) return custom;
+    if (custom && /^https?:\/\//i.test(custom)) return withEmbedFlags(custom);
     const script = document.querySelector('script[src*="pinball.js"]');
     if (script?.src) {
-      return script.src.replace(/\/pinball\.js(\?.*)?$/i, '/vendor/space-cadet/embed.html');
+      return withEmbedFlags(script.src.replace(/\/pinball\.js(\?.*)?$/i, '/vendor/space-cadet/embed.html'));
     }
-    return DEFAULT_EMBED;
+    return withEmbedFlags(DEFAULT_EMBED);
+  }
+
+  function tellFrameMobile(frame) {
+    if (!frame?.contentWindow) return;
+    try {
+      frame.contentWindow.postMessage({
+        type: 'notespro-pinball-mobile',
+        mobile: parentIsMobile(),
+      }, '*');
+    } catch (_) { /* ignore */ }
   }
 
   function resolveFullscreen(cfg) {
@@ -112,7 +142,7 @@
       `<div class="pinball-block-title">${escapeHtml(title)}</div>`,
       `<div class="pinball-block-meta">3D Pinball Space Cadet</div>`,
       `</div>`,
-      `<p class="pinball-block-hint">Click the table to focus · Z / ← left flipper · C / → right flipper · Space launch · R restart · T sound</p>`,
+      `<p class="pinball-block-hint">Click the table to focus · Z / ← left flipper · C / → right flipper · Space launch · R restart · T sound · On phones, use the on-screen buttons</p>`,
     ].join('');
 
     return [
@@ -151,12 +181,19 @@
       spec = {};
     }
 
-    if (spec.embedUrl && !frame.getAttribute('src')) {
-      frame.setAttribute('src', spec.embedUrl);
+    if (spec.embedUrl && frame.getAttribute('src') !== spec.embedUrl) {
+      frame.setAttribute('src', withEmbedFlags(spec.embedUrl));
+    } else {
+      tellFrameMobile(frame);
     }
 
-    frame.addEventListener('load', () => setStatus(el, ''));
+    frame.addEventListener('load', () => {
+      setStatus(el, '');
+      tellFrameMobile(frame);
+    });
     frame.addEventListener('error', () => setStatus(el, 'Failed to load Space Cadet. Check your network connection.'));
+
+    window.addEventListener('resize', () => tellFrameMobile(frame));
 
     el.addEventListener('click', (e) => {
       if (e.target.closest('.game-fullscreen-btn')) return;
