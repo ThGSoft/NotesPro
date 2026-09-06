@@ -402,7 +402,11 @@
       const w = scene.clientWidth || 0;
       const h = scene.clientHeight || 0;
       if (w < 80 || h < 80) return;
-      const size = Math.max(180, Math.floor(Math.min(w, h) * 0.78));
+      const mobile = document.body.classList.contains('mobile-layout')
+        || (typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 768px)').matches);
+      const factor = mobile ? 0.58 : 0.78;
+      const minPx = mobile ? 140 : 180;
+      const size = Math.max(minPx, Math.floor(Math.min(w, h) * factor));
       scene.style.setProperty('--photocube-size', `${size}px`);
     }
 
@@ -565,6 +569,7 @@
       : '';
     return [
       `<div class="photobook-stage">`,
+      `<div class="photobook-viewport">`,
       `<div class="photobook-book is-closed" tabindex="0" aria-label="Photo book">`,
       `<div class="photobook-cover">`,
       `<div class="photobook-cover-front">`,
@@ -576,6 +581,7 @@
       `</div>`,
       `<div class="photobook-open">`,
       renderBookSpread(spec.photos, 0),
+      `</div>`,
       `</div>`,
       `</div>`,
       `<div class="photoview-toolbar">`,
@@ -621,6 +627,7 @@
     }
 
     const book = el.querySelector('.photobook-book');
+    const viewport = el.querySelector('.photobook-viewport');
     const openWrap = el.querySelector('.photobook-open');
     const progress = el.querySelector('[data-role="book-progress"]');
     const totalSpreads = spreadCount(spec.photos);
@@ -645,11 +652,45 @@
       progress.textContent = `${spread + 1} / ${totalSpreads}`;
     }
 
+    function isBookMobile() {
+      return document.body.classList.contains('mobile-layout')
+        || (typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 768px)').matches);
+    }
+
+    function fitBook() {
+      if (!book || !viewport) return;
+      const w = viewport.clientWidth;
+      const h = viewport.clientHeight;
+      if (w < 80 || h < 80) return;
+      const mobile = isBookMobile();
+      const openNow = book.classList.contains('is-open');
+      const ratio = openNow ? (mobile ? 1.28 : 1.42) : 0.72;
+      const pad = mobile ? 0.96 : 0.98;
+      const maxW = w * pad;
+      const maxH = h * pad;
+      let bw;
+      let bh;
+      if (maxW / maxH > ratio) {
+        bh = maxH;
+        bw = bh * ratio;
+      } else {
+        bw = maxW;
+        bh = bw / ratio;
+      }
+      const widthPx = `${Math.max(120, Math.floor(bw))}px`;
+      const heightPx = `${Math.max(160, Math.floor(bh))}px`;
+      book.style.setProperty('--photobook-w', widthPx);
+      book.style.setProperty('--photobook-h', heightPx);
+      book.style.width = widthPx;
+      book.style.height = heightPx;
+    }
+
     function setOpen(next) {
       open = next;
       book?.classList.toggle('is-closed', !open);
       book?.classList.toggle('is-open', open);
       syncProgress();
+      requestAnimationFrame(fitBook);
     }
 
     function go(delta) {
@@ -756,6 +797,21 @@
     });
 
     syncProgress();
+    fitBook();
+    const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(() => fitBook()) : null;
+    if (ro && viewport) ro.observe(viewport);
+    const onFs = () => requestAnimationFrame(fitBook);
+    el.addEventListener('notespro:monitor-fullscreen', onFs);
+    window.addEventListener('resize', fitBook);
+    const disconnectObs = new MutationObserver(() => {
+      if (!el.isConnected) {
+        ro?.disconnect();
+        window.removeEventListener('resize', fitBook);
+        el.removeEventListener('notespro:monitor-fullscreen', onFs);
+        disconnectObs.disconnect();
+      }
+    });
+    disconnectObs.observe(document.body, { childList: true, subtree: true });
     bindPasteDrop(el, spec, options);
   }
 

@@ -1158,7 +1158,7 @@ With your own photos / videos:
 
 **Walk controls:** click the view to capture the mouse (also unlocks video sound) · **W A S D** / arrows move · **Shift** sprint · mouse **wheel** zoom closer / wider · **Space** open the media you're looking at · **Esc** release mouse · **Demo tour** starts / stops the auto-walk (shown only on `demo` galleries) · **Thumbnails** toggles a strip.
 
-On **mobile**, **Enter gallery** and **Demo tour** are hidden. The first tap enters the hall; on a `demo` gallery that tap also starts the tour. Drag to look around (that takes over from the tour).
+On **mobile**, **Enter gallery** and **Demo tour** are hidden. The first tap enters the hall; on a `demo` gallery that tap also starts the tour. After that, tap a wall photo to step a little closer (again to go closer still), and drag to look around (that takes over from the tour).
 
 Videos play on the wall when the file has a picture track. If there is no video (audio-only file, or a YouTube clip you are not facing closely enough), **sound still plays**. Stand in front of a YouTube frame to see the video overlay; glance away and you hear the song only. **Only one clip has audio at a time.** Browsers may keep sound muted until you click **Enter gallery** or **Demo tour** (or tap the gallery on a phone). **Space** opens the media in the lightbox.
 
@@ -1227,7 +1227,7 @@ With your images:
 | `fullscreen` | Edge-to-edge layout (default on) |
 | `col` / `bkcol` | Theme colors |
 
-**Book controls:** **Open book** · click the **right page** or **Next** to turn forward · **left page** or **Prev** to go back · arrow keys · swipe on a phone · paste / drop to add pictures.
+**Book controls:** **Open book** · click the **right page** or **Next** to turn forward · **left page** or **Prev** to go back · arrow keys · swipe on a phone · paste / drop to add pictures. The album and its photos scale to the preview (and to the monitor in fullscreen).
 
 Toolbar: **Insert photo book** adds a sample album.
 

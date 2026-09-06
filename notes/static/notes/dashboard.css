@@ -7904,14 +7904,38 @@ body.mobile-layout .gallery-walk-toolbar [data-action="walk-demo"] {
 .photocube-face--top { transform: rotateX(90deg) translateZ(calc(var(--photocube-size) / 2)); }
 .photocube-face--bottom { transform: rotateX(-90deg) translateZ(calc(var(--photocube-size) / 2)); }
 
+.photobook-block.photoview-block--fullscreen {
+  height: min(92dvh, 92vh);
+  min-height: min(72vh, 640px);
+  max-height: none;
+}
+
 .photobook-stage {
   align-items: stretch;
 }
 
-.photobook-book {
-  width: 100%;
+.photobook-viewport {
   flex: 1 1 auto;
-  min-height: min(72vh, 800px);
+  min-height: min(64vh, 680px);
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.photobook-block.photoview-block--fullscreen .photobook-viewport {
+  min-height: 0;
+}
+
+.photobook-book {
+  --photobook-w: min(96%, 1200px);
+  --photobook-h: min(78vh, 860px);
+  width: var(--photobook-w);
+  height: var(--photobook-h);
+  flex: 0 0 auto;
+  min-height: 0;
+  max-width: 100%;
+  max-height: 100%;
   position: relative;
   perspective: 1800px;
   transform-style: preserve-3d;
@@ -7919,18 +7943,18 @@ body.mobile-layout .gallery-walk-toolbar [data-action="walk-demo"] {
 }
 
 .photobook-book.is-closed {
-  width: min(52%, 460px);
-  min-height: min(72vh, 800px);
-  aspect-ratio: 0.72 / 1;
+  width: var(--photobook-w);
+  height: var(--photobook-h);
+  aspect-ratio: auto;
   align-self: center;
 }
 
 .photobook-book.is-open {
-  width: 100%;
-  height: 100%;
-  min-height: min(72vh, 800px);
+  width: var(--photobook-w);
+  height: var(--photobook-h);
+  min-height: 0;
   aspect-ratio: auto;
-  align-self: stretch;
+  align-self: center;
 }
 
 .photobook-cover,
@@ -7968,6 +7992,7 @@ body.mobile-layout .gallery-walk-toolbar [data-action="walk-demo"] {
 
 .photobook-cover-inset {
   flex: 1;
+  min-height: 0;
   width: 78%;
   margin-top: 8px;
   border: 8px solid #f8fafc;
@@ -8036,6 +8061,7 @@ body.mobile-layout .gallery-walk-toolbar [data-action="walk-demo"] {
   flex-direction: column;
   padding: 14px 14px 28px;
   gap: 8px;
+  box-sizing: border-box;
 }
 
 .photobook-page-media,
@@ -8043,8 +8069,9 @@ body.mobile-layout .gallery-walk-toolbar [data-action="walk-demo"] {
 .photobook-page video {
   display: block;
   width: 100%;
-  flex: 1;
+  flex: 1 1 auto;
   min-height: 0;
+  height: 100%;
   object-fit: cover;
   border: 6px solid #fff;
   box-shadow: 0 6px 16px rgba(15, 23, 42, 0.18);
@@ -8135,33 +8162,127 @@ body.mobile-layout .gallery-walk-toolbar [data-action="walk-demo"] {
   height: 100%;
 }
 
-.photoview-block:fullscreen .photobook-book.is-open,
-.photoview-block:-webkit-full-screen .photobook-book.is-open,
-.photobook-block:fullscreen .photobook-book.is-open,
-.photobook-block:-webkit-full-screen .photobook-book.is-open {
+.photoview-block:fullscreen .photobook-viewport,
+.photoview-block:-webkit-full-screen .photobook-viewport,
+.photobook-block:fullscreen .photobook-viewport,
+.photobook-block:-webkit-full-screen .photobook-viewport {
+  flex: 1 1 auto;
   min-height: 0;
-  height: 100%;
-  width: 100%;
+  height: auto;
+}
+
+.photoview-block:fullscreen .photobook-book,
+.photoview-block:fullscreen .photobook-book.is-open,
+.photoview-block:fullscreen .photobook-book.is-closed,
+.photoview-block:-webkit-full-screen .photobook-book,
+.photoview-block:-webkit-full-screen .photobook-book.is-open,
+.photoview-block:-webkit-full-screen .photobook-book.is-closed,
+.photobook-block:fullscreen .photobook-book,
+.photobook-block:fullscreen .photobook-book.is-open,
+.photobook-block:fullscreen .photobook-book.is-closed,
+.photobook-block:-webkit-full-screen .photobook-book,
+.photobook-block:-webkit-full-screen .photobook-book.is-open,
+.photobook-block:-webkit-full-screen .photobook-book.is-closed {
+  min-height: 0;
+  width: var(--photobook-w);
+  height: var(--photobook-h);
+  max-width: 100%;
+  max-height: 100%;
 }
 
 @media (max-width: 768px) {
-  .photocube-scene {
-    --photocube-size: min(82vw, 62vh, 420px);
-    min-height: min(62vh, 560px);
+  .photoview-block,
+  .photoview-block--fullscreen,
+  body.mobile-layout .photoview-block,
+  body.mobile-layout .photoview-block--fullscreen {
+    min-height: min(58dvh, 58vh, 480px);
+    height: auto;
+    max-height: none;
+    padding: 8px 8px 10px;
   }
 
-  .photobook-book.is-closed {
-    width: min(78%, 360px);
-    min-height: min(62vh, 560px);
+  .photocube-scene,
+  body.mobile-layout .photocube-scene {
+    --photocube-size: min(70vw, 42dvh, 42vh, 260px);
+    min-height: min(50dvh, 50vh, 360px);
+    perspective: 900px;
   }
 
-  .photobook-book.is-open {
-    width: 100%;
-    min-height: min(64vh, 620px);
+  .photocube-face {
+    border-width: 6px;
+  }
+
+  .photocube-face-label {
+    font-size: 0.6rem;
+    left: 4px;
+    bottom: 4px;
+    padding: 1px 6px;
+  }
+
+  .photobook-block,
+  .photobook-block.photoview-block--fullscreen,
+  body.mobile-layout .photobook-block,
+  body.mobile-layout .photobook-block.photoview-block--fullscreen {
+    height: min(78dvh, 78vh);
+    min-height: 0;
+    max-height: none;
+  }
+
+  .photobook-block .photobook-viewport,
+  body.mobile-layout .photobook-block .photobook-viewport {
+    min-height: 0;
+  }
+
+  .photobook-book,
+  .photobook-book.is-closed,
+  .photobook-book.is-open,
+  body.mobile-layout .photobook-book,
+  body.mobile-layout .photobook-book.is-closed,
+  body.mobile-layout .photobook-book.is-open {
+    width: var(--photobook-w, 100%);
+    height: var(--photobook-h, min(58dvh, 58vh));
+    min-height: 0;
+    aspect-ratio: auto;
+  }
+
+  .photobook-spread {
+    grid-template-columns: 1fr 8px 1fr;
+  }
+
+  .photobook-cover-front {
+    padding: 10px 10px 12px;
+    gap: 6px;
+  }
+
+  .photobook-cover-title {
+    font-size: 0.95rem;
   }
 
   .photobook-page-inner {
-    padding: 8px 8px 24px;
+    padding: 6px 6px 20px;
+    gap: 4px;
+  }
+
+  .photobook-page-media,
+  .photobook-page img,
+  .photobook-page video {
+    border-width: 3px;
+  }
+
+  .photobook-caption,
+  .photobook-folio {
+    font-size: 0.65rem;
+  }
+
+  .photocube-hint,
+  .photobook-hint {
+    font-size: 0.75rem;
+  }
+
+  .photoview-toolbar .btn {
+    min-height: 36px;
+    font-size: 12px;
+    padding: 6px 10px;
   }
 }
 

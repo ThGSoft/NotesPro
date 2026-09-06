@@ -370,7 +370,7 @@
       `<p class="gallery-walk-hint gallery-walk-hint--desktop">Click to look &amp; unlock sound · <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> walk · wheel zoom · <kbd>Space</kbd> open · framed pictures on the walls</p>`,
       `<p class="gallery-walk-hint gallery-walk-hint--mobile">${spec.demo
         ? 'Tap to enter — demo tour starts'
-        : 'Tap to look · drag to look around'}</p>`,
+        : 'Tap a photo to step closer · drag to look'}</p>`,
       `<div class="gallery-walk-caption" aria-live="polite"></div>`,
       `</div>`,
       `</div>`,
@@ -489,6 +489,7 @@
     const viewport = el.querySelector('.gallery-walk-viewport');
     const canvas = el.querySelector('.gallery-walk-canvas');
     const captionEl = el.querySelector('.gallery-walk-caption');
+    const mobileHintEl = el.querySelector('.gallery-walk-hint--mobile');
     const demoBtn = el.querySelector('[data-action="walk-demo"]');
     const cssRoot = el.querySelector('.gallery-walk-css3d');
     const cssCam = el.querySelector('.gallery-walk-css3d-cam');
@@ -868,6 +869,7 @@
     let last = performance.now();
     let destroyed = false;
     let tour = null;
+    let approach = null;
 
     function setFov(next) {
       fov = Math.max(FOV_MIN, Math.min(FOV_MAX, next));
@@ -1012,6 +1014,7 @@
 
     function startTour() {
       if (document.pointerLockElement === canvas) document.exitPointerLock();
+      approach = null;
       unlockAudio();
       const waypoints = buildTourWaypoints();
       tour = {
@@ -1145,12 +1148,102 @@
       };
     }
 
+    function distAlongNormal(frame) {
+      const origin = new THREE.Vector3();
+      frame.mesh.getWorldPosition(origin);
+      const normal = new THREE.Vector3();
+      frame.mesh.getWorldDirection(normal);
+      if (origin.x * normal.x > 0.01) normal.negate();
+      return Math.abs(camera.position.clone().sub(origin).dot(normal));
+    }
+
+    function frameAtClient(clientX, clientY) {
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width < 1 || rect.height < 1) return null;
+      const ndcX = ((clientX - rect.left) / rect.width) * 2 - 1;
+      const ndcY = -((clientY - rect.top) / rect.height) * 2 + 1;
+      const objects = [];
+      frames.forEach((f) => {
+        if (f.mesh) objects.push(f.mesh);
+        if (f.frameGroup) objects.push(f.frameGroup);
+      });
+      if (!objects.length) return null;
+      const raycaster = new THREE.Raycaster();
+      const samples = [[0, 0], [-0.07, 0], [0.07, 0], [0, -0.09], [0, 0.09]];
+      for (let s = 0; s < samples.length; s += 1) {
+        raycaster.setFromCamera(new THREE.Vector2(ndcX + samples[s][0], ndcY + samples[s][1]), camera);
+        const hits = raycaster.intersectObjects(objects, true);
+        if (!hits.length) continue;
+        let obj = hits[0].object;
+        while (obj) {
+          const found = frames.find((f) => f.mesh === obj || f.frameGroup === obj);
+          if (found) return found;
+          obj = obj.parent;
+        }
+      }
+      return null;
+    }
+
+    function stepCloserToFrame(frame) {
+      if (!frame?.mesh) return;
+      if (tour?.active) stopTour();
+      const world = new THREE.Vector3();
+      frame.mesh.getWorldPosition(world);
+      const from = {
+        x: camera.position.x,
+        z: camera.position.z,
+        yaw,
+        pitch,
+        fov,
+      };
+      const toward = new THREE.Vector3(world.x - from.x, 0, world.z - from.z);
+      const planar = toward.length();
+      const minKeep = Math.max(WALL_PAD + 0.18, distToFitFrame(frame, LOOK_FOV, 0.78));
+      const along = distAlongNormal(frame);
+      const room = Math.max(0, Math.min(planar, along) - minKeep);
+      const step = Math.min(0.7, room);
+      if (step < 0.06) {
+        setFov(fov - 6);
+        return;
+      }
+      toward.normalize().multiplyScalar(step);
+      const clamped = clampHall(from.x + toward.x, from.z + toward.z);
+      const lookYaw = Math.atan2(world.x - clamped.x, world.z - clamped.z);
+      approach = {
+        from,
+        to: {
+          x: clamped.x,
+          z: clamped.z,
+          yaw: lookYaw,
+          pitch: -0.02,
+          fov: Math.max(LOOK_FOV, fov - 5),
+        },
+        t: 0,
+        dur: 0.36,
+      };
+    }
+
+    function advanceApproach(dt) {
+      if (!approach) return false;
+      approach.t += dt;
+      const u = easeInOut(Math.min(1, approach.t / approach.dur));
+      camera.position.x = approach.from.x + (approach.to.x - approach.from.x) * u;
+      camera.position.z = approach.from.z + (approach.to.z - approach.from.z) * u;
+      yaw = lerpAngle(approach.from.yaw, approach.to.yaw, u);
+      pitch = approach.from.pitch + (approach.to.pitch - approach.from.pitch) * u;
+      setFov(approach.from.fov + (approach.to.fov - approach.from.fov) * u);
+      if (u >= 1) approach = null;
+      return true;
+    }
+
     function tick(now) {
       if (destroyed) return;
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
 
-      if (tour?.active) {
+      if (advanceApproach(dt)) {
+        /* stepping toward a tapped photo */
+      } else if (tour?.active) {
         advanceTour(dt);
       } else {
         const speed = (keys.ShiftLeft || keys.ShiftRight ? 4.2 : 2.4) * dt;
@@ -1235,9 +1328,13 @@
       if (lockPointer) canvas.requestPointerLock?.();
       if (startDemo && options.demo && !tour?.active) startTour();
       entered = true;
+      if (isGalleryMobile() && mobileHintEl) {
+        mobileHintEl.textContent = 'Tap a photo to step closer · drag to look';
+      }
     }
 
     let dragLook = null;
+    const TAP_MOVE_PX = 16;
     function onPointerDownLook(e) {
       if (e.pointerType === 'mouse' && e.button !== 0) return;
       if (isGalleryMobile() && !entered) {
@@ -1249,7 +1346,14 @@
       unlockAudio();
       viewport.focus({ preventScroll: true });
       if (document.pointerLockElement === canvas) return;
-      dragLook = { id: e.pointerId, x: e.clientX, y: e.clientY };
+      dragLook = {
+        id: e.pointerId,
+        x: e.clientX,
+        y: e.clientY,
+        sx: e.clientX,
+        sy: e.clientY,
+        dist: 0,
+      };
       try { canvas.setPointerCapture(e.pointerId); } catch (_) { /* ignore */ }
     }
     function onPointerMoveLook(e) {
@@ -1259,11 +1363,23 @@
       const dy = e.clientY - dragLook.y;
       dragLook.x = e.clientX;
       dragLook.y = e.clientY;
+      dragLook.dist += Math.hypot(dx, dy);
+      if (dragLook.dist > TAP_MOVE_PX && approach) approach = null;
       yaw -= dx * 0.0045;
       pitch -= dy * 0.0045;
       pitch = Math.max(-1.2, Math.min(1.2, pitch));
     }
     function onPointerUpLook(e) {
+      if (!dragLook || e.pointerId !== dragLook.id) return;
+      const wasTap = dragLook.dist < TAP_MOVE_PX;
+      const sx = dragLook.sx;
+      const sy = dragLook.sy;
+      dragLook = null;
+      if (!wasTap || !isGalleryMobile() || !entered) return;
+      const frame = frameAtClient(sx, sy);
+      if (frame) stepCloserToFrame(frame);
+    }
+    function onPointerCancelLook(e) {
       if (!dragLook || e.pointerId !== dragLook.id) return;
       dragLook = null;
     }
@@ -1277,7 +1393,7 @@
     canvas.addEventListener('pointerdown', onPointerDownLook);
     canvas.addEventListener('pointermove', onPointerMoveLook);
     canvas.addEventListener('pointerup', onPointerUpLook);
-    canvas.addEventListener('pointercancel', onPointerUpLook);
+    canvas.addEventListener('pointercancel', onPointerCancelLook);
     canvas.addEventListener('wheel', onWheel, { passive: false });
     viewport.addEventListener('wheel', onWheel, { passive: false });
     document.addEventListener('pointerlockchange', onLockChange);
@@ -1313,7 +1429,7 @@
         canvas.removeEventListener('pointerdown', onPointerDownLook);
         canvas.removeEventListener('pointermove', onPointerMoveLook);
         canvas.removeEventListener('pointerup', onPointerUpLook);
-        canvas.removeEventListener('pointercancel', onPointerUpLook);
+        canvas.removeEventListener('pointercancel', onPointerCancelLook);
         canvas.removeEventListener('wheel', onWheel);
         viewport.removeEventListener('wheel', onWheel);
         document.removeEventListener('pointerlockchange', onLockChange);
