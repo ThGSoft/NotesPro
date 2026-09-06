@@ -13,6 +13,11 @@
   const THEMES = ['info', 'success', 'warning', 'danger', 'note'];
   const MODES = new Set(['walk', 'grid']);
 
+  function isGalleryMobile() {
+    return document.body.classList.contains('mobile-layout')
+      || (typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 768px)').matches);
+  }
+
   function escapeHtml(text) {
     return String(text ?? '')
       .replace(/&/g, '&amp;')
@@ -362,7 +367,10 @@
       `<canvas class="gallery-walk-canvas"></canvas>`,
       `<div class="gallery-walk-css3d" aria-hidden="true"><div class="gallery-walk-css3d-cam"></div></div>`,
       `<div class="gallery-walk-overlay">`,
-      `<p class="gallery-walk-hint">Click to look &amp; unlock sound · <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> walk · wheel zoom · <kbd>Space</kbd> open · framed pictures on the walls</p>`,
+      `<p class="gallery-walk-hint gallery-walk-hint--desktop">Click to look &amp; unlock sound · <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> walk · wheel zoom · <kbd>Space</kbd> open · framed pictures on the walls</p>`,
+      `<p class="gallery-walk-hint gallery-walk-hint--mobile">${spec.demo
+        ? 'Tap to enter — demo tour starts'
+        : 'Tap to look · drag to look around'}</p>`,
       `<div class="gallery-walk-caption" aria-live="polite"></div>`,
       `</div>`,
       `</div>`,
@@ -418,7 +426,7 @@
     }
 
     return [
-      `<div class="gallery-block${themeClass}${customClass}${fullClass}${editable ? ' gallery-block--editable' : ''}${spec.draft ? ' gallery-block--draft' : ''}${spec.mode === 'walk' && !spec.draft ? ' gallery-block--walk' : ''}"${styleAttr}`,
+      `<div class="gallery-block${themeClass}${customClass}${fullClass}${editable ? ' gallery-block--editable' : ''}${spec.draft ? ' gallery-block--draft' : ''}${spec.mode === 'walk' && !spec.draft ? ' gallery-block--walk' : ''}${spec.demo ? ' gallery-block--demo' : ''}"${styleAttr}`,
       ` data-gallery-index="${galleryIndex}"`,
       ` data-gallery-spec="${escapeHtml(encoded)}" tabindex="0">`,
       renderFullscreenButton(),
@@ -1210,10 +1218,54 @@
     }
 
     function requestLook() {
+      if (ignoreNextLookClick) {
+        ignoreNextLookClick = false;
+        return;
+      }
+      enterGallery({ startDemo: false, stopTourIfActive: true, lockPointer: !isGalleryMobile() });
+    }
+
+    let entered = false;
+    let ignoreNextLookClick = false;
+
+    function enterGallery({ startDemo = false, stopTourIfActive = false, lockPointer = false } = {}) {
+      if (stopTourIfActive && tour?.active) stopTour();
+      unlockAudio();
+      viewport.focus({ preventScroll: true });
+      if (lockPointer) canvas.requestPointerLock?.();
+      if (startDemo && options.demo && !tour?.active) startTour();
+      entered = true;
+    }
+
+    let dragLook = null;
+    function onPointerDownLook(e) {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      if (isGalleryMobile() && !entered) {
+        enterGallery({ startDemo: !!options.demo, stopTourIfActive: false, lockPointer: false });
+        ignoreNextLookClick = true;
+        return;
+      }
       if (tour?.active) stopTour();
       unlockAudio();
       viewport.focus({ preventScroll: true });
-      canvas.requestPointerLock?.();
+      if (document.pointerLockElement === canvas) return;
+      dragLook = { id: e.pointerId, x: e.clientX, y: e.clientY };
+      try { canvas.setPointerCapture(e.pointerId); } catch (_) { /* ignore */ }
+    }
+    function onPointerMoveLook(e) {
+      if (!dragLook || e.pointerId !== dragLook.id) return;
+      if (document.pointerLockElement === canvas) return;
+      const dx = e.clientX - dragLook.x;
+      const dy = e.clientY - dragLook.y;
+      dragLook.x = e.clientX;
+      dragLook.y = e.clientY;
+      yaw -= dx * 0.0045;
+      pitch -= dy * 0.0045;
+      pitch = Math.max(-1.2, Math.min(1.2, pitch));
+    }
+    function onPointerUpLook(e) {
+      if (!dragLook || e.pointerId !== dragLook.id) return;
+      dragLook = null;
     }
 
     function onLockChange() {
@@ -1222,6 +1274,10 @@
     }
 
     canvas.addEventListener('click', requestLook);
+    canvas.addEventListener('pointerdown', onPointerDownLook);
+    canvas.addEventListener('pointermove', onPointerMoveLook);
+    canvas.addEventListener('pointerup', onPointerUpLook);
+    canvas.addEventListener('pointercancel', onPointerUpLook);
     canvas.addEventListener('wheel', onWheel, { passive: false });
     viewport.addEventListener('wheel', onWheel, { passive: false });
     document.addEventListener('pointerlockchange', onLockChange);
@@ -1237,7 +1293,7 @@
     resize();
     raf = requestAnimationFrame(tick);
     syncDemoButton();
-    if (options.demo) {
+    if (options.demo && !isGalleryMobile()) {
       requestAnimationFrame(() => startTour());
     }
 
@@ -1253,6 +1309,11 @@
         stopTour();
         cancelAnimationFrame(raf);
         if (document.pointerLockElement === canvas) document.exitPointerLock();
+        canvas.removeEventListener('click', requestLook);
+        canvas.removeEventListener('pointerdown', onPointerDownLook);
+        canvas.removeEventListener('pointermove', onPointerMoveLook);
+        canvas.removeEventListener('pointerup', onPointerUpLook);
+        canvas.removeEventListener('pointercancel', onPointerUpLook);
         canvas.removeEventListener('wheel', onWheel);
         viewport.removeEventListener('wheel', onWheel);
         document.removeEventListener('pointerlockchange', onLockChange);

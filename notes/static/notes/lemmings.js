@@ -28,6 +28,7 @@
     { id: 'basher', label: 'Bash', key: '3' },
     { id: 'digger', label: 'Dig', key: '4' },
     { id: 'floater', label: 'Float', key: '5' },
+    { id: 'exploder', label: 'Explode', key: '6' },
   ];
 
   function escapeHtml(text) {
@@ -113,7 +114,7 @@
       out: 20,
       need: 10,
       time: 180,
-      stock: { blocker: 3, builder: 5, basher: 3, digger: 3, floater: 3 },
+      stock: { blocker: 3, builder: 5, basher: 3, digger: 3, floater: 3, exploder: 5 },
     };
   }
 
@@ -138,7 +139,7 @@
       `<div class="lemmings-block-title">${escapeHtml(title)}</div>`,
       `<div class="lemmings-block-meta">Fun 1 · Just a gap</div>`,
       `</div>`,
-      `<p class="lemmings-block-hint">Pick a skill, click a lemming · 1–5 skills · Space pause · R restart · Save 10 of 20</p>`,
+      `<p class="lemmings-block-hint">Pick a skill, click a lemming · 1–6 skills · Space pause · R restart · Save 10 of 20</p>`,
     ].join('');
     const skillBtns = SKILLS.map((s) => (
       `<button type="button" class="lemmings-skill" data-skill="${s.id}" tabindex="-1">`
@@ -195,6 +196,7 @@
       over: false,
       won: false,
       nuke: false,
+      booms: [],
       message: '',
       anim: 0,
       raf: 0,
@@ -236,6 +238,7 @@
         jobT: 0,
         builds: 0,
         explode: 0,
+        ohNo: 0,
         dead: false,
         saved: false,
         frame: 0,
@@ -261,6 +264,7 @@
       state.over = false;
       state.won = false;
       state.nuke = false;
+      state.booms = [];
       state.message = '';
       state.hover = -1;
       syncSkillUi();
@@ -290,6 +294,13 @@
         if ((state.stock.floater || 0) <= 0) return false;
         state.stock.floater -= 1;
         lem.floater = true;
+        return true;
+      }
+      if (skill === 'exploder') {
+        if (lem.explode > 0 || lem.ohNo > 0) return false;
+        if ((state.stock.exploder || 0) <= 0) return false;
+        state.stock.exploder -= 1;
+        lem.explode = 5;
         return true;
       }
       if ((state.stock[skill] || 0) <= 0) return false;
@@ -334,17 +345,23 @@
     }
 
     function stepWalk(lem, dt) {
+      const midX = lem.x + LEM_W / 2;
       const feetY = lem.y + LEM_H + 1;
-      if (!groundAt(lem.x + LEM_W / 2, feetY)) {
+      if (!groundAt(midX, feetY)) {
         lem.state = 'fall';
         lem.fall = 0;
         return;
       }
       const aheadX = lem.dir > 0 ? lem.x + LEM_W + 1 : lem.x - 1;
-      const chestY = lem.y + LEM_H * 0.45;
-      if (groundAt(aheadX, chestY)) {
-        lem.dir *= -1;
-        return;
+      const shinY = lem.y + LEM_H - 1;
+      const stepClearY = lem.y + LEM_H - TILE - 1;
+      if (groundAt(aheadX, shinY)) {
+        const headAfter = lem.y - TILE + 2;
+        if (groundAt(aheadX, stepClearY) || groundAt(midX, headAfter) || groundAt(aheadX, headAfter)) {
+          lem.dir *= -1;
+          return;
+        }
+        lem.y -= TILE;
       }
       for (const b of blockers()) {
         if (b === lem) continue;
@@ -358,6 +375,7 @@
         }
       }
       lem.x += lem.dir * WALK * dt;
+      while (groundAt(lem.x + LEM_W / 2, lem.y + LEM_H) && lem.y > 0) lem.y -= 1;
     }
 
     function stepFall(lem, dt) {
@@ -436,13 +454,22 @@
     function explode(lem) {
       const cx = Math.floor((lem.x + LEM_W / 2) / TILE);
       const cy = Math.floor((lem.y + LEM_H / 2) / TILE);
-      for (let y = cy - 2; y <= cy + 2; y += 1) {
-        for (let x = cx - 2; x <= cx + 2; x += 1) {
-          if ((x - cx) * (x - cx) + (y - cy) * (y - cy) <= 6) setTile(x, y, ' ');
+      for (let y = cy - 4; y <= cy + 4; y += 1) {
+        for (let x = cx - 4; x <= cx + 4; x += 1) {
+          const d2 = (x - cx) * (x - cx) + (y - cy) * (y - cy);
+          if (d2 <= 14) setTile(x, y, ' ');
         }
       }
+      state.booms.push({
+        x: lem.x + LEM_W / 2,
+        y: lem.y + LEM_H / 2,
+        t: 0.5,
+        life: 0.5,
+      });
       lem.dead = true;
-      lem.state = 'splat';
+      lem.state = 'boom';
+      lem.explode = 0;
+      lem.ohNo = 0;
       state.dead += 1;
     }
 
@@ -460,6 +487,10 @@
       if (state.paused || state.over) return;
       state.anim += dt;
       state.time = Math.max(0, state.time - dt);
+      if (state.nuke) {
+        state.spawnT = 99;
+        state.spawned = Math.max(state.spawned, state.out);
+      }
       if (state.spawned < state.out) {
         state.spawnT -= dt;
         if (state.spawnT <= 0) {
@@ -467,15 +498,28 @@
           state.spawnT = 0.55;
         }
       }
+      state.booms = state.booms.filter((b) => {
+        b.t -= dt;
+        return b.t > 0;
+      });
       state.lems.forEach((lem) => {
         if (lem.dead || lem.saved) return;
-        if (state.nuke && lem.explode <= 0) lem.explode = 5;
+        if (state.nuke && lem.explode <= 0 && lem.ohNo <= 0) lem.explode = 5;
         if (lem.explode > 0) {
-          lem.explode -= dt * 2.4;
+          lem.explode -= dt;
           if (lem.explode <= 0) {
+            lem.explode = 0;
+            lem.ohNo = 0.38;
+          }
+        }
+        if (lem.ohNo > 0) {
+          lem.ohNo -= dt;
+          if (lem.ohNo <= 0) {
             explode(lem);
             return;
           }
+          lem.frame += dt * 8;
+          return;
         }
         lem.frame += dt * 8;
         if (lem.state === 'fall') stepFall(lem, dt);
@@ -589,13 +633,21 @@
         ctx.arc(0, -2, 5, Math.PI, 0);
         ctx.fill();
       }
-      if (lem.explode > 0) {
-        ctx.fillStyle = '#fff';
-        ctx.font = 'bold 8px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText(String(Math.ceil(lem.explode)), 0, -4);
+      if (lem.ohNo > 0) {
+        ctx.fillStyle = '#f0d0b0';
+        ctx.fillRect(-4, 0, 2, 4);
+        ctx.fillRect(2, 0, 2, 4);
       }
       ctx.restore();
+      if (lem.explode > 0) {
+        ctx.fillStyle = '#fff';
+        ctx.strokeStyle = '#c1121f';
+        ctx.lineWidth = 2;
+        ctx.font = 'bold 10px ui-monospace, Consolas, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.strokeText(String(Math.ceil(lem.explode)), px + LEM_W / 2, py - 3);
+        ctx.fillText(String(Math.ceil(lem.explode)), px + LEM_W / 2, py - 3);
+      }
     }
 
     function drawHud() {
@@ -618,11 +670,27 @@
       }
     }
 
+    function drawBooms() {
+      state.booms.forEach((b) => {
+        const u = 1 - b.t / b.life;
+        const r = 6 + u * 28;
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, r, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255, ${Math.round(200 - u * 120)}, 40, ${0.85 - u * 0.75})`;
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, r * 0.45, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255, 255, 220, ${0.9 - u})`;
+        ctx.fill();
+      });
+    }
+
     function draw() {
       drawTerrain();
       drawExit();
       drawHatch();
       state.lems.forEach(drawLem);
+      drawBooms();
       drawHud();
     }
 
@@ -690,6 +758,11 @@
         event.preventDefault();
         if (!state.over) state.paused = !state.paused;
         syncSkillUi();
+        return;
+      }
+      if (k === 'n' || k === 'N') {
+        event.preventDefault();
+        if (!state.over) state.nuke = true;
         return;
       }
       const skill = SKILLS.find(s => s.key === k);

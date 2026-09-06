@@ -38,6 +38,7 @@ https://thgsoft.online/DjangoNotesPro/
 - **Puzzle** blocks — jigsaw puzzle from a pasted image (drag pieces into place)
 - **Pinball** blocks — 3D Pinball Space Cadet (WASM) in preview
 - **Gallery** blocks — walk-in 3D photo corridor with embedded wall frames
+- **Photo cube** / **Photo book** blocks — 3D cube and flip-book albums of your own images
 - **Roller coaster** blocks — themed 3D ride (jungle / dune / snow / alps) with your images along the track
 - **Auto scooter** blocks — bumper-car rink; your photos ride on the other cars
 - **Ghost train** blocks — convoy on rails; photos in frames along the track
@@ -1023,9 +1024,89 @@ Click the table to focus, then play with keyboard:
 | **R** | Restart game |
 | **T** | Toggle sound |
 
-On phones (and tablets in portrait), on-screen **Left**, **Launch**, and **Right** buttons appear over the table (hold flippers, tap launch). **Restart** and **Sound** are in a second row. Desktop uses the keyboard only.
+On phones (NotesPro mobile layout, viewport ≤ 768px), on-screen **Left**, **Launch**, and **Right** buttons appear over the table (hold flippers, tap launch). **Restart** and **Sound** are in a second row. Desktop uses the keyboard only — the overlay is hidden even if the pinball iframe is narrow.
 
 Toolbar: **Insert pinball** adds a Space Cadet table. The first load downloads ~9 MB of game data from jsDelivr. Use the **⛶** button for monitor fullscreen.
+
+### Pac-Man
+
+Embed a playable **Pac-Man** maze with a fenced `pacman` block. Click the maze to focus, then steer with the keyboard (or the on-screen D-pad on phones).
+
+````markdown
+```pacman{fullscreen}
+```
+````
+
+| Option | Description |
+|--------|-------------|
+| `fullscreen` | Edge-to-edge maze, no title/hint chrome (default on) |
+| `title` | Block title (hidden chrome in fullscreen mode) |
+| `col` / `bkcol` | Theme colors |
+
+| Key | Action |
+|-----|--------|
+| **⛶ button** / **Esc** | Enter / exit monitor fullscreen |
+| **Arrows** / **WASD** | Move |
+| **Space** / **P** | Pause |
+| **R** | Restart |
+
+On phones (NotesPro mobile layout, viewport ≤ 768px), a D-pad appears under the maze. You can also swipe on the maze. Desktop uses the keyboard only.
+
+Toolbar: **Insert Pac-Man** adds a maze. Eat every pellet to clear the board and advance through **6 mazes** (Arcade, Lanes, Citadel, Fork, Night, Wide); they then repeat, faster. Power pellets turn the ghosts blue.
+
+### Super Mario
+
+Embed a **Super Mario–style** side scroller with a fenced `mario` block (`supermario` works too). Click the stage to focus, then run and jump. Stomp brown enemies, hit `?` blocks for coins, and grab the flag at the end of World 1-1.
+
+````markdown
+```mario{fullscreen}
+```
+````
+
+| Option | Description |
+|--------|-------------|
+| `fullscreen` | Edge-to-edge stage, no title/hint chrome (default on) |
+| `title` | Block title (hidden chrome in fullscreen mode) |
+| `col` / `bkcol` | Theme colors |
+
+| Key | Action |
+|-----|--------|
+| **⛶ button** / **Esc** | Enter / exit monitor fullscreen |
+| **Arrows** / **A D** | Run |
+| **Space** / **W** / **↑** | Jump (hold for a higher jump) |
+| **P** | Pause |
+| **R** | Restart |
+
+On phones, **Left / Jump / Right** appear under the stage. Desktop uses the keyboard only.
+
+Toolbar: **Insert Super Mario** adds World 1-1. Fall in a pit or get bumped by an enemy to lose a life.
+
+### Lemmings
+
+Embed a **Lemmings-style** puzzle with a fenced `lemmings` block (`lemming` works too). Pick a skill, then click a walker. Build a bridge across the gap, bash through the dirt wall, and get **10 of 20** into the green exit.
+
+````markdown
+```lemmings{fullscreen}
+```
+````
+
+| Option | Description |
+|--------|-------------|
+| `fullscreen` | Edge-to-edge stage, no title/hint chrome (default on) |
+| `title` | Block title (hidden chrome in fullscreen mode) |
+| `col` / `bkcol` | Theme colors |
+
+| Key | Action |
+|-----|--------|
+| **1–6** | Block / Build / Bash / Dig / Float / Explode |
+| **Click a lemming** | Assign the selected skill |
+| **N** | Nuke — every lemming explodes |
+| **Space** / **P** | Pause |
+| **R** | Restart |
+
+Skill bar works on phones too. **Explode** counts down 5–1, then blasts a crater. **Nuke** does that for everyone.
+
+Toolbar: **Insert Lemmings** adds Fun 1.
 
 ### Gallery
 
@@ -1075,11 +1156,80 @@ With your own photos / videos:
 | `fullscreen` | Edge-to-edge layout (default on) |
 | `col` / `bkcol` | Theme colors |
 
-**Walk controls:** click the view to capture the mouse (also unlocks video sound) · **W A S D** / arrows move · **Shift** sprint · mouse **wheel** zoom closer / wider · **Space** open the media you're looking at · **Esc** release mouse · **Demo tour** starts / stops the auto-walk (closer to each image/video) · **Thumbnails** toggles a strip.
+**Walk controls:** click the view to capture the mouse (also unlocks video sound) · **W A S D** / arrows move · **Shift** sprint · mouse **wheel** zoom closer / wider · **Space** open the media you're looking at · **Esc** release mouse · **Demo tour** starts / stops the auto-walk (shown only on `demo` galleries) · **Thumbnails** toggles a strip.
 
-Videos play on the wall when the file has a picture track. If there is no video (audio-only file, or a YouTube clip you are not facing closely enough), **sound still plays**. Stand in front of a YouTube frame to see the video overlay; glance away and you hear the song only. **Only one clip has audio at a time.** Browsers may keep sound muted until you click **Enter gallery** or **Demo tour**. **Space** opens the media in the lightbox.
+On **mobile**, **Enter gallery** and **Demo tour** are hidden. The first tap enters the hall; on a `demo` gallery that tap also starts the tour. Drag to look around (that takes over from the tour).
+
+Videos play on the wall when the file has a picture track. If there is no video (audio-only file, or a YouTube clip you are not facing closely enough), **sound still plays**. Stand in front of a YouTube frame to see the video overlay; glance away and you hear the song only. **Only one clip has audio at a time.** Browsers may keep sound muted until you click **Enter gallery** or **Demo tour** (or tap the gallery on a phone). **Space** opens the media in the lightbox.
 
 Toolbar: **Insert walk-in photo gallery demo** adds a sample corridor (with a video) that walks itself.
+
+### Photo cube
+
+A **3D photo cube** with your pictures on all six faces. Drag to turn it; it also spins slowly. Extra photos wrap around the faces — **Next faces** shifts which six are showing.
+
+Empty cube — paste or drop your own photos:
+
+````markdown
+```photocube{title=My cube;col=info}
+```
+````
+
+With your images:
+
+````markdown
+```photocube{title=Holiday cube;col=info}
+![Lake](media/uploads/lake.jpg)
+![Forest](media/uploads/forest.jpg)
+![Coast](media/uploads/coast.jpg)
+![Valley](media/uploads/valley.jpg)
+![Bridge](media/uploads/bridge.jpg)
+![Hills](media/uploads/hills.jpg)
+```
+````
+
+| Option | Description |
+|--------|-------------|
+| `title` | Block heading (also used in compact chrome) |
+| `spin` | Slow auto-rotate (default on; `spin=0` to pause) |
+| `fullscreen` | Edge-to-edge layout (default on) |
+| `col` / `bkcol` | Theme colors |
+
+**Cube controls:** drag to rotate · **Pause spin** / **Spin** · **Next faces** when you have more than six photos · paste / drop to add pictures while editing.
+
+Toolbar: **Insert photo cube** adds a sample cube.
+
+### Photo book
+
+A **hardcover photo album**. Open the cover, then turn pages like a real book. Two photos per spread. Paste or drop your own pictures while editing.
+
+Empty book:
+
+````markdown
+```photobook{title=Family album;col=warning}
+```
+````
+
+With your images:
+
+````markdown
+```photobook{title=Trip album;col=warning}
+![Cover](media/uploads/cover.jpg)
+![Walk](media/uploads/walk.jpg)
+![Cafe](media/uploads/cafe.jpg)
+![Sunset](media/uploads/sunset.jpg)
+```
+````
+
+| Option | Description |
+|--------|-------------|
+| `title` | Cover title |
+| `fullscreen` | Edge-to-edge layout (default on) |
+| `col` / `bkcol` | Theme colors |
+
+**Book controls:** **Open book** · click the **right page** or **Next** to turn forward · **left page** or **Prev** to go back · arrow keys · swipe on a phone · paste / drop to add pictures.
+
+Toolbar: **Insert photo book** adds a sample album.
 
 ### Roller coaster
 
@@ -1127,7 +1277,7 @@ Alps (peaks + pines):
 | `fullscreen` | Edge-to-edge layout (default on) |
 | `col` / `bkcol` | Theme colors |
 
-Aliases: `rollercoaster`, `coaster`. Paste or drop images onto the block to hang them along the track. **Ride / Pause**, **Boost**, and ⛶ fullscreen are in the toolbar. The ride uses **track obstacle detection**: gates, debris, and barriers are placed on the rails ahead; the train brakes and banks when they are detected. Scenery beside the track can still trigger near-miss warnings when you pass close to trees or rocks.
+Aliases: `rollercoaster`, `coaster`. Paste or drop images onto the block to hang them along the track. **Ride / Pause**, **View** (ego / chase, or **C**), **Boost**, and ⛶ fullscreen are in the toolbar. The rails stay clear — scenery sits beside the track.
 
 Toolbar: **Insert jungle roller coaster** adds a sample jungle ride.
 
@@ -1152,7 +1302,7 @@ Embed a **bumper-car rink** where each of your photos becomes another scooter yo
 
 Aliases: `autoscooter`, `bumpercar`, `bumpercars`.
 
-**Controls:** click **Drive** (or the rink) · **W A S D** / arrows steer & drive · **C** toggles chase / top camera · **Reset** respawns cars · paste/drop images to add more photo cars · ⛶ fullscreen.
+**Controls:** click **Drive** (or the rink) · **W A S D** / arrows steer & drive · **C** / **View** cycles ego / chase / top camera · **Reset** respawns cars · paste/drop images to add more photo cars · ⛶ fullscreen.
 
 Toolbar: **Insert auto scooter rink** adds a sample rink with photo cars.
 

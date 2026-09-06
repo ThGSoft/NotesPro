@@ -71,7 +71,7 @@
     try {
       const parsed = new URL(url, window.location.href);
       parsed.searchParams.set('mobile', parentIsMobile() ? '1' : '0');
-      parsed.searchParams.set('v', '4');
+      parsed.searchParams.set('v', '5');
       return parsed.href;
     } catch (_) {
       return url;

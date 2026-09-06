@@ -2088,7 +2088,7 @@
   }
 
   function isPreviewRichBlock(el) {
-    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .md-python, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .gallery-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .page-tags');
+    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .md-python, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .gallery-block, .photocube-block, .photobook-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .page-tags');
   }
 
   function getPreviewBlockSourceLine(node) {
@@ -3414,6 +3414,10 @@
 
   let leaveHistoryGuardArmed = true;
   let ignoreNextLeavePopstate = false;
+  let applyingHistory = false;
+  let navHistoryReady = false;
+  let pendingHistoryPageId;
+  let workspaceSwitchChain = Promise.resolve();
 
   function hasPendingPageSave() {
     return Boolean(autosaveTimer);
@@ -3428,11 +3432,92 @@
     return window.confirm(msg);
   }
 
-  function armLeaveHistoryTrap() {
-    if (!leaveHistoryGuardArmed) return;
+  function currentNavState() {
+    return {
+      notespro: true,
+      ws: workspaceId != null && workspaceId !== '' ? String(workspaceId) : null,
+      page: currentPageId != null ? Number(currentPageId) : null,
+    };
+  }
+
+  function navStateEqual(a, b) {
+    if (!a || !b) return false;
+    return String(a.ws || '') === String(b.ws || '')
+      && String(a.page || '') === String(b.page || '');
+  }
+
+  function buildNavUrl(state) {
+    const url = new URL(location.href);
+    if (state.ws) url.searchParams.set('ws', String(state.ws));
+    else url.searchParams.delete('ws');
+    if (state.page) url.searchParams.set('page', String(state.page));
+    else url.searchParams.delete('page');
+    return `${url.pathname}${url.search}${url.hash}`;
+  }
+
+  function syncNavHistory({ replace = false } = {}) {
+    if (applyingHistory) return;
+    const state = currentNavState();
+    const url = buildNavUrl(state);
+    const cur = history.state;
+    if (!replace && navHistoryReady && navStateEqual(cur, state) && cur?.notespro && !cur.notesproRoot) {
+      return;
+    }
     try {
-      history.pushState({ notesproGuard: true }, '', location.href);
+      const atSentinel = !cur || cur.notesproRoot || !cur.notespro;
+      if (replace && cur?.notespro && !cur.notesproRoot) {
+        history.replaceState(state, '', url);
+      } else if (!navHistoryReady || atSentinel) {
+        if (!cur?.notesproRoot) {
+          history.replaceState({ notesproRoot: true }, '', location.href);
+        }
+        history.pushState(state, '', url);
+      } else {
+        history.pushState(state, '', url);
+      }
+      navHistoryReady = true;
     } catch (_) { /* ignore */ }
+  }
+
+  function applyNavQueryFromUrl() {
+    try {
+      const url = new URL(location.href);
+      const ws = url.searchParams.get('ws');
+      const pageRaw = url.searchParams.get('page');
+      const select = document.getElementById('workspace-select');
+      if (ws && select && [...select.options].some(o => o.value === ws)) {
+        select.value = ws;
+        workspaceId = ws;
+      }
+      const page = parseInt(pageRaw, 10);
+      if (Number.isFinite(page) && page > 0) currentPageId = page;
+    } catch (_) { /* ignore */ }
+  }
+
+  async function restoreNavState(state) {
+    if (!state?.notespro) return false;
+    applyingHistory = true;
+    try {
+      const ws = state.ws != null ? String(state.ws) : '';
+      const page = state.page ? Number(state.page) : null;
+      if (ws && String(workspaceId) !== ws) {
+        const select = document.getElementById('workspace-select');
+        if (select && [...select.options].some(o => o.value === ws)) {
+          pendingHistoryPageId = page;
+          select.value = ws;
+          select.dispatchEvent(new Event('change'));
+          await workspaceSwitchChain;
+          return true;
+        }
+      }
+      if (page && String(currentPageId) !== String(page)) {
+        await loadPage(page, { fromHistory: true });
+        selectTreeNode(page, true);
+      }
+      return true;
+    } finally {
+      applyingHistory = false;
+    }
   }
 
   async function flushPendingPageSave() {
@@ -3454,18 +3539,28 @@
   }
 
   function initLeavePageGuard() {
-    armLeaveHistoryTrap();
+    syncNavHistory();
 
-    window.addEventListener('popstate', async () => {
+    window.addEventListener('popstate', async (event) => {
       if (ignoreNextLeavePopstate) {
         ignoreNextLeavePopstate = false;
         return;
       }
+
+      const state = event.state;
+      if (state?.notespro && !state.notesproRoot) {
+        await restoreNavState(state);
+        return;
+      }
+
       if (!leaveHistoryGuardArmed) return;
 
       const leave = confirmLeavePage();
       if (!leave) {
-        armLeaveHistoryTrap();
+        try {
+          history.pushState(currentNavState(), '', buildNavUrl(currentNavState()));
+          navHistoryReady = true;
+        } catch (_) { /* ignore */ }
         return;
       }
 
@@ -7163,6 +7258,127 @@
     });
   }
 
+  const PHOTOCUBE_BLOCK_RE = /```(?:photocube|photo-cube)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+  const PHOTOBOOK_BLOCK_RE = /```(?:photobook|photo-book|flipbook)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function updatePhotoFenceInMarkdown(markdown, kind, blockIndex, update) {
+    const engine = kind === 'photobook' ? window.NotesProPhotobook : window.NotesProPhotocube;
+    if (!engine) return markdown;
+    let idx = 0;
+    const re = kind === 'photobook'
+      ? /```(?:photobook|photo-book|flipbook)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi
+      : /```(?:photocube|photo-cube)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+    const fenceName = kind === 'photobook' ? 'photobook' : 'photocube';
+    return String(markdown || '').replace(re, (match, fenceAttrs, content = '') => {
+      const thisIndex = idx;
+      idx += 1;
+      if (thisIndex !== blockIndex) return match;
+      const cfg = engine.parseFenceAttrs(fenceAttrs || '');
+      const photos = engine.parsePhotos(content || '');
+      const additions = [];
+      if (update.addImage) {
+        additions.push({
+          src: update.addImage,
+          label: update.label || `Photo ${photos.length + 1}`,
+        });
+      }
+      if (update.addYoutube) {
+        additions.push({
+          src: update.addYoutube,
+          label: update.label || 'YouTube',
+          kind: 'youtube',
+        });
+      }
+      if (!additions.length) return match;
+      const nextPhotos = photos.concat(additions);
+      const attrs = engine.buildFenceAttrsString(cfg);
+      const body = engine.formatPhotoBody(nextPhotos);
+      const fence = attrs ? `${fenceName}{${attrs}}` : fenceName;
+      return `\`\`\`${fence}\n${body}\n\`\`\``;
+    });
+  }
+
+  function parsePhotocubeBlocks(text, options = {}) {
+    let photocubeIndex = 0;
+    PHOTOCUBE_BLOCK_RE.lastIndex = 0;
+    return text.replace(PHOTOCUBE_BLOCK_RE, (_, fenceAttrs, content) => {
+      const engine = window.NotesProPhotocube;
+      const idx = photocubeIndex++;
+      const html = engine?.renderBlock
+        ? engine.renderBlock(content || '', fenceAttrs || '', {
+          photocubeIndex: idx,
+          editable: !!options.sheetEditable,
+        })
+        : '<div class="photocube-block photoview-block--error">Photo cube engine not loaded.</div>';
+      return wrapRichPreviewBlock(html);
+    });
+  }
+
+  function parsePhotobookBlocks(text, options = {}) {
+    let photobookIndex = 0;
+    PHOTOBOOK_BLOCK_RE.lastIndex = 0;
+    return text.replace(PHOTOBOOK_BLOCK_RE, (_, fenceAttrs, content) => {
+      const engine = window.NotesProPhotobook;
+      const idx = photobookIndex++;
+      const html = engine?.renderBlock
+        ? engine.renderBlock(content || '', fenceAttrs || '', {
+          photobookIndex: idx,
+          editable: !!options.sheetEditable,
+        })
+        : '<div class="photobook-block photoview-block--error">Photo book engine not loaded.</div>';
+      return wrapRichPreviewBlock(html);
+    });
+  }
+
+  function hydratePhotoFenceBlocks(root, kind) {
+    const engine = kind === 'photobook' ? window.NotesProPhotobook : window.NotesProPhotocube;
+    if (!engine) return;
+    const selector = kind === 'photobook'
+      ? '.photobook-block[data-photobook-spec]'
+      : '.photocube-block[data-photocube-spec]';
+    const indexKey = kind === 'photobook' ? 'photobookIndex' : 'photocubeIndex';
+    (root || document).querySelectorAll(selector).forEach(el => {
+      const blockIndex = parseInt(el.dataset[indexKey], 10);
+      engine.hydrateBlock(el, {
+        onPasteImage: userCanEdit && Number.isFinite(blockIndex) && easyMDE
+          ? async (file) => {
+            const mediaPath = await uploadPastedImageBlob(file, file.name || 'paste.png');
+            const oldMarkdown = easyMDE.value();
+            const updated = updatePhotoFenceInMarkdown(oldMarkdown, kind, blockIndex, {
+              addImage: mediaPath,
+              label: file.name ? String(file.name).replace(/\.[^.]+$/, '') : 'Photo',
+            });
+            if (updated === oldMarkdown) return;
+            easyMDE.value(updated);
+            scheduleSave();
+            schedulePreviewRefresh();
+          }
+          : null,
+        onPasteYoutube: userCanEdit && Number.isFinite(blockIndex) && easyMDE
+          ? async (youtubeId) => {
+            const oldMarkdown = easyMDE.value();
+            const updated = updatePhotoFenceInMarkdown(oldMarkdown, kind, blockIndex, {
+              addYoutube: `https://www.youtube.com/embed/${youtubeId}`,
+              label: 'YouTube',
+            });
+            if (updated === oldMarkdown) return;
+            easyMDE.value(updated);
+            scheduleSave();
+            schedulePreviewRefresh();
+          }
+          : null,
+      });
+    });
+  }
+
+  function hydratePhotocubeBlocks(root) {
+    hydratePhotoFenceBlocks(root, 'photocube');
+  }
+
+  function hydratePhotobookBlocks(root) {
+    hydratePhotoFenceBlocks(root, 'photobook');
+  }
+
   const ROLLERCOAST_BLOCK_RE = /```(?:rollercoast|rollercoaster|coaster)(?:\{([^}]*)\}|([^\n`]*))?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
 
   function updateRollercoastInMarkdown(markdown, rideIndex, update) {
@@ -8407,7 +8623,7 @@ function formatTextWithMarkup(rawText) {
     if (!root) return;
     root.querySelectorAll('pre').forEach(pre => {
       if (pre.closest('.md-code-block')) return;
-      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .md-python, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .gallery-block, .rollercoast-block, .scooter-block, .ghosttrain-block')) {
+      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .md-python, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .gallery-block, .photocube-block, .photobook-block, .rollercoast-block, .scooter-block, .ghosttrain-block')) {
         return;
       }
       const wrap = document.createElement('div');
@@ -8812,6 +9028,16 @@ function formatTextWithMarkup(rawText) {
       const label = cfg.title || 'Gallery';
       return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
     });
+    md = md.replace(/```(?:photocube|photo-cube)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const cfg = window.NotesProPhotocube?.parseFenceAttrs?.(fenceAttrs) || {};
+      const label = cfg.title || 'Photo cube';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
+    md = md.replace(/```(?:photobook|photo-book|flipbook)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const cfg = window.NotesProPhotobook?.parseFenceAttrs?.(fenceAttrs) || {};
+      const label = cfg.title || 'Photo book';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
     md = md.replace(/```(?:rollercoast|rollercoaster|coaster)(?:\{([^}]*)\}|([^\n`]*))?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, braceAttrs, spaceAttrs) => {
       const cfg = window.NotesProRollercoast?.parseFenceAttrs?.(braceAttrs || spaceAttrs) || {};
       const label = cfg.title || 'Roller coaster';
@@ -8881,6 +9107,8 @@ function formatTextWithMarkup(rawText) {
       md = parseMarioBlocks(md);
       md = parseLemmingsBlocks(md);
       md = parseGalleryBlocks(md, options);
+      md = parsePhotocubeBlocks(md, options);
+      md = parsePhotobookBlocks(md, options);
       md = parseRollercoastBlocks(md, options);
       md = parseScooterBlocks(md, options);
       md = parseGhosttrainBlocks(md, options);
@@ -8927,7 +9155,7 @@ function formatTextWithMarkup(rawText) {
   }
 
   function shouldShowEditPreview() {
-    return isEditing;
+    return isEditing && !isMobileLayout();
   }
 
   function isPreviewInteractionEnabled() {
@@ -9270,6 +9498,8 @@ function formatTextWithMarkup(rawText) {
     hydrateMarioBlocks(preview);
     hydrateLemmingsBlocks(preview);
     hydrateGalleryBlocks(preview);
+    hydratePhotocubeBlocks(preview);
+    hydratePhotobookBlocks(preview);
     hydrateRollercoastBlocks(preview);
     hydrateScooterBlocks(preview);
     hydrateGhosttrainBlocks(preview);
@@ -9451,9 +9681,20 @@ function formatTextWithMarkup(rawText) {
     if (btn) btn.textContent = editing ? 'Preview' : 'Edit';
     if (editing) {
       restoreRightPanelAfterPreview();
+      const pinEditorTop = () => {
+        const cm = easyMDE?.codemirror;
+        if (!cm) return;
+        cm.setCursor({ line: 0, ch: 0 });
+        cm.scrollTo(0, 0);
+      };
+      if (isMobileLayout()) pinEditorTop();
       switchMode('markdown');
-      // Right-panel restore / grid reflow often finishes after switchMode’s first refresh.
       scheduleMarkdownEditorLayoutRefresh({ syncScroll: !isMobileLayout() });
+      if (isMobileLayout()) {
+        requestAnimationFrame(pinEditorTop);
+        setTimeout(pinEditorTop, 60);
+        setTimeout(pinEditorTop, 220);
+      }
     } else {
       hideEditorFindBar();
       hideRightPanelForPreview();
@@ -10391,6 +10632,96 @@ function formatTextWithMarkup(rawText) {
     cm.focus();
     scheduleSave();
     schedulePreviewRefresh();
+  }
+
+  function buildGamesToolbarDropdown() {
+    return {
+      name: 'gamesMenu',
+      className: 'fa fa-gamepad',
+      title: 'Insert game',
+      children: [
+        {
+          name: 'insert-sudoku',
+          text: 'Sudoku',
+          title: 'Insert sudoku',
+          action: (editor) => insertFenceBlock(editor, 'sudoku{fullscreen;difficulty=medium}', ''),
+        },
+        {
+          name: 'insert-puzzle',
+          text: 'Jigsaw puzzle',
+          title: 'Insert jigsaw puzzle',
+          action: (editor) => insertFenceBlock(editor, 'puzzle{fullscreen;difficulty=medium}', ''),
+        },
+        {
+          name: 'insert-pinball',
+          text: 'Pinball',
+          title: 'Insert Space Cadet pinball',
+          action: (editor) => insertFenceBlock(editor, 'pinball{fullscreen}', ''),
+        },
+        {
+          name: 'insert-pacman',
+          text: 'Pac-Man',
+          title: 'Insert Pac-Man',
+          action: (editor) => insertFenceBlock(editor, 'pacman{fullscreen}', ''),
+        },
+        {
+          name: 'insert-mario',
+          text: 'Super Mario',
+          title: 'Insert Super Mario',
+          action: (editor) => insertFenceBlock(editor, 'mario{fullscreen}', ''),
+        },
+        {
+          name: 'insert-lemmings',
+          text: 'Lemmings',
+          title: 'Insert Lemmings',
+          action: (editor) => insertFenceBlock(editor, 'lemmings{fullscreen}', ''),
+        },
+        {
+          name: 'insert-rollercoast',
+          text: 'Roller coaster',
+          title: 'Insert jungle roller coaster',
+          action: (editor) => {
+            const body = [
+              '![Canopy](https://picsum.photos/id/1018/960/720)',
+              '![River](https://picsum.photos/id/1015/960/720)',
+              '![Trail](https://picsum.photos/id/1043/960/720)',
+              '![Mist](https://picsum.photos/id/1016/960/720)',
+            ].join('\n');
+            insertFenceBlock(editor, 'rollercoast{mode=jungle;title=Jungle coaster;demo;col=success}', body);
+          },
+        },
+        {
+          name: 'insert-scooter',
+          text: 'Auto scooter',
+          title: 'Insert auto scooter rink',
+          action: (editor) => {
+            const body = [
+              '![Blue](https://picsum.photos/id/1015/640/480)',
+              '![Green](https://picsum.photos/id/1018/640/480)',
+              '![Coast](https://picsum.photos/id/1016/640/480)',
+              '![Valley](https://picsum.photos/id/1043/640/480)',
+              '![Bridge](https://picsum.photos/id/1036/640/480)',
+            ].join('\n');
+            insertFenceBlock(editor, 'scooter{title=Auto scooter;demo;col=warning}', body);
+          },
+        },
+        {
+          name: 'insert-ghosttrain',
+          text: 'Ghost train',
+          title: 'Insert ghost train yard',
+          action: (editor) => {
+            const body = [
+              '![Phantom](https://picsum.photos/id/1011/640/480)',
+              '![Mist](https://picsum.photos/id/1016/640/480)',
+              '![Grave](https://picsum.photos/id/1025/640/480)',
+              '![Night](https://picsum.photos/id/1033/640/480)',
+              '![Fog](https://picsum.photos/id/1044/640/480)',
+            ].join('\n');
+            insertFenceBlock(editor, 'ghosttrain{title=Ghost train;demo;col=note}', body);
+          },
+        },
+      ],
+    };
   }
 
   function buildHorizontalRuleToolbarDropdown() {
@@ -13048,54 +13379,6 @@ function formatTextWithMarkup(rawText) {
           title: 'Insert Python (sandbox)',
         },
         {
-          name: 'insert-sudoku',
-          action: (editor) => {
-            insertFenceBlock(editor, 'sudoku{fullscreen;difficulty=medium}', '');
-          },
-          className: 'fa fa-th',
-          title: 'Insert sudoku',
-        },
-        {
-          name: 'insert-puzzle',
-          action: (editor) => {
-            insertFenceBlock(editor, 'puzzle{fullscreen;difficulty=medium}', '');
-          },
-          className: 'fa fa-picture-o',
-          title: 'Insert jigsaw puzzle',
-        },
-        {
-          name: 'insert-pinball',
-          action: (editor) => {
-            insertFenceBlock(editor, 'pinball{fullscreen}', '');
-          },
-          className: 'fa fa-circle',
-          title: 'Insert Space Cadet pinball',
-        },
-        {
-          name: 'insert-pacman',
-          action: (editor) => {
-            insertFenceBlock(editor, 'pacman{fullscreen}', '');
-          },
-          className: 'fa fa-dot-circle-o',
-          title: 'Insert Pac-Man',
-        },
-        {
-          name: 'insert-mario',
-          action: (editor) => {
-            insertFenceBlock(editor, 'mario{fullscreen}', '');
-          },
-          className: 'fa fa-male',
-          title: 'Insert Super Mario',
-        },
-        {
-          name: 'insert-lemmings',
-          action: (editor) => {
-            insertFenceBlock(editor, 'lemmings{fullscreen}', '');
-          },
-          className: 'fa fa-users',
-          title: 'Insert Lemmings',
-        },
-        {
           name: 'insert-gallery',
           action: (editor) => {
             const body = [
@@ -13112,49 +13395,40 @@ function formatTextWithMarkup(rawText) {
           title: 'Insert walk-in photo gallery demo',
         },
         {
-          name: 'insert-rollercoast',
+          name: 'insert-photocube',
           action: (editor) => {
             const body = [
-              '![Canopy](https://picsum.photos/id/1018/960/720)',
-              '![River](https://picsum.photos/id/1015/960/720)',
-              '![Trail](https://picsum.photos/id/1043/960/720)',
-              '![Mist](https://picsum.photos/id/1016/960/720)',
+              '![Lake](https://picsum.photos/id/1015/800/800)',
+              '![Forest](https://picsum.photos/id/1018/800/800)',
+              '![Coast](https://picsum.photos/id/1016/800/800)',
+              '![Valley](https://picsum.photos/id/1043/800/800)',
+              '![Bridge](https://picsum.photos/id/1036/800/800)',
+              '![Hills](https://picsum.photos/id/1019/800/800)',
             ].join('\n');
-            insertFenceBlock(editor, 'rollercoast{mode=jungle;title=Jungle coaster;demo;col=success}', body);
+            insertFenceBlock(editor, 'photocube{title=Photo cube;col=info}', body);
           },
-          className: 'fa fa-rocket',
-          title: 'Insert jungle roller coaster',
+          className: 'fa fa-cube',
+          title: 'Insert photo cube',
         },
         {
-          name: 'insert-scooter',
+          name: 'insert-photobook',
           action: (editor) => {
             const body = [
-              '![Blue](https://picsum.photos/id/1015/640/480)',
-              '![Green](https://picsum.photos/id/1018/640/480)',
-              '![Coast](https://picsum.photos/id/1016/640/480)',
-              '![Valley](https://picsum.photos/id/1043/640/480)',
-              '![Bridge](https://picsum.photos/id/1036/640/480)',
+              '![Cover lake](https://picsum.photos/id/1015/960/720)',
+              '![Forest path](https://picsum.photos/id/1018/960/720)',
+              '![Coast](https://picsum.photos/id/1016/960/720)',
+              '![Valley](https://picsum.photos/id/1043/960/720)',
+              '![Bridge](https://picsum.photos/id/1036/960/720)',
+              '![Hills](https://picsum.photos/id/1019/960/720)',
+              '![Town](https://picsum.photos/id/1025/960/720)',
+              '![Sky](https://picsum.photos/id/1011/960/720)',
             ].join('\n');
-            insertFenceBlock(editor, 'scooter{title=Auto scooter;demo;col=warning}', body);
+            insertFenceBlock(editor, 'photobook{col=warning}', body);
           },
-          className: 'fa fa-car',
-          title: 'Insert auto scooter rink',
+          className: 'fa fa-book',
+          title: 'Insert photo book',
         },
-        {
-          name: 'insert-ghosttrain',
-          action: (editor) => {
-            const body = [
-              '![Phantom](https://picsum.photos/id/1011/640/480)',
-              '![Mist](https://picsum.photos/id/1016/640/480)',
-              '![Grave](https://picsum.photos/id/1025/640/480)',
-              '![Night](https://picsum.photos/id/1033/640/480)',
-              '![Fog](https://picsum.photos/id/1044/640/480)',
-            ].join('\n');
-            insertFenceBlock(editor, 'ghosttrain{title=Ghost train;demo;col=note}', body);
-          },
-          className: 'fa fa-train',
-          title: 'Insert ghost train yard',
-        },
+        buildGamesToolbarDropdown(),
         {
           name: 'insert-news',
           action: (editor) => {
@@ -13963,7 +14237,7 @@ function formatTextWithMarkup(rawText) {
     });
   }
 
-  async function loadPage(id) {
+  async function loadPage(id, { fromHistory = false } = {}) {
     const pageId = parsePageId(id);
     if (!pageId) {
       setStatus('Select a page');
@@ -13984,12 +14258,18 @@ function formatTextWithMarkup(rawText) {
       if (titlePreview) titlePreview.textContent = currentPage.title || 'Untitled';
       if (slugEl) slugEl.textContent = currentPage.slug || '';
 
-      if (easyMDE) easyMDE.value(currentPage.markdown_content || '');
+      if (easyMDE) {
+        easyMDE.value(currentPage.markdown_content || '');
+        const cm = easyMDE.codemirror;
+        cm.setCursor({ line: 0, ch: 0 });
+        cm.scrollTo(0, 0);
+      }
 
       if (isEditing) switchMode('markdown');
       else switchMode('preview');
 
       await updateUserSettings();
+      if (!fromHistory) syncNavHistory();
       setStatus('Loaded');
     } catch (err) {
       console.error('loadPage failed:', err);
@@ -14000,6 +14280,63 @@ function formatTextWithMarkup(rawText) {
         currentPage = null;
       }
     }
+  }
+
+  async function activateWorkspace(newWs, { pageId, fromHistory = false } = {}) {
+    if (!newWs) return;
+    const prevWs = workspaceId;
+    const prevPage = currentPageId;
+    if (prevWs && prevPage) setWorkspacePageId(prevWs, prevPage);
+
+    if (prevWs && String(prevWs) !== String(newWs)) {
+      captureTreeOpenState(prevWs);
+      try {
+        await api(`api/workspaces/${prevWs}/updateUserSettings/`, 'POST', {
+          last_workspace_id: Number(prevWs),
+          last_page_id: prevPage,
+          workspace_pages: workspacePages,
+        }, false);
+      } catch (err) {
+        console.warn('save workspace page before switch failed:', err);
+      }
+    }
+
+    workspaceId = newWs;
+    if (pageId !== undefined && pageId !== null && pageId !== '') {
+      currentPageId = parsePageId(pageId) || getWorkspacePageId(newWs);
+    } else {
+      currentPageId = getWorkspacePageId(newWs);
+    }
+    currentPage = null;
+    selectedTreeNodeId = null;
+    await loadTree(currentPageId, { skipSelectLoad: !!fromHistory });
+    if (fromHistory && currentPageId) {
+      await loadPage(currentPageId, { fromHistory: true });
+      selectTreeNode(currentPageId, true);
+    } else if (!fromHistory && !currentPageId) {
+      syncNavHistory();
+    }
+    await updateUserSettings();
+    await loadFiles();
+
+    activeTagFilter = '';
+    tagAutoOpenNextResult = false;
+    const tagInput = document.getElementById('tag-search');
+    if (tagInput) tagInput.value = '';
+    const tagResults = document.getElementById('tag-search-results');
+    if (tagResults) tagResults.innerHTML = '';
+    const tagSuggestions = document.getElementById('tag-suggestions');
+    if (tagSuggestions) {
+      tagSuggestions.innerHTML = '';
+      tagSuggestions.classList.add('d-none');
+    }
+    tagsReadyForWorkspace = false;
+    disconnectTagWs();
+    resetTagTransport();
+    if (mainView === 'keep') loadQuickNotes();
+    loadIssuesList();
+    if (isEditing) switchMode('markdown');
+    else switchMode('preview');
   }
 
   async function savePage() {
@@ -14937,51 +15274,14 @@ function formatTextWithMarkup(rawText) {
 
     document.getElementById('workspace-select')?.addEventListener('change', async e => {
       syncWorkspaceOwnerActions();
-      const prevWs = workspaceId;
-      const prevPage = currentPageId;
-      if (prevWs && prevPage) setWorkspacePageId(prevWs, prevPage);
-
-      const newWs = e.target.value;
-      if (prevWs && String(prevWs) !== String(newWs)) {
-        captureTreeOpenState(prevWs);
-        try {
-          await api(`api/workspaces/${prevWs}/updateUserSettings/`, 'POST', {
-            last_workspace_id: Number(prevWs),
-            last_page_id: prevPage,
-            workspace_pages: workspacePages,
-          }, false);
-        } catch (err) {
-          console.warn('save workspace page before switch failed:', err);
-        }
-      }
-
-      workspaceId = newWs;
-      currentPageId = getWorkspacePageId(newWs);
-      currentPage = null;
-      selectedTreeNodeId = null;
-      await loadTree(currentPageId);
-      await updateUserSettings();
-      await loadFiles();
-
-      // Reset tag UI + transport on workspace switch
-      activeTagFilter = '';
-      tagAutoOpenNextResult = false;
-      const tagInput = document.getElementById('tag-search');
-      if (tagInput) tagInput.value = '';
-      const tagResults = document.getElementById('tag-search-results');
-      if (tagResults) tagResults.innerHTML = '';
-      const tagSuggestions = document.getElementById('tag-suggestions');
-      if (tagSuggestions) {
-        tagSuggestions.innerHTML = '';
-        tagSuggestions.classList.add('d-none');
-      }
-      tagsReadyForWorkspace = false;
-      disconnectTagWs();
-      resetTagTransport();
-      if (mainView === 'keep') loadQuickNotes();
-      loadIssuesList();
-      if (isEditing) switchMode('markdown');
-      else switchMode('preview');
+      const pageOverride = pendingHistoryPageId;
+      pendingHistoryPageId = undefined;
+      const fromHistory = applyingHistory;
+      workspaceSwitchChain = activateWorkspace(e.target.value, {
+        fromHistory,
+        pageId: pageOverride,
+      });
+      await workspaceSwitchChain;
     });
 
     syncWorkspaceOwnerActions();
@@ -15679,6 +15979,7 @@ function formatTextWithMarkup(rawText) {
   initPanelInsertModal();
   initSnippetsModal();
   syncWorkspaceIdFromDom();
+  applyNavQueryFromUrl();
   applyLayoutFromSettings();
   syncMobileLayoutClass();
   setEditing(false);
@@ -15747,7 +16048,7 @@ function formatTextWithMarkup(rawText) {
   }
 
   document.addEventListener('paste', function (event) {
-    if (event.target.closest?.('.puzzle-block, .gallery-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .pacman-block, .mario-block, .lemmings-block')) return;
+    if (event.target.closest?.('.puzzle-block, .gallery-block, .photocube-block, .photobook-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .pacman-block, .mario-block, .lemmings-block')) return;
     const items = (event.clipboardData || event.originalEvent.clipboardData).items;
     for (let index in items) {
       const item = items[index];
