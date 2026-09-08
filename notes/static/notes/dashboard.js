@@ -3923,17 +3923,12 @@
       }
     }
     const rest = restParts.join(' | ').trim();
-    let text = rest;
-    let image = '';
-    const imgMatch = rest.match(/!\[[^\]]*\]\(([^)\s]+)\)/);
-    if (imgMatch) {
-      image = imgMatch[1];
-      text = rest.replace(imgMatch[0], '').trim();
-    }
+    const extracted = extractCalendarImagesFromText(rest);
     return {
       key,
-      text,
-      image,
+      text: extracted.text,
+      image: extracted.images[0] || '',
+      images: extracted.images,
       allday,
       timeFrom,
       timeTo,
@@ -3970,6 +3965,7 @@
         entries[entry.key].push({
           text: entry.text,
           image: entry.image,
+          images: entry.images || (entry.image ? [entry.image] : []),
           allday: entry.allday,
           timeFrom: entry.timeFrom,
           timeTo: entry.timeTo,
@@ -4134,10 +4130,53 @@
     return [...byKey.values()].sort((a, b) => (a.sourceIndex ?? 0) - (b.sourceIndex ?? 0));
   }
 
+  function extractCalendarImagesFromText(rest) {
+    const images = [];
+    const raw = String(rest || '');
+    const re = /!\[[^\]]*\]\(([^)\s]+)\)/g;
+    let match;
+    while ((match = re.exec(raw)) !== null) {
+      const src = String(match[1] || '').trim();
+      if (src && !images.includes(src)) images.push(src);
+    }
+    const text = raw
+      .replace(/!\[[^\]]*\]\(([^)\s]+)\)/g, '')
+      .replace(/\s*\|\s*/g, ' | ')
+      .replace(/^\s*\|\s*|\s*\|\s*$/g, '')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+    return { text, images };
+  }
+
+  function uniqueCalendarImages(list) {
+    const out = [];
+    (Array.isArray(list) ? list : (list ? [list] : [])).forEach((src) => {
+      const clean = String(src || '').trim();
+      if (clean && !out.includes(clean)) out.push(clean);
+    });
+    return out;
+  }
+
+  function calendarEntryImages(entry) {
+    if (!entry) return [];
+    if (Array.isArray(entry.images) && entry.images.length) return uniqueCalendarImages(entry.images);
+    return uniqueCalendarImages(entry.image);
+  }
+
+  function calendarEntriesImages(entryOrList) {
+    const images = [];
+    normalizeCalendarEntryList(entryOrList).forEach((entry) => {
+      calendarEntryImages(entry).forEach((src) => {
+        if (!images.includes(src)) images.push(src);
+      });
+    });
+    return images;
+  }
+
   function calendarEntryHasContent(entryOrList) {
     return normalizeCalendarEntryList(entryOrList).some(e => (
       e?.text
-      || e?.image
+      || calendarEntryImages(e).length
       || (e?.allday === false && e?.timeFrom)
       || !!e?.periodRole
     ));
@@ -4150,21 +4189,22 @@
       .join('\n');
   }
 
-  function calendarNotesFromModalFields(text, image, timeOpts = {}) {
+  function calendarNotesFromModalFields(text, imageOrImages, timeOpts = {}) {
     const lines = String(text || '')
       .split(/\r?\n/)
       .map(line => line.trim())
       .filter(Boolean);
-    const cleanImage = String(image || '').trim();
+    const imageList = uniqueCalendarImages(imageOrImages);
     const allday = timeOpts.allday !== false;
     const timeFrom = allday ? null : (timeOpts.timeFrom || null);
     const timeTo = allday ? null : (timeOpts.timeTo || null);
     const sourceIndex = Number.isFinite(timeOpts.sourceIndex) ? timeOpts.sourceIndex : undefined;
     if (!lines.length) {
-      if (!cleanImage && allday) return [];
+      if (!imageList.length && allday) return [];
       return [{
         text: '',
-        image: cleanImage,
+        image: imageList[0] || '',
+        images: imageList,
         allday,
         timeFrom,
         timeTo,
@@ -4173,7 +4213,8 @@
     }
     return lines.map((line, i) => ({
       text: line,
-      image: i === 0 ? cleanImage : '',
+      image: i === 0 ? (imageList[0] || '') : '',
+      images: i === 0 ? imageList : [],
       allday,
       timeFrom,
       timeTo,
@@ -4274,6 +4315,7 @@
     const mobile = typeof isMobileLayout === 'function' && isMobileLayout();
     const timedSingles = singles.filter(e => e.allday === false && e.timeFrom);
     const otherSingles = singles.filter(e => !(e.allday === false && e.timeFrom));
+    const thumbsHtml = calendarDayThumbsMarkup(dayEntries);
 
     // Mobile: always points for day events. Desktop: time for timed; compact points otherwise.
     let singleHtml = '';
@@ -4293,7 +4335,20 @@
       })).join('')}</div>`
       : '';
 
-    return `<div class="calendar-unit-body">${singleHtml}</div>${stackHtml}`;
+    return `<div class="calendar-unit-body">${thumbsHtml}${singleHtml}</div>${stackHtml}`;
+  }
+
+  function calendarDayThumbsMarkup(dayEntries) {
+    const images = calendarEntriesImages(dayEntries);
+    if (!images.length) return '';
+    const shown = images.slice(0, 4);
+    const extra = images.length - shown.length;
+    return `<div class="calendar-unit-thumbs" role="button" tabindex="0" aria-label="Open photo gallery">`
+      + shown.map((src) => (
+        `<img class="calendar-unit-thumb" src="${escapeHtml(resolveMediaHref(src))}" alt="" data-gallery-src="${escapeHtml(src)}" draggable="false">`
+      )).join('')
+      + (extra > 0 ? `<span class="calendar-unit-thumbs-more">+${extra}</span>` : '')
+      + `</div>`;
   }
 
   function calendarEntryMarkup(entryOrList) {
@@ -4308,16 +4363,13 @@
           textHtml = escapeHtml(raw);
         }
       }
-      const image = entry.image
-        ? `<img class="calendar-unit-image md-image" src="${escapeHtml(resolveMediaHref(entry.image))}" alt="">`
-        : '';
       const timeLabel = formatCalendarEntryTimeLabel(entry);
       const tip = calendarEntryTooltipText(entry);
       const tipAttr = tip ? ` data-calendar-tooltip="${escapeHtml(tip)}"` : '';
-      if (!textHtml && !image && !timeLabel) return '';
+      if (!textHtml && !timeLabel) return '';
       const noteKey = entry.key ? ` data-calendar-key="${escapeHtml(entry.key)}"` : '';
       const alldayClass = entry.allday !== false ? ' calendar-unit-note--allday' : '';
-      return `<div class="calendar-unit-note${alldayClass}"${noteKey}${tipAttr}>${timeLabel}${image}${textHtml ? `<div class="calendar-unit-text">${textHtml}</div>` : ''}</div>`;
+      return `<div class="calendar-unit-note${alldayClass}"${noteKey}${tipAttr}>${timeLabel}${textHtml ? `<div class="calendar-unit-text">${textHtml}</div>` : ''}</div>`;
     }).join('');
   }
 
@@ -4494,6 +4546,7 @@
         const weekHeader = `<div class="${weekHeaderClasses}"${calendarUnitAttrs(weekKey, editable, weekEntry)}>`
           + `<span class="calendar-unit-primary">${escapeHtml(label)}</span>`
           + `<span class="calendar-unit-secondary">${escapeHtml(range)}</span>`
+          + calendarDayThumbsMarkup(weekEntry)
           + (calendarEntryHasContent(weekEntry) ? calendarEntryMarkup(weekEntry) : '')
           + `</div>`;
 
@@ -4544,7 +4597,7 @@
             editable ? 'calendar-unit--editable' : '',
           ].filter(Boolean).join(' ');
           const notesHtml = calendarEntryHasContent(monthOwn)
-            ? `<div class="calendar-month-notes">${calendarEntryMarkup(monthOwn)}</div>`
+            ? `<div class="calendar-month-notes">${calendarDayThumbsMarkup(monthOwn)}${calendarEntryMarkup(monthOwn)}</div>`
             : '';
           const eventsHtml = calendarMonthEventListMarkup(dayEvents, editable);
           return `<div class="${classes}"${calendarUnitAttrs(monthKey, editable, monthOwn)}>`
@@ -4577,6 +4630,7 @@
       ].filter(Boolean).join(' ');
       return `<div class="${classes}"${calendarUnitAttrs(key, editable, entry)}>`
         + `<span class="calendar-unit-primary">${year}</span>`
+        + calendarDayThumbsMarkup(entry)
         + calendarEntryMarkup(entry)
         + `</div>`;
     }).join('');
@@ -4708,6 +4762,93 @@
     });
   }
 
+  function collectCalendarGalleryItems(entries) {
+    const items = [];
+    const seen = new Set();
+    Object.keys(entries || {}).forEach((key) => {
+      const dayRange = parseCalendarDayKey(key);
+      normalizeCalendarEntryList(entries[key]).forEach((entry) => {
+        const from = entry.dateFrom || dayRange?.from || null;
+        const to = entry.dateTo || dayRange?.to || from;
+        let subtitle = '';
+        if (from) {
+          subtitle = (!to || startOfDay(from).getTime() === startOfDay(to).getTime())
+            ? formatCalendarDateDisplay(from)
+            : formatCalendarDateRangeDisplay(from, to);
+        } else {
+          subtitle = String(key).replace(/^@[dwmy]:/i, '');
+        }
+        calendarEntryImages(entry).forEach((src) => {
+          const stamp = `${key}|${src}`;
+          if (seen.has(stamp)) return;
+          seen.add(stamp);
+          items.push({
+            src,
+            subtitle,
+            from: from ? startOfDay(from).getTime() : 0,
+            sourceIndex: Number.isFinite(entry.sourceIndex) ? entry.sourceIndex : 0,
+          });
+        });
+      });
+    });
+    items.sort((a, b) => a.from - b.from || a.sourceIndex - b.sourceIndex);
+    return items;
+  }
+
+  function calendarGalleryPhotosFromEntries(entries) {
+    return collectCalendarGalleryItems(entries).map((item) => ({
+      src: item.src,
+      label: item.subtitle,
+      kind: 'image',
+    }));
+  }
+
+  function encodeCalendarGallery(photos) {
+    try {
+      return btoa(unescape(encodeURIComponent(JSON.stringify(photos || []))));
+    } catch (_) {
+      return '';
+    }
+  }
+
+  function decodeCalendarGallery(raw) {
+    try {
+      const parsed = JSON.parse(decodeURIComponent(escape(atob(String(raw || '')))));
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  function openCalendarImageGallery(hit) {
+    const block = hit?.closest?.('.calendar-block');
+    if (!block) return;
+    let photos = decodeCalendarGallery(block.dataset.calendarGallery);
+    if (!photos.length) {
+      const calendarIndex = parseInt(block.dataset.calendarIndex, 10);
+      const spec = easyMDE && Number.isFinite(calendarIndex)
+        ? getCalendarBlockSpec(easyMDE.value(), calendarIndex)
+        : null;
+      photos = spec ? calendarGalleryPhotosFromEntries(spec.entries) : [];
+    }
+    if (!photos.length) return;
+    const thumb = hit.matches?.('.calendar-unit-thumb')
+      ? hit
+      : hit.querySelector?.('.calendar-unit-thumb');
+    const clickedSrc = thumb?.dataset?.gallerySrc || '';
+    const clickedHref = thumb?.getAttribute?.('src') || '';
+    let index = 0;
+    if (clickedSrc || clickedHref) {
+      const found = photos.findIndex((p) => {
+        const href = resolveMediaHref(p.src);
+        return p.src === clickedSrc || href === clickedSrc || href === clickedHref;
+      });
+      if (found >= 0) index = found;
+    }
+    if (typeof window.NotesProGallery?.openLightbox !== 'function') return;
+    window.NotesProGallery.openLightbox(photos, index);
+  }
+
   function renderCalendarBlockHtml(spec, options = {}) {
     if (!spec.from || !spec.to) {
       return `<div class="calendar-block calendar-block--error">Calendar: invalid <code>from</code>/<code>to</code> (use <code>D.M.YY</code> or <code>D.M.YYYY</code>).</div>`;
@@ -4725,8 +4866,10 @@
     const colStyle = spec.colCss ? ` style="--calendar-bg:${escapeHtml(spec.colCss)}"` : '';
     const oldClass = isCalendarSpecOld(spec) ? ' calendar-block--old' : '';
     const calendarIndex = options.calendarIndex ?? 0;
+    const galleryAttr = encodeCalendarGallery(calendarGalleryPhotosFromEntries(entries));
+    const galleryData = galleryAttr ? ` data-calendar-gallery="${escapeHtml(galleryAttr)}"` : '';
     return [
-      `<div class="calendar-block${colClass}${oldClass}${editable ? ' calendar-block--editable' : ''}" data-calendar-mode="${escapeHtml(spec.mode)}" data-calendar-index="${calendarIndex}"${colStyle}>`,
+      `<div class="calendar-block${colClass}${oldClass}${editable ? ' calendar-block--editable' : ''}" data-calendar-mode="${escapeHtml(spec.mode)}" data-calendar-index="${calendarIndex}"${galleryData}${colStyle}>`,
       `<div class="calendar-block-header">`,
       `<div class="calendar-block-title">${escapeHtml(title)}</div>`,
       `<div class="calendar-block-meta">`,
@@ -4753,7 +4896,9 @@
         const timeToken = formatCalendarTimeToken(entry);
         if (timeToken) parts.push(timeToken);
         if (entry.text) parts.push(String(entry.text).replace(/\r?\n/g, ' ').trim());
-        if (entry.image) parts.push(`![](${entry.image})`);
+        calendarEntryImages(entry).forEach((src) => {
+          parts.push(`![](${src})`);
+        });
         return parts.filter(Boolean).join(' | ');
       })
       .filter(line => {
@@ -8816,6 +8961,7 @@ function formatTextWithMarkup(rawText) {
     const img = e.target.closest('img');
     if (!img || !img.closest('#preview-content, .editor-preview-side, .editor-preview, #chat-messages')) return;
     if (img.closest('.d3-chart-wrap')) return;
+    if (img.closest('.calendar-unit-thumbs')) return;
     if (img.closest('a[href][target="_blank"]')) return;
     const src = img.currentSrc || img.getAttribute('src');
     if (!src) return;
@@ -9742,6 +9888,7 @@ function formatTextWithMarkup(rawText) {
     );
     const editToggle = document.getElementById('edit-toggle');
     if (editToggle) editToggle.classList.toggle('d-none', !userCanEdit || mainView === 'keep');
+    syncMobileEditButton();
     ['create-page', 'create-folder', 'delete-page'].forEach(id => {
       const btn = document.getElementById(id);
       if (btn) btn.disabled = !userCanEdit;
@@ -9894,15 +10041,30 @@ function formatTextWithMarkup(rawText) {
     setLeftPanelExpanded(false);
   }
 
+  function syncMobileEditButton() {
+    const btn = document.getElementById('mobile-edit-toggle');
+    if (!btn) return;
+    const show = isMobileLayout() && userCanEdit && mainView !== 'keep';
+    btn.classList.toggle('visible', show);
+    const label = btn.querySelector('span');
+    const text = isEditing ? 'Preview' : 'Edit';
+    if (label) label.textContent = text;
+    else btn.textContent = text;
+    btn.setAttribute('aria-label', isEditing ? 'Switch to preview' : 'Switch to edit');
+    btn.setAttribute('aria-pressed', isEditing ? 'true' : 'false');
+  }
+
   function syncMobileContentMenu() {
     const btn = document.getElementById('toc-toggle');
-    if (!btn) return;
-    if (!isMobileLayout()) {
-      btn.classList.remove('visible');
-      return;
+    if (btn) {
+      if (!isMobileLayout()) {
+        btn.classList.remove('visible');
+      } else {
+        const raw = easyMDE ? (easyMDE.value() || '') : '';
+        btn.classList.toggle('visible', pageHasTocHeadings(raw));
+      }
     }
-    const raw = easyMDE ? (easyMDE.value() || '') : '';
-    btn.classList.toggle('visible', pageHasTocHeadings(raw));
+    syncMobileEditButton();
   }
 
   function syncMobileLayoutClass() {
@@ -11268,6 +11430,7 @@ function formatTextWithMarkup(rawText) {
   }
 
   let calendarNoteContext = null;
+  let calendarNoteImages = [];
 
   function syncCalendarNoteTimeUi() {
     const timed = document.getElementById('calendar-note-timed')?.checked;
@@ -11340,15 +11503,35 @@ function formatTextWithMarkup(rawText) {
 
   function refreshCalendarNoteImagePreview() {
     const wrap = document.getElementById('calendar-note-preview');
-    const image = document.getElementById('calendar-note-image')?.value?.trim() || '';
     if (!wrap) return;
-    if (!image) {
+    const images = uniqueCalendarImages(calendarNoteImages);
+    if (!images.length) {
       wrap.classList.add('d-none');
       wrap.innerHTML = '';
       return;
     }
     wrap.classList.remove('d-none');
-    wrap.innerHTML = `<img src="${escapeHtml(resolveMediaHref(image))}" alt="" class="calendar-note-preview-img">`;
+    wrap.innerHTML = images.map((src, i) => (
+      `<div class="calendar-note-preview-item">`
+      + `<img src="${escapeHtml(resolveMediaHref(src))}" alt="" class="calendar-note-preview-img">`
+      + `<button type="button" class="btn btn-sm btn-outline-danger calendar-note-image-remove" data-image-index="${i}" aria-label="Remove image">×</button>`
+      + `</div>`
+    )).join('');
+  }
+
+  function addCalendarNoteImagePath(src) {
+    const clean = String(src || '').trim();
+    if (!clean) return false;
+    calendarNoteImages = uniqueCalendarImages([...calendarNoteImages, clean]);
+    refreshCalendarNoteImagePreview();
+    return true;
+  }
+
+  function addCalendarNoteImageFromInput() {
+    const imageInput = document.getElementById('calendar-note-image');
+    const added = addCalendarNoteImagePath(imageInput?.value || '');
+    if (added && imageInput) imageInput.value = '';
+    return added;
   }
 
   function openCalendarNoteModal(unitEl, preferredKey = null) {
@@ -11373,7 +11556,6 @@ function formatTextWithMarkup(rawText) {
     const text = (!preferredKey && unitEl.dataset.calendarMarkdown)
       || noteEls.map(noteEl => noteEl.querySelector('.calendar-unit-text')?.textContent?.trim() || '').filter(Boolean).join('\n')
       || '';
-    const image = noteEls.map(n => n.querySelector('img')?.getAttribute('src') || '').find(Boolean) || '';
 
     calendarNoteContext = {
       calendarIndex,
@@ -11384,6 +11566,10 @@ function formatTextWithMarkup(rawText) {
     const spec = easyMDE ? getCalendarBlockSpec(easyMDE.value(), calendarIndex) : null;
     const storedEntries = normalizeCalendarEntryList(spec?.entries?.[key]);
     const firstEntry = storedEntries[0] || {};
+    const fromDom = noteEls.flatMap((n) => [...n.querySelectorAll('img')].map((img) => img.getAttribute('src') || '')).filter(Boolean);
+    calendarNoteImages = storedEntries.length
+      ? calendarEntriesImages(storedEntries)
+      : uniqueCalendarImages(fromDom);
 
     const title = document.getElementById('calendar-note-modal-title');
     if (title) {
@@ -11395,13 +11581,13 @@ function formatTextWithMarkup(rawText) {
     const hint = document.getElementById('calendar-note-modal-hint');
     if (hint) {
       hint.textContent = isDayMode
-        ? 'All day: set start/end dates. Start / Stop: add times. One note per line; image attaches to the first line.'
-        : 'All day or start/stop times for this slot. One note per line; image attaches to the first line.';
+        ? 'All day: set start/end dates. Start / Stop: add times. One note per line. Add as many images as you like.'
+        : 'All day or start/stop times for this slot. One note per line. Add as many images as you like.';
     }
     const textInput = document.getElementById('calendar-note-text');
     const imageInput = document.getElementById('calendar-note-image');
     if (textInput) textInput.value = text || calendarEntriesMarkdown(storedEntries);
-    if (imageInput) imageInput.value = image || (firstEntry.image || '');
+    if (imageInput) imageInput.value = '';
     calendarNoteContext.isDayMode = isDayMode;
     setCalendarNoteStartStopFields(firstEntry, dayRange, { isDayMode });
     refreshCalendarNoteImagePreview();
@@ -11411,8 +11597,9 @@ function formatTextWithMarkup(rawText) {
 
   function saveCalendarNoteFromModal({ clear = false } = {}) {
     if (!easyMDE || !calendarNoteContext) return;
+    if (!clear) addCalendarNoteImageFromInput();
     const text = clear ? '' : (document.getElementById('calendar-note-text')?.value || '');
-    const image = clear ? '' : (document.getElementById('calendar-note-image')?.value || '');
+    const images = clear ? [] : uniqueCalendarImages(calendarNoteImages);
     const timeOpts = clear ? { allday: true, timeFrom: null, timeTo: null } : readCalendarNoteTimeOptions();
     if (!clear && timeOpts === null) return;
 
@@ -11430,7 +11617,7 @@ function formatTextWithMarkup(rawText) {
       calendarNoteContext.calendarIndex,
       clear ? oldKey : targetKey,
       text,
-      image,
+      images,
       timeOpts,
       clear ? {} : { oldKey },
     );
@@ -11441,6 +11628,7 @@ function formatTextWithMarkup(rawText) {
     }
     bootstrap.Modal.getInstance(document.getElementById('calendar-note-modal'))?.hide();
     calendarNoteContext = null;
+    calendarNoteImages = [];
   }
 
   async function uploadCalendarNoteImage(file) {
@@ -11452,11 +11640,7 @@ function formatTextWithMarkup(rawText) {
     try {
       const data = await api('api/uploads/', 'POST', formData, true);
       const mediaPath = mediaMarkdownPath(data.url || data.path || data.file?.url || data.file?.mediaName);
-      const imageInput = document.getElementById('calendar-note-image');
-      if (imageInput && mediaPath) {
-        imageInput.value = mediaPath;
-        refreshCalendarNoteImagePreview();
-      }
+      if (mediaPath) addCalendarNoteImagePath(mediaPath);
     } catch (err) {
       console.warn('calendar image upload failed:', err);
       showToast(err.message || 'Image upload failed.', 'danger');
@@ -11506,6 +11690,15 @@ function formatTextWithMarkup(rawText) {
     preview.dataset.calendarEditBound = '1';
 
     preview.addEventListener('click', e => {
+      const galleryHit = e.target.closest?.('.calendar-unit-thumb, .calendar-unit-thumbs-more, .calendar-unit-thumbs');
+      if (galleryHit && preview.contains(galleryHit)) {
+        e.preventDefault();
+        e.stopPropagation();
+        hideCalendarHoverTooltip();
+        openCalendarImageGallery(galleryHit);
+        return;
+      }
+
       if (!isPreviewInteractionEnabled()) return;
 
       const modeBtn = e.target.closest?.('.calendar-mode-btn');
@@ -11540,7 +11733,7 @@ function formatTextWithMarkup(rawText) {
 
       const unit = e.target.closest?.('.calendar-unit--editable, .calendar-week-header--editable');
       if (!unit || !preview.contains(unit)) return;
-      if (e.target.closest('a, button, input, textarea, img.md-image-link')) return;
+      if (e.target.closest('a, button, input, textarea, img.md-image-link, .calendar-unit-thumb, .calendar-unit-thumbs, .calendar-unit-thumbs-more')) return;
       e.preventDefault();
       e.stopPropagation();
       hideCalendarHoverTooltip();
@@ -11581,14 +11774,31 @@ function formatTextWithMarkup(rawText) {
     });
     document.getElementById('calendar-note-allday')?.addEventListener('change', syncCalendarNoteTimeUi);
     document.getElementById('calendar-note-timed')?.addEventListener('change', syncCalendarNoteTimeUi);
-    document.getElementById('calendar-note-image')?.addEventListener('input', refreshCalendarNoteImagePreview);
+    document.getElementById('calendar-note-image-add-btn')?.addEventListener('click', () => {
+      addCalendarNoteImageFromInput();
+    });
+    document.getElementById('calendar-note-image')?.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      addCalendarNoteImageFromInput();
+    });
+    document.getElementById('calendar-note-preview')?.addEventListener('click', (e) => {
+      const btn = e.target.closest('.calendar-note-image-remove');
+      if (!btn) return;
+      const idx = parseInt(btn.dataset.imageIndex, 10);
+      if (!Number.isFinite(idx)) return;
+      calendarNoteImages = uniqueCalendarImages(calendarNoteImages).filter((_, i) => i !== idx);
+      refreshCalendarNoteImagePreview();
+    });
     document.getElementById('calendar-note-upload-btn')?.addEventListener('click', () => {
       document.getElementById('calendar-note-file')?.click();
     });
     document.getElementById('calendar-note-file')?.addEventListener('change', async e => {
-      const file = e.target.files?.[0];
+      const files = [...(e.target.files || [])];
       e.target.value = '';
-      if (file) await uploadCalendarNoteImage(file);
+      for (const file of files) {
+        await uploadCalendarNoteImage(file);
+      }
     });
   }
 
@@ -14648,6 +14858,7 @@ function formatTextWithMarkup(rawText) {
     keepBtn?.classList.toggle('btn-primary', mainView === 'keep');
     keepBtn?.classList.toggle('btn-outline-light', mainView !== 'keep');
     editToggle?.classList.toggle('d-none', mainView === 'keep' || !userCanEdit);
+    syncMobileEditButton();
 
     if (mainView === 'keep') {
       if (titlePreview) titlePreview.textContent = 'Keep';
@@ -15939,6 +16150,12 @@ function formatTextWithMarkup(rawText) {
     });
 
     document.getElementById('edit-toggle')?.addEventListener('click', () => {
+      setEditing(!isEditing);
+    });
+    document.getElementById('mobile-edit-toggle')?.addEventListener('click', () => {
+      if (!userCanEdit) return;
+      closeFloatingToc();
+      closeMobileTopbarMenu();
       setEditing(!isEditing);
     });
 

@@ -1229,6 +1229,14 @@ body.editing #preview-content:focus {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
 }
 
+.mobile-edit-btn.visible {
+  bottom: 14px;
+}
+
+.mobile-edit-btn.visible ~ #toc-toggle.visible {
+  bottom: 66px;
+}
+
 .mobile-toc-btn.visible:active {
   transform: scale(0.98);
 }
@@ -3092,8 +3100,62 @@ body.mobile-layout .sheet-structure-menu-btn {
   margin-bottom: 4px;
 }
 
+.calendar-unit-thumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin: 4px 0 2px;
+  cursor: pointer;
+}
+
+.calendar-unit-thumb {
+  width: 36px;
+  height: 36px;
+  object-fit: cover;
+  border-radius: 5px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  pointer-events: auto;
+}
+
+.calendar-unit-thumbs:hover .calendar-unit-thumb {
+  outline: 2px solid var(--calendar-accent, #2563eb);
+  outline-offset: 1px;
+}
+
+.calendar-unit-thumbs-more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  height: 36px;
+  padding: 0 4px;
+  border-radius: 5px;
+  background: rgba(15, 23, 42, 0.08);
+  color: var(--calendar-unit-secondary, #64748b);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+@media (max-width: 768px) {
+  .calendar-unit-thumb,
+  .calendar-unit-thumbs-more {
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+  }
+}
+
 .calendar-note-preview {
   margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.calendar-note-preview-item {
+  position: relative;
+  width: calc(50% - 4px);
+  max-width: 160px;
 }
 
 .calendar-note-preview-img {
@@ -3102,6 +3164,22 @@ body.mobile-layout .sheet-structure-menu-btn {
   border-radius: 8px;
   object-fit: contain;
   background: #0f172a;
+}
+
+.calendar-note-preview-item .calendar-note-preview-img {
+  width: 100%;
+  height: 96px;
+  object-fit: cover;
+}
+
+.calendar-note-image-remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  line-height: 1;
 }
 
 .gantt-block {
@@ -8195,17 +8273,28 @@ body.mobile-layout .gallery-walk-toolbar [data-action="walk-demo"] {
   .photoview-block--fullscreen,
   body.mobile-layout .photoview-block,
   body.mobile-layout .photoview-block--fullscreen {
-    min-height: min(58dvh, 58vh, 480px);
+    min-height: 0;
     height: auto;
-    max-height: none;
+    max-height: min(56dvh, calc(100dvh - 7.5rem));
     padding: 8px 8px 10px;
+  }
+
+  .photocube-block,
+  .photocube-block.photoview-block--fullscreen,
+  body.mobile-layout .photocube-block,
+  body.mobile-layout .photocube-block.photoview-block--fullscreen {
+    min-height: 0;
+    height: auto;
+    max-height: min(52dvh, calc(100dvh - 7.5rem));
   }
 
   .photocube-scene,
   body.mobile-layout .photocube-scene {
-    --photocube-size: min(70vw, 42dvh, 42vh, 260px);
-    min-height: min(50dvh, 50vh, 360px);
-    perspective: 900px;
+    --photocube-size: min(48vw, 28dvh, 168px);
+    min-height: min(32dvh, 210px);
+    max-height: min(36dvh, 240px);
+    overflow: hidden;
+    perspective: 700px;
   }
 
   .photocube-face {
@@ -8223,14 +8312,15 @@ body.mobile-layout .gallery-walk-toolbar [data-action="walk-demo"] {
   .photobook-block.photoview-block--fullscreen,
   body.mobile-layout .photobook-block,
   body.mobile-layout .photobook-block.photoview-block--fullscreen {
-    height: min(78dvh, 78vh);
+    height: auto;
     min-height: 0;
-    max-height: none;
+    max-height: min(56dvh, calc(100dvh - 7.5rem));
   }
 
   .photobook-block .photobook-viewport,
   body.mobile-layout .photobook-block .photobook-viewport {
-    min-height: 0;
+    min-height: min(36dvh, 240px);
+    max-height: min(42dvh, 300px);
   }
 
   .photobook-book,
@@ -8239,9 +8329,13 @@ body.mobile-layout .gallery-walk-toolbar [data-action="walk-demo"] {
   body.mobile-layout .photobook-book,
   body.mobile-layout .photobook-book.is-closed,
   body.mobile-layout .photobook-book.is-open {
-    width: var(--photobook-w, 100%);
-    height: var(--photobook-h, min(58dvh, 58vh));
+    --photobook-w: min(86vw, 260px);
+    --photobook-h: min(40dvh, 280px);
+    width: var(--photobook-w);
+    height: var(--photobook-h);
     min-height: 0;
+    max-width: 100%;
+    max-height: 100%;
     aspect-ratio: auto;
   }
 
@@ -8284,6 +8378,75 @@ body.mobile-layout .gallery-walk-toolbar [data-action="walk-demo"] {
     font-size: 12px;
     padding: 6px 10px;
   }
+}
+
+body.mobile-layout .photoview-block,
+body.mobile-layout .photoview-block--fullscreen {
+  min-height: 0;
+  height: auto;
+  max-height: min(56dvh, calc(100dvh - 7.5rem));
+  padding: 8px 8px 10px;
+}
+
+body.mobile-layout .photocube-block,
+body.mobile-layout .photocube-block.photoview-block--fullscreen {
+  min-height: 0;
+  height: auto;
+  max-height: min(52dvh, calc(100dvh - 7.5rem));
+}
+
+body.mobile-layout .photocube-scene {
+  --photocube-size: min(48vw, 28dvh, 168px);
+  min-height: min(32dvh, 210px);
+  max-height: min(36dvh, 240px);
+  overflow: hidden;
+  perspective: 700px;
+}
+
+body.mobile-layout .photobook-block,
+body.mobile-layout .photobook-block.photoview-block--fullscreen {
+  height: auto;
+  min-height: 0;
+  max-height: min(56dvh, calc(100dvh - 7.5rem));
+}
+
+body.mobile-layout .photobook-block .photobook-viewport {
+  min-height: min(36dvh, 240px);
+  max-height: min(42dvh, 300px);
+}
+
+body.mobile-layout .photobook-book,
+body.mobile-layout .photobook-book.is-closed,
+body.mobile-layout .photobook-book.is-open {
+  --photobook-w: min(86vw, 260px);
+  --photobook-h: min(40dvh, 280px);
+  width: var(--photobook-w);
+  height: var(--photobook-h);
+  min-height: 0;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+body.mobile-layout .photocube-block:fullscreen,
+body.mobile-layout .photocube-block:-webkit-full-screen,
+body.mobile-layout .photobook-block:fullscreen,
+body.mobile-layout .photobook-block:-webkit-full-screen {
+  height: 100%;
+  min-height: 100%;
+  max-height: none;
+}
+
+body.mobile-layout .photocube-block:fullscreen .photocube-scene,
+body.mobile-layout .photocube-block:-webkit-full-screen .photocube-scene {
+  min-height: 0;
+  max-height: none;
+  height: 100%;
+}
+
+body.mobile-layout .photobook-block:fullscreen .photobook-viewport,
+body.mobile-layout .photobook-block:-webkit-full-screen .photobook-viewport {
+  min-height: 0;
+  max-height: none;
 }
 
 body.gallery-lightbox-open {

@@ -12,6 +12,16 @@
   'use strict';
 
   const THEMES = ['info', 'success', 'warning', 'danger', 'note'];
+
+  function isPhotoviewMobile() {
+    return document.body.classList.contains('mobile-layout')
+      || (typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 768px)').matches);
+  }
+
+  function isPhotoviewMonitorFullscreen(el) {
+    const fs = document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement;
+    return !!el && (fs === el || el.classList.contains('game-block--monitor-fullscreen'));
+  }
   const CUBE_FACES = [
     { key: 'front', label: 'Front' },
     { key: 'back', label: 'Back' },
@@ -401,12 +411,21 @@
       if (!scene) return;
       const w = scene.clientWidth || 0;
       const h = scene.clientHeight || 0;
+      const visW = window.visualViewport?.width || window.innerWidth || w;
+      const visH = window.visualViewport?.height || window.innerHeight || h;
+      if (isPhotoviewMobile()) {
+        const full = isPhotoviewMonitorFullscreen(el);
+        const capW = Math.min(w > 40 ? w : visW, visW - (full ? 20 : 28));
+        const capH = full
+          ? Math.min(h > 80 ? h : visH, visH - 96)
+          : Math.min(visH * 0.32, h > 80 ? h : visH * 0.32);
+        const maxFace = full ? 280 : 168;
+        const size = Math.max(108, Math.min(maxFace, Math.floor(Math.min(capW, capH) / 1.55)));
+        scene.style.setProperty('--photocube-size', `${size}px`);
+        return;
+      }
       if (w < 80 || h < 80) return;
-      const mobile = document.body.classList.contains('mobile-layout')
-        || (typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 768px)').matches);
-      const factor = mobile ? 0.58 : 0.78;
-      const minPx = mobile ? 140 : 180;
-      const size = Math.max(minPx, Math.floor(Math.min(w, h) * factor));
+      const size = Math.max(180, Math.floor(Math.min(w, h) * 0.78));
       scene.style.setProperty('--photocube-size', `${size}px`);
     }
 
@@ -652,22 +671,27 @@
       progress.textContent = `${spread + 1} / ${totalSpreads}`;
     }
 
-    function isBookMobile() {
-      return document.body.classList.contains('mobile-layout')
-        || (typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 768px)').matches);
-    }
-
     function fitBook() {
-      if (!book || !viewport) return;
-      const w = viewport.clientWidth;
-      const h = viewport.clientHeight;
-      if (w < 80 || h < 80) return;
-      const mobile = isBookMobile();
+      if (!book) return;
+      const visW = window.visualViewport?.width || window.innerWidth || 360;
+      const visH = window.visualViewport?.height || window.innerHeight || 640;
+      const boxW = viewport?.clientWidth || book.parentElement?.clientWidth || visW;
+      const boxH = viewport?.clientHeight || 0;
+      const mobile = isPhotoviewMobile();
+      let maxW;
+      let maxH;
+      if (mobile) {
+        const full = isPhotoviewMonitorFullscreen(el);
+        maxW = Math.min(boxW > 40 ? boxW : visW, visW - 24) * (full ? 0.96 : 0.94);
+        const share = full ? 0.86 : 0.42;
+        maxH = Math.min(boxH > 80 ? boxH : visH * share, visH * share);
+      } else {
+        if (boxW < 80 || boxH < 80) return;
+        maxW = boxW * 0.98;
+        maxH = boxH * 0.98;
+      }
       const openNow = book.classList.contains('is-open');
-      const ratio = openNow ? (mobile ? 1.28 : 1.42) : 0.72;
-      const pad = mobile ? 0.96 : 0.98;
-      const maxW = w * pad;
-      const maxH = h * pad;
+      const ratio = openNow ? (mobile ? 1.22 : 1.42) : 0.72;
       let bw;
       let bh;
       if (maxW / maxH > ratio) {
@@ -677,8 +701,8 @@
         bw = maxW;
         bh = bw / ratio;
       }
-      const widthPx = `${Math.max(120, Math.floor(bw))}px`;
-      const heightPx = `${Math.max(160, Math.floor(bh))}px`;
+      const widthPx = `${Math.max(mobile ? 132 : 120, Math.floor(bw))}px`;
+      const heightPx = `${Math.max(mobile ? 150 : 160, Math.floor(bh))}px`;
       book.style.setProperty('--photobook-w', widthPx);
       book.style.setProperty('--photobook-h', heightPx);
       book.style.width = widthPx;

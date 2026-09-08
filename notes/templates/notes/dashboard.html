@@ -242,6 +242,9 @@
         <textarea id="markdown-editor"></textarea>
       </div>
       <div id="editor-splitter" class="panel-splitter panel-splitter--editor" role="separator" aria-orientation="vertical" aria-label="Resize editor and preview" tabindex="0"></div>
+      <button id="mobile-edit-toggle" class="mobile-toc-btn mobile-edit-btn" type="button" aria-label="Switch to edit" aria-pressed="false">
+        <span>Edit</span>
+      </button>
       <button id="toc-toggle" class="mobile-toc-btn" type="button" aria-label="Contents menu" aria-expanded="false">
         <span>Contents</span>
       </button>
@@ -547,7 +550,7 @@
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <p class="small dashboard-modal-hint mb-2" id="calendar-note-modal-hint">All day: start/end dates. Start / Stop: add times. One note per line; image attaches to the first line.</p>
+        <p class="small dashboard-modal-hint mb-2" id="calendar-note-modal-hint">All day: start/end dates. Start / Stop: add times. One note per line. You can attach several images to the day.</p>
         <fieldset class="mb-3">
           <legend class="form-label small fw-semibold mb-2">When</legend>
           <div class="d-flex flex-wrap gap-3 align-items-center mb-2 calendar-note-when-options">
@@ -585,12 +588,13 @@
         </fieldset>
         <label class="form-label small fw-semibold" for="calendar-note-text">Markdown text</label>
         <textarea id="calendar-note-text" class="form-control form-control-sm mb-3" rows="4" placeholder="**bold**, _italic_, lists…"></textarea>
-        <label class="form-label small fw-semibold" for="calendar-note-image">Image URL / markdown path</label>
+        <label class="form-label small fw-semibold" for="calendar-note-image">Images</label>
         <div class="d-flex gap-2 mb-2">
           <input type="text" class="form-control form-control-sm font-monospace" id="calendar-note-image" placeholder="media/uploads/photo.png" autocomplete="off" spellcheck="false">
+          <button type="button" class="btn btn-sm btn-outline-light flex-shrink-0" id="calendar-note-image-add-btn">Add</button>
           <button type="button" class="btn btn-sm btn-outline-light flex-shrink-0" id="calendar-note-upload-btn">Upload</button>
         </div>
-        <input type="file" id="calendar-note-file" class="visually-hidden-file-input" accept="image/*" tabindex="-1" aria-hidden="true">
+        <input type="file" id="calendar-note-file" class="visually-hidden-file-input" accept="image/*" multiple tabindex="-1" aria-hidden="true">
         <div id="calendar-note-preview" class="calendar-note-preview d-none"></div>
       </div>
       <div class="modal-footer">

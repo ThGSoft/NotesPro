@@ -465,7 +465,7 @@ In preview, use the chart **settings** (gear) to switch type, toggle data points
 
 | Mode | How |
 |------|-----|
-| **Edit** | Top bar **Edit** — EasyMDE toolbar, markdown source, and live preview side by side |
+| **Edit** | Top bar **Edit** — EasyMDE toolbar, markdown source, and live preview side by side. On a phone, a floating **Edit** / **Preview** button (same style as **Contents**) switches between markdown and the rendered page |
 | **Preview** | Top bar **Preview** — rendered page only (full width; chat panel auto-hides) |
 
 Writers and workspace owners start in edit mode; read-only members see preview only.
@@ -639,13 +639,13 @@ markdown
 
 Use the toolbar **calendar** button to insert a day-mode block for the current month. Preview and edit split view both render it.
 
-In **Edit** mode, click a day / week / month / year chip in the preview to add **markdown text** and an optional **image**. Notes are stored inside the fence. Multiple lines with the same key are all shown on that unit.
+In **Edit** mode, click a day / week / month / year chip in the preview to add **markdown text** and **images**. Notes are stored inside the fence. Multiple lines with the same key are all shown on that unit. A day can hold **several photos**; they appear as **thumbnails** on the day. Click a thumbnail to open a gallery of **all** calendar photos (day shown as the caption).
 
 Day notes can be **all-day** or **start/stop** timed (`HH:MM` or `HH:MM-HH:MM` after the key). In day mode the note dialog shows **Start date** / **End date** for all-day events; choose **Start / Stop** to add times as well:
 
 markdown
 ```calendar{from=1.1.26;to=1.7.26;mode=day}
-@d:15.01.26 | **Meeting** with _Team_ | ![](/media/uploads/photo.png)
+@d:15.01.26 | **Meeting** with _Team_ | ![](/media/uploads/photo.png) | ![](/media/uploads/photo2.png)
 @d:15.01.26 | Follow-up call
 @d:20.01.26-25.01.26 | Vacation
 @d:10.02.26-12.02.26 | 09:00-17:00 | Conference
