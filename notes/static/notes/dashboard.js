@@ -2088,7 +2088,7 @@
   }
 
   function isPreviewRichBlock(el) {
-    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .md-python, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .gallery-block, .photocube-block, .photobook-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .page-tags');
+    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .md-python, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .tetris-block, .gallery-block, .photocube-block, .photobook-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .page-tags');
   }
 
   function getPreviewBlockSourceLine(node) {
@@ -7329,6 +7329,82 @@
     window.NotesProLemmings?.hydrate?.(root);
   }
 
+  const TICTACTOE_BLOCK_RE = /```(?:tictactoe|tic-tac-toe|ttt|noughts)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function updateTictactoeInMarkdown(markdown, tictactoeIndex, payload) {
+    const engine = window.NotesProTictactoe;
+    if (!engine) return markdown;
+    let idx = 0;
+    const re = /```(?:tictactoe|tic-tac-toe|ttt|noughts)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+    return String(markdown || '').replace(re, (match, fenceAttrs, content = '') => {
+      const thisIndex = idx;
+      idx += 1;
+      if (thisIndex !== tictactoeIndex) return match;
+      const cfg = engine.parseFenceAttrs(fenceAttrs || '');
+      if (payload.mode) cfg.mode = payload.mode;
+      if (payload.difficulty) cfg.difficulty = payload.difficulty;
+      if (payload.score) cfg.score = payload.score;
+      const board = payload.board || engine.serializeBoard?.([]) || '.........';
+      const attrs = engine.buildFenceAttrsString(cfg, board);
+      const fence = attrs ? `tictactoe{${attrs}}` : 'tictactoe';
+      return `\`\`\`${fence}\n${content || ''}\`\`\``;
+    });
+  }
+
+  function parseTictactoeBlocks(text, options = {}) {
+    let tictactoeIndex = 0;
+    TICTACTOE_BLOCK_RE.lastIndex = 0;
+    return text.replace(TICTACTOE_BLOCK_RE, (_, fenceAttrs, content) => {
+      const engine = window.NotesProTictactoe;
+      const idx = tictactoeIndex++;
+      const html = engine?.renderBlock
+        ? engine.renderBlock(content || '', fenceAttrs || '', {
+          tictactoeIndex: idx,
+          editable: !!options.sheetEditable,
+        })
+        : '<div class="tictactoe-block tictactoe-block--error">Tic Tac Toe engine not loaded.</div>';
+      return wrapRichPreviewBlock(html);
+    });
+  }
+
+  function hydrateTictactoeBlocks(root) {
+    const engine = window.NotesProTictactoe;
+    if (!engine) return;
+    (root || document).querySelectorAll('.tictactoe-block[data-tictactoe-board]').forEach(el => {
+      const tictactoeIndex = parseInt(el.dataset.tictactoeIndex, 10);
+      engine.hydrateBlock(el, {
+        onPersist: userCanEdit && Number.isFinite(tictactoeIndex) && easyMDE
+          ? (payload) => {
+            const oldMarkdown = easyMDE.value();
+            const updated = updateTictactoeInMarkdown(oldMarkdown, tictactoeIndex, payload || {});
+            if (updated === oldMarkdown) return;
+            easyMDE.value(updated);
+            scheduleSave();
+          }
+          : null,
+      });
+    });
+  }
+
+  const TETRIS_BLOCK_RE = /```(?:tetris|tetrix|tetric)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function parseTetrisBlocks(text) {
+    let tetrisIndex = 0;
+    TETRIS_BLOCK_RE.lastIndex = 0;
+    return text.replace(TETRIS_BLOCK_RE, (_, fenceAttrs, content) => {
+      const engine = window.NotesProTetris;
+      const idx = tetrisIndex++;
+      const html = engine?.renderBlock
+        ? engine.renderBlock(content || '', fenceAttrs || '', { tetrisIndex: idx })
+        : '<div class="tetris-block tetris-block--error">Tetris engine not loaded.</div>';
+      return wrapRichPreviewBlock(html);
+    });
+  }
+
+  function hydrateTetrisBlocks(root) {
+    window.NotesProTetris?.hydrate?.(root);
+  }
+
   const GALLERY_BLOCK_RE = /```gallery(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
 
   function updateGalleryInMarkdown(markdown, galleryIndex, update) {
@@ -8785,7 +8861,7 @@ function formatTextWithMarkup(rawText) {
     if (!root) return;
     root.querySelectorAll('pre').forEach(pre => {
       if (pre.closest('.md-code-block')) return;
-      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .md-python, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .gallery-block, .photocube-block, .photobook-block, .rollercoast-block, .scooter-block, .ghosttrain-block')) {
+      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .md-python, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .tetris-block, .gallery-block, .photocube-block, .photobook-block, .rollercoast-block, .scooter-block, .ghosttrain-block')) {
         return;
       }
       const wrap = document.createElement('div');
@@ -9186,6 +9262,16 @@ function formatTextWithMarkup(rawText) {
       const label = cfg.title || 'Lemmings';
       return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
     });
+    md = md.replace(/```(?:tictactoe|tic-tac-toe|ttt|noughts)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const cfg = window.NotesProTictactoe?.parseFenceAttrs?.(fenceAttrs) || {};
+      const label = cfg.title || 'Tic Tac Toe';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
+    md = md.replace(/```(?:tetris|tetrix|tetric)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const cfg = window.NotesProTetris?.parseFenceAttrs?.(fenceAttrs) || {};
+      const label = cfg.title || 'Tetris';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
     md = md.replace(/```gallery(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
       const cfg = window.NotesProGallery?.parseFenceAttrs?.(fenceAttrs) || {};
       const label = cfg.title || 'Gallery';
@@ -9269,6 +9355,8 @@ function formatTextWithMarkup(rawText) {
       md = parsePacmanBlocks(md);
       md = parseMarioBlocks(md);
       md = parseLemmingsBlocks(md);
+      md = parseTictactoeBlocks(md, options);
+      md = parseTetrisBlocks(md);
       md = parseGalleryBlocks(md, options);
       md = parsePhotocubeBlocks(md, options);
       md = parsePhotobookBlocks(md, options);
@@ -9660,6 +9748,8 @@ function formatTextWithMarkup(rawText) {
     hydratePacmanBlocks(preview);
     hydrateMarioBlocks(preview);
     hydrateLemmingsBlocks(preview);
+    hydrateTictactoeBlocks(preview);
+    hydrateTetrisBlocks(preview);
     hydrateGalleryBlocks(preview);
     hydratePhotocubeBlocks(preview);
     hydratePhotobookBlocks(preview);
@@ -10825,6 +10915,18 @@ function formatTextWithMarkup(rawText) {
           text: 'Sudoku',
           title: 'Insert sudoku',
           action: (editor) => insertFenceBlock(editor, 'sudoku{fullscreen;difficulty=medium}', ''),
+        },
+        {
+          name: 'insert-tictactoe',
+          text: 'Tic Tac Toe',
+          title: 'Insert tic-tac-toe',
+          action: (editor) => insertFenceBlock(editor, 'tictactoe{fullscreen;mode=cpu;difficulty=medium}', ''),
+        },
+        {
+          name: 'insert-tetris',
+          text: 'Tetris',
+          title: 'Insert Tetris',
+          action: (editor) => insertFenceBlock(editor, 'tetris{fullscreen}', ''),
         },
         {
           name: 'insert-puzzle',
@@ -13471,6 +13573,7 @@ function formatTextWithMarkup(rawText) {
     easyMDE = new EasyMDE({
       element: document.getElementById('markdown-editor'),
       spellChecker: false,
+      styleSelectedText: true,
       // status: false,
       status: ["autosave", "lines", "words", "cursor"],
       autosave: { enabled: false },
@@ -16319,7 +16422,7 @@ function formatTextWithMarkup(rawText) {
   }
 
   document.addEventListener('paste', function (event) {
-    if (event.target.closest?.('.puzzle-block, .gallery-block, .photocube-block, .photobook-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .pacman-block, .mario-block, .lemmings-block')) return;
+    if (event.target.closest?.('.puzzle-block, .gallery-block, .photocube-block, .photobook-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .tetris-block')) return;
     const items = (event.clipboardData || event.originalEvent.clipboardData).items;
     for (let index in items) {
       const item = items[index];

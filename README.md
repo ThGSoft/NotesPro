@@ -3,6 +3,8 @@
 Collaborative notes app with workspaces, markdown editing, embedded spreadsheets and charts, team chat, and encrypted messaging.
 ##  Live Demo
 https://thgsoft.online/DjangoNotesPro/
+
+Share: [LinkedIn](https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2F%2Fthgsoft.online%2FDjangoNotesPro%2F) · [YouTube](https://www.youtube.com/upload)
 ## Screenshots
 
 ### RSS Feeds
@@ -35,6 +37,8 @@ https://thgsoft.online/DjangoNotesPro/
 - **ThGMaths / Calcs** blocks — engineering calculator (real/complex, ranges, matrices, multi-curve `Plot`, SCI/ENG/FIX)
 - **Python / executecode** blocks — run in a browser Pyodide sandbox; `print`, pandas, and matplotlib plots show in the preview
 - **Sudoku** blocks — interactive 9×9 puzzles (generated or custom grid in markdown)
+- **Tic Tac Toe** blocks — 3×3 vs CPU or two players
+- **Tetris** blocks — 7-bag Tetris with ghost piece, hold, and next preview
 - **Puzzle** blocks — jigsaw puzzle from a pasted image (drag pieces into place)
 - **Pinball** blocks — 3D Pinball Space Cadet (WASM) in preview
 - **Gallery** blocks — walk-in 3D photo corridor with embedded wall frames
@@ -92,7 +96,7 @@ python manage.py runserver
 
 Open:
 - http://127.0.0.1:8000/login/
-- Demo user after `seed_demo`: `demo` / `password` — workspace **Docs → README** contains this guide with screenshots; **Docs → Blocks** has gantt/calendar/mindmap/kanban/calcs/panel examples; **Docs → RSS Feeds** embeds BBC / DE / CH news feeds
+- Demo user after `seed_demo`: `demo` / `password` — workspace **Docs → README** contains this guide with screenshots; **Docs → Blocks** has gantt/calendar/mindmap/kanban/calcs/panel examples; **Docs → Calendar** has day/week/month/year views with sample events; **Docs → Gallery** is a walk-in corridor of NotesPro screenshots (tap **Demo tour** on a phone); **Docs → Games** has sudoku, tic-tac-toe, Tetris, jigsaw, pinball, Pac-Man, Super Mario, Lemmings, roller coaster, auto scooter, and ghost train; **Docs → RSS Feeds** embeds BBC / DE / CH news feeds
 
 Copy `.env.example` to `.env.dev` (or set `DJANGO_ENV`) for local settings. See [Email invitations](#email-invitations) and [Database encryption](#database-encryption) below.
 
@@ -942,6 +946,64 @@ Custom puzzle (`.` or `0` = empty; nine rows or one 81-character line):
 
 Toolbar: **Insert sudoku** adds a medium puzzle. Use the **⛶** button (top-right) for monitor fullscreen; **Esc** to exit.
 
+### Tic Tac Toe
+
+Embed a 3×3 game with a fenced `tictactoe` block (`tic-tac-toe`, `ttt`, and `noughts` work too). You play **X**. Switch **CPU** / **2 players** and Easy / Med / Hard on the board. Score is kept on the page. Keys **1–9** play a cell; **N** / **R** starts a new game.
+
+````markdown
+```tictactoe{fullscreen;mode=cpu;difficulty=medium}
+```
+````
+
+Two players:
+
+````markdown
+```tictactoe{fullscreen;mode=hotseat}
+```
+````
+
+| Option | Description |
+|--------|-------------|
+| `fullscreen` | Edge-to-edge layout (default on; `fullscreen=0` for a compact card) |
+| `mode` | `cpu` (default) or `hotseat` |
+| `difficulty` | CPU strength: `easy`, `medium`, or `hard` |
+| `score` | `you-cpu-draw` (or `X-O-draw`) tally, written automatically |
+| `board` | 9-character save (`X`, `O`, `.`) written automatically while you play |
+| `title` | Accessible label (hidden in fullscreen) |
+| `col` / `bkcol` | Theme colors |
+
+Toolbar: **Insert tic-tac-toe** adds a medium CPU match. **New game** clears the board.
+
+### Tetris
+
+Embed a guideline-style **Tetris** with a fenced `tetris` block (`tetrix` / `tetric` work too). Slow gravity by default, 7-bag randomizer, ghost piece, hold, next-piece preview, and a gentle level speed-up. Click the well to focus, then play.
+
+````markdown
+```tetris{fullscreen}
+```
+````
+
+| Option | Description |
+|--------|-------------|
+| `fullscreen` | Edge-to-edge well (default on) |
+| `title` | Block title (hidden chrome in fullscreen mode) |
+| `col` / `bkcol` | Theme colors |
+
+| Key | Action |
+|-----|--------|
+| **← →** / **A D** | Move |
+| **↑** / **X** | Rotate clockwise |
+| **Z** | Rotate counter-clockwise |
+| **↓** / **S** | Soft drop |
+| **Space** | Hard drop |
+| **C** | Hold |
+| **P** | Pause |
+| **R** | Restart |
+
+On phones, **Hold / Rotate / Drop** and a D-pad appear under the well. Desktop uses the keyboard only.
+
+Toolbar: **Insert Tetris** adds a well. Use the **⛶** button for monitor fullscreen.
+
 ### Puzzle (jigsaw)
 
 Paste an image and **jqJigsawPuzzle.js** cuts it into draggable interlocking pieces. Drag pieces near their correct slot to snap them in place. **Check** validates progress; **Reset** reshuffles the pieces. After each piece move, every piece’s position is saved in the fence body (`#pieces` lines) so a reload keeps the layout.
@@ -1158,7 +1220,7 @@ With your own photos / videos:
 
 **Walk controls:** click the view to capture the mouse (also unlocks video sound) · **W A S D** / arrows move · **Shift** sprint · mouse **wheel** zoom closer / wider · **Space** open the media you're looking at · **Esc** release mouse · **Demo tour** starts / stops the auto-walk (shown only on `demo` galleries) · **Thumbnails** toggles a strip.
 
-On **mobile**, **Enter gallery** and **Demo tour** are hidden. The first tap enters the hall; on a `demo` gallery that tap also starts the tour. After that, tap a wall photo to step a little closer (again to go closer still), and drag to look around (that takes over from the tour).
+On **mobile**, **Enter gallery** is hidden (the first tap enters the hall). **Demo tour** stays visible so you can start or stop the guided walk. On a `demo` gallery the tour also starts on load; the first tap unlocks sound. After that, tap a wall photo to step a little closer (again to go closer still), and drag to look around (that takes over from the tour).
 
 Videos play on the wall when the file has a picture track. If there is no video (audio-only file, or a YouTube clip you are not facing closely enough), **sound still plays**. Stand in front of a YouTube frame to see the video overlay; glance away and you hear the song only. **Only one clip has audio at a time.** Browsers may keep sound muted until you click **Enter gallery** or **Demo tour** (or tap the gallery on a phone). **Space** opens the media in the lightbox.
 

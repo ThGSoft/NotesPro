@@ -745,6 +745,26 @@ body.editing #preview-content:focus {
   color: #111827 !important;
 }
 
+/* Fenced ``` blocks in the editor: distinct color, and a different selection tint */
+#markdown-wrap .CodeMirror .cm-comment {
+  color: #0f766e;
+  background: rgba(13, 148, 136, 0.12);
+}
+
+#markdown-wrap .CodeMirror-selected {
+  background: #bfdbfe;
+}
+
+#markdown-wrap .CodeMirror-selectedtext {
+  background: #93c5fd;
+  color: #1e3a8a;
+}
+
+#markdown-wrap .CodeMirror .cm-comment.CodeMirror-selectedtext {
+  background: #5eead4;
+  color: #115e59;
+}
+
 .editor-toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -7250,13 +7270,305 @@ table {
   color: var(--lemmings-meta);
 }
 
+/* --- Tic Tac Toe --- */
+.tictactoe-block {
+  --tictactoe-bg: var(--panel, #1e1e2e);
+  --tictactoe-border: var(--line, #3b3b52);
+  --tictactoe-title: var(--text, #e2e8f0);
+  --tictactoe-meta: var(--muted, #94a3b8);
+  --tictactoe-accent: #38bdf8;
+  border: 1px solid var(--tictactoe-border);
+  border-left: 4px solid var(--tictactoe-accent);
+  background: var(--tictactoe-bg);
+  border-radius: 14px;
+  padding: 14px 16px 16px;
+  margin: 16px 0;
+  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.tictactoe-block--info { --tictactoe-accent: #38bdf8; }
+.tictactoe-block--success { --tictactoe-accent: #4ade80; }
+.tictactoe-block--warning { --tictactoe-accent: #fbbf24; }
+.tictactoe-block--danger { --tictactoe-accent: #f87171; }
+.tictactoe-block--note { --tictactoe-accent: #94a3b8; }
+
+.tictactoe-block--custom {
+  background: var(--tictactoe-bg-custom, var(--tictactoe-bg));
+}
+
+.tictactoe-block--error {
+  color: #f87171;
+  padding: 12px 14px;
+}
+
+.tictactoe-block:focus {
+  outline: 2px solid var(--tictactoe-accent);
+  outline-offset: 2px;
+}
+
+.tictactoe-block-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.tictactoe-block-title {
+  font-weight: 700;
+  color: var(--tictactoe-title);
+}
+
+.tictactoe-block-meta {
+  font-size: 12px;
+  color: var(--tictactoe-meta);
+  text-transform: capitalize;
+}
+
+.tictactoe-block-hint {
+  font-size: 0.82rem;
+  color: var(--tictactoe-meta);
+  margin: 0 0 8px;
+}
+
+.tictactoe-play-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.tictactoe-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: min(100%, 360px);
+}
+
+.tictactoe-toolbar-gap {
+  width: 8px;
+}
+
+.tictactoe-chip {
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: rgba(15, 23, 42, 0.65);
+  color: #cbd5e1;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font: 600 12px/1.2 system-ui, sans-serif;
+  cursor: pointer;
+}
+
+.tictactoe-chip.is-active {
+  background: rgba(56, 189, 248, 0.22);
+  border-color: rgba(56, 189, 248, 0.7);
+  color: #e0f2fe;
+}
+
+.tictactoe-score {
+  display: flex;
+  gap: 14px;
+  font: 600 13px/1.2 system-ui, sans-serif;
+  color: var(--tictactoe-meta);
+}
+
+.tictactoe-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(78px, 118px));
+  grid-template-rows: repeat(3, minmax(78px, 118px));
+  gap: 8px;
+  width: min(100%, 380px);
+}
+
+.tictactoe-cell {
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.72);
+  color: #e2e8f0;
+  font: 700 2.4rem/1 system-ui, sans-serif;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, transform 0.12s ease;
+}
+
+.tictactoe-cell--empty:hover {
+  background: rgba(56, 189, 248, 0.16);
+  border-color: rgba(56, 189, 248, 0.55);
+}
+
+.tictactoe-cell--last:not(.tictactoe-cell--win) {
+  box-shadow: inset 0 0 0 2px rgba(250, 204, 21, 0.7);
+}
+
+.tictactoe-block--busy .tictactoe-cell--empty {
+  cursor: wait;
+}
+
+.tictactoe-cell:disabled {
+  cursor: default;
+}
+
+.tictactoe-cell--x { color: #38bdf8; }
+.tictactoe-cell--o { color: #fb923c; }
+.tictactoe-cell--win {
+  background: rgba(74, 222, 128, 0.22);
+  border-color: #4ade80;
+}
+
+.tictactoe-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.tictactoe-status {
+  min-height: 1.25rem;
+  margin-top: 8px;
+  font-size: 0.85rem;
+  color: var(--tictactoe-meta);
+}
+
+.tictactoe-status--success { color: #4ade80; }
+.tictactoe-status--warn { color: #fbbf24; }
+.tictactoe-status--info { color: var(--tictactoe-meta); }
+
+/* --- Tetris --- */
+.tetris-block {
+  --tetris-bg: var(--panel, #1e1e2e);
+  --tetris-border: var(--line, #3b3b52);
+  --tetris-title: var(--text, #e2e8f0);
+  --tetris-meta: var(--muted, #94a3b8);
+  --tetris-accent: #22d3ee;
+  border: 1px solid var(--tetris-border);
+  border-left: 4px solid var(--tetris-accent);
+  background: var(--tetris-bg);
+  border-radius: 14px;
+  padding: 14px 16px 16px;
+  margin: 16px 0;
+  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.tetris-block--info { --tetris-accent: #38bdf8; }
+.tetris-block--success { --tetris-accent: #4ade80; }
+.tetris-block--warning { --tetris-accent: #fbbf24; }
+.tetris-block--danger { --tetris-accent: #f87171; }
+.tetris-block--note { --tetris-accent: #94a3b8; }
+
+.tetris-block--custom {
+  background: var(--tetris-bg-custom, var(--tetris-bg));
+}
+
+.tetris-block--error {
+  color: #f87171;
+  padding: 12px 14px;
+}
+
+.tetris-block:focus {
+  outline: 2px solid var(--tetris-accent);
+  outline-offset: 2px;
+}
+
+.tetris-block-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.tetris-block-title {
+  font-weight: 700;
+  color: var(--tetris-title);
+}
+
+.tetris-block-meta {
+  font-size: 12px;
+  color: var(--tetris-meta);
+  text-transform: capitalize;
+}
+
+.tetris-block-hint {
+  font-size: 0.82rem;
+  color: var(--tetris-meta);
+  margin: 0 0 8px;
+}
+
+.tetris-stage {
+  width: min(100%, 420px);
+  border-radius: 10px;
+  overflow: hidden;
+  border: 2px solid var(--tetris-border);
+  background: #0b1020;
+  display: flex;
+  justify-content: center;
+}
+
+.tetris-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: #0b1020;
+}
+
+.tetris-pad {
+  display: none;
+  margin-top: 10px;
+  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-areas:
+    "hold rot drop"
+    "left down right";
+  gap: 8px;
+  width: min(100%, 360px);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.tetris-pad.is-visible {
+  display: grid;
+}
+
+.tetris-pad__btn {
+  touch-action: none;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  background: rgba(15, 23, 42, 0.72);
+  color: #e2e8f0;
+  font: 600 14px/1 system-ui, sans-serif;
+  border-radius: 14px;
+  min-height: 52px;
+}
+
+.tetris-pad__btn--hold { grid-area: hold; }
+.tetris-pad__btn--rot { grid-area: rot; }
+.tetris-pad__btn--drop { grid-area: drop; }
+.tetris-pad__btn--left { grid-area: left; }
+.tetris-pad__btn--down { grid-area: down; }
+.tetris-pad__btn--right { grid-area: right; }
+
+.tetris-pad__btn:active,
+.tetris-pad__btn.is-active {
+  background: rgba(34, 211, 238, 0.28);
+}
+
+.tetris-status {
+  min-height: 1.25rem;
+  margin-top: 8px;
+  font-size: 0.85rem;
+  color: var(--tetris-meta);
+}
+
 /* Fullscreen game blocks */
 .sudoku-block--fullscreen,
 .puzzle-block--fullscreen,
 .pinball-block--fullscreen,
 .pacman-block--fullscreen,
 .mario-block--fullscreen,
-.lemmings-block--fullscreen {
+.lemmings-block--fullscreen,
+.tictactoe-block--fullscreen,
+.tetris-block--fullscreen {
   width: 100%;
   max-width: none;
   margin: 0;
@@ -7298,8 +7610,18 @@ table {
   min-height: min(90vh, 960px);
 }
 
+.tictactoe-block--fullscreen {
+  background: var(--tictactoe-bg, var(--panel, #1e1e2e));
+}
+
+.tetris-block--fullscreen {
+  background: #0b1020;
+  min-height: min(90vh, 960px);
+}
+
 .sudoku-block--fullscreen .sudoku-play-area,
-.puzzle-block--fullscreen .puzzle-play-area {
+.puzzle-block--fullscreen .puzzle-play-area,
+.tictactoe-block--fullscreen .tictactoe-play-area {
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -7400,12 +7722,34 @@ table {
   border-right: none;
 }
 
+.tetris-block--fullscreen .tetris-stage {
+  flex: 1;
+  width: 100%;
+  max-width: none;
+  min-height: 0;
+  border: none;
+  border-radius: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tetris-block--fullscreen .tetris-canvas {
+  width: auto;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
 .sudoku-block--fullscreen .sudoku-status,
 .puzzle-block--fullscreen .puzzle-status,
 .pinball-block--fullscreen .pinball-status,
 .pacman-block--fullscreen .pacman-status,
 .mario-block--fullscreen .mario-status,
-.lemmings-block--fullscreen .lemmings-status {
+.lemmings-block--fullscreen .lemmings-status,
+.tictactoe-block--fullscreen .tictactoe-status,
+.tetris-block--fullscreen .tetris-status {
   min-height: 0;
   padding: 0 12px 8px;
   font-size: 0.8rem;
@@ -7416,7 +7760,9 @@ table {
 .editor-wrap--preview-only .preview-content:has(> .pinball-block--fullscreen:only-child),
 .editor-wrap--preview-only .preview-content:has(> .pacman-block--fullscreen:only-child),
 .editor-wrap--preview-only .preview-content:has(> .mario-block--fullscreen:only-child),
-.editor-wrap--preview-only .preview-content:has(> .lemmings-block--fullscreen:only-child) {
+.editor-wrap--preview-only .preview-content:has(> .lemmings-block--fullscreen:only-child),
+.editor-wrap--preview-only .preview-content:has(> .tictactoe-block--fullscreen:only-child),
+.editor-wrap--preview-only .preview-content:has(> .tetris-block--fullscreen:only-child) {
   padding: 0;
   overflow: hidden;
   display: flex;
@@ -7428,7 +7774,9 @@ table {
 .editor-wrap--preview-only .preview-content > .pinball-block--fullscreen:only-child,
 .editor-wrap--preview-only .preview-content > .pacman-block--fullscreen:only-child,
 .editor-wrap--preview-only .preview-content > .mario-block--fullscreen:only-child,
-.editor-wrap--preview-only .preview-content > .lemmings-block--fullscreen:only-child {
+.editor-wrap--preview-only .preview-content > .lemmings-block--fullscreen:only-child,
+.editor-wrap--preview-only .preview-content > .tictactoe-block--fullscreen:only-child,
+.editor-wrap--preview-only .preview-content > .tetris-block--fullscreen:only-child {
   flex: 1;
   min-height: 0;
   height: 100%;
@@ -9169,6 +9517,8 @@ body.gallery-lightbox-open {
 .pacman-block,
 .mario-block,
 .lemmings-block,
+.tictactoe-block,
+.tetris-block,
 .gallery-block,
 .photocube-block,
 .photobook-block,
@@ -9224,6 +9574,8 @@ body.gallery-lightbox-open {
 .pacman-block:fullscreen .game-fullscreen-btn__icon--enter,
 .mario-block:fullscreen .game-fullscreen-btn__icon--enter,
 .lemmings-block:fullscreen .game-fullscreen-btn__icon--enter,
+.tictactoe-block:fullscreen .game-fullscreen-btn__icon--enter,
+.tetris-block:fullscreen .game-fullscreen-btn__icon--enter,
 .gallery-block:fullscreen .game-fullscreen-btn__icon--enter,
 .photocube-block:fullscreen .game-fullscreen-btn__icon--enter,
 .photobook-block:fullscreen .game-fullscreen-btn__icon--enter,
@@ -9236,6 +9588,8 @@ body.gallery-lightbox-open {
 .pacman-block:-webkit-full-screen .game-fullscreen-btn__icon--enter,
 .mario-block:-webkit-full-screen .game-fullscreen-btn__icon--enter,
 .lemmings-block:-webkit-full-screen .game-fullscreen-btn__icon--enter,
+.tictactoe-block:-webkit-full-screen .game-fullscreen-btn__icon--enter,
+.tetris-block:-webkit-full-screen .game-fullscreen-btn__icon--enter,
 .gallery-block:-webkit-full-screen .game-fullscreen-btn__icon--enter,
 .photocube-block:-webkit-full-screen .game-fullscreen-btn__icon--enter,
 .photobook-block:-webkit-full-screen .game-fullscreen-btn__icon--enter,
@@ -9252,6 +9606,8 @@ body.gallery-lightbox-open {
 .pacman-block:fullscreen .game-fullscreen-btn__icon--exit,
 .mario-block:fullscreen .game-fullscreen-btn__icon--exit,
 .lemmings-block:fullscreen .game-fullscreen-btn__icon--exit,
+.tictactoe-block:fullscreen .game-fullscreen-btn__icon--exit,
+.tetris-block:fullscreen .game-fullscreen-btn__icon--exit,
 .gallery-block:fullscreen .game-fullscreen-btn__icon--exit,
 .photocube-block:fullscreen .game-fullscreen-btn__icon--exit,
 .photobook-block:fullscreen .game-fullscreen-btn__icon--exit,
@@ -9264,6 +9620,8 @@ body.gallery-lightbox-open {
 .pacman-block:-webkit-full-screen .game-fullscreen-btn__icon--exit,
 .mario-block:-webkit-full-screen .game-fullscreen-btn__icon--exit,
 .lemmings-block:-webkit-full-screen .game-fullscreen-btn__icon--exit,
+.tictactoe-block:-webkit-full-screen .game-fullscreen-btn__icon--exit,
+.tetris-block:-webkit-full-screen .game-fullscreen-btn__icon--exit,
 .gallery-block:-webkit-full-screen .game-fullscreen-btn__icon--exit,
 .photocube-block:-webkit-full-screen .game-fullscreen-btn__icon--exit,
 .photobook-block:-webkit-full-screen .game-fullscreen-btn__icon--exit,
@@ -9279,12 +9637,16 @@ body.gallery-lightbox-open {
 .pacman-block:fullscreen,
 .mario-block:fullscreen,
 .lemmings-block:fullscreen,
+.tictactoe-block:fullscreen,
+.tetris-block:fullscreen,
 .sudoku-block:-webkit-full-screen,
 .puzzle-block:-webkit-full-screen,
 .pinball-block:-webkit-full-screen,
 .pacman-block:-webkit-full-screen,
 .mario-block:-webkit-full-screen,
-.lemmings-block:-webkit-full-screen {
+.lemmings-block:-webkit-full-screen,
+.tictactoe-block:-webkit-full-screen,
+.tetris-block:-webkit-full-screen {
   width: 100%;
   height: 100%;
   min-height: 100%;
@@ -9304,10 +9666,14 @@ body.gallery-lightbox-open {
 .pinball-block:fullscreen .pinball-frame-wrap,
 .pacman-block:fullscreen .pacman-stage,
 .mario-block:fullscreen .mario-stage,
+.tictactoe-block:fullscreen .tictactoe-play-area,
+.tetris-block:fullscreen .tetris-stage,
 .sudoku-block:-webkit-full-screen .sudoku-play-area,
 .puzzle-block:-webkit-full-screen .puzzle-play-area,
 .pinball-block:-webkit-full-screen .pinball-frame-wrap,
-.pacman-block:-webkit-full-screen .pacman-stage {
+.pacman-block:-webkit-full-screen .pacman-stage,
+.tictactoe-block:-webkit-full-screen .tictactoe-play-area,
+.tetris-block:-webkit-full-screen .tetris-stage {
   flex: 1;
   min-height: 0;
 }
@@ -9392,6 +9758,26 @@ body.gallery-lightbox-open {
 .lemmings-block:-webkit-full-screen .lemmings-skills {
   width: 100%;
   border-radius: 0;
+}
+
+.tetris-block:fullscreen .tetris-stage,
+.tetris-block:-webkit-full-screen .tetris-stage {
+  width: 100%;
+  max-width: none;
+  border: none;
+  border-radius: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tetris-block:fullscreen .tetris-canvas,
+.tetris-block:-webkit-full-screen .tetris-canvas {
+  width: auto;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
 }
 
 .puzzle-block:fullscreen .puzzle-jq-mount,

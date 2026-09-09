@@ -13,7 +13,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <link rel="stylesheet" href="https://code.jquery.com/ui/1.13.2/themes/base/jquery-ui.min.css">
   <link rel="stylesheet" href="{% static 'notes/vendor/jqJigsawPuzzle/jqJigsawPuzzle.css' %}">
-  <link rel="stylesheet" href="{% static 'notes/dashboard.css' %}">
+  <link rel="stylesheet" href="{% static 'notes/dashboard.css' %}?v={% now 'YmdHis' %}">
 </head>
 <body>
 <div class="app-shell">
@@ -242,12 +242,14 @@
         <textarea id="markdown-editor"></textarea>
       </div>
       <div id="editor-splitter" class="panel-splitter panel-splitter--editor" role="separator" aria-orientation="vertical" aria-label="Resize editor and preview" tabindex="0"></div>
-      <button id="mobile-edit-toggle" class="mobile-toc-btn mobile-edit-btn" type="button" aria-label="Switch to edit" aria-pressed="false">
-        <span>Edit</span>
-      </button>
-      <button id="toc-toggle" class="mobile-toc-btn" type="button" aria-label="Contents menu" aria-expanded="false">
-        <span>Contents</span>
-      </button>
+      <div id="mobile-page-fabs" class="mobile-page-fabs">
+        <button id="mobile-edit-toggle" class="mobile-toc-btn mobile-edit-btn" type="button" aria-label="Switch to edit" aria-pressed="false">
+          <span>Edit</span>
+        </button>
+        <button id="toc-toggle" class="mobile-toc-btn" type="button" aria-label="Contents menu" aria-expanded="false">
+          <span>Contents</span>
+        </button>
+      </div>
       <div id="mobile-toc-backdrop" class="mobile-toc-backdrop d-none" aria-hidden="true"></div>
       <aside id="floating-toc" class="floating-toc" aria-label="Page contents">
         <div class="floating-toc-title">Contents</div>
@@ -1093,6 +1095,8 @@
 <script src="{% static 'notes/pacman.js' %}?v={% now 'YmdHis' %}"></script>
 <script src="{% static 'notes/mario.js' %}?v={% now 'YmdHis' %}"></script>
 <script src="{% static 'notes/lemmings.js' %}?v={% now 'YmdHis' %}"></script>
+<script src="{% static 'notes/tictactoe.js' %}?v={% now 'YmdHis' %}"></script>
+<script src="{% static 'notes/tetris.js' %}?v={% now 'YmdHis' %}"></script>
 <script src="{% static 'notes/python-exec.js' %}?v={% now 'YmdHis' %}"></script>
 <script src="{% static 'notes/dashboard.js' %}?v={% now 'YmdHis' %}"></script>
 
