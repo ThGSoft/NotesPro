@@ -1199,6 +1199,10 @@ body.editing #preview-content:focus {
   -webkit-overflow-scrolling: touch;
 }
 
+.mobile-page-fabs {
+  display: none;
+}
+
 .mobile-toc-btn {
   display: none;
 }
@@ -1214,10 +1218,6 @@ body.editing #preview-content:focus {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  position: fixed;
-  right: 14px;
-  bottom: 14px;
-  z-index: 1045;
   min-height: 44px;
   padding: 0 16px;
   border-radius: 999px;
@@ -1227,14 +1227,7 @@ body.editing #preview-content:focus {
   font-size: 14px;
   font-weight: 600;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
-}
-
-.mobile-edit-btn.visible {
-  bottom: 14px;
-}
-
-.mobile-edit-btn.visible ~ #toc-toggle.visible {
-  bottom: 66px;
+  touch-action: manipulation;
 }
 
 .mobile-toc-btn.visible:active {
@@ -3101,11 +3094,17 @@ body.mobile-layout .sheet-structure-menu-btn {
 }
 
 .calendar-unit-thumbs {
+  position: relative;
+  z-index: 2;
   display: flex;
   flex-wrap: wrap;
   gap: 3px;
   margin: 4px 0 2px;
   cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  user-select: none;
 }
 
 .calendar-unit-thumb {
@@ -3115,6 +3114,9 @@ body.mobile-layout .sheet-structure-menu-btn {
   border-radius: 5px;
   border: 1px solid rgba(15, 23, 42, 0.12);
   pointer-events: auto;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-user-drag: none;
 }
 
 .calendar-unit-thumbs:hover .calendar-unit-thumb {
@@ -3134,14 +3136,36 @@ body.mobile-layout .sheet-structure-menu-btn {
   color: var(--calendar-unit-secondary, #64748b);
   font-size: 11px;
   font-weight: 700;
+  cursor: pointer;
+  pointer-events: auto;
 }
 
 @media (max-width: 768px) {
-  .calendar-unit-thumb,
+  .calendar-block[data-calendar-mode="day"] .calendar-unit,
+  .calendar-block[data-calendar-mode="week"] .calendar-unit--day {
+    padding: 6px 4px;
+  }
+
+  .calendar-unit-thumbs {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: stretch;
+    gap: 3px;
+    margin: 6px 0 0;
+    width: 100%;
+  }
+
+  .calendar-unit-thumb {
+    width: 100%;
+    min-width: 0;
+    height: 40px;
+    min-height: 40px;
+  }
+
   .calendar-unit-thumbs-more {
     width: 28px;
-    height: 28px;
     min-width: 28px;
+    height: 40px;
   }
 }
 
@@ -6161,12 +6185,31 @@ button, select, input {
     padding: 0.2rem 0.45rem;
   }
 
+  .mobile-page-fabs {
+    display: none;
+  }
+
+  body.mobile-layout .mobile-page-fabs:has(.mobile-toc-btn.visible) {
+    display: flex;
+    position: fixed;
+    right: 14px;
+    bottom: 14px;
+    z-index: 1045;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    pointer-events: none;
+  }
+
   .mobile-toc-btn {
     display: none;
   }
 
-  body.mobile-layout .mobile-toc-btn.visible {
+  body.mobile-layout .mobile-page-fabs .mobile-toc-btn.visible {
     display: inline-flex;
+    pointer-events: auto;
+    position: static;
   }
 
   body.mobile-layout .floating-toc {
@@ -6337,6 +6380,7 @@ button, select, input {
 }
 
 @media (min-width: 769px) {
+  .mobile-page-fabs,
   .mobile-toc-btn,
   .mobile-toc-backdrop,
   .mobile-topbar-menu-btn,
@@ -7773,10 +7817,14 @@ body.mobile-layout .gallery-walk-hint--mobile {
   display: none !important;
 }
 
-/* Phones: first tap enters (and starts the demo tour). Hide the extra buttons. */
-body.mobile-layout .gallery-walk-toolbar [data-action="walk-focus"],
-body.mobile-layout .gallery-walk-toolbar [data-action="walk-demo"] {
+/* Phones: first tap enters. Keep Demo tour so the guided walk can be started or stopped. */
+body.mobile-layout .gallery-walk-toolbar [data-action="walk-focus"] {
   display: none !important;
+}
+
+body.mobile-layout .gallery-walk-toolbar [data-action="walk-demo"] {
+  min-height: 44px;
+  padding: 0.45rem 0.9rem;
 }
 
 @media (max-width: 768px) {
@@ -7788,9 +7836,13 @@ body.mobile-layout .gallery-walk-toolbar [data-action="walk-demo"] {
     display: block;
   }
 
-  .gallery-walk-toolbar [data-action="walk-focus"],
-  .gallery-walk-toolbar [data-action="walk-demo"] {
+  .gallery-walk-toolbar [data-action="walk-focus"] {
     display: none !important;
+  }
+
+  .gallery-walk-toolbar [data-action="walk-demo"] {
+    min-height: 44px;
+    padding: 0.45rem 0.9rem;
   }
 }
 

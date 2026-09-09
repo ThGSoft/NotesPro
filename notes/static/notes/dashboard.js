@@ -4341,9 +4341,10 @@
   function calendarDayThumbsMarkup(dayEntries) {
     const images = calendarEntriesImages(dayEntries);
     if (!images.length) return '';
-    const shown = images.slice(0, 4);
+    const mobile = typeof isMobileLayout === 'function' && isMobileLayout();
+    const shown = images.slice(0, mobile ? 1 : 4);
     const extra = images.length - shown.length;
-    return `<div class="calendar-unit-thumbs" role="button" tabindex="0" aria-label="Open photo gallery">`
+    return `<div class="calendar-unit-thumbs" aria-label="Open photo gallery">`
       + shown.map((src) => (
         `<img class="calendar-unit-thumb" src="${escapeHtml(resolveMediaHref(src))}" alt="" data-gallery-src="${escapeHtml(src)}" draggable="false">`
       )).join('')
@@ -4374,7 +4375,7 @@
   }
 
   function calendarUnitAttrs(key, editable, entryOrList = null) {
-    const editAttr = editable ? ' tabindex="0" role="button"' : '';
+    const editAttr = editable ? ' tabindex="0"' : '';
     const md = calendarEntriesMarkdown(entryOrList);
     const mdAttr = md ? ` data-calendar-markdown="${escapeHtml(md)}"` : '';
     return ` data-calendar-key="${escapeHtml(key)}"${mdAttr}${editAttr}`;
@@ -4820,9 +4821,24 @@
     }
   }
 
+  let calendarGalleryOpenedAt = 0;
+
+  function calendarGalleryHitFromEvent(e, root) {
+    const direct = e.target?.closest?.('.calendar-unit-thumb, .calendar-unit-thumbs-more, .calendar-unit-thumbs');
+    if (direct && root.contains(direct)) return direct;
+    const x = e.clientX;
+    const y = e.clientY;
+    if (!Number.isFinite(x) || !Number.isFinite(y) || typeof document.elementFromPoint !== 'function') return null;
+    const stacked = document.elementFromPoint(x, y);
+    const hit = stacked?.closest?.('.calendar-unit-thumb, .calendar-unit-thumbs-more, .calendar-unit-thumbs');
+    return hit && root.contains(hit) ? hit : null;
+  }
+
   function openCalendarImageGallery(hit) {
-    const block = hit?.closest?.('.calendar-block');
-    if (!block) return;
+    if (!hit) return false;
+    if (Date.now() - calendarGalleryOpenedAt < 500) return true;
+    const block = hit.closest?.('.calendar-block');
+    if (!block) return false;
     let photos = decodeCalendarGallery(block.dataset.calendarGallery);
     if (!photos.length) {
       const calendarIndex = parseInt(block.dataset.calendarIndex, 10);
@@ -4831,7 +4847,7 @@
         : null;
       photos = spec ? calendarGalleryPhotosFromEntries(spec.entries) : [];
     }
-    if (!photos.length) return;
+    if (!photos.length || typeof window.NotesProGallery?.openLightbox !== 'function') return false;
     const thumb = hit.matches?.('.calendar-unit-thumb')
       ? hit
       : hit.querySelector?.('.calendar-unit-thumb');
@@ -4845,8 +4861,9 @@
       });
       if (found >= 0) index = found;
     }
-    if (typeof window.NotesProGallery?.openLightbox !== 'function') return;
+    calendarGalleryOpenedAt = Date.now();
     window.NotesProGallery.openLightbox(photos, index);
+    return true;
   }
 
   function renderCalendarBlockHtml(spec, options = {}) {
@@ -9825,6 +9842,7 @@ function formatTextWithMarkup(rawText) {
     document.body.classList.toggle('editing', editing);
     const btn = document.getElementById('edit-toggle');
     if (btn) btn.textContent = editing ? 'Preview' : 'Edit';
+    syncMobileEditButton();
     if (editing) {
       restoreRightPanelAfterPreview();
       const pinEditorTop = () => {
@@ -11689,13 +11707,48 @@ function formatTextWithMarkup(rawText) {
     if (!preview || preview.dataset.calendarEditBound === '1') return;
     preview.dataset.calendarEditBound = '1';
 
+    let calendarGalleryPointer = null;
+    const rememberCalendarGalleryPointer = (e) => {
+      if (e.pointerType === 'mouse' && e.button != null && e.button !== 0) {
+        calendarGalleryPointer = null;
+        return;
+      }
+      const hit = calendarGalleryHitFromEvent(e, preview);
+      calendarGalleryPointer = hit
+        ? { id: e.pointerId, x: e.clientX, y: e.clientY, hit, t: Date.now() }
+        : null;
+    };
+    const calendarGalleryMoved = (e, origin) => {
+      if (!origin) return false;
+      return Math.hypot(e.clientX - origin.x, e.clientY - origin.y) > 18;
+    };
+    const tryOpenCalendarGallery = (e, fromTouch) => {
+      const origin = calendarGalleryPointer;
+      const liveHit = calendarGalleryHitFromEvent(e, preview);
+      const galleryHit = liveHit || (origin && !calendarGalleryMoved(e, origin) ? origin.hit : null);
+      if (!galleryHit) return false;
+      if (fromTouch && calendarGalleryMoved(e, origin)) return false;
+      if (!openCalendarImageGallery(galleryHit)) return false;
+      e.preventDefault();
+      e.stopPropagation();
+      hideCalendarHoverTooltip();
+      calendarGalleryPointer = null;
+      return true;
+    };
+
+    preview.addEventListener('pointerdown', rememberCalendarGalleryPointer, { capture: true });
+    preview.addEventListener('pointerup', (e) => {
+      if (e.pointerType === 'mouse') return;
+      tryOpenCalendarGallery(e, true);
+    }, { capture: true });
+    preview.addEventListener('click', (e) => {
+      if (tryOpenCalendarGallery(e, false)) return;
+    }, { capture: true });
+
     preview.addEventListener('click', e => {
-      const galleryHit = e.target.closest?.('.calendar-unit-thumb, .calendar-unit-thumbs-more, .calendar-unit-thumbs');
-      if (galleryHit && preview.contains(galleryHit)) {
+      if (Date.now() - calendarGalleryOpenedAt < 600) {
         e.preventDefault();
         e.stopPropagation();
-        hideCalendarHoverTooltip();
-        openCalendarImageGallery(galleryHit);
         return;
       }
 
@@ -13595,6 +13648,7 @@ function formatTextWithMarkup(rawText) {
               '![Mountain lake](https://picsum.photos/id/1015/960/720)',
               '![Flower video](https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4)',
               '![Forest path](https://picsum.photos/id/1018/960/720)',
+              '![YouTube](https://www.youtube.com/embed/N9jBlg-GUYM)',
               '![Coast](https://picsum.photos/id/1016/960/720)',
               '![Valley](https://picsum.photos/id/1043/960/720)',
               '![Bridge](https://picsum.photos/id/1036/960/720)',

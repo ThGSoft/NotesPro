@@ -369,7 +369,7 @@
       `<div class="gallery-walk-overlay">`,
       `<p class="gallery-walk-hint gallery-walk-hint--desktop">Click to look &amp; unlock sound · <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> walk · wheel zoom · <kbd>Space</kbd> open · framed pictures on the walls</p>`,
       `<p class="gallery-walk-hint gallery-walk-hint--mobile">${spec.demo
-        ? 'Tap to enter — demo tour starts'
+        ? 'Tap Demo tour — or tap the hall to enter'
         : 'Tap a photo to step closer · drag to look'}</p>`,
       `<div class="gallery-walk-caption" aria-live="polite"></div>`,
       `</div>`,
@@ -1409,7 +1409,7 @@
     resize();
     raf = requestAnimationFrame(tick);
     syncDemoButton();
-    if (options.demo && !isGalleryMobile()) {
+    if (options.demo) {
       requestAnimationFrame(() => startTour());
     }
 
@@ -1502,7 +1502,14 @@
     root.addEventListener('click', (e) => {
       const action = e.target.closest('[data-action]')?.dataset.action;
       if (!action) return;
-      if (action === 'close') closeLightbox();
+      if (action === 'close') {
+        if (Date.now() - lightboxOpenedAt < 500) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+        closeLightbox();
+      }
       if (action === 'prev') stepLightbox(-1);
       if (action === 'next') stepLightbox(1);
     });
@@ -1526,6 +1533,7 @@
   }
 
   let lightboxState = { photos: [], index: 0, onClose: null };
+  let lightboxOpenedAt = 0;
 
   function stopLightboxVideo() {
     const root = document.getElementById('notespro-gallery-lightbox');
@@ -1605,6 +1613,7 @@
       index: Math.max(0, Math.min(index, photos.length - 1)),
       onClose: typeof hooks.onClose === 'function' ? hooks.onClose : null,
     };
+    lightboxOpenedAt = Date.now();
     const root = ensureLightbox();
     root.hidden = false;
     document.body.classList.add('gallery-lightbox-open');
