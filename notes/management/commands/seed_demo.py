@@ -14,7 +14,36 @@ SCREENSHOT_FILES = (
     'dashboard-editor.png',
     'dashboard-preview.png',
     'dashboard-chat.png',
+    'dashboard-full.png',
+    'dashboard-full1.png',
+    'Kanban.png',
+    'Mindmap.png',
+    'SprintBoard.png',
+    'Panels.png',
+    'Sheets.png',
+    'Sheet-Charts.png',
+    'RSS-Feeds.png',
 )
+
+GALLERY_SHOTS = (
+    ('dashboard-full.png', 'Dashboard'),
+    ('dashboard-overview.png', 'Overview'),
+    ('dashboard-editor.png', 'Editor'),
+    ('dashboard-chat.png', 'Chat'),
+    ('Kanban.png', 'Kanban'),
+    ('Mindmap.png', 'Mindmap'),
+    ('SprintBoard.png', 'Sprint board'),
+    ('Sheets.png', 'Sheets'),
+    ('RSS-Feeds.png', 'RSS Feeds'),
+)
+
+LIVE_DEMO_URL = 'https://thgsoft.online/DjangoNotesPro/'
+LINKEDIN_SHARE_URL = (
+    'https://www.linkedin.com/sharing/share-offsite/?url='
+    'https%3A%2F%2Fthgsoft.online%2FDjangoNotesPro%2F'
+)
+YOUTUBE_UPLOAD_URL = 'https://www.youtube.com/upload'
+
 
 
 def ensure_screenshot_uploads(workspace, user):
@@ -47,6 +76,69 @@ def ensure_screenshot_uploads(workspace, user):
         url_by_name[name] = item.file.url
 
     return url_by_name
+
+
+def build_gallery_markdown(workspace, user):
+    urls = ensure_screenshot_uploads(workspace, user)
+    lines = [
+        '# Gallery',
+        '',
+        'Walk-in corridor of NotesPro screenshots. On a phone tap **Demo tour** to start or stop the guided walk.',
+        '',
+        '```gallery{title=NotesPro;mode=walk;demo;col=info}',
+    ]
+    for name, label in GALLERY_SHOTS:
+        url = urls.get(name)
+        if url:
+            lines.append(f'![{label}]({media_markdown_href(url)})')
+    lines.extend([
+        '```',
+        '',
+        '## Share NotesPro',
+        '',
+        f'- Live demo: {LIVE_DEMO_URL}',
+        f'- [Share on LinkedIn]({LINKEDIN_SHARE_URL})',
+        f'- [Upload a walkthrough on YouTube]({YOUTUBE_UPLOAD_URL}) — film **Docs → Gallery** with Demo tour on your phone, then paste the watch URL into this gallery.',
+        '',
+    ])
+    return '\n'.join(lines)
+
+
+LABYRINTH_FALLBACK_SHOTS = (
+    ('https://picsum.photos/id/1015/960/720', 'Lake'),
+    ('https://picsum.photos/id/1018/960/720', 'Forest'),
+    ('https://picsum.photos/id/1016/960/720', 'Coast'),
+    ('https://picsum.photos/id/1043/960/720', 'Valley'),
+    ('https://picsum.photos/id/1036/960/720', 'Bridge'),
+    ('https://picsum.photos/id/1019/960/720', 'Hills'),
+)
+
+
+def build_labyrinth_markdown(workspace, user):
+    urls = ensure_screenshot_uploads(workspace, user)
+    lines = [
+        '# Photo labyrinth',
+        '',
+        'First-person maze whose walls are NotesPro screenshots. Tap **Demo tour** to auto-walk the path to the exit.',
+        '',
+        '```labyrinth{title=Photo labyrinth;demo;col=warning}',
+    ]
+    used = False
+    for name, label in GALLERY_SHOTS:
+        url = urls.get(name)
+        if url:
+            lines.append(f'![{label}]({media_markdown_href(url)})')
+            used = True
+    if not used:
+        for url, label in LABYRINTH_FALLBACK_SHOTS:
+            lines.append(f'![{label}]({url})')
+    lines.extend([
+        '```',
+        '',
+        'Paste or drop more photos while editing — they cover the maze walls.',
+        '',
+    ])
+    return '\n'.join(lines)
 
 
 def build_readme_markdown(workspace, user):
@@ -134,7 +226,7 @@ Suspended | On hold task | status=suspended;rate=75;elapsed=1800
 Done | Kickoff | status=stopped;rate=50;elapsed=7200
 ```
 
-# Calcs (ThGMaths)
+# Calcs
 ```calcs{fix=7;col=info}
 (* sample *)
 % Octave-style syntax
@@ -224,6 +316,195 @@ RSS_FEEDS_MARKDOWN = """# RSS Feeds
 """
 
 
+CALENDAR_DEMO_MARKDOWN = """# Calendar
+
+Day, week, month, and year views with sample notes. Click a day in **Edit** to add events.
+
+## Day
+
+```calendar{from=01.09.26;to=30.09.26;mode=day;col=info;title=September 2026}
+@d:07.09.26 | **Sprint planning**
+@d:09.09.26 | 09:00-09:30 | Standup
+@d:09.09.26 | 14:00-15:00 | Demo review
+@d:11.09.26 | 10:00-12:00 | Workshop
+@d:15.09.26-18.09.26 | Conference
+@d:21.09.26-25.09.26 | Vacation
+```
+
+## Week
+
+```calendar{from=01.09.26;to=30.09.26;mode=week;col=primary;title=Weeks}
+@w:2026-W37 | **Sprint 12**
+@w:2026-W39 | Off-site
+@d:09.09.26 | 09:00-09:30 | Standup
+@d:15.09.26-18.09.26 | Conference
+```
+
+## Month
+
+```calendar{from=01.01.26;to=31.12.26;mode=month;col=success;title=2026}
+@m:2026-9 | NotesPro demo month
+@d:09.09.26 | 14:00-15:00 | Demo review
+@d:15.09.26-18.09.26 | Conference
+@d:21.09.26-25.09.26 | Vacation
+```
+
+## Year
+
+```calendar{from=01.01.25;to=31.12.27;mode=year;col=danger;title=Years}
+@y:2025 | Kickoff year
+@y:2026 | **NotesPro** demo
+@y:2027 | Roadmap
+```
+"""
+
+
+GAMES_DEMO_PAGES = (
+    (
+        'sudoku',
+        'Sudoku',
+        0,
+        '# Sudoku\n\n'
+        '```sudoku{fullscreen;sample=classic}\n'
+        '```\n',
+    ),
+    (
+        'puzzle',
+        'Jigsaw puzzle',
+        1,
+        '# Jigsaw puzzle\n\n'
+        '```puzzle{fullscreen;difficulty=medium}\n'
+        '![Lake](https://picsum.photos/id/1015/960/720)\n'
+        '```\n',
+    ),
+    (
+        'pinball',
+        'Pinball',
+        2,
+        '# Pinball\n\n'
+        '```pinball{fullscreen}\n'
+        '```\n',
+    ),
+    (
+        'pacman',
+        'Pac-Man',
+        3,
+        '# Pac-Man\n\n'
+        '```pacman{fullscreen}\n'
+        '```\n',
+    ),
+    (
+        'mario',
+        'Super Mario',
+        4,
+        '# Super Mario\n\n'
+        '```mario{fullscreen}\n'
+        '```\n',
+    ),
+    (
+        'lemmings',
+        'Lemmings',
+        5,
+        '# Lemmings\n\n'
+        '```lemmings{fullscreen}\n'
+        '```\n',
+    ),
+    (
+        'tictactoe',
+        'Tic Tac Toe',
+        6,
+        '# Tic Tac Toe\n\n'
+        '```tictactoe{fullscreen;mode=cpu;difficulty=medium}\n'
+        '```\n',
+    ),
+    (
+        'tetris',
+        'Tetris',
+        7,
+        '# Tetris\n\n'
+        '```tetris{fullscreen}\n'
+        '```\n',
+    ),
+    (
+        'photocube',
+        'Photo cube',
+        8,
+        '# Photo cube\n\n'
+        '```photocube{title=Photo cube;col=info}\n'
+        '![Lake](https://picsum.photos/id/1015/800/800)\n'
+        '![Forest](https://picsum.photos/id/1018/800/800)\n'
+        '![Coast](https://picsum.photos/id/1016/800/800)\n'
+        '![Valley](https://picsum.photos/id/1043/800/800)\n'
+        '![Bridge](https://picsum.photos/id/1036/800/800)\n'
+        '![Hills](https://picsum.photos/id/1019/800/800)\n'
+        '```\n',
+    ),
+    (
+        'photobook',
+        'Photo book',
+        9,
+        '# Photo book\n\n'
+        '```photobook{title=Photo book;col=warning}\n'
+        '![Cover lake](https://picsum.photos/id/1015/960/720)\n'
+        '![Forest path](https://picsum.photos/id/1018/960/720)\n'
+        '![Coast](https://picsum.photos/id/1016/960/720)\n'
+        '![Valley](https://picsum.photos/id/1043/960/720)\n'
+        '![Bridge](https://picsum.photos/id/1036/960/720)\n'
+        '![Hills](https://picsum.photos/id/1019/960/720)\n'
+        '![Town](https://picsum.photos/id/1025/960/720)\n'
+        '![Sky](https://picsum.photos/id/1011/960/720)\n'
+        '```\n',
+    ),
+    (
+        'rollercoast',
+        'Roller coaster',
+        10,
+        '# Roller coaster\n\n'
+        '```rollercoast{mode=jungle;title=Jungle coaster;demo;col=success}\n'
+        '![Canopy](https://picsum.photos/id/1018/960/720)\n'
+        '![River](https://picsum.photos/id/1015/960/720)\n'
+        '![Trail](https://picsum.photos/id/1043/960/720)\n'
+        '![Mist](https://picsum.photos/id/1016/960/720)\n'
+        '```\n',
+    ),
+    (
+        'scooter',
+        'Auto scooter',
+        11,
+        '# Auto scooter\n\n'
+        '```scooter{title=Auto scooter;demo;col=warning}\n'
+        '![Blue](https://picsum.photos/id/1015/640/480)\n'
+        '![Green](https://picsum.photos/id/1018/640/480)\n'
+        '![Coast](https://picsum.photos/id/1016/640/480)\n'
+        '![Valley](https://picsum.photos/id/1043/640/480)\n'
+        '![Bridge](https://picsum.photos/id/1036/640/480)\n'
+        '```\n',
+    ),
+    (
+        'ghosttrain',
+        'Ghost train',
+        12,
+        '# Ghost train\n\n'
+        '```ghosttrain{title=Ghost train;demo;col=note}\n'
+        '![Phantom](https://picsum.photos/id/1011/640/480)\n'
+        '![Mist](https://picsum.photos/id/1016/640/480)\n'
+        '![Grave](https://picsum.photos/id/1025/640/480)\n'
+        '![Night](https://picsum.photos/id/1033/640/480)\n'
+        '![Fog](https://picsum.photos/id/1044/640/480)\n'
+        '```\n',
+    ),
+)
+
+
+def upsert_page(workspace, slug, **defaults):
+    Page.objects.update_or_create(
+        workspace=workspace,
+        slug=slug,
+        deleted=False,
+        defaults=defaults,
+    )
+
+
 class Command(BaseCommand):
     help = 'Create demo workspace and pages'
 
@@ -276,6 +557,9 @@ class Command(BaseCommand):
                     'Edit in markdown, preview when you are done.\n\n'
                     'See **README** in this folder for the full project guide and screenshots.\n\n'
                     'Open **Blocks** for interactive gantt, calendar, mindmap, kanban, calcs, and panel examples.\n\n'
+                    'Open **Calendar** for day, week, month, and year views with sample events.\n\n'
+                    'Open **Gallery** for a walk-in corridor of NotesPro screenshots — tap **Demo tour** on a phone.\n\n'
+                    'Open **Games** for sudoku, tic-tac-toe, Tetris, jigsaw, pinball, Pac-Man, Super Mario, Lemmings, photo cube, photo book, roller coaster, auto scooter, ghost train, and photo labyrinth.\n\n'
                     'Open **RSS Feeds** for live BBC, DE, and CH news embeds.'
                 ),
             },
@@ -305,6 +589,66 @@ class Command(BaseCommand):
             },
         )
 
+        upsert_page(
+            ws,
+            'calendar',
+            parent=docs,
+            title='Calendar',
+            is_folder=False,
+            sort_order=4,
+            markdown_content=CALENDAR_DEMO_MARKDOWN,
+        )
+
+        upsert_page(
+            ws,
+            'gallery',
+            parent=docs,
+            title='Gallery',
+            is_folder=False,
+            sort_order=5,
+            markdown_content=build_gallery_markdown(ws, user),
+        )
+
+        games, _ = Page.objects.update_or_create(
+            workspace=ws,
+            slug='games',
+            deleted=False,
+            defaults={
+                'parent': docs,
+                'title': 'Games',
+                'is_folder': True,
+                'sort_order': 6,
+                'markdown_content': '',
+            },
+        )
+
+        for slug, title, sort_order, markdown in GAMES_DEMO_PAGES:
+            upsert_page(
+                ws,
+                slug,
+                parent=games,
+                title=title,
+                is_folder=False,
+                sort_order=sort_order,
+                markdown_content=markdown,
+            )
+
+        upsert_page(
+            ws,
+            'labyrinth',
+            parent=games,
+            title='Photo labyrinth',
+            is_folder=False,
+            sort_order=13,
+            markdown_content=build_labyrinth_markdown(ws, user),
+        )
+        Page.objects.filter(
+            workspace=ws,
+            parent=games,
+            slug='photo-labyrinth',
+            deleted=False,
+        ).update(deleted=True)
+
         missing = [
             name for name in SCREENSHOT_FILES
             if not (Path(settings.BASE_DIR) / 'docs' / 'screenshots' / name).is_file()
@@ -315,5 +659,5 @@ class Command(BaseCommand):
             ))
 
         self.stdout.write(self.style.SUCCESS(
-            'Demo data ready. Login: demo / password — open Docs > README, Blocks, or RSS Feeds',
+            'Demo data ready. Login: demo / password — open Docs > README, Blocks, Calendar, Gallery, Games, or RSS Feeds',
         ))

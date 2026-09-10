@@ -34,7 +34,7 @@ Share: [LinkedIn](https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2
 - **Snippets** — reusable text blocks (toolbar + sidebar); stored in your user settings
 - **Colored panels** — info / success / warning / danger / note callout blocks in markdown
 - Tab-separated `sheet` blocks (formulas) and D3 `chart` blocks linked by sheet id
-- **ThGMaths / Calcs** blocks — engineering calculator (real/complex, ranges, matrices, multi-curve `Plot`, SCI/ENG/FIX)
+- **Calcs** blocks — engineering calculator (real/complex, ranges, matrices, multi-curve `Plot`, SCI/ENG/FIX)
 - **Python / executecode** blocks — run in a browser Pyodide sandbox; `print`, pandas, and matplotlib plots show in the preview
 - **Sudoku** blocks — interactive 9×9 puzzles (generated or custom grid in markdown)
 - **Tic Tac Toe** blocks — 3×3 vs CPU or two players
@@ -46,6 +46,7 @@ Share: [LinkedIn](https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2
 - **Roller coaster** blocks — themed 3D ride (jungle / dune / snow / alps) with your images along the track
 - **Auto scooter** blocks — bumper-car rink; your photos ride on the other cars
 - **Ghost train** blocks — convoy on rails; photos in frames along the track
+- **Photo labyrinth** blocks — first-person maze whose walls are your pasted photos
 - **Calendar** blocks — list days, weeks, months, or years for a `from`/`to` range
 - **Gantt** / **Kanban** / **Kanban Gantt** / **Mindmap** blocks — project timelines, boards, timed cost tracking, and indented idea trees
 - File manager with drag-and-drop uploads; click images to open in a new tab
@@ -96,7 +97,7 @@ python manage.py runserver
 
 Open:
 - http://127.0.0.1:8000/login/
-- Demo user after `seed_demo`: `demo` / `password` — workspace **Docs → README** contains this guide with screenshots; **Docs → Blocks** has gantt/calendar/mindmap/kanban/calcs/panel examples; **Docs → Calendar** has day/week/month/year views with sample events; **Docs → Gallery** is a walk-in corridor of NotesPro screenshots (tap **Demo tour** on a phone); **Docs → Games** has sudoku, tic-tac-toe, Tetris, jigsaw, pinball, Pac-Man, Super Mario, Lemmings, roller coaster, auto scooter, and ghost train; **Docs → RSS Feeds** embeds BBC / DE / CH news feeds
+- Demo user after `seed_demo`: `demo` / `password` — workspace **Docs → README** contains this guide with screenshots; **Docs → Blocks** has gantt/calendar/mindmap/kanban/calcs/panel examples; **Docs → Calendar** has day/week/month/year views with sample events; **Docs → Gallery** is a walk-in corridor of NotesPro screenshots (tap **Demo tour** on a phone); **Docs → Games** has sudoku, tic-tac-toe, Tetris, jigsaw, pinball, Pac-Man, Super Mario, Lemmings, photo cube, photo book, roller coaster, auto scooter, ghost train, and photo labyrinth; **Docs → RSS Feeds** embeds BBC / DE / CH news feeds
 
 Copy `.env.example` to `.env.dev` (or set `DJANGO_ENV`) for local settings. See [Email invitations](#email-invitations) and [Database encryption](#database-encryption) below.
 
@@ -792,7 +793,7 @@ Tree structure uses **indentation** (2 spaces or a tab per level). Each line is:
 
 Use the toolbar **mindmap** (sitemap) button to insert a sample. In **Edit** mode, click the **title** to change name/direction, or click a **node** to edit label/note/image, add a child, or delete the node.
 
-### Calcs (ThGMaths)
+### Calcs 
 
 Embed an engineering calculator with a fenced `calcs` block. Syntax is **Octave-like** (also accepts the older `:=` / `..` forms). Each line is evaluated top to bottom; results show in **blue** beside the source. Errors are **red**. Values can be real, complex, vectors, or matrices. Use `*` for matrix product and `.*` / `./` / `.^` for element-wise ops.
 
@@ -1392,6 +1393,33 @@ Aliases: `ghost-train`, `hauntedtrain`.
 **Controls:** **ego view** (default) turns toward lit photos on curves · auto ride · **Boo!** at each photo · **C** cycles ego / chase / top · **Pause / Ride** · **Reset** · ⛶ fullscreen.
 
 Toolbar: **Insert ghost train yard** adds a sample spooky yard with photo trains.
+
+### Photo labyrinth
+
+Embed a **first-person photo maze**. Walls are textured with the pictures you paste or drop. An empty fence still builds a placeholder maze — paste photos to cover the stone.
+
+````markdown
+```labyrinth{title=Photo labyrinth;demo;col=warning}
+![Lake](media/uploads/lake.jpg)
+![Forest](media/uploads/forest.jpg)
+![Coast](https://picsum.photos/id/1016/960/720)
+```
+````
+
+| Option | Description |
+|--------|-------------|
+| `title` | Block heading |
+| `demo` | Show **Demo tour** and auto-start a guided walk through the maze |
+| `fullscreen` | Edge-to-edge layout (default on) |
+| `col` / `bkcol` | Theme colors |
+
+Aliases: `photo-labyrinth`, `maze`.
+
+**Walk controls:** click the view to capture the mouse · **W A S D** / arrows move · **Shift** sprint · mouse **wheel** zoom · **Esc** release mouse · **Demo tour** starts / stops the auto-walk (shown only when `demo` is set) · **Reset** returns to the entrance · paste / drop images onto the walls.
+
+On **mobile**, **Enter labyrinth** is hidden (the first tap enters). **Demo tour** stays visible with a large tap target so you can start or stop the guided walk. On a `demo` maze the tour also starts on load; drag to look around (that takes over from the tour).
+
+Toolbar: **Insert photo labyrinth** adds a sample maze that walks itself.
 
 ### News / RSS (Magpie-style)
 

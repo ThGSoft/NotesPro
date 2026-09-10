@@ -220,6 +220,7 @@
       acc: 0,
       last: 0,
       over: false,
+      reported: false,
       paused: false,
       started: false,
       visible: true,
@@ -230,6 +231,16 @@
 
     function setStatus(text) {
       if (status) status.textContent = text;
+    }
+
+    function reportScore() {
+      if (state.reported || state.score <= 0) return;
+      state.reported = true;
+      const hs = window.NotesProHighscores;
+      const improved = hs?.isNewRecord?.('tetris', state.score);
+      hs?.submit?.('tetris', state.score, { level: state.level, lines: state.lines });
+      const suffix = hs?.statusSuffix?.('tetris', state.score) || '';
+      setStatus((improved ? 'New high score · ' : '') + `Game over · ${state.score} pts · R restart${suffix}`);
     }
 
     function fillBag() {
@@ -256,7 +267,7 @@
       if (!fits(state.grid, piece)) {
         state.over = true;
         state.paused = false;
-        setStatus(`Game over · ${state.score} pts · R restart`);
+        reportScore();
         return;
       }
       state.piece = piece;
@@ -345,10 +356,11 @@
       state.lines = 0;
       state.level = 1;
       state.over = false;
+      state.reported = false;
       state.paused = false;
       state.started = true;
       spawnPiece();
-      setStatus(`Score ${state.score} · Lv ${state.level}`);
+      setStatus(`Score ${state.score} · Lv ${state.level}${window.NotesProHighscores?.statusSuffix?.('tetris', 0) || ''}`);
     }
 
     function cellSize() {
@@ -367,6 +379,8 @@
       const c = cellSize();
       const boardW = COLS * c;
       const side = canvas.width - boardW - 12;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'alphabetic';
       ctx.fillStyle = '#0b1020';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.fillStyle = '#111827';
@@ -411,11 +425,13 @@
       });
       ctx.fillStyle = '#e2e8f0';
       ctx.font = '700 14px system-ui, sans-serif';
-      ctx.fillText(String(state.score), sx, 350);
+      ctx.fillText(String(state.score), sx, canvas.height - 72);
       ctx.fillStyle = '#94a3b8';
       ctx.font = '600 12px system-ui, sans-serif';
-      ctx.fillText(`Lv ${state.level}`, sx, 370);
-      ctx.fillText(`${state.lines} lines`, sx, 388);
+      ctx.fillText(`Lv ${state.level}`, sx, canvas.height - 52);
+      ctx.fillText(`${state.lines} lines`, sx, canvas.height - 36);
+      ctx.fillStyle = '#fde047';
+      ctx.fillText(window.NotesProHighscores?.hudLine?.('tetris', state.score) || 'HI 000000', sx, canvas.height - 16);
       if (state.paused && !state.over) {
         ctx.fillStyle = 'rgba(15, 23, 42, 0.55)';
         ctx.fillRect(0, 0, boardW, canvas.height);
@@ -428,7 +444,16 @@
         ctx.fillRect(0, 0, boardW, canvas.height);
         ctx.fillStyle = '#f8fafc';
         ctx.font = '700 20px system-ui, sans-serif';
-        ctx.fillText('GAME OVER', 48, canvas.height / 2);
+        ctx.textAlign = 'left';
+        ctx.fillText('GAME OVER', 48, canvas.height / 2 - 36);
+        window.NotesProHighscores?.drawBoard?.(ctx, {
+          game: 'tetris',
+          x: boardW / 2,
+          y: canvas.height / 2 - 8,
+          currentScore: state.score,
+          maxRows: 5,
+          color: '#e2e8f0',
+        });
       }
     }
 
@@ -460,7 +485,7 @@
           if (!tryMove(0, 1)) lockPiece();
           else if (state.keys.down) state.score += 1;
         }
-        setStatus(`Score ${state.score} · Lv ${state.level}`);
+        setStatus(`Score ${state.score} · Lv ${state.level}${window.NotesProHighscores?.statusSuffix?.('tetris', state.score) || ''}`);
       }
       draw();
     }
@@ -491,7 +516,7 @@
         event.preventDefault();
         startIfNeeded();
         if (!state.over) state.paused = !state.paused;
-        setStatus(state.paused ? 'Paused' : `Score ${state.score} · Lv ${state.level}`);
+        setStatus(state.paused ? 'Paused' : `Score ${state.score} · Lv ${state.level}${window.NotesProHighscores?.statusSuffix?.('tetris', state.score) || ''}`);
         return;
       }
       startIfNeeded();

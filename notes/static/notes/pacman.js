@@ -14,7 +14,7 @@
   const COLS = 28;
   const ROWS = 31;
   const TILE = 16;
-  const HUD = 36;
+  const HUD = 44;
   const DIRS = {
     left: { x: -1, y: 0, name: 'left' },
     right: { x: 1, y: 0, name: 'right' },
@@ -439,6 +439,7 @@
       paused: false,
       started: false,
       over: false,
+      reported: false,
       freeze: 1.6,
       message: 'READY!',
       fright: 0,
@@ -511,11 +512,22 @@
       state.lives = 3;
       state.level = 1;
       state.over = false;
+      state.reported = false;
       state.paused = false;
       state.started = true;
       loadMaze();
       resetActors(true);
       setStatus('');
+    }
+
+    function reportScore() {
+      if (state.reported || state.score <= 0) return;
+      state.reported = true;
+      const hs = window.NotesProHighscores;
+      const improved = hs?.isNewRecord?.('pacman', state.score);
+      hs?.submit?.('pacman', state.score, { level: state.level });
+      const suffix = hs?.statusSuffix?.('pacman', state.score) || '';
+      setStatus((improved ? 'New high score · ' : '') + `Game over · R or tap to restart${suffix}`);
     }
 
     function setStatus(text) {
@@ -762,7 +774,7 @@
           if (state.lives <= 0) {
             state.over = true;
             state.message = 'GAME OVER';
-            setStatus('Game over · R or tap to restart');
+            reportScore();
             return;
           }
           resetActors(false);
@@ -934,13 +946,18 @@
 
     function drawHud() {
       ctx.fillStyle = '#fff6d7';
-      ctx.font = 'bold 13px ui-monospace, Consolas, monospace';
+      ctx.font = 'bold 12px ui-monospace, Consolas, monospace';
       ctx.textAlign = 'left';
-      ctx.fillText(`SCORE ${state.score}`, 8, 22);
+      ctx.fillText(`SCORE ${state.score}`, 8, 16);
+      ctx.fillStyle = '#ffe500';
+      ctx.font = 'bold 11px ui-monospace, Consolas, monospace';
+      ctx.fillText(window.NotesProHighscores?.hudLine?.('pacman', state.score) || 'HI 000000', 8, 32);
+      ctx.fillStyle = '#fff6d7';
+      ctx.font = 'bold 12px ui-monospace, Consolas, monospace';
       ctx.textAlign = 'center';
-      ctx.fillText(`LVL ${state.level} ${state.maze.name}`, (COLS * TILE) / 2, 22);
+      ctx.fillText(`LVL ${state.level} ${state.maze.name}`, (COLS * TILE) / 2, 16);
       ctx.textAlign = 'right';
-      ctx.fillText(`❤ ${Math.max(0, state.lives)}`, COLS * TILE - 8, 22);
+      ctx.fillText(`❤ ${Math.max(0, state.lives)}`, COLS * TILE - 8, 16);
     }
 
     function drawOverlay() {
@@ -949,15 +966,25 @@
         ? 'GAME OVER'
         : (state.paused ? 'PAUSED' : (state.message || 'READY!'));
       ctx.fillStyle = 'rgba(0,0,0,0.35)';
-      ctx.fillRect(0, HUD + TILE * 12, COLS * TILE, TILE * 4);
+      ctx.fillRect(0, HUD + TILE * 11, COLS * TILE, state.over ? TILE * 12 : TILE * 4);
       ctx.fillStyle = text === 'GAME OVER' ? '#ff5a5a' : '#ffe500';
       ctx.font = 'bold 22px ui-monospace, Consolas, sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(text, (COLS * TILE) / 2, HUD + TILE * 14.4);
+      ctx.fillText(text, (COLS * TILE) / 2, HUD + TILE * 13.2);
       if (!state.started || state.over) {
         ctx.fillStyle = '#d6e4ff';
         ctx.font = '11px ui-sans-serif, sans-serif';
-        ctx.fillText(state.over ? 'Press R or tap to play again' : 'Click, then use arrows', (COLS * TILE) / 2, HUD + TILE * 15.6);
+        ctx.fillText(state.over ? 'Press R or tap to play again' : 'Click, then use arrows', (COLS * TILE) / 2, HUD + TILE * 14.6);
+      }
+      if (state.over) {
+        window.NotesProHighscores?.drawBoard?.(ctx, {
+          game: 'pacman',
+          x: (COLS * TILE) / 2,
+          y: HUD + TILE * 16.4,
+          currentScore: state.score,
+          maxRows: 4,
+          color: '#d6e4ff',
+        });
       }
     }
 

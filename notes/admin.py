@@ -12,6 +12,7 @@ from django.urls import path, reverse
 from django.utils.html import format_html
 
 from .models import (
+    GameHighScore,
     IncomingMail,
     IpVisitLog,
     Page,
@@ -162,6 +163,14 @@ class IncomingMailAdmin(admin.ModelAdmin):
     list_filter = ('status',)
     search_fields = ('recipient__username', 'sender_email', 'parsed_workspace', 'parsed_page')
     readonly_fields = ('received_at', 'distributed_at', 'external_id')
+
+
+@admin.register(GameHighScore)
+class GameHighScoreAdmin(admin.ModelAdmin):
+    list_display = ('game', 'score', 'user', 'workspace', 'updated_at')
+    list_filter = ('game', 'workspace')
+    search_fields = ('user__username', 'game', 'workspace__name')
+    readonly_fields = ('created_at', 'updated_at')
 
 
 @admin.register(UserSettings)

@@ -230,6 +230,7 @@
       started: false,
       over: false,
       won: false,
+      reported: false,
       message: 'READY!',
       freeze: 0.4,
       invuln: 0,
@@ -319,8 +320,26 @@
       state.started = true;
       state.over = false;
       state.won = false;
+      state.reported = false;
       resetLevel(true);
       setStatus('');
+    }
+
+    function reportScore() {
+      if (state.reported || state.score <= 0) return;
+      state.reported = true;
+      const hs = window.NotesProHighscores;
+      const improved = hs?.isNewRecord?.('mario', state.score);
+      hs?.submit?.('mario', state.score, {
+        coins: state.coinsGot,
+        won: !!state.won,
+      });
+      const suffix = hs?.statusSuffix?.('mario', state.score) || '';
+      if (state.won) {
+        setStatus((improved ? 'New high score · ' : '') + `You win · R to play again${suffix}`);
+      } else {
+        setStatus((improved ? 'New high score · ' : '') + `Game over · R or tap to restart${suffix}`);
+      }
     }
 
     function setStatus(text) {
@@ -336,7 +355,7 @@
       if (state.lives <= 0) {
         state.over = true;
         state.message = 'GAME OVER';
-        setStatus('Game over · R or tap to restart');
+        reportScore();
       }
     }
 
@@ -519,7 +538,7 @@
         state.won = true;
         state.message = 'WORLD CLEAR';
         state.score += Math.floor(state.time) * 10;
-        setStatus('You win · R to play again');
+        reportScore();
       }
     }
 
@@ -715,8 +734,8 @@
     }
 
     function drawHud() {
-      ctx.fillStyle = 'rgba(0,0,0,0.28)';
-      ctx.fillRect(0, 0, VIEW_W, 18);
+      ctx.fillStyle = 'rgba(0,0,0,0.42)';
+      ctx.fillRect(0, 0, VIEW_W, 28);
       ctx.fillStyle = '#fff';
       ctx.font = 'bold 9px ui-monospace, Consolas, sans-serif';
       ctx.textAlign = 'left';
@@ -726,21 +745,34 @@
       ctx.fillText(`WORLD 1-1`, 168, 12);
       ctx.textAlign = 'right';
       ctx.fillText(`TIME ${Math.ceil(state.time)}`, VIEW_W - 8, 12);
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#ffe500';
+      ctx.fillText(window.NotesProHighscores?.hudLine?.('mario', state.score) || 'HI 000000', 8, 24);
     }
 
     function drawOverlay() {
       if (!state.message && state.started && !state.paused) return;
       const text = state.paused ? 'PAUSED' : (state.message || 'READY!');
       ctx.fillStyle = 'rgba(0,0,0,0.35)';
-      ctx.fillRect(0, 96, VIEW_W, 48);
+      ctx.fillRect(0, 88, VIEW_W, state.over || state.won ? 110 : 48);
       ctx.fillStyle = text === 'GAME OVER' ? '#ff6b6b' : '#fff';
       ctx.font = 'bold 16px ui-monospace, Consolas, sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(text, VIEW_W / 2, 122);
+      ctx.fillText(text, VIEW_W / 2, 118);
       if (!state.started || state.over || state.won) {
         ctx.fillStyle = '#d6e4ff';
         ctx.font = '10px sans-serif';
-        ctx.fillText(state.over || state.won ? 'Press R or tap to play again' : 'Click, then run and jump', VIEW_W / 2, 138);
+        ctx.fillText(state.over || state.won ? 'Press R or tap to play again' : 'Click, then run and jump', VIEW_W / 2, 134);
+      }
+      if (state.over || state.won) {
+        window.NotesProHighscores?.drawBoard?.(ctx, {
+          game: 'mario',
+          x: VIEW_W / 2,
+          y: 150,
+          currentScore: state.score,
+          maxRows: 4,
+          color: '#d6e4ff',
+        });
       }
     }
 

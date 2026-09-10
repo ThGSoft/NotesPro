@@ -554,6 +554,36 @@ class UserSettings(models.Model):
         return f"Settings for {self.user.username}"
 
 
+class GameHighScore(models.Model):
+    workspace = models.ForeignKey(
+        Workspace,
+        on_delete=models.CASCADE,
+        related_name='game_highscores',
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='game_highscores',
+    )
+    game = models.CharField(max_length=32, db_index=True)
+    score = models.PositiveIntegerField(default=0)
+    extra = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-score', 'updated_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['workspace', 'user', 'game'],
+                name='notes_gamehighscore_workspace_user_game',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.game} {self.score} ({self.user.username})'
+
+
 class IpVisitLog(models.Model):
     EVENT_VISIT = 'visit'
     EVENT_LOGIN = 'login'

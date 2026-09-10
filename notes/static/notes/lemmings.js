@@ -195,6 +195,7 @@
       started: true,
       over: false,
       won: false,
+      reported: false,
       nuke: false,
       booms: [],
       message: '',
@@ -263,6 +264,7 @@
       state.paused = false;
       state.over = false;
       state.won = false;
+      state.reported = false;
       state.nuke = false;
       state.booms = [];
       state.message = '';
@@ -273,6 +275,32 @@
 
     function setStatus(text) {
       if (status) status.textContent = text || '';
+    }
+
+    function lemmingsScore() {
+      return state.saved * 1000 + Math.max(0, Math.ceil(state.time));
+    }
+
+    function reportScore() {
+      if (state.reported) return;
+      const score = lemmingsScore();
+      if (score <= 0) return;
+      state.reported = true;
+      const hs = window.NotesProHighscores;
+      const improved = hs?.isNewRecord?.('lemmings', score);
+      hs?.submit?.('lemmings', score, {
+        saved: state.saved,
+        need: state.need,
+        out: state.out,
+        time: Math.ceil(state.time),
+        won: !!state.won,
+      });
+      const suffix = hs?.statusSuffix?.('lemmings', score) || '';
+      if (state.won) {
+        setStatus((improved ? 'New high score · ' : '') + `Saved ${state.saved} of ${state.out}${suffix}`);
+      } else {
+        setStatus((improved ? 'New high score · ' : '') + `Saved ${state.saved} · need ${state.need}${suffix}`);
+      }
     }
 
     function syncSkillUi() {
@@ -545,11 +573,11 @@
         state.won = true;
         state.over = true;
         state.message = 'OH YES!';
-        setStatus(`Saved ${state.saved} of ${state.out}`);
+        reportScore();
       } else if (state.time <= 0 || (state.saved + remaining < state.need && !inPlay && state.spawned >= state.out)) {
         state.over = true;
         state.message = 'OH NO!';
-        setStatus(`Saved ${state.saved} · need ${state.need}`);
+        reportScore();
       } else {
         setStatus(`Out ${state.spawned}/${state.out} · In ${state.saved} · Dead ${state.dead} · ${Math.ceil(state.time)}s`);
       }
@@ -652,7 +680,7 @@
 
     function drawHud() {
       ctx.fillStyle = 'rgba(0,0,0,0.28)';
-      ctx.fillRect(0, 0, VIEW_W, 16);
+      ctx.fillRect(0, 0, VIEW_W, 26);
       ctx.fillStyle = '#fff';
       ctx.font = 'bold 10px ui-monospace, Consolas, sans-serif';
       ctx.textAlign = 'left';
@@ -660,13 +688,26 @@
       ctx.fillText(`OUT ${state.spawned}/${state.out}`, 90, 12);
       ctx.textAlign = 'right';
       ctx.fillText(`${Math.ceil(state.time)}s`, VIEW_W - 8, 12);
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#ffe500';
+      ctx.fillText(window.NotesProHighscores?.hudLine?.('lemmings', lemmingsScore()) || 'HI 000000', 8, 23);
       if (state.message) {
         ctx.fillStyle = 'rgba(0,0,0,0.45)';
-        ctx.fillRect(0, VIEW_H / 2 - 22, VIEW_W, 44);
+        ctx.fillRect(0, VIEW_H / 2 - 22, VIEW_W, state.over ? 96 : 44);
         ctx.fillStyle = state.won ? '#b7efc5' : '#ffb3c1';
         ctx.font = 'bold 20px ui-monospace, Consolas, sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText(state.message, VIEW_W / 2, VIEW_H / 2 + 6);
+        if (state.over) {
+          window.NotesProHighscores?.drawBoard?.(ctx, {
+            game: 'lemmings',
+            x: VIEW_W / 2,
+            y: VIEW_H / 2 + 22,
+            currentScore: lemmingsScore(),
+            maxRows: 4,
+            color: '#e2e8f0',
+          });
+        }
       }
     }
 

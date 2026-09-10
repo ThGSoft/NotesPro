@@ -2088,7 +2088,7 @@
   }
 
   function isPreviewRichBlock(el) {
-    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .md-python, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .tetris-block, .gallery-block, .photocube-block, .photobook-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .page-tags');
+    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .md-python, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .tetris-block, .gallery-block, .photocube-block, .photobook-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .page-tags');
   }
 
   function getPreviewBlockSourceLine(node) {
@@ -7824,6 +7824,75 @@
     });
   }
 
+  const LABYRINTH_BLOCK_RE = /```(?:labyrinth|photo-labyrinth|maze)(?:\{([^}]*)\}|([^\n`]*))?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function updateLabyrinthInMarkdown(markdown, labyrinthIndex, update) {
+    const engine = window.NotesProLabyrinth;
+    if (!engine) return markdown;
+    let idx = 0;
+    const re = /```(?:labyrinth|photo-labyrinth|maze)(?:\{([^}]*)\}|([^\n`]*))?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+    return String(markdown || '').replace(re, (match, braceAttrs, spaceAttrs, content = '') => {
+      const thisIndex = idx;
+      idx += 1;
+      if (thisIndex !== labyrinthIndex) return match;
+      const fenceAttrs = braceAttrs || spaceAttrs || '';
+      const cfg = engine.parseFenceAttrs(fenceAttrs);
+      const photos = engine.parsePhotos(content || '');
+      if (update.addImage) {
+        const nextPhotos = photos.concat([{
+          src: update.addImage,
+          label: update.label || `Photo ${photos.length + 1}`,
+        }]);
+        const attrs = engine.buildFenceAttrsString(cfg);
+        const body = engine.formatGalleryBody(nextPhotos);
+        const fence = attrs ? `labyrinth{${attrs}}` : 'labyrinth';
+        return `\`\`\`${fence}\n${body}\n\`\`\``;
+      }
+      return match;
+    });
+  }
+
+  function parseLabyrinthBlocks(text, options = {}) {
+    let labyrinthIndex = 0;
+    LABYRINTH_BLOCK_RE.lastIndex = 0;
+    return text.replace(LABYRINTH_BLOCK_RE, (_, braceAttrs, spaceAttrs, content) => {
+      const engine = window.NotesProLabyrinth;
+      const idx = labyrinthIndex++;
+      const fenceAttrs = braceAttrs || spaceAttrs || '';
+      const html = engine?.renderBlock
+        ? engine.renderBlock(content || '', fenceAttrs, {
+          labyrinthIndex: idx,
+          editable: !!options.sheetEditable,
+        })
+        : '<div class="labyrinth-block labyrinth-block--error">Photo labyrinth engine not loaded.</div>';
+      return wrapRichPreviewBlock(html);
+    });
+  }
+
+  function hydrateLabyrinthBlocks(root) {
+    const engine = window.NotesProLabyrinth;
+    if (!engine) return;
+    (root || document).querySelectorAll('.labyrinth-block[data-labyrinth-spec]').forEach(el => {
+      const labyrinthIndex = parseInt(el.dataset.labyrinthIndex, 10);
+      engine.hydrateBlock(el, {
+        onPasteImage: userCanEdit && Number.isFinite(labyrinthIndex) && easyMDE
+          ? async (file) => {
+            const mediaPath = await uploadPastedImageBlob(file, file.name || 'paste.png');
+            const oldMarkdown = easyMDE.value();
+            const updated = updateLabyrinthInMarkdown(oldMarkdown, labyrinthIndex, {
+              addImage: mediaPath,
+              label: file.name ? String(file.name).replace(/\.[^.]+$/, '') : 'Photo',
+            });
+            if (updated === oldMarkdown) return;
+            easyMDE.value(updated);
+            scheduleSave();
+            schedulePreviewRefresh();
+          }
+          : null,
+      });
+    });
+  }
+
   function buildPanelFence(type, title, body) {
     const panelType = PANEL_TYPES.includes(type) ? type : 'info';
     const lines = [];
@@ -8861,7 +8930,7 @@ function formatTextWithMarkup(rawText) {
     if (!root) return;
     root.querySelectorAll('pre').forEach(pre => {
       if (pre.closest('.md-code-block')) return;
-      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .md-python, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .tetris-block, .gallery-block, .photocube-block, .photobook-block, .rollercoast-block, .scooter-block, .ghosttrain-block')) {
+      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .md-python, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .tetris-block, .gallery-block, .photocube-block, .photobook-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block')) {
         return;
       }
       const wrap = document.createElement('div');
@@ -9302,6 +9371,11 @@ function formatTextWithMarkup(rawText) {
       const label = cfg.title || 'Ghost train';
       return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
     });
+    md = md.replace(/```(?:labyrinth|photo-labyrinth|maze)(?:\{([^}]*)\}|([^\n`]*))?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, braceAttrs, spaceAttrs) => {
+      const cfg = window.NotesProLabyrinth?.parseFenceAttrs?.(braceAttrs || spaceAttrs) || {};
+      const label = cfg.title || 'Photo labyrinth';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
     md = md.replace(/```(?:python3?|executecode)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
       const cfg = parsePythonFenceAttrs(fenceAttrs);
       const label = cfg.title || 'Python';
@@ -9363,6 +9437,7 @@ function formatTextWithMarkup(rawText) {
       md = parseRollercoastBlocks(md, options);
       md = parseScooterBlocks(md, options);
       md = parseGhosttrainBlocks(md, options);
+      md = parseLabyrinthBlocks(md, options);
       md = parsePythonBlocks(md);
     } else {
       md = replaceRichBlocksWithPlaceholders(md);
@@ -9756,6 +9831,7 @@ function formatTextWithMarkup(rawText) {
     hydrateRollercoastBlocks(preview);
     hydrateScooterBlocks(preview);
     hydrateGhosttrainBlocks(preview);
+    hydrateLabyrinthBlocks(preview);
     buildFloatingToc();
     annotatePreviewSourceLines(raw, preview);
     if (isEditing) preview.tabIndex = -1;
@@ -10503,6 +10579,69 @@ function formatTextWithMarkup(rawText) {
     updateEditorSplitRangeBounds();
   }
 
+  function positionEasyMdeToolbarDropdown(dropdown) {
+    const menu = dropdown?.querySelector(':scope > .easymde-dropdown-content');
+    if (!menu) return;
+    const margin = 8;
+    const trigger = dropdown.getBoundingClientRect();
+    menu.style.position = 'fixed';
+    menu.style.top = `${Math.round(trigger.bottom + 2)}px`;
+    menu.style.left = `${Math.round(trigger.left)}px`;
+    menu.style.right = 'auto';
+    menu.style.width = 'max-content';
+    menu.style.maxWidth = `${Math.max(160, window.innerWidth - margin * 2)}px`;
+
+    const rect = menu.getBoundingClientRect();
+    let left = trigger.left;
+    if (left + rect.width > window.innerWidth - margin) {
+      left = trigger.right - rect.width;
+    }
+    if (left < margin) left = margin;
+
+    let top = trigger.bottom + 2;
+    if (top + rect.height > window.innerHeight - margin) {
+      top = Math.max(margin, trigger.top - rect.height - 2);
+    }
+    menu.style.left = `${Math.round(left)}px`;
+    menu.style.top = `${Math.round(top)}px`;
+  }
+
+  function resetEasyMdeToolbarDropdown(dropdown) {
+    const menu = dropdown?.querySelector(':scope > .easymde-dropdown-content');
+    if (!menu) return;
+    menu.style.position = '';
+    menu.style.top = '';
+    menu.style.left = '';
+    menu.style.right = '';
+    menu.style.width = '';
+    menu.style.maxWidth = '';
+  }
+
+  function bindEasyMdeToolbarDropdowns() {
+    const toolbar = document.querySelector('#markdown-wrap .editor-toolbar');
+    if (!toolbar || toolbar.dataset.dropdownWidthBound === '1') return;
+    toolbar.dataset.dropdownWidthBound = '1';
+
+    toolbar.addEventListener('focusin', (e) => {
+      const dropdown = e.target.closest('button.easymde-dropdown');
+      if (!dropdown || !toolbar.contains(dropdown)) return;
+      requestAnimationFrame(() => positionEasyMdeToolbarDropdown(dropdown));
+    });
+
+    toolbar.addEventListener('focusout', (e) => {
+      const dropdown = e.target.closest('button.easymde-dropdown');
+      if (!dropdown) return;
+      const next = e.relatedTarget;
+      if (next && dropdown.contains(next)) return;
+      resetEasyMdeToolbarDropdown(dropdown);
+    });
+
+    window.addEventListener('resize', () => {
+      const open = toolbar.querySelector('button.easymde-dropdown:focus-within');
+      if (open) positionEasyMdeToolbarDropdown(open);
+    });
+  }
+
   window.addEventListener('resize', () => {
     if (document.getElementById('editor-split-range')) updateEditorSplitRangeBounds();
   });
@@ -11000,6 +11139,22 @@ function formatTextWithMarkup(rawText) {
               '![Fog](https://picsum.photos/id/1044/640/480)',
             ].join('\n');
             insertFenceBlock(editor, 'ghosttrain{title=Ghost train;demo;col=note}', body);
+          },
+        },
+        {
+          name: 'insert-labyrinth',
+          text: 'Photo labyrinth',
+          title: 'Insert photo labyrinth',
+          action: (editor) => {
+            const body = [
+              '![Lake](https://picsum.photos/id/1015/960/720)',
+              '![Forest](https://picsum.photos/id/1018/960/720)',
+              '![Coast](https://picsum.photos/id/1016/960/720)',
+              '![Valley](https://picsum.photos/id/1043/960/720)',
+              '![Bridge](https://picsum.photos/id/1036/960/720)',
+              '![Hills](https://picsum.photos/id/1019/960/720)',
+            ].join('\n');
+            insertFenceBlock(editor, 'labyrinth{title=Photo labyrinth;demo;col=warning}', body);
           },
         },
       ],
@@ -13722,7 +13877,7 @@ function formatTextWithMarkup(rawText) {
             insertFenceBlock(editor, 'calcs{fix=7;col=info}', body);
           },
           className: 'fa fa-calculator',
-          title: 'Insert ThGMaths / calcs',
+          title: 'Insert Calcs',
         },
         {
           name: 'insert-python',
@@ -14035,6 +14190,7 @@ function formatTextWithMarkup(rawText) {
 
     setTimeout(() => { if (easyMDE) easyMDE.codemirror.refresh(); }, 200);
     injectEditorToolbarHeightControls();
+    bindEasyMdeToolbarDropdowns();
     applyEditorTypographyFromSettings();
     initEditorPreviewScrollSync();
   }
@@ -14669,6 +14825,8 @@ function formatTextWithMarkup(rawText) {
     }
 
     workspaceId = newWs;
+    if (window.APP_BOOT) window.APP_BOOT.workspaceId = Number(newWs) || newWs;
+    window.NotesProHighscores?.reload?.(newWs);
     if (pageId !== undefined && pageId !== null && pageId !== '') {
       currentPageId = parsePageId(pageId) || getWorkspacePageId(newWs);
     } else {
@@ -16422,7 +16580,7 @@ function formatTextWithMarkup(rawText) {
   }
 
   document.addEventListener('paste', function (event) {
-    if (event.target.closest?.('.puzzle-block, .gallery-block, .photocube-block, .photobook-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .tetris-block')) return;
+    if (event.target.closest?.('.puzzle-block, .gallery-block, .photocube-block, .photobook-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .tetris-block')) return;
     const items = (event.clipboardData || event.originalEvent.clipboardData).items;
     for (let index in items) {
       const item = items[index];

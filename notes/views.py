@@ -22,6 +22,7 @@ from django.db.models import Q
 from django.utils.text import slugify
 from .workspace_io import export_workspace_archive, import_workspace_archive
 from .version import CREDITS, VERSION
+from .game_scores import serialize_workspace_highscores
 
 APP_LANGUAGE_CHOICES = (
     ('browser', 'Browser default'),
@@ -386,6 +387,7 @@ def dashboard(request):
         'is_group_admin': request.user.groups.filter(name='Group Admin').exists(),
         'app_version': VERSION,
         'app_credits': CREDITS,
+        'game_highscores': serialize_workspace_highscores(current_workspace, request.user),
     })
 
 @login_required

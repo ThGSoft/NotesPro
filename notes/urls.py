@@ -7,6 +7,7 @@ from . import views_dm
 from . import views_incoming
 from . import views_quicknotes
 from . import views_issues
+from . import views_games
 
 urlpatterns = [
     path('', views.dashboard, name='dashboard'),
@@ -30,6 +31,7 @@ urlpatterns = [
     path('api/issues/<int:pk>/update/', views_issues.issue_update, name='api_issue_update'),
     path('api/issues/<int:pk>/delete/', views_issues.issue_delete, name='api_issue_delete'),
     path('api/workspaces/<int:workspace_id>/updateUserSettings/', views.updateUserSettings, name='updateUserSettings'),
+    path('api/workspaces/<int:workspace_id>/game-highscores/', views_games.game_highscores, name='api_game_highscores'),
     path('api/workspaces/create/', views.workspace_create, name='workspace_create'),
     path('api/workspaces/<int:workspace_id>/files/', views.file_manager, name='api_files'),
     path('api/workspaces/<int:pk>/update/', views.workspace_update, name='workspace_update'),

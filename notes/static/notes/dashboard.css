@@ -512,9 +512,41 @@ body.editing #preview-content:focus {
   outline: none;
 }
 
+.editor-toolbar button.easymde-dropdown {
+  overflow: visible;
+  position: relative;
+}
+
+.editor-toolbar button.easymde-dropdown:focus,
+.editor-toolbar button.easymde-dropdown:focus-within,
+.editor-toolbar button.easymde-dropdown:active {
+  z-index: 40;
+  overflow: visible;
+}
+
 .editor-toolbar .easymde-dropdown-content {
   max-height: min(70vh, 420px);
+  overflow-x: hidden;
   overflow-y: auto;
+  box-sizing: border-box;
+  width: max-content;
+  min-width: 11rem;
+  max-width: min(20rem, calc(100vw - 16px));
+  z-index: 40;
+}
+
+.editor-toolbar .easymde-dropdown-content button {
+  display: block;
+  width: 100%;
+  min-width: max-content;
+  height: auto;
+  min-height: 28px !important;
+  padding: 4px 12px;
+  text-align: left;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+  font-weight: 600;
 }
 
 .editor-toolbar .easymde-dropdown-content button.color-swatch {
@@ -982,7 +1014,7 @@ body.editing #preview-content:focus {
 }
 
 .preview-layout button:not(.md-code-copy):not(.btn):not(.sudoku-cell):not(.sudoku-num):not(.jigsaw .piece),
-.editor-toolbar button {
+.editor-toolbar > button {
   width: 28px;
   height: 28px;
   min-height: 28px !important;
@@ -9510,6 +9542,232 @@ body.gallery-lightbox-open {
   border-radius: 0;
 }
 
+/* Photo labyrinth */
+.labyrinth-block {
+  --labyrinth-accent: #eab308;
+  --labyrinth-bg: #1a140c;
+  --labyrinth-title: #fde68a;
+  --labyrinth-meta: #94a3b8;
+  position: relative;
+  background: var(--labyrinth-bg);
+  color: #e2e8f0;
+  border-left: 4px solid var(--labyrinth-accent);
+  border-radius: 12px;
+  padding: 14px;
+  margin: 1rem 0;
+  min-height: min(62vh, 640px);
+  display: flex;
+  flex-direction: column;
+}
+
+.labyrinth-block--info { --labyrinth-accent: #38bdf8; }
+.labyrinth-block--success { --labyrinth-accent: #4ade80; }
+.labyrinth-block--warning { --labyrinth-accent: #eab308; }
+.labyrinth-block--danger { --labyrinth-accent: #f87171; }
+.labyrinth-block--note { --labyrinth-accent: #94a3b8; }
+
+.labyrinth-block--custom {
+  background: var(--labyrinth-bg-custom, var(--labyrinth-bg));
+}
+
+.labyrinth-block--error {
+  color: #f87171;
+  padding: 12px 14px;
+}
+
+.labyrinth-block--fullscreen {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 8px;
+  border: none;
+  border-radius: 0;
+  border-left: none;
+  min-height: min(78vh, 820px);
+}
+
+.labyrinth-block--uploading,
+.labyrinth-block--drop {
+  outline: 2px dashed var(--labyrinth-accent);
+  outline-offset: 2px;
+}
+
+.labyrinth-block-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+  padding-right: 44px;
+}
+
+.labyrinth-block-title {
+  font-weight: 700;
+  color: var(--labyrinth-title);
+}
+
+.labyrinth-block-meta {
+  font-size: 12px;
+  color: var(--labyrinth-meta);
+}
+
+.labyrinth-walk {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+
+.labyrinth-viewport {
+  position: relative;
+  flex: 1;
+  min-height: min(58vh, 560px);
+  border-radius: 12px;
+  overflow: hidden;
+  background: #120e0a;
+  border: 1px solid rgba(234, 179, 8, 0.22);
+  cursor: crosshair;
+}
+
+.labyrinth-viewport--locked {
+  cursor: none;
+}
+
+.labyrinth-block--fullscreen .labyrinth-viewport {
+  min-height: min(68vh, 700px);
+  border-radius: 8px;
+}
+
+.labyrinth-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+
+.labyrinth-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 12px 14px;
+  background: linear-gradient(transparent, rgba(18, 12, 6, 0.82));
+  color: #e2e8f0;
+  pointer-events: none;
+}
+
+.labyrinth-hint {
+  margin: 0;
+  font-size: 0.78rem;
+  color: #fde68a;
+}
+
+.labyrinth-hint kbd {
+  display: inline-block;
+  margin: 0 1px;
+  padding: 0 4px;
+  border: 1px solid rgba(253, 230, 138, 0.35);
+  border-radius: 4px;
+  font-size: 0.72rem;
+}
+
+.labyrinth-hint--mobile {
+  display: none;
+}
+
+body.mobile-layout .labyrinth-hint--desktop {
+  display: none;
+}
+
+body.mobile-layout .labyrinth-hint--mobile {
+  display: block;
+}
+
+.labyrinth-caption {
+  margin-top: 4px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  min-height: 1.2em;
+}
+
+.labyrinth-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.labyrinth-toolbar .btn.active {
+  background: rgba(234, 179, 8, 0.22);
+  border-color: rgba(234, 179, 8, 0.55);
+  color: #fef3c7;
+}
+
+.labyrinth-status {
+  min-height: 1.1rem;
+  margin-top: 8px;
+  font-size: 0.85rem;
+  color: var(--labyrinth-meta);
+}
+
+.labyrinth-block:not(.labyrinth-block--demo) .labyrinth-toolbar [data-action="walk-demo"] {
+  display: none !important;
+}
+
+body.mobile-layout .labyrinth-toolbar [data-action="walk-focus"] {
+  display: none !important;
+}
+
+body.mobile-layout .labyrinth-toolbar [data-action="walk-demo"] {
+  min-height: 44px;
+  padding: 0.45rem 0.9rem;
+}
+
+@media (max-width: 768px) {
+  .labyrinth-hint--desktop {
+    display: none;
+  }
+
+  .labyrinth-hint--mobile {
+    display: block;
+  }
+
+  .labyrinth-toolbar [data-action="walk-focus"] {
+    display: none !important;
+  }
+
+  .labyrinth-toolbar [data-action="walk-demo"] {
+    min-height: 44px;
+    padding: 0.45rem 0.9rem;
+  }
+}
+
+.labyrinth-block:fullscreen,
+.labyrinth-block:-webkit-full-screen {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 12px;
+  background: #120e0a;
+  overflow: hidden;
+}
+
+.labyrinth-block:fullscreen .labyrinth-walk,
+.labyrinth-block:-webkit-full-screen .labyrinth-walk {
+  flex: 1;
+  min-height: 0;
+}
+
+.labyrinth-block:fullscreen .labyrinth-viewport,
+.labyrinth-block:-webkit-full-screen .labyrinth-viewport {
+  flex: 1;
+  min-height: 0;
+  border-radius: 0;
+}
+
 /* Monitor fullscreen button + native :fullscreen layout */
 .sudoku-block,
 .puzzle-block,
@@ -9524,7 +9782,8 @@ body.gallery-lightbox-open {
 .photobook-block,
 .rollercoast-block,
 .scooter-block,
-.ghosttrain-block {
+.ghosttrain-block,
+.labyrinth-block {
   position: relative;
 }
 
@@ -9582,6 +9841,7 @@ body.gallery-lightbox-open {
 .rollercoast-block:fullscreen .game-fullscreen-btn__icon--enter,
 .scooter-block:fullscreen .game-fullscreen-btn__icon--enter,
 .ghosttrain-block:fullscreen .game-fullscreen-btn__icon--enter,
+.labyrinth-block:fullscreen .game-fullscreen-btn__icon--enter,
 .sudoku-block:-webkit-full-screen .game-fullscreen-btn__icon--enter,
 .puzzle-block:-webkit-full-screen .game-fullscreen-btn__icon--enter,
 .pinball-block:-webkit-full-screen .game-fullscreen-btn__icon--enter,
@@ -9595,7 +9855,8 @@ body.gallery-lightbox-open {
 .photobook-block:-webkit-full-screen .game-fullscreen-btn__icon--enter,
 .rollercoast-block:-webkit-full-screen .game-fullscreen-btn__icon--enter,
 .scooter-block:-webkit-full-screen .game-fullscreen-btn__icon--enter,
-.ghosttrain-block:-webkit-full-screen .game-fullscreen-btn__icon--enter {
+.ghosttrain-block:-webkit-full-screen .game-fullscreen-btn__icon--enter,
+.labyrinth-block:-webkit-full-screen .game-fullscreen-btn__icon--enter {
   display: none;
 }
 
@@ -9614,6 +9875,7 @@ body.gallery-lightbox-open {
 .rollercoast-block:fullscreen .game-fullscreen-btn__icon--exit,
 .scooter-block:fullscreen .game-fullscreen-btn__icon--exit,
 .ghosttrain-block:fullscreen .game-fullscreen-btn__icon--exit,
+.labyrinth-block:fullscreen .game-fullscreen-btn__icon--exit,
 .sudoku-block:-webkit-full-screen .game-fullscreen-btn__icon--exit,
 .puzzle-block:-webkit-full-screen .game-fullscreen-btn__icon--exit,
 .pinball-block:-webkit-full-screen .game-fullscreen-btn__icon--exit,
@@ -9627,7 +9889,8 @@ body.gallery-lightbox-open {
 .photobook-block:-webkit-full-screen .game-fullscreen-btn__icon--exit,
 .rollercoast-block:-webkit-full-screen .game-fullscreen-btn__icon--exit,
 .scooter-block:-webkit-full-screen .game-fullscreen-btn__icon--exit,
-.ghosttrain-block:-webkit-full-screen .game-fullscreen-btn__icon--exit {
+.ghosttrain-block:-webkit-full-screen .game-fullscreen-btn__icon--exit,
+.labyrinth-block:-webkit-full-screen .game-fullscreen-btn__icon--exit {
   display: inline;
 }
 
