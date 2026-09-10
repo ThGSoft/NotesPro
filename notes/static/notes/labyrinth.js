@@ -311,6 +311,28 @@
     return typeof window.THREE !== 'undefined';
   }
 
+  function whenThreeReady(onReady, onMissing) {
+    if (threeReady()) {
+      onReady();
+      return;
+    }
+    let settled = false;
+    const finish = (ok) => {
+      if (settled) return;
+      settled = true;
+      window.removeEventListener('notespro-three-ready', onEvent);
+      if (ok && threeReady()) onReady();
+      else onMissing();
+    };
+    const onEvent = () => finish(true);
+    window.addEventListener('notespro-three-ready', onEvent);
+    if (threeReady()) {
+      finish(true);
+      return;
+    }
+    window.setTimeout(() => finish(threeReady()), 8000);
+  }
+
   function setStatus(el, text) {
     const status = el.querySelector('.labyrinth-status');
     if (!status) return;
@@ -935,8 +957,8 @@
         const move = new THREE.Vector3();
         if (keys.KeyW || keys.ArrowUp) move.add(forward);
         if (keys.KeyS || keys.ArrowDown) move.sub(forward);
-        if (keys.KeyA || keys.ArrowLeft) move.sub(right);
-        if (keys.KeyD || keys.ArrowRight) move.add(right);
+        if (keys.KeyA || keys.ArrowLeft) move.add(right);
+        if (keys.KeyD || keys.ArrowRight) move.sub(right);
         if (move.lengthSq() > 0) {
           move.normalize().multiplyScalar(speed);
           const next = resolveCollision(camera.position.x + move.x, camera.position.z + move.z);
@@ -1116,11 +1138,16 @@
     bindFullscreenButton(el);
 
     let walk = null;
-    if (threeReady()) {
-      walk = createWalkLabyrinth(el, spec);
-    } else {
-      setStatus(el, 'Three.js not loaded — labyrinth unavailable.');
-    }
+    whenThreeReady(
+      () => {
+        if (!el.isConnected) return;
+        walk = createWalkLabyrinth(el, spec);
+      },
+      () => {
+        if (!el.isConnected) return;
+        setStatus(el, 'Three.js not loaded — labyrinth unavailable.');
+      },
+    );
 
     const disconnectObs = new MutationObserver(() => {
       if (!el.isConnected) {

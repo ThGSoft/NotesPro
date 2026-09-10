@@ -387,9 +387,11 @@
 </div>
 {{ user_settings.extra_configs|json_script:"app-extra-configs" }}
 {{ user_settings.workspace_pages|json_script:"app-workspace-pages" }}
+{{ game_highscores|json_script:"app-game-highscores" }}
 <script>
     const appExtraConfigs = JSON.parse(document.getElementById('app-extra-configs').textContent);
     const appWorkspacePages = JSON.parse(document.getElementById('app-workspace-pages').textContent);
+    const appGameHighscores = JSON.parse(document.getElementById('app-game-highscores').textContent);
     window.APP_BOOT = {
         // Nutze die ID, falls vorhanden, sonst null
         workspaceId: {% if current_workspace %}{{ current_workspace.id }}{% else %}null{% endif %},
@@ -410,6 +412,7 @@
         language: "{{ app_language_stored|escapejs }}",
         extraConfigs: appExtraConfigs,
         workspacePages: appWorkspacePages,
+        gameHighscores: appGameHighscores,
         isStaff: {% if user.is_staff %}true{% else %}false{% endif %},
         isGroupAdmin: {% if is_group_admin %}true{% else %}false{% endif %},
         canWrite: {% if can_write_workspace %}true{% else %}false{% endif %},
@@ -1085,13 +1088,22 @@
 <script src="{% static 'notes/sudoku.js' %}?v={% now 'YmdHis' %}"></script>
 <script src="{% static 'notes/vendor/jqJigsawPuzzle/jqJigsawPuzzle.js' %}?v={% now 'YmdHis' %}"></script>
 <script src="{% static 'notes/puzzle.js' %}?v={% now 'YmdHis' %}"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js"></script>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.min.js"
+  }
+}
+</script>
+<script type="module" src="{% static 'notes/three-global.js' %}?v={% now 'YmdHis' %}"></script>
 <script src="{% static 'notes/gallery.js' %}?v={% now 'YmdHis' %}"></script>
 <script src="{% static 'notes/photoview.js' %}?v={% now 'YmdHis' %}"></script>
 <script src="{% static 'notes/rollercoast.js' %}?v={% now 'YmdHis' %}"></script>
 <script src="{% static 'notes/scooter.js' %}?v={% now 'YmdHis' %}"></script>
 <script src="{% static 'notes/ghosttrain.js' %}?v={% now 'YmdHis' %}"></script>
+<script src="{% static 'notes/labyrinth.js' %}?v={% now 'YmdHis' %}"></script>
 <script src="{% static 'notes/pinball.js' %}?v={% now 'YmdHis' %}"></script>
+<script src="{% static 'notes/game-highscores.js' %}?v={% now 'YmdHis' %}"></script>
 <script src="{% static 'notes/pacman.js' %}?v={% now 'YmdHis' %}"></script>
 <script src="{% static 'notes/mario.js' %}?v={% now 'YmdHis' %}"></script>
 <script src="{% static 'notes/lemmings.js' %}?v={% now 'YmdHis' %}"></script>

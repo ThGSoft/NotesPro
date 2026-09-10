@@ -269,6 +269,28 @@
     return typeof window.THREE !== 'undefined';
   }
 
+  function whenThreeReady(onReady, onMissing) {
+    if (threeReady()) {
+      onReady();
+      return;
+    }
+    let settled = false;
+    const finish = (ok) => {
+      if (settled) return;
+      settled = true;
+      window.removeEventListener('notespro-three-ready', onEvent);
+      if (ok && threeReady()) onReady();
+      else onMissing();
+    };
+    const onEvent = () => finish(true);
+    window.addEventListener('notespro-three-ready', onEvent);
+    if (threeReady()) {
+      finish(true);
+      return;
+    }
+    window.setTimeout(() => finish(threeReady()), 8000);
+  }
+
   function setStatus(el, text) {
     const status = el.querySelector('.rollercoast-status');
     if (!status) return;
@@ -1296,11 +1318,16 @@
     bindFullscreenButton(el);
 
     let ride = null;
-    if (threeReady()) {
-      ride = createRide(el, spec);
-    } else {
-      setStatus(el, 'Three.js not loaded — roller coaster unavailable.');
-    }
+    whenThreeReady(
+      () => {
+        if (!el.isConnected) return;
+        ride = createRide(el, spec);
+      },
+      () => {
+        if (!el.isConnected) return;
+        setStatus(el, 'Three.js not loaded — roller coaster unavailable.');
+      },
+    );
 
     const disconnectObs = new MutationObserver(() => {
       if (!el.isConnected) {

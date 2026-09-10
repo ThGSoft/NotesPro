@@ -447,6 +447,28 @@
     return typeof window.THREE !== 'undefined';
   }
 
+  function whenThreeReady(onReady, onMissing) {
+    if (threeReady()) {
+      onReady();
+      return;
+    }
+    let settled = false;
+    const finish = (ok) => {
+      if (settled) return;
+      settled = true;
+      window.removeEventListener('notespro-three-ready', onEvent);
+      if (ok && threeReady()) onReady();
+      else onMissing();
+    };
+    const onEvent = () => finish(true);
+    window.addEventListener('notespro-three-ready', onEvent);
+    if (threeReady()) {
+      finish(true);
+      return;
+    }
+    window.setTimeout(() => finish(threeReady()), 8000);
+  }
+
   function createEmbeddedWallFrame(THREE, w, h) {
     const depth = 0.14;
     const group = new THREE.Group();
@@ -1252,8 +1274,8 @@
         const move = new THREE.Vector3();
         if (keys.KeyW || keys.ArrowUp) move.add(forward);
         if (keys.KeyS || keys.ArrowDown) move.sub(forward);
-        if (keys.KeyA || keys.ArrowLeft) move.sub(right);
-        if (keys.KeyD || keys.ArrowRight) move.add(right);
+        if (keys.KeyA || keys.ArrowLeft) move.add(right);
+        if (keys.KeyD || keys.ArrowRight) move.sub(right);
         if (move.lengthSq() > 0) {
           move.normalize().multiplyScalar(speed);
           camera.position.add(move);
@@ -1652,13 +1674,14 @@
     let walk = null;
     if (spec.mode === 'walk' && spec.photos?.length) {
       const startWalk = () => {
+        if (!el.isConnected) return;
         if (!threeReady()) {
           setStatus(el, 'Three.js not loaded — walk mode unavailable.');
           return;
         }
         walk = createWalkGallery(el, spec.photos, { demo: !!spec.demo });
       };
-      startWalk();
+      whenThreeReady(startWalk, startWalk);
       const disconnectObs = new MutationObserver(() => {
         if (!el.isConnected) {
           walk?.destroy();

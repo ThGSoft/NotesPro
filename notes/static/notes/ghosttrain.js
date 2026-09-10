@@ -185,6 +185,28 @@
     return typeof window.THREE !== 'undefined';
   }
 
+  function whenThreeReady(onReady, onMissing) {
+    if (threeReady()) {
+      onReady();
+      return;
+    }
+    let settled = false;
+    const finish = (ok) => {
+      if (settled) return;
+      settled = true;
+      window.removeEventListener('notespro-three-ready', onEvent);
+      if (ok && threeReady()) onReady();
+      else onMissing();
+    };
+    const onEvent = () => finish(true);
+    window.addEventListener('notespro-three-ready', onEvent);
+    if (threeReady()) {
+      finish(true);
+      return;
+    }
+    window.setTimeout(() => finish(threeReady()), 8000);
+  }
+
   function setStatus(el, text) {
     const status = el.querySelector('.ghosttrain-status');
     if (!status) return;
@@ -987,11 +1009,16 @@
     bindFullscreenButton(el);
 
     let yard = null;
-    if (threeReady()) {
-      yard = createYard(el, spec);
-    } else {
-      setStatus(el, 'Three.js not loaded — ghost train yard unavailable.');
-    }
+    whenThreeReady(
+      () => {
+        if (!el.isConnected) return;
+        yard = createYard(el, spec);
+      },
+      () => {
+        if (!el.isConnected) return;
+        setStatus(el, 'Three.js not loaded — ghost train yard unavailable.');
+      },
+    );
 
     const disconnectObs = new MutationObserver(() => {
       if (!el.isConnected) {
