@@ -1,10 +1,11 @@
 /**
- * NotesPro ```photocube``` and ```photobook``` blocks — own images, paste/drop, 3D cube + flip book.
+ * NotesPro ```photocube```, ```photobook```, and ```carousel``` blocks — paste/drop photos.
  */
 (function (root, factory) {
   const api = factory();
   root.NotesProPhotocube = api.cube;
   root.NotesProPhotobook = api.book;
+  root.NotesProPhotocarousel = api.carousel;
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = api;
   }
@@ -839,6 +840,280 @@
     bindPasteDrop(el, spec, options);
   }
 
+  /* ---------- Photo carousel ---------- */
+
+  function resolveAutoplay(cfg) {
+    const hasDemo = Object.prototype.hasOwnProperty.call(cfg, 'demo');
+    const hasAuto = Object.prototype.hasOwnProperty.call(cfg, 'auto')
+      || Object.prototype.hasOwnProperty.call(cfg, 'autoplay');
+    if (!hasDemo && !hasAuto) return true;
+    const raw = String(cfg.demo ?? cfg.auto ?? cfg.autoplay ?? '').trim().toLowerCase();
+    if (raw === '0' || raw === 'false' || raw === 'no' || raw === 'off') return false;
+    return true;
+  }
+
+  function resolveInterval(cfg) {
+    const n = parseInt(cfg.interval || cfg.ms || cfg.delay, 10);
+    if (!Number.isFinite(n)) return 4500;
+    return Math.max(1800, Math.min(20000, n));
+  }
+
+  function buildCarouselSpec(source, cfg) {
+    const title = String(cfg.title || 'Photo carousel').trim() || 'Photo carousel';
+    const photos = parsePhotos(source);
+    return {
+      title,
+      photos,
+      draft: !photos.length,
+      autoplay: resolveAutoplay(cfg),
+      interval: resolveInterval(cfg),
+    };
+  }
+
+  function renderCarouselSlides(photos) {
+    if (!photos.length) return '';
+    return photos.map((photo, i) => (
+      `<div class="carousel-slide" data-index="${i}" aria-hidden="${i === 0 ? 'false' : 'true'}">`
+      + renderMedia(photo, 'carousel-media')
+      + `</div>`
+    )).join('');
+  }
+
+  function renderCarouselDots(n, active) {
+    if (n < 2) return '';
+    const items = [];
+    for (let i = 0; i < n; i += 1) {
+      items.push(
+        `<button type="button" class="carousel-dot${i === active ? ' is-active' : ''}" data-index="${i}" tabindex="-1" aria-label="Photo ${i + 1}"></button>`,
+      );
+    }
+    return `<div class="carousel-dots" role="tablist">${items.join('')}</div>`;
+  }
+
+  function renderCarouselBody(spec, editable) {
+    if (spec.draft) {
+      return renderPasteZone(editable
+        ? 'Paste photos (Ctrl+V) or drop files onto the carousel'
+        : 'Add photos in markdown.');
+    }
+    const addBtn = editable
+      ? `<button type="button" class="btn btn-sm btn-outline-secondary" data-action="add-photo">Add photo</button>`
+      : '';
+    const n = spec.photos.length;
+    const first = spec.photos[0];
+    return [
+      `<div class="carousel-stage">`,
+      `<div class="carousel-viewport" tabindex="0" aria-label="Photo carousel">`,
+      `<div class="carousel-track">`,
+      renderCarouselSlides(spec.photos),
+      `</div>`,
+      n > 1 ? `<button type="button" class="carousel-nav carousel-nav--prev" data-action="carousel-prev" aria-label="Previous">‹</button>` : '',
+      n > 1 ? `<button type="button" class="carousel-nav carousel-nav--next" data-action="carousel-next" aria-label="Next">›</button>` : '',
+      `<div class="carousel-caption">${escapeHtml(first?.label || '')}</div>`,
+      renderCarouselDots(n, 0),
+      `</div>`,
+      `<p class="carousel-hint">${n > 1
+        ? 'Click a photo to open it · swipe or arrows to browse'
+        : 'Click the photo to open it'}</p>`,
+      `<div class="photoview-toolbar">`,
+      n > 1 ? `<button type="button" class="btn btn-sm btn-outline-light" data-action="carousel-play" aria-pressed="${spec.autoplay ? 'true' : 'false'}">${spec.autoplay ? 'Pause' : 'Play'}</button>` : '',
+      addBtn,
+      `</div>`,
+      `</div>`,
+    ].join('');
+  }
+
+  function renderCarouselBlock(source, fenceAttrs, options = {}) {
+    const cfg = parseFenceAttrs(fenceAttrs);
+    const style = resolveStyle(cfg);
+    const spec = buildCarouselSpec(source, cfg);
+    const index = Number.isFinite(options.carouselIndex) ? options.carouselIndex : 0;
+    const editable = options.editable !== false;
+    const fullscreen = resolveFullscreen(cfg);
+    const chrome = fullscreen ? '' : renderChrome(spec, 'carousel');
+    return [
+      `<div class="${shellClasses('carousel', style, spec, editable, fullscreen)}"${styleAttr(style)}`,
+      ` data-carousel-index="${index}"`,
+      ` data-carousel-spec="${escapeHtml(encodeSpec(spec))}" tabindex="0">`,
+      renderFullscreenButton(),
+      chrome,
+      renderCarouselBody(spec, editable),
+      `<div class="photoview-status"></div>`,
+      `</div>`,
+    ].join('');
+  }
+
+  function hydrateCarousel(el, options = {}) {
+    if (!el || el.dataset.carouselHydrated === '1') return;
+    const spec = decodeSpec(el.dataset.carouselSpec);
+    if (!spec) return;
+    el.dataset.carouselHydrated = '1';
+    bindFullscreenButton(el);
+    bindPasteDrop(el, spec, options);
+
+    const track = el.querySelector('.carousel-track');
+    const viewport = el.querySelector('.carousel-viewport');
+    const caption = el.querySelector('.carousel-caption');
+    const playBtn = el.querySelector('[data-action="carousel-play"]');
+    const n = spec.photos.length;
+    let index = 0;
+    let playing = n > 1 && !!spec.autoplay;
+    const reduceMotion = typeof window.matchMedia === 'function'
+      && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduceMotion) playing = false;
+    let timer = 0;
+    let swipe = null;
+    let lastGestureWasSwipe = false;
+
+    function openCurrentPhoto() {
+      const photos = spec.photos;
+      if (!photos.length) return;
+      const resume = playing;
+      setPlaying(false);
+      const open = window.NotesProGallery?.openLightbox;
+      if (typeof open === 'function') {
+        open(photos, index, {
+          onClose: () => { if (resume) setPlaying(true); },
+        });
+        return;
+      }
+      const href = photoHref(photos[index]);
+      if (href) window.open(href, '_blank', 'noopener');
+    }
+
+    function paint() {
+      if (track) track.style.transform = `translateX(${-index * 100}%)`;
+      el.querySelectorAll('.carousel-slide').forEach((slide, i) => {
+        slide.setAttribute('aria-hidden', i === index ? 'false' : 'true');
+      });
+      el.querySelectorAll('.carousel-dot').forEach((dot, i) => {
+        dot.classList.toggle('is-active', i === index);
+      });
+      if (caption) caption.textContent = spec.photos[index]?.label || '';
+      if (playBtn) {
+        playBtn.setAttribute('aria-pressed', playing ? 'true' : 'false');
+        playBtn.textContent = playing ? 'Pause' : 'Play';
+      }
+    }
+
+    function go(next) {
+      if (n < 1) return;
+      index = ((next % n) + n) % n;
+      paint();
+    }
+
+    function stopTimer() {
+      if (timer) {
+        window.clearInterval(timer);
+        timer = 0;
+      }
+    }
+
+    function startTimer() {
+      stopTimer();
+      if (!playing || n < 2) return;
+      timer = window.setInterval(() => go(index + 1), spec.interval || 4500);
+    }
+
+    function setPlaying(on) {
+      playing = n > 1 && !!on;
+      if (playing) startTimer();
+      else stopTimer();
+      paint();
+    }
+
+    el.addEventListener('click', (e) => {
+      if (e.target.closest('.game-fullscreen-btn')) return;
+      const action = e.target.closest('[data-action]')?.dataset.action;
+      if (action === 'carousel-prev') {
+        setPlaying(false);
+        go(index - 1);
+        return;
+      }
+      if (action === 'carousel-next') {
+        setPlaying(false);
+        go(index + 1);
+        return;
+      }
+      if (action === 'carousel-play') {
+        setPlaying(!playing);
+        return;
+      }
+      if (action === 'add-photo') {
+        setStatus(el, 'Paste an image (Ctrl+V) or drop a file onto the carousel.');
+        el.focus({ preventScroll: true });
+      }
+    });
+
+    el.querySelectorAll('.carousel-dot').forEach((dot) => {
+      dot.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const i = parseInt(dot.dataset.index, 10);
+        if (!Number.isFinite(i)) return;
+        setPlaying(false);
+        go(i);
+      });
+    });
+
+    function onKey(e) {
+      if (!el.contains(document.activeElement) && document.activeElement !== viewport) return;
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        setPlaying(false);
+        go(index - 1);
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        setPlaying(false);
+        go(index + 1);
+      } else if (e.key === ' ') {
+        e.preventDefault();
+        setPlaying(!playing);
+      }
+    }
+
+    function onPointerDown(e) {
+      if (e.target.closest('.carousel-nav, .carousel-dot, .photoview-toolbar, .game-fullscreen-btn')) return;
+      lastGestureWasSwipe = false;
+      swipe = { id: e.pointerId, x: e.clientX, dist: 0 };
+      try { viewport?.setPointerCapture(e.pointerId); } catch (_) { /* ignore */ }
+    }
+    function onPointerMove(e) {
+      if (!swipe || e.pointerId !== swipe.id) return;
+      swipe.dist += Math.abs(e.clientX - swipe.x);
+    }
+    function onPointerUp(e) {
+      if (!swipe || e.pointerId !== swipe.id) return;
+      const dx = e.clientX - swipe.x;
+      swipe = null;
+      if (Math.abs(dx) < 36) return;
+      lastGestureWasSwipe = true;
+      setPlaying(false);
+      go(dx < 0 ? index + 1 : index - 1);
+    }
+
+    viewport?.addEventListener('pointerdown', onPointerDown);
+    viewport?.addEventListener('pointermove', onPointerMove);
+    viewport?.addEventListener('pointerup', onPointerUp);
+    viewport?.addEventListener('pointercancel', () => { swipe = null; });
+    viewport?.addEventListener('click', (e) => {
+      if (e.target.closest('.carousel-nav, .carousel-dot, .photoview-toolbar, .game-fullscreen-btn')) return;
+      if (lastGestureWasSwipe) return;
+      openCurrentPhoto();
+    });
+    window.addEventListener('keydown', onKey);
+    paint();
+    startTimer();
+
+    const disconnectObs = new MutationObserver(() => {
+      if (!el.isConnected) {
+        stopTimer();
+        window.removeEventListener('keydown', onKey);
+        disconnectObs.disconnect();
+      }
+    });
+    disconnectObs.observe(document.body, { childList: true, subtree: true });
+  }
+
   const shared = {
     parseFenceAttrs,
     parsePhotos,
@@ -864,6 +1139,15 @@
       hydrateBlock: hydrateBook,
       hydrate(root) {
         (root || document).querySelectorAll('.photobook-block[data-photobook-spec]').forEach(hydrateBook);
+      },
+    },
+    carousel: {
+      ...shared,
+      buildSpec: buildCarouselSpec,
+      renderBlock: renderCarouselBlock,
+      hydrateBlock: hydrateCarousel,
+      hydrate(root) {
+        (root || document).querySelectorAll('.carousel-block[data-carousel-spec]').forEach(hydrateCarousel);
       },
     },
   };

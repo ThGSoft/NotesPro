@@ -159,6 +159,17 @@
     return raw === '' || raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
   }
 
+  function resolveTraces(cfg) {
+    if (!Object.prototype.hasOwnProperty.call(cfg, 'traces')
+      && !Object.prototype.hasOwnProperty.call(cfg, 'trace')
+      && !Object.prototype.hasOwnProperty.call(cfg, 'breadcrumbs')) {
+      return false;
+    }
+    const raw = String(cfg.traces ?? cfg.trace ?? cfg.breadcrumbs ?? '').trim().toLowerCase();
+    if (raw === '0' || raw === 'false' || raw === 'no' || raw === 'off') return false;
+    return true;
+  }
+
   function encodeSpec(spec) {
     try {
       return btoa(unescape(encodeURIComponent(JSON.stringify(spec))));
@@ -294,6 +305,7 @@
     return {
       title: String(cfg.title || 'Photo labyrinth').trim() || 'Photo labyrinth',
       demo: resolveDemo(cfg),
+      traces: resolveTraces(cfg),
       photos,
       draft: !photos.length,
     };
@@ -371,17 +383,33 @@
       `<canvas class="labyrinth-canvas"></canvas>`,
       `<div class="labyrinth-overlay">`,
       `<p class="labyrinth-hint labyrinth-hint--desktop">${spec.draft
-        ? 'Paste photos (Ctrl+V) — they cover the maze walls · click to look · W A S D walk'
-        : 'Click to look · <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> walk · Demo tour auto-walks the maze'}</p>`,
+        ? 'Paste photos (Ctrl+V) — they cover the maze walls · click to look · W A S D walk · find EXIT'
+        : 'Click to look · <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> walk · timer starts when you enter · find EXIT'}</p>`,
       `<p class="labyrinth-hint labyrinth-hint--mobile">${spec.demo
-        ? 'Tap Demo tour — or tap the maze to look around'
-        : 'Drag to look · tap Demo tour to auto-walk'}</p>`,
+        ? 'WASD pad walk · drag to look · Demo tour auto-walks · find EXIT'
+        : 'WASD pad walk · drag to look · timer starts when you enter'}</p>`,
       `<div class="labyrinth-caption" aria-live="polite"></div>`,
+      `</div>`,
+      `<div class="labyrinth-hud">`,
+      `<span>Time <strong data-role="labyrinth-time">0:00.0</strong></span>`,
+      `<span class="labyrinth-hud__best" data-role="labyrinth-best" hidden></span>`,
+      `</div>`,
+      `<div class="labyrinth-finish" hidden>`,
+      `<p class="labyrinth-finish__kicker">You found the exit</p>`,
+      `<p class="labyrinth-finish__time" data-role="labyrinth-finish-time">0:00.0</p>`,
+      `<p class="labyrinth-finish__hint">Reset to try again</p>`,
+      `</div>`,
+      `<div class="labyrinth-pad" aria-label="WASD walk pad">`,
+      `<button type="button" class="labyrinth-pad__btn labyrinth-pad__btn--w" data-key="KeyW" tabindex="-1" aria-label="Forward">W</button>`,
+      `<button type="button" class="labyrinth-pad__btn labyrinth-pad__btn--a" data-key="KeyA" tabindex="-1" aria-label="Left">A</button>`,
+      `<button type="button" class="labyrinth-pad__btn labyrinth-pad__btn--s" data-key="KeyS" tabindex="-1" aria-label="Back">S</button>`,
+      `<button type="button" class="labyrinth-pad__btn labyrinth-pad__btn--d" data-key="KeyD" tabindex="-1" aria-label="Right">D</button>`,
       `</div>`,
       `</div>`,
       `<div class="labyrinth-toolbar">`,
       `<button type="button" class="btn btn-sm btn-outline-light" data-action="walk-focus">Enter labyrinth</button>`,
       `<button type="button" class="btn btn-sm btn-outline-light" data-action="walk-demo" aria-pressed="false">Demo tour</button>`,
+      `<button type="button" class="btn btn-sm btn-outline-light" data-action="toggle-traces" aria-pressed="false">Traces</button>`,
       `<button type="button" class="btn btn-sm btn-outline-secondary" data-action="reset-maze">Reset</button>`,
       editable
         ? `<button type="button" class="btn btn-sm btn-outline-secondary" data-action="add-photo">Add photo</button>`
@@ -459,6 +487,117 @@
     return canvas;
   }
 
+  function formatMazeTime(ms) {
+    const t = Math.max(0, Number(ms) || 0);
+    const m = Math.floor(t / 60000);
+    const s = Math.floor((t % 60000) / 1000);
+    const d = Math.floor((t % 1000) / 100);
+    return `${m}:${String(s).padStart(2, '0')}.${d}`;
+  }
+
+  function makeSignCanvas(text, fg, bg) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 384;
+    canvas.height = 128;
+    const g = canvas.getContext('2d');
+    if (!g) return canvas;
+    g.fillStyle = bg;
+    g.fillRect(0, 0, 384, 128);
+    g.strokeStyle = fg;
+    g.lineWidth = 8;
+    g.strokeRect(10, 10, 364, 108);
+    g.fillStyle = fg;
+    g.font = 'bold 64px sans-serif';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText(String(text || '').toUpperCase(), 192, 68);
+    return canvas;
+  }
+
+  function addMazeDoorway(THREE, scene, colliders, opts) {
+    const {
+      x,
+      z,
+      edge = 'east',
+      label = 'EXIT',
+      color = 0x4ade80,
+      signFg = '#bbf7d0',
+      signBg = '#052e16',
+    } = opts;
+    const opening = 1.52;
+    const sideLen = Math.max(0.4, (CELL - opening) / 2);
+    const wallMat = new THREE.MeshStandardMaterial({
+      color: 0x3a2818,
+      roughness: 0.9,
+      metalness: 0.02,
+    });
+    const woodMat = new THREE.MeshStandardMaterial({
+      color: 0x5b3a1c,
+      roughness: 0.7,
+      metalness: 0.05,
+    });
+    function box(w, h, d, px, py, pz, mat) {
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat || wallMat);
+      mesh.position.set(px, py, pz);
+      scene.add(mesh);
+      return mesh;
+    }
+    const east = edge === 'east';
+    const zA = z - opening / 2 - sideLen / 2;
+    const zB = z + opening / 2 + sideLen / 2;
+    box(WALL_T, WALL_H, sideLen, x, WALL_H / 2, zA);
+    box(WALL_T, WALL_H, sideLen, x, WALL_H / 2, zB);
+    const hx = WALL_T / 2;
+    colliders.push(
+      { minX: x - hx, maxX: x + hx, minZ: zA - sideLen / 2, maxZ: zA + sideLen / 2 },
+      { minX: x - hx, maxX: x + hx, minZ: zB - sideLen / 2, maxZ: zB + sideLen / 2 },
+    );
+    const inset = east ? 0.02 : -0.02;
+    const pillar = 0.24;
+    box(pillar, WALL_H + 0.18, pillar, x + inset, (WALL_H + 0.18) / 2, z - opening / 2, woodMat);
+    box(pillar, WALL_H + 0.18, pillar, x + inset, (WALL_H + 0.18) / 2, z + opening / 2, woodMat);
+    box(0.3, 0.24, opening + 0.3, x + inset, WALL_H + 0.1, z, woodMat);
+    const signTex = new THREE.CanvasTexture(makeSignCanvas(label, signFg, signBg));
+    signTex.colorSpace = THREE.SRGBColorSpace;
+    const sign = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.38, 0.44),
+      new THREE.MeshBasicMaterial({ map: signTex, toneMapped: false }),
+    );
+    const face = east ? -Math.PI / 2 : Math.PI / 2;
+    sign.rotation.y = face;
+    sign.position.set(x + (east ? -0.16 : 0.16), WALL_H - 0.26, z);
+    scene.add(sign);
+    const portal = new THREE.Mesh(
+      new THREE.PlaneGeometry(opening - 0.1, WALL_H - 0.38),
+      new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity: 0.34,
+        side: THREE.DoubleSide,
+        toneMapped: false,
+      }),
+    );
+    portal.rotation.y = face;
+    portal.position.set(x + (east ? 0.08 : -0.08), (WALL_H - 0.22) / 2, z);
+    scene.add(portal);
+    const glow = new THREE.PointLight(color, 1.4, 8);
+    glow.position.set(x + (east ? 0.45 : -0.45), 1.45, z);
+    scene.add(glow);
+    const pad = new THREE.Mesh(
+      new THREE.CircleGeometry(0.42, 20),
+      new THREE.MeshStandardMaterial({
+        color,
+        emissive: color,
+        emissiveIntensity: 0.7,
+        roughness: 0.45,
+      }),
+    );
+    pad.rotation.x = -Math.PI / 2;
+    pad.position.set(x + (east ? -0.55 : 0.55), 0.04, z);
+    scene.add(pad);
+    return { x, z, opening, edge, portal };
+  }
+
   function collectWallSpecs(maze) {
     const specs = [];
     function add(x0, z0, x1, z1, inward) {
@@ -497,6 +636,12 @@
     const captionEl = el.querySelector('.labyrinth-caption');
     const mobileHintEl = el.querySelector('.labyrinth-hint--mobile');
     const demoBtn = el.querySelector('[data-action="walk-demo"]');
+    const tracesBtn = el.querySelector('[data-action="toggle-traces"]');
+    const pad = el.querySelector('.labyrinth-pad');
+    const timeEl = el.querySelector('[data-role="labyrinth-time"]');
+    const bestEl = el.querySelector('[data-role="labyrinth-best"]');
+    const finishEl = el.querySelector('.labyrinth-finish');
+    const finishTimeEl = el.querySelector('[data-role="labyrinth-finish-time"]');
     if (!viewport || !canvas) return null;
 
     const photos = spec.photos || [];
@@ -631,20 +776,56 @@
     });
 
     const exitPos = cellCenter(maze.cols - 1, maze.rows - 1);
-    const exitGlow = new THREE.PointLight(0xfbbf24, 1.15, 7);
-    exitGlow.position.set(exitPos.x, 1.4, exitPos.z);
-    scene.add(exitGlow);
-    const exitMark = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.18, 0.22, 0.12, 16),
-      new THREE.MeshStandardMaterial({
+    const enterDoor = addMazeDoorway(THREE, scene, colliders, {
+      x: 0,
+      z: start.z,
+      edge: 'west',
+      label: 'ENTER',
+      color: 0xfbbf24,
+      signFg: '#fde68a',
+      signBg: '#422006',
+    });
+    const exitDoor = addMazeDoorway(THREE, scene, colliders, {
+      x: worldW,
+      z: exitPos.z,
+      edge: 'east',
+      label: 'EXIT',
+      color: 0x4ade80,
+      signFg: '#bbf7d0',
+      signBg: '#052e16',
+    });
+
+    const TRACE_MAX = 480;
+    const TRACE_STEP = 0.3;
+    const TRACE_Y = 0.07;
+    const TRACE_DOT_EVERY = 3;
+    let tracesOn = !!spec.traces;
+    const tracePts = [];
+    const traceDots = [];
+    const tracePositions = new Float32Array(TRACE_MAX * 3);
+    const traceGeom = new THREE.BufferGeometry();
+    traceGeom.setAttribute('position', new THREE.BufferAttribute(tracePositions, 3));
+    traceGeom.setDrawRange(0, 0);
+    const traceLine = new THREE.Line(
+      traceGeom,
+      new THREE.LineBasicMaterial({
         color: 0xfbbf24,
-        emissive: 0xf59e0b,
-        emissiveIntensity: 0.85,
-        roughness: 0.4,
+        transparent: true,
+        opacity: 0.92,
+        depthWrite: false,
       }),
     );
-    exitMark.position.set(exitPos.x, 0.08, exitPos.z);
-    scene.add(exitMark);
+    traceLine.frustumCulled = false;
+    traceLine.visible = false;
+    scene.add(traceLine);
+    const traceDotGeom = new THREE.CircleGeometry(0.11, 12);
+    const traceDotMat = new THREE.MeshBasicMaterial({
+      color: 0xfde68a,
+      transparent: true,
+      opacity: 0.85,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
 
     const keys = Object.create(null);
     let yaw = 0;
@@ -663,6 +844,72 @@
     let tour = null;
     let entered = false;
     let ignoreNextLookClick = false;
+    const run = {
+      startedAt: 0,
+      elapsed: 0,
+      running: false,
+      finished: false,
+      bestMs: 0,
+    };
+
+    function mazeTimeMs() {
+      if (run.running) return performance.now() - run.startedAt;
+      return run.elapsed;
+    }
+
+    function paintHud() {
+      if (timeEl) timeEl.textContent = formatMazeTime(mazeTimeMs());
+      if (bestEl) {
+        if (run.bestMs > 0) {
+          bestEl.hidden = false;
+          bestEl.textContent = `Best ${formatMazeTime(run.bestMs)}`;
+        } else {
+          bestEl.hidden = true;
+        }
+      }
+    }
+
+    function startTimer() {
+      if (run.finished || run.running || tour?.active) return;
+      run.running = true;
+      run.startedAt = performance.now() - run.elapsed;
+      paintHud();
+    }
+
+    function clearTimer() {
+      run.running = false;
+      run.finished = false;
+      run.startedAt = 0;
+      run.elapsed = 0;
+      if (finishEl) finishEl.hidden = true;
+      paintHud();
+    }
+
+    function finishRun() {
+      if (run.finished || tour?.active) return;
+      if (run.running) {
+        run.elapsed = performance.now() - run.startedAt;
+        run.running = false;
+      }
+      run.finished = true;
+      if (!run.bestMs || run.elapsed < run.bestMs) run.bestMs = run.elapsed;
+      paintHud();
+      if (finishTimeEl) finishTimeEl.textContent = formatMazeTime(run.elapsed);
+      if (finishEl) finishEl.hidden = false;
+      if (captionEl) captionEl.textContent = 'Exit';
+      setStatus(el, `Escaped in ${formatMazeTime(run.elapsed)}. Reset to try again.`);
+      if (document.pointerLockElement === canvas) document.exitPointerLock();
+    }
+
+    function inExitPortal(x, z) {
+      return x > worldW - 0.12
+        && x < worldW + 1.05
+        && Math.abs(z - exitDoor.z) < exitDoor.opening / 2 - 0.08;
+    }
+
+    function inExitLane(x, z) {
+      return Math.abs(z - exitDoor.z) < exitDoor.opening / 2 - 0.05 && x > worldW - PLAYER_R - 0.35;
+    }
 
     function setFov(next) {
       fov = Math.max(42, Math.min(95, next));
@@ -676,6 +923,73 @@
       demoBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
       demoBtn.textContent = on ? 'Stop tour' : 'Demo tour';
       demoBtn.classList.toggle('active', on);
+    }
+
+    function syncTracesButton() {
+      if (!tracesBtn) return;
+      tracesBtn.setAttribute('aria-pressed', tracesOn ? 'true' : 'false');
+      tracesBtn.textContent = tracesOn ? 'Traces on' : 'Traces';
+      tracesBtn.classList.toggle('active', tracesOn);
+    }
+
+    function syncTraceGeom() {
+      for (let i = 0; i < tracePts.length; i += 1) {
+        const p = tracePts[i];
+        tracePositions[i * 3] = p.x;
+        tracePositions[i * 3 + 1] = TRACE_Y;
+        tracePositions[i * 3 + 2] = p.z;
+      }
+      traceGeom.attributes.position.needsUpdate = true;
+      traceGeom.setDrawRange(0, tracePts.length);
+      if (tracePts.length) traceGeom.computeBoundingSphere();
+      traceLine.visible = tracesOn && tracePts.length > 1;
+      traceDots.forEach((dot) => { dot.visible = tracesOn; });
+    }
+
+    function addTraceDot(x, z) {
+      const mesh = new THREE.Mesh(traceDotGeom, traceDotMat);
+      mesh.rotation.x = -Math.PI / 2;
+      mesh.position.set(x, TRACE_Y + 0.01, z);
+      mesh.visible = tracesOn;
+      scene.add(mesh);
+      traceDots.push(mesh);
+      const maxDots = Math.floor(TRACE_MAX / TRACE_DOT_EVERY) + 4;
+      if (traceDots.length > maxDots) {
+        const old = traceDots.shift();
+        scene.remove(old);
+      }
+    }
+
+    function pushTrace(x, z) {
+      const lastPt = tracePts[tracePts.length - 1];
+      if (lastPt) {
+        const dx = x - lastPt.x;
+        const dz = z - lastPt.z;
+        if (dx * dx + dz * dz < TRACE_STEP * TRACE_STEP) return;
+      }
+      if (tracePts.length >= TRACE_MAX) tracePts.shift();
+      tracePts.push({ x, z });
+      if (tracePts.length % TRACE_DOT_EVERY === 1) addTraceDot(x, z);
+      if (tracesOn) syncTraceGeom();
+    }
+
+    function clearTraces() {
+      tracePts.length = 0;
+      while (traceDots.length) {
+        scene.remove(traceDots.pop());
+      }
+      syncTraceGeom();
+    }
+
+    function setTraces(on) {
+      tracesOn = !!on;
+      if (tracesOn) pushTrace(camera.position.x, camera.position.z);
+      syncTraceGeom();
+      syncTracesButton();
+    }
+
+    function toggleTraces() {
+      setTraces(!tracesOn);
     }
 
     function easeInOut(t) {
@@ -709,8 +1023,14 @@
           pz += dz * push;
         });
       }
-      px = Math.max(PLAYER_R, Math.min(worldW - PLAYER_R, px));
+      px = Math.max(PLAYER_R, px);
       pz = Math.max(PLAYER_R, Math.min(worldD - PLAYER_R, pz));
+      if (inExitLane(px, pz)) {
+        px = Math.min(worldW + 1.05, px);
+        pz = Math.max(exitDoor.z - exitDoor.opening / 2 + 0.08, Math.min(exitDoor.z + exitDoor.opening / 2 - 0.08, pz));
+      } else {
+        px = Math.min(worldW - PLAYER_R, px);
+      }
       return { x: px, z: pz };
     }
 
@@ -743,8 +1063,8 @@
       }
       const dx = camera.position.x - exitPos.x;
       const dz = camera.position.z - exitPos.z;
-      if (dx * dx + dz * dz < 2.4) {
-        captionEl.textContent = 'Exit';
+      if (dx * dx + dz * dz < 3.2) {
+        captionEl.textContent = run.finished ? 'Exit' : 'Walk through EXIT';
         return;
       }
       if (!photos.length) {
@@ -857,6 +1177,12 @@
 
     function startTour() {
       if (document.pointerLockElement === canvas) document.exitPointerLock();
+      if (!run.finished) {
+        run.running = false;
+        run.elapsed = 0;
+        run.startedAt = 0;
+        paintHud();
+      }
       const waypoints = buildTourWaypoints();
       tour = {
         active: true,
@@ -927,12 +1253,15 @@
 
     function resetPose() {
       stopTour();
+      clearTimer();
+      clearTraces();
       const home = cellCenter(0, 0);
       camera.position.set(home.x, EYE_Y, home.z);
       yaw = startYaw;
       pitch = 0;
       setFov(FOV_DEFAULT);
       if (captionEl) captionEl.textContent = photos.length ? '' : 'Empty maze — paste photos for the walls';
+      setStatus(el, '');
     }
 
     function resize() {
@@ -950,7 +1279,7 @@
 
       if (tour?.active) {
         advanceTour(dt);
-      } else {
+      } else if (!run.finished) {
         const speed = (keys.ShiftLeft || keys.ShiftRight ? 4.4 : 2.55) * dt;
         const forward = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
         const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
@@ -960,11 +1289,24 @@
         if (keys.KeyA || keys.ArrowLeft) move.add(right);
         if (keys.KeyD || keys.ArrowRight) move.sub(right);
         if (move.lengthSq() > 0) {
+          startTimer();
           move.normalize().multiplyScalar(speed);
           const next = resolveCollision(camera.position.x + move.x, camera.position.z + move.z);
           camera.position.x = next.x;
           camera.position.z = next.z;
         }
+        if (inExitPortal(camera.position.x, camera.position.z)) finishRun();
+      }
+
+      pushTrace(camera.position.x, camera.position.z);
+
+      if (exitDoor.portal?.material) {
+        exitDoor.portal.material.opacity = run.finished
+          ? 0.55
+          : 0.22 + 0.18 * (0.5 + 0.5 * Math.sin(now * 0.004));
+      }
+      if (enterDoor.portal?.material) {
+        enterDoor.portal.material.opacity = 0.18 + 0.1 * (0.5 + 0.5 * Math.sin(now * 0.003));
       }
 
       camera.position.y = EYE_Y;
@@ -972,6 +1314,7 @@
       camera.rotation.y = yaw + YAW_LOOK;
       camera.rotation.x = pitch;
       nearestCaption();
+      if (run.running) paintHud();
       renderer.render(scene, camera);
       raf = requestAnimationFrame(tick);
     }
@@ -1012,8 +1355,9 @@
       if (lockPointer) canvas.requestPointerLock?.();
       if (startDemo && spec.demo && !tour?.active) startTour();
       entered = true;
+      if (!startDemo && !tour?.active) startTimer();
       if (isLabyrinthMobile() && mobileHintEl) {
-        mobileHintEl.textContent = 'Drag to look · Demo tour auto-walks';
+        mobileHintEl.textContent = 'WASD pad walk · drag to look';
       }
     }
 
@@ -1065,6 +1409,64 @@
       viewport.classList.toggle('labyrinth-viewport--locked', locked);
     }
 
+    function syncPad() {
+      if (!pad) return;
+      const mobile = isLabyrinthMobile();
+      el.classList.toggle('labyrinth-block--mobile', mobile);
+      pad.classList.toggle('is-visible', mobile);
+    }
+
+    function bindPad() {
+      if (!pad) return () => {};
+      const held = new Map();
+      const setKey = (code, down, btn) => {
+        if (!code) return;
+        keys[code] = !!down;
+        btn?.classList.toggle('is-active', !!down);
+        if (down) {
+          enterMaze({ startDemo: false, stopTourIfActive: true, lockPointer: false });
+        }
+      };
+      const onDown = (event) => {
+        const btn = event.currentTarget;
+        const code = btn.getAttribute('data-key');
+        if (!code) return;
+        event.preventDefault();
+        event.stopPropagation();
+        try { btn.setPointerCapture(event.pointerId); } catch (_) { /* ignore */ }
+        held.set(event.pointerId, { code, btn });
+        setKey(code, true, btn);
+      };
+      const onUp = (event) => {
+        const rec = held.get(event.pointerId);
+        if (!rec) return;
+        held.delete(event.pointerId);
+        setKey(rec.code, false, rec.btn);
+      };
+      const onContext = (event) => event.preventDefault();
+      pad.querySelectorAll('[data-key]').forEach((btn) => {
+        btn.addEventListener('pointerdown', onDown);
+        btn.addEventListener('pointerup', onUp);
+        btn.addEventListener('pointercancel', onUp);
+        btn.addEventListener('lostpointercapture', onUp);
+        btn.addEventListener('contextmenu', onContext);
+      });
+      return () => {
+        pad.querySelectorAll('[data-key]').forEach((btn) => {
+          btn.removeEventListener('pointerdown', onDown);
+          btn.removeEventListener('pointerup', onUp);
+          btn.removeEventListener('pointercancel', onUp);
+          btn.removeEventListener('lostpointercapture', onUp);
+          btn.removeEventListener('contextmenu', onContext);
+        });
+        held.forEach((rec) => setKey(rec.code, false, rec.btn));
+        held.clear();
+      };
+    }
+
+    const unbindPad = bindPad();
+    syncPad();
+
     canvas.addEventListener('click', requestLook);
     canvas.addEventListener('pointerdown', onPointerDownLook);
     canvas.addEventListener('pointermove', onPointerMoveLook);
@@ -1076,14 +1478,24 @@
     document.addEventListener('mousemove', onMouseMove);
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
-    window.addEventListener('resize', resize);
+    const onWinResize = () => {
+      resize();
+      syncPad();
+    };
+    window.addEventListener('resize', onWinResize);
     el.addEventListener('notespro:monitor-fullscreen', () => {
-      requestAnimationFrame(resize);
+      requestAnimationFrame(() => {
+        resize();
+        syncPad();
+      });
     });
 
     resize();
+    paintHud();
     raf = requestAnimationFrame(tick);
     syncDemoButton();
+    syncTracesButton();
+    if (tracesOn) pushTrace(start.x, start.z);
     if (spec.demo) {
       requestAnimationFrame(() => startTour());
     } else if (!photos.length) {
@@ -1096,6 +1508,8 @@
       startTour,
       stopTour,
       reset: resetPose,
+      toggleTraces,
+      setTraces,
       destroy() {
         destroyed = true;
         stopTour();
@@ -1112,7 +1526,8 @@
         document.removeEventListener('mousemove', onMouseMove);
         window.removeEventListener('keydown', onKeyDown);
         window.removeEventListener('keyup', onKeyUp);
-        window.removeEventListener('resize', resize);
+        window.removeEventListener('resize', onWinResize);
+        unbindPad();
         mediaNodes.forEach((video) => {
           video.pause();
           video.removeAttribute('src');
@@ -1166,6 +1581,10 @@
       }
       if (action === 'walk-demo') {
         walk?.toggleTour();
+        return;
+      }
+      if (action === 'toggle-traces') {
+        walk?.toggleTraces();
         return;
       }
       if (action === 'reset-maze') {

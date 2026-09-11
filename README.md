@@ -38,11 +38,19 @@ Share: [LinkedIn](https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2
 - **Python / executecode** blocks — run in a browser Pyodide sandbox; `print`, pandas, and matplotlib plots show in the preview
 - **Sudoku** blocks — interactive 9×9 puzzles (generated or custom grid in markdown)
 - **Tic Tac Toe** blocks — 3×3 vs CPU or two players
+- **Chess** blocks — full-board chess vs CPU or two players
+- **Connect Four** blocks — drop discs, get four in a row
+- **Reversi** blocks — Othello disc-flipping vs CPU or two players
 - **Tetris** blocks — 7-bag Tetris with ghost piece, hold, and next preview
+- **Sokoban** blocks — crate-pushing puzzles with undo and built-in levels
+- **Space Invaders** blocks — rows of aliens, shields, waves, and a mystery UFO
+- **Breakout** blocks — paddle, ball, brick rows, lives, and waves
+- **Snake** blocks — grow by eating; walls or wrap-around edges
+- **Marble blast** blocks — 3D marble rolling courses (gems, bounce pads, finish)
 - **Puzzle** blocks — jigsaw puzzle from a pasted image (drag pieces into place)
 - **Pinball** blocks — 3D Pinball Space Cadet (WASM) in preview
 - **Gallery** blocks — walk-in 3D photo corridor with embedded wall frames
-- **Photo cube** / **Photo book** blocks — 3D cube and flip-book albums of your own images
+- **Photo carousel** / **Photo cube** / **Photo book** blocks — slideshow, 3D cube, and flip-book albums of your own images
 - **Roller coaster** blocks — themed 3D ride (jungle / dune / snow / alps) with your images along the track
 - **Auto scooter** blocks — bumper-car rink; your photos ride on the other cars
 - **Ghost train** blocks — convoy on rails; photos in frames along the track
@@ -97,7 +105,7 @@ python manage.py runserver
 
 Open:
 - http://127.0.0.1:8000/login/
-- Demo user after `seed_demo`: `demo` / `password` — workspace **Docs → README** contains this guide with screenshots; **Docs → Blocks** has gantt/calendar/mindmap/kanban/calcs/panel examples; **Docs → Calendar** has day/week/month/year views with sample events; **Docs → Gallery** is a walk-in corridor of NotesPro screenshots (tap **Demo tour** on a phone); **Docs → Games** has sudoku, tic-tac-toe, Tetris, jigsaw, pinball, Pac-Man, Super Mario, Lemmings, photo cube, photo book, roller coaster, auto scooter, ghost train, and photo labyrinth; **Docs → RSS Feeds** embeds BBC / DE / CH news feeds
+- Demo user after `seed_demo`: `demo` / `password` — workspace **Docs → README** contains this guide with screenshots; **Docs → Blocks** has gantt/calendar/mindmap/kanban/calcs/panel examples; **Docs → Calendar** has day/week/month/year views with sample events; **Docs → Gallery** is a walk-in corridor of NotesPro screenshots (tap **Demo tour** on a phone); **Docs → Games** has sudoku, tic-tac-toe, chess, Connect Four, Reversi, Tetris, Sokoban, Space Invaders, Breakout, Snake, marble blast, jigsaw, pinball, Pac-Man, Super Mario, Lemmings, photo cube, photo book, photo carousel, roller coaster, auto scooter, ghost train, and photo labyrinth; **Docs → RSS Feeds** embeds BBC / DE / CH news feeds
 
 Copy `.env.example` to `.env.dev` (or set `DJANGO_ENV`) for local settings. See [Email invitations](#email-invitations) and [Database encryption](#database-encryption) below.
 
@@ -975,6 +983,63 @@ Two players:
 
 Toolbar: **Insert tic-tac-toe** adds a medium CPU match. **New game** clears the board.
 
+### Chess
+
+Embed a full **chess** board (`chess` / `chessgame`). You play **white**. Click a piece, then a highlighted square. Castling, en passant, and queen promotion are included. Beat the CPU to post a workspace high score.
+
+````markdown
+```chess{fullscreen;mode=cpu;difficulty=medium}
+```
+````
+
+| Option | Description |
+|--------|-------------|
+| `fullscreen` | Edge-to-edge board (default on) |
+| `mode` | `cpu` (default) or `hotseat` |
+| `difficulty` | CPU search: `easy`, `medium`, or `hard` |
+| `title` | Block title (hidden in fullscreen) |
+| `col` / `bkcol` | Theme colors |
+
+Toolbar: **Insert Chess** adds a medium CPU match.
+
+### Connect Four
+
+Drop discs in a 7×6 well. Get four in a row before the CPU does (`connect4` / `connect-4` / `c4`).
+
+````markdown
+```connect4{fullscreen;mode=cpu;difficulty=medium}
+```
+````
+
+| Option | Description |
+|--------|-------------|
+| `fullscreen` | Edge-to-edge well (default on) |
+| `mode` | `cpu` (default) or `hotseat` |
+| `difficulty` | CPU search: `easy`, `medium`, or `hard` |
+| `title` | Block title (hidden in fullscreen) |
+| `col` / `bkcol` | Theme colors |
+
+Toolbar: **Insert Connect Four**.
+
+### Reversi
+
+Othello on an 8×8 green board (`reversi` / `othello`). You play **black**. Legal drops show as dots; flanking flips the CPU's discs. Corners are worth the most.
+
+````markdown
+```reversi{fullscreen;mode=cpu;difficulty=medium}
+```
+````
+
+| Option | Description |
+|--------|-------------|
+| `fullscreen` | Edge-to-edge board (default on) |
+| `mode` | `cpu` (default) or `hotseat` |
+| `difficulty` | CPU search: `easy`, `medium`, or `hard` |
+| `title` | Block title (hidden in fullscreen) |
+| `col` / `bkcol` | Theme colors |
+
+Toolbar: **Insert Reversi**.
+
 ### Tetris
 
 Embed a guideline-style **Tetris** with a fenced `tetris` block (`tetrix` / `tetric` work too). Slow gravity by default, 7-bag randomizer, ghost piece, hold, next-piece preview, and a gentle level speed-up. Click the well to focus, then play.
@@ -1004,6 +1069,145 @@ Embed a guideline-style **Tetris** with a fenced `tetris` block (`tetrix` / `tet
 On phones, **Hold / Rotate / Drop** and a D-pad appear under the well. Desktop uses the keyboard only.
 
 Toolbar: **Insert Tetris** adds a well. Use the **⛶** button for monitor fullscreen.
+
+### Sokoban
+
+Embed a crate-pushing **Sokoban** puzzle. Built-in levels ship with the block; you can also paste your own ASCII maps in the fence body (`#` wall, `@` you, `$` crate, `.` target, `*` crate on target).
+
+````markdown
+```sokoban{fullscreen}
+```
+````
+
+| Option | Description |
+|--------|-------------|
+| `fullscreen` | Edge-to-edge board (default on) |
+| `level` | Start at this 1-based built-in level |
+| `title` | Block title (hidden chrome in fullscreen) |
+| `col` / `bkcol` | Theme colors |
+
+| Key | Action |
+|-----|--------|
+| **←↑↓→** / **WASD** | Move / push |
+| **U** / **Z** | Undo |
+| **R** | Reset level |
+| **[ ]** | Previous / next level |
+
+On phones a D-pad appears under the board. Clearing a level adds to your workspace high score.
+
+Toolbar: **Insert Sokoban** adds the first warehouse.
+
+### Space Invaders
+
+Embed **Space Invaders** (`invaders` / `spaceinvaders`). Rows of aliens march, drop bombs, and chew through four pixel shields. Clear a wave to start the next, slightly lower and faster. A mystery UFO sometimes crosses the top.
+
+````markdown
+```invaders{fullscreen}
+```
+````
+
+| Option | Description |
+|--------|-------------|
+| `fullscreen` | Edge-to-edge well (default on) |
+| `title` | Block title (hidden chrome in fullscreen) |
+| `col` / `bkcol` | Theme colors |
+
+| Key | Action |
+|-----|--------|
+| **← →** / **A D** | Move ship |
+| **Space** / **↑** | Fire |
+| **P** | Pause |
+| **R** | Restart |
+
+On phones a left / fire / right pad appears. Score is submitted to the workspace high-score board.
+
+Toolbar: **Insert Space Invaders**.
+
+### Breakout
+
+Embed **Breakout** (`breakout` / `arkanoid`). Bounce the ball with a paddle to knock out colored brick rows. You have three lives; clearing the board starts a faster wave with a slightly shorter paddle. Top-row bricks on later waves take two hits.
+
+````markdown
+```breakout{fullscreen}
+```
+````
+
+| Option | Description |
+|--------|-------------|
+| `fullscreen` | Edge-to-edge well (default on) |
+| `title` | Block title (hidden chrome in fullscreen) |
+| `col` / `bkcol` | Theme colors |
+
+| Key | Action |
+|-----|--------|
+| **← →** / **A D** | Move paddle |
+| **Mouse** | Track paddle |
+| **Space** / **↑** | Launch ball |
+| **P** | Pause |
+| **R** | Restart |
+
+On phones a left / launch / right pad appears.
+
+Toolbar: **Insert Breakout**.
+
+### Snake
+
+Embed **Snake**. Steer, eat the apple, and grow. Hitting a wall or yourself ends the game. Add `wrap` to the fence for wrap-around edges instead of solid walls.
+
+````markdown
+```snake{fullscreen}
+```
+````
+
+````markdown
+```snake{fullscreen;wrap}
+```
+````
+
+| Option | Description |
+|--------|-------------|
+| `fullscreen` | Edge-to-edge board (default on) |
+| `wrap` | Wrap at the edges instead of dying on walls |
+| `title` | Block title (hidden chrome in fullscreen) |
+| `col` / `bkcol` | Theme colors |
+
+| Key | Action |
+|-----|--------|
+| **←↑↓→** / **WASD** | Turn |
+| **P** | Pause |
+| **R** | Restart |
+
+On phones a D-pad appears under the board.
+
+Toolbar: **Insert Snake**.
+
+### Marble blast
+
+A 3D **marble rolling** course in the spirit of Marble Blast Ultra — original parks, not a copy of MBU assets. Collect every gem, then roll onto the gold finish pad. Bounce pads launch you; orange pads give a speed boost. Falling off respawns you and counts as a fall.
+
+````markdown
+```marbleblast{fullscreen}
+```
+````
+
+| Option | Description |
+|--------|-------------|
+| `fullscreen` | Edge-to-edge stage (default on) |
+| `course` | `1` Beginner Park · `2` Sky Ramps · `3` Helix Drop |
+| `title` | Block title (hidden chrome in fullscreen) |
+| `col` / `bkcol` | Theme colors |
+
+| Key | Action |
+|-----|--------|
+| **WASD** / arrows | Roll (camera-relative) |
+| **Space** | Jump |
+| Drag | Look around |
+| **R** | Restart course |
+| **[ ]** | Previous / next course |
+
+Faster finishes and fewer falls score higher. On phones, a WASD pad and **Jump** appear under the stage.
+
+Toolbar: **Insert Marble blast** adds Beginner Park.
 
 ### Puzzle (jigsaw)
 
@@ -1225,7 +1429,7 @@ On **mobile**, **Enter gallery** is hidden (the first tap enters the hall). **De
 
 Videos play on the wall when the file has a picture track. If there is no video (audio-only file, or a YouTube clip you are not facing closely enough), **sound still plays**. Stand in front of a YouTube frame to see the video overlay; glance away and you hear the song only. **Only one clip has audio at a time.** Browsers may keep sound muted until you click **Enter gallery** or **Demo tour** (or tap the gallery on a phone). **Space** opens the media in the lightbox.
 
-Toolbar: **Insert walk-in photo gallery demo** adds a sample corridor (with a video) that walks itself.
+Toolbar: **Photos → Walk-in gallery** adds a sample corridor (with a video) that walks itself.
 
 ### Photo cube
 
@@ -1260,7 +1464,7 @@ With your images:
 
 **Cube controls:** drag to rotate · **Pause spin** / **Spin** · **Next faces** when you have more than six photos · paste / drop to add pictures while editing.
 
-Toolbar: **Insert photo cube** adds a sample cube.
+Toolbar: **Photos → Photo cube** adds a sample cube.
 
 ### Photo book
 
@@ -1292,7 +1496,34 @@ With your images:
 
 **Book controls:** **Open book** · click the **right page** or **Next** to turn forward · **left page** or **Prev** to go back · arrow keys · swipe on a phone · paste / drop to add pictures. The album and its photos scale to the preview (and to the monitor in fullscreen).
 
-Toolbar: **Insert photo book** adds a sample album.
+Toolbar: **Photos → Photo book** adds a sample album.
+
+### Photo carousel
+
+A **slideshow** of your pictures. It autoplays, and you can swipe, click the arrows, or use the keyboard.
+
+````markdown
+```carousel{title=Holiday slides;demo;col=info}
+![Lake](https://picsum.photos/id/1015/960/720)
+![Forest path](https://picsum.photos/id/1018/960/720)
+![Coast](https://picsum.photos/id/1016/960/720)
+![Valley](https://picsum.photos/id/1043/960/720)
+![Bridge](https://picsum.photos/id/1036/960/720)
+![Hills](https://picsum.photos/id/1019/960/720)
+```
+````
+
+| Option | Description |
+|--------|-------------|
+| `title` | Block heading |
+| `demo` / `auto` | Autoplay (on by default; `demo=0` to stop) |
+| `interval` | Milliseconds between slides (default 4500) |
+| `fullscreen` | Edge-to-edge layout (default on) |
+| `col` / `bkcol` | Theme colors |
+
+**Carousel controls:** click a photo to open it · ‹ › or arrow keys · swipe · dots · **Pause** / **Play** · paste / drop to add pictures while editing.
+
+Toolbar: **Photos → Photo carousel** adds a sample slideshow.
 
 ### Roller coaster
 
@@ -1410,16 +1641,17 @@ Embed a **first-person photo maze**. Walls are textured with the pictures you pa
 |--------|-------------|
 | `title` | Block heading |
 | `demo` | Show **Demo tour** and auto-start a guided walk through the maze |
+| `traces` | Start with floor traces on (your path as a glowing line) |
 | `fullscreen` | Edge-to-edge layout (default on) |
 | `col` / `bkcol` | Theme colors |
 
 Aliases: `photo-labyrinth`, `maze`.
 
-**Walk controls:** click the view to capture the mouse · **W A S D** / arrows move · **Shift** sprint · mouse **wheel** zoom · **Esc** release mouse · **Demo tour** starts / stops the auto-walk (shown only when `demo` is set) · **Reset** returns to the entrance · paste / drop images onto the walls.
+**Walk controls:** click the view to capture the mouse — the **timer starts when you enter** · **W A S D** / arrows move · **Shift** sprint · mouse **wheel** zoom · **Esc** release mouse · walk through the green **EXIT** doorway to stop the clock · **Traces** shows or hides the glowing path you walked · **Demo tour** starts / stops the auto-walk (shown only when `demo` is set) · **Reset** returns to the **ENTER** doorway · paste / drop images onto the walls.
 
 On **mobile**, **Enter labyrinth** is hidden (the first tap enters). **Demo tour** stays visible with a large tap target so you can start or stop the guided walk. On a `demo` maze the tour also starts on load; drag to look around (that takes over from the tour).
 
-Toolbar: **Insert photo labyrinth** adds a sample maze that walks itself.
+Toolbar: **Photos → Photo labyrinth** adds a sample maze that walks itself.
 
 ### News / RSS (Magpie-style)
 

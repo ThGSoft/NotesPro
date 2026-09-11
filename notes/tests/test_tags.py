@@ -15,13 +15,17 @@ class ExtractTagsTests(unittest.TestCase):
         tags = extract_tags_from_markdown('{tag: WLAN}{tag: Haefely}')
         self.assertEqual(tags, {'wlan', 'haefely'})
 
-    def test_bracket_and_hashtag(self):
+    def test_ignores_hashtag_and_bracket(self):
         tags = extract_tags_from_markdown('Hello #demo and [tag:Beta]')
-        self.assertEqual(tags, {'demo', 'beta'})
+        self.assertEqual(tags, set())
 
-    def test_mixed_syntax(self):
-        tags = extract_tags_from_markdown('#alpha {tag: WLAN} [tag:Gamma]')
-        self.assertEqual(tags, {'alpha', 'wlan', 'gamma'})
+    def test_heading_counts_as_tag(self):
+        tags = extract_tags_from_markdown('# Alpha\nsome text')
+        self.assertEqual(tags, {'alpha'})
+
+    def test_heading_and_brace_both_count(self):
+        tags = extract_tags_from_markdown('# alpha\n{tag: WLAN} [tag:Gamma]')
+        self.assertEqual(tags, {'alpha', 'wlan'})
 
 
 if __name__ == '__main__':

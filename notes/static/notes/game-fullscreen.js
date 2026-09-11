@@ -10,7 +10,7 @@
 }(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
-  const BLOCK_SELECTOR = '.sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .tetris-block, .gallery-block, .photocube-block, .photobook-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block';
+  const BLOCK_SELECTOR = '.sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .tetris-block, .sokoban-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block';
   const bound = new WeakSet();
   let globalListener = false;
 

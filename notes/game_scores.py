@@ -1,10 +1,11 @@
 from .models import GameHighScore
 
-GAMES = ('pacman', 'tetris', 'lemmings', 'mario')
+GAMES = ('pacman', 'tetris', 'lemmings', 'mario', 'sokoban', 'invaders', 'breakout', 'snake', 'marbleblast', 'chess', 'connect4', 'reversi')
 MAX_SCORE = 99_999_999
 TOP_N = 10
 ALLOWED_EXTRA_KEYS = {
-    'level', 'lines', 'saved', 'need', 'out', 'time', 'coins', 'won',
+    'level', 'lines', 'saved', 'need', 'out', 'time', 'coins', 'won', 'moves', 'gems', 'course', 'falls',
+    'lives', 'wave', 'length',
 }
 
 

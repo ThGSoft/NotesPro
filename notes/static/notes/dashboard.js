@@ -2088,7 +2088,7 @@
   }
 
   function isPreviewRichBlock(el) {
-    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .md-python, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .tetris-block, .gallery-block, .photocube-block, .photobook-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .page-tags');
+    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .md-python, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .tetris-block, .sokoban-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .page-tags');
   }
 
   function getPreviewBlockSourceLine(node) {
@@ -7386,6 +7386,124 @@
     });
   }
 
+  const CHESS_BLOCK_RE = /```(?:chessgame|chess)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+  const CONNECT4_BLOCK_RE = /```(?:connect4|connect-4|connectfour|c4)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+  const REVERSI_BLOCK_RE = /```(?:reversi|othello)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function updateStrategyFence(markdown, re, engine, fenceName, index, payload) {
+    if (!engine) return markdown;
+    let idx = 0;
+    return String(markdown || '').replace(re, (match, fenceAttrs, content = '') => {
+      const thisIndex = idx;
+      idx += 1;
+      if (thisIndex !== index) return match;
+      const cfg = engine.parseFenceAttrs(fenceAttrs || '');
+      ['mode', 'difficulty', 'score', 'turn', 'castle', 'ep'].forEach((key) => {
+        if (payload[key] != null && payload[key] !== '') cfg[key] = payload[key];
+      });
+      const board = payload.board || engine.serializeBoard?.([]) || '';
+      const attrs = engine.buildFenceAttrsString(cfg, board);
+      const fence = attrs ? `${fenceName}{${attrs}}` : fenceName;
+      return `\`\`\`${fence}\n${content || ''}\`\`\``;
+    });
+  }
+
+  function parseChessBlocks(text, options = {}) {
+    let chessIndex = 0;
+    CHESS_BLOCK_RE.lastIndex = 0;
+    return text.replace(CHESS_BLOCK_RE, (_, fenceAttrs, content) => {
+      const engine = window.NotesProChess;
+      const idx = chessIndex++;
+      const html = engine?.renderBlock
+        ? engine.renderBlock(content || '', fenceAttrs || '', { chessIndex: idx, editable: !!options.sheetEditable })
+        : '<div class="chess-block chess-block--error">Chess engine not loaded.</div>';
+      return wrapRichPreviewBlock(html);
+    });
+  }
+
+  function hydrateChessBlocks(root) {
+    const engine = window.NotesProChess;
+    if (!engine) return;
+    (root || document).querySelectorAll('.chess-block[data-chess-index]').forEach((el) => {
+      const chessIndex = parseInt(el.dataset.chessIndex, 10);
+      engine.hydrateBlock(el, {
+        onPersist: userCanEdit && Number.isFinite(chessIndex) && easyMDE
+          ? (payload) => {
+            const oldMarkdown = easyMDE.value();
+            const updated = updateStrategyFence(oldMarkdown, /```(?:chessgame|chess)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, engine, 'chess', chessIndex, payload || {});
+            if (updated === oldMarkdown) return;
+            easyMDE.value(updated);
+            scheduleSave();
+          }
+          : null,
+      });
+    });
+  }
+
+  function parseConnect4Blocks(text, options = {}) {
+    let connect4Index = 0;
+    CONNECT4_BLOCK_RE.lastIndex = 0;
+    return text.replace(CONNECT4_BLOCK_RE, (_, fenceAttrs, content) => {
+      const engine = window.NotesProConnect4;
+      const idx = connect4Index++;
+      const html = engine?.renderBlock
+        ? engine.renderBlock(content || '', fenceAttrs || '', { connect4Index: idx, editable: !!options.sheetEditable })
+        : '<div class="connect4-block connect4-block--error">Connect Four engine not loaded.</div>';
+      return wrapRichPreviewBlock(html);
+    });
+  }
+
+  function hydrateConnect4Blocks(root) {
+    const engine = window.NotesProConnect4;
+    if (!engine) return;
+    (root || document).querySelectorAll('.connect4-block[data-connect4-index]').forEach((el) => {
+      const connect4Index = parseInt(el.dataset.connect4Index, 10);
+      engine.hydrateBlock(el, {
+        onPersist: userCanEdit && Number.isFinite(connect4Index) && easyMDE
+          ? (payload) => {
+            const oldMarkdown = easyMDE.value();
+            const updated = updateStrategyFence(oldMarkdown, /```(?:connect4|connect-4|connectfour|c4)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, engine, 'connect4', connect4Index, payload || {});
+            if (updated === oldMarkdown) return;
+            easyMDE.value(updated);
+            scheduleSave();
+          }
+          : null,
+      });
+    });
+  }
+
+  function parseReversiBlocks(text, options = {}) {
+    let reversiIndex = 0;
+    REVERSI_BLOCK_RE.lastIndex = 0;
+    return text.replace(REVERSI_BLOCK_RE, (_, fenceAttrs, content) => {
+      const engine = window.NotesProReversi;
+      const idx = reversiIndex++;
+      const html = engine?.renderBlock
+        ? engine.renderBlock(content || '', fenceAttrs || '', { reversiIndex: idx, editable: !!options.sheetEditable })
+        : '<div class="reversi-block reversi-block--error">Reversi engine not loaded.</div>';
+      return wrapRichPreviewBlock(html);
+    });
+  }
+
+  function hydrateReversiBlocks(root) {
+    const engine = window.NotesProReversi;
+    if (!engine) return;
+    (root || document).querySelectorAll('.reversi-block[data-reversi-index]').forEach((el) => {
+      const reversiIndex = parseInt(el.dataset.reversiIndex, 10);
+      engine.hydrateBlock(el, {
+        onPersist: userCanEdit && Number.isFinite(reversiIndex) && easyMDE
+          ? (payload) => {
+            const oldMarkdown = easyMDE.value();
+            const updated = updateStrategyFence(oldMarkdown, /```(?:reversi|othello)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, engine, 'reversi', reversiIndex, payload || {});
+            if (updated === oldMarkdown) return;
+            easyMDE.value(updated);
+            scheduleSave();
+          }
+          : null,
+      });
+    });
+  }
+
   const TETRIS_BLOCK_RE = /```(?:tetris|tetrix|tetric)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
 
   function parseTetrisBlocks(text) {
@@ -7403,6 +7521,101 @@
 
   function hydrateTetrisBlocks(root) {
     window.NotesProTetris?.hydrate?.(root);
+  }
+
+  const SOKOBAN_BLOCK_RE = /```(?:sokoban|soko|boxman)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function parseSokobanBlocks(text) {
+    let sokobanIndex = 0;
+    SOKOBAN_BLOCK_RE.lastIndex = 0;
+    return text.replace(SOKOBAN_BLOCK_RE, (_, fenceAttrs, content) => {
+      const engine = window.NotesProSokoban;
+      const idx = sokobanIndex++;
+      const html = engine?.renderBlock
+        ? engine.renderBlock(content || '', fenceAttrs || '', { sokobanIndex: idx })
+        : '<div class="sokoban-block sokoban-block--error">Sokoban engine not loaded.</div>';
+      return wrapRichPreviewBlock(html);
+    });
+  }
+
+  function hydrateSokobanBlocks(root) {
+    window.NotesProSokoban?.hydrate?.(root);
+  }
+
+  const INVADERS_BLOCK_RE = /```(?:invaders|spaceinvaders|space-invaders)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function parseInvadersBlocks(text) {
+    let invadersIndex = 0;
+    INVADERS_BLOCK_RE.lastIndex = 0;
+    return text.replace(INVADERS_BLOCK_RE, (_, fenceAttrs, content) => {
+      const engine = window.NotesProInvaders;
+      const idx = invadersIndex++;
+      const html = engine?.renderBlock
+        ? engine.renderBlock(content || '', fenceAttrs || '', { invadersIndex: idx })
+        : '<div class="invaders-block invaders-block--error">Space Invaders engine not loaded.</div>';
+      return wrapRichPreviewBlock(html);
+    });
+  }
+
+  function hydrateInvadersBlocks(root) {
+    window.NotesProInvaders?.hydrate?.(root);
+  }
+
+  const BREAKOUT_BLOCK_RE = /```(?:breakout|arkanoid)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function parseBreakoutBlocks(text) {
+    let breakoutIndex = 0;
+    BREAKOUT_BLOCK_RE.lastIndex = 0;
+    return text.replace(BREAKOUT_BLOCK_RE, (_, fenceAttrs, content) => {
+      const engine = window.NotesProBreakout;
+      const idx = breakoutIndex++;
+      const html = engine?.renderBlock
+        ? engine.renderBlock(content || '', fenceAttrs || '', { breakoutIndex: idx })
+        : '<div class="breakout-block breakout-block--error">Breakout engine not loaded.</div>';
+      return wrapRichPreviewBlock(html);
+    });
+  }
+
+  function hydrateBreakoutBlocks(root) {
+    window.NotesProBreakout?.hydrate?.(root);
+  }
+
+  const SNAKE_BLOCK_RE = /```snake(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function parseSnakeBlocks(text) {
+    let snakeIndex = 0;
+    SNAKE_BLOCK_RE.lastIndex = 0;
+    return text.replace(SNAKE_BLOCK_RE, (_, fenceAttrs, content) => {
+      const engine = window.NotesProSnake;
+      const idx = snakeIndex++;
+      const html = engine?.renderBlock
+        ? engine.renderBlock(content || '', fenceAttrs || '', { snakeIndex: idx })
+        : '<div class="snake-block snake-block--error">Snake engine not loaded.</div>';
+      return wrapRichPreviewBlock(html);
+    });
+  }
+
+  function hydrateSnakeBlocks(root) {
+    window.NotesProSnake?.hydrate?.(root);
+  }
+
+  const MARBLEBLAST_BLOCK_RE = /```(?:marbleblast|marble-blast|marble|mbu)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function parseMarbleblastBlocks(text) {
+    let marbleblastIndex = 0;
+    MARBLEBLAST_BLOCK_RE.lastIndex = 0;
+    return text.replace(MARBLEBLAST_BLOCK_RE, (_, fenceAttrs, content) => {
+      const engine = window.NotesProMarbleblast;
+      const idx = marbleblastIndex++;
+      const html = engine?.renderBlock
+        ? engine.renderBlock(content || '', fenceAttrs || '', { marbleblastIndex: idx })
+        : '<div class="marbleblast-block marbleblast-block--error">Marble blast engine not loaded.</div>';
+      return wrapRichPreviewBlock(html);
+    });
+  }
+
+  function hydrateMarbleblastBlocks(root) {
+    window.NotesProMarbleblast?.hydrate?.(root);
   }
 
   const GALLERY_BLOCK_RE = /```gallery(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
@@ -7498,15 +7711,43 @@
 
   const PHOTOCUBE_BLOCK_RE = /```(?:photocube|photo-cube)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
   const PHOTOBOOK_BLOCK_RE = /```(?:photobook|photo-book|flipbook)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+  const CAROUSEL_BLOCK_RE = /```(?:carousel|photo-carousel|slideshow)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function photoFenceKindMeta(kind) {
+    if (kind === 'photobook') {
+      return {
+        engine: window.NotesProPhotobook,
+        re: /```(?:photobook|photo-book|flipbook)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi,
+        fenceName: 'photobook',
+        selector: '.photobook-block[data-photobook-spec]',
+        indexKey: 'photobookIndex',
+      };
+    }
+    if (kind === 'carousel') {
+      return {
+        engine: window.NotesProPhotocarousel,
+        re: /```(?:carousel|photo-carousel|slideshow)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi,
+        fenceName: 'carousel',
+        selector: '.carousel-block[data-carousel-spec]',
+        indexKey: 'carouselIndex',
+      };
+    }
+    return {
+      engine: window.NotesProPhotocube,
+      re: /```(?:photocube|photo-cube)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi,
+      fenceName: 'photocube',
+      selector: '.photocube-block[data-photocube-spec]',
+      indexKey: 'photocubeIndex',
+    };
+  }
 
   function updatePhotoFenceInMarkdown(markdown, kind, blockIndex, update) {
-    const engine = kind === 'photobook' ? window.NotesProPhotobook : window.NotesProPhotocube;
+    const meta = photoFenceKindMeta(kind);
+    const engine = meta.engine;
     if (!engine) return markdown;
     let idx = 0;
-    const re = kind === 'photobook'
-      ? /```(?:photobook|photo-book|flipbook)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi
-      : /```(?:photocube|photo-cube)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
-    const fenceName = kind === 'photobook' ? 'photobook' : 'photocube';
+    const re = meta.re;
+    const fenceName = meta.fenceName;
     return String(markdown || '').replace(re, (match, fenceAttrs, content = '') => {
       const thisIndex = idx;
       idx += 1;
@@ -7568,13 +7809,28 @@
     });
   }
 
+  function parseCarouselBlocks(text, options = {}) {
+    let carouselIndex = 0;
+    CAROUSEL_BLOCK_RE.lastIndex = 0;
+    return text.replace(CAROUSEL_BLOCK_RE, (_, fenceAttrs, content) => {
+      const engine = window.NotesProPhotocarousel;
+      const idx = carouselIndex++;
+      const html = engine?.renderBlock
+        ? engine.renderBlock(content || '', fenceAttrs || '', {
+          carouselIndex: idx,
+          editable: !!options.sheetEditable,
+        })
+        : '<div class="carousel-block photoview-block--error">Photo carousel engine not loaded.</div>';
+      return wrapRichPreviewBlock(html);
+    });
+  }
+
   function hydratePhotoFenceBlocks(root, kind) {
-    const engine = kind === 'photobook' ? window.NotesProPhotobook : window.NotesProPhotocube;
+    const meta = photoFenceKindMeta(kind);
+    const engine = meta.engine;
     if (!engine) return;
-    const selector = kind === 'photobook'
-      ? '.photobook-block[data-photobook-spec]'
-      : '.photocube-block[data-photocube-spec]';
-    const indexKey = kind === 'photobook' ? 'photobookIndex' : 'photocubeIndex';
+    const selector = meta.selector;
+    const indexKey = meta.indexKey;
     (root || document).querySelectorAll(selector).forEach(el => {
       const blockIndex = parseInt(el.dataset[indexKey], 10);
       engine.hydrateBlock(el, {
@@ -7615,6 +7871,10 @@
 
   function hydratePhotobookBlocks(root) {
     hydratePhotoFenceBlocks(root, 'photobook');
+  }
+
+  function hydrateCarouselBlocks(root) {
+    hydratePhotoFenceBlocks(root, 'carousel');
   }
 
   const ROLLERCOAST_BLOCK_RE = /```(?:rollercoast|rollercoaster|coaster)(?:\{([^}]*)\}|([^\n`]*))?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
@@ -8930,7 +9190,7 @@ function formatTextWithMarkup(rawText) {
     if (!root) return;
     root.querySelectorAll('pre').forEach(pre => {
       if (pre.closest('.md-code-block')) return;
-      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .md-python, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .tetris-block, .gallery-block, .photocube-block, .photobook-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block')) {
+      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .md-python, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .tetris-block, .sokoban-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block')) {
         return;
       }
       const wrap = document.createElement('div');
@@ -9336,9 +9596,49 @@ function formatTextWithMarkup(rawText) {
       const label = cfg.title || 'Tic Tac Toe';
       return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
     });
+    md = md.replace(/```(?:chessgame|chess)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const cfg = window.NotesProChess?.parseFenceAttrs?.(fenceAttrs) || {};
+      const label = cfg.title || 'Chess';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
+    md = md.replace(/```(?:connect4|connect-4|connectfour|c4)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const cfg = window.NotesProConnect4?.parseFenceAttrs?.(fenceAttrs) || {};
+      const label = cfg.title || 'Connect Four';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
+    md = md.replace(/```(?:reversi|othello)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const cfg = window.NotesProReversi?.parseFenceAttrs?.(fenceAttrs) || {};
+      const label = cfg.title || 'Reversi';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
     md = md.replace(/```(?:tetris|tetrix|tetric)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
       const cfg = window.NotesProTetris?.parseFenceAttrs?.(fenceAttrs) || {};
       const label = cfg.title || 'Tetris';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
+    md = md.replace(/```(?:sokoban|soko|boxman)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const cfg = window.NotesProSokoban?.parseFenceAttrs?.(fenceAttrs) || {};
+      const label = cfg.title || 'Sokoban';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
+    md = md.replace(/```(?:invaders|spaceinvaders|space-invaders)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const cfg = window.NotesProInvaders?.parseFenceAttrs?.(fenceAttrs) || {};
+      const label = cfg.title || 'Space Invaders';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
+    md = md.replace(/```(?:breakout|arkanoid)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const cfg = window.NotesProBreakout?.parseFenceAttrs?.(fenceAttrs) || {};
+      const label = cfg.title || 'Breakout';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
+    md = md.replace(/```snake(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const cfg = window.NotesProSnake?.parseFenceAttrs?.(fenceAttrs) || {};
+      const label = cfg.title || 'Snake';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
+    md = md.replace(/```(?:marbleblast|marble-blast|marble|mbu)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const cfg = window.NotesProMarbleblast?.parseFenceAttrs?.(fenceAttrs) || {};
+      const label = cfg.title || 'Marble blast';
       return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
     });
     md = md.replace(/```gallery(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
@@ -9354,6 +9654,11 @@ function formatTextWithMarkup(rawText) {
     md = md.replace(/```(?:photobook|photo-book|flipbook)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
       const cfg = window.NotesProPhotobook?.parseFenceAttrs?.(fenceAttrs) || {};
       const label = cfg.title || 'Photo book';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
+    md = md.replace(/```(?:carousel|photo-carousel|slideshow)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const cfg = window.NotesProPhotocarousel?.parseFenceAttrs?.(fenceAttrs) || {};
+      const label = cfg.title || 'Photo carousel';
       return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
     });
     md = md.replace(/```(?:rollercoast|rollercoaster|coaster)(?:\{([^}]*)\}|([^\n`]*))?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, braceAttrs, spaceAttrs) => {
@@ -9430,10 +9735,19 @@ function formatTextWithMarkup(rawText) {
       md = parseMarioBlocks(md);
       md = parseLemmingsBlocks(md);
       md = parseTictactoeBlocks(md, options);
+      md = parseChessBlocks(md, options);
+      md = parseConnect4Blocks(md, options);
+      md = parseReversiBlocks(md, options);
       md = parseTetrisBlocks(md);
+      md = parseSokobanBlocks(md);
+      md = parseInvadersBlocks(md);
+      md = parseBreakoutBlocks(md);
+      md = parseSnakeBlocks(md);
+      md = parseMarbleblastBlocks(md);
       md = parseGalleryBlocks(md, options);
       md = parsePhotocubeBlocks(md, options);
       md = parsePhotobookBlocks(md, options);
+      md = parseCarouselBlocks(md, options);
       md = parseRollercoastBlocks(md, options);
       md = parseScooterBlocks(md, options);
       md = parseGhosttrainBlocks(md, options);
@@ -9824,10 +10138,19 @@ function formatTextWithMarkup(rawText) {
     hydrateMarioBlocks(preview);
     hydrateLemmingsBlocks(preview);
     hydrateTictactoeBlocks(preview);
+    hydrateChessBlocks(preview);
+    hydrateConnect4Blocks(preview);
+    hydrateReversiBlocks(preview);
     hydrateTetrisBlocks(preview);
+    hydrateSokobanBlocks(preview);
+    hydrateInvadersBlocks(preview);
+    hydrateBreakoutBlocks(preview);
+    hydrateSnakeBlocks(preview);
+    hydrateMarbleblastBlocks(preview);
     hydrateGalleryBlocks(preview);
     hydratePhotocubeBlocks(preview);
     hydratePhotobookBlocks(preview);
+    hydrateCarouselBlocks(preview);
     hydrateRollercoastBlocks(preview);
     hydrateScooterBlocks(preview);
     hydrateGhosttrainBlocks(preview);
@@ -10586,17 +10909,17 @@ function formatTextWithMarkup(rawText) {
     const trigger = dropdown.getBoundingClientRect();
     menu.style.position = 'fixed';
     menu.style.top = `${Math.round(trigger.bottom + 2)}px`;
-    menu.style.left = `${Math.round(trigger.left)}px`;
     menu.style.right = 'auto';
     menu.style.width = 'max-content';
-    menu.style.maxWidth = `${Math.max(160, window.innerWidth - margin * 2)}px`;
+    menu.style.maxWidth = `${Math.max(200, window.innerWidth - margin * 2)}px`;
+    menu.style.left = `${Math.round(trigger.right - Math.max(menu.offsetWidth, 200))}px`;
 
     const rect = menu.getBoundingClientRect();
-    let left = trigger.left;
-    if (left + rect.width > window.innerWidth - margin) {
-      left = trigger.right - rect.width;
-    }
+    let left = trigger.right - rect.width;
     if (left < margin) left = margin;
+    if (left + rect.width > window.innerWidth - margin) {
+      left = Math.max(margin, window.innerWidth - margin - rect.width);
+    }
 
     let top = trigger.bottom + 2;
     if (top + rect.height > window.innerHeight - margin) {
@@ -10622,10 +10945,19 @@ function formatTextWithMarkup(rawText) {
     if (!toolbar || toolbar.dataset.dropdownWidthBound === '1') return;
     toolbar.dataset.dropdownWidthBound = '1';
 
-    toolbar.addEventListener('focusin', (e) => {
-      const dropdown = e.target.closest('button.easymde-dropdown');
+    const schedulePosition = (dropdown) => {
       if (!dropdown || !toolbar.contains(dropdown)) return;
       requestAnimationFrame(() => positionEasyMdeToolbarDropdown(dropdown));
+    };
+
+    toolbar.addEventListener('focusin', (e) => {
+      schedulePosition(e.target.closest('button.easymde-dropdown'));
+    });
+    toolbar.addEventListener('mousedown', (e) => {
+      schedulePosition(e.target.closest('button.easymde-dropdown'));
+    });
+    toolbar.addEventListener('click', (e) => {
+      schedulePosition(e.target.closest('button.easymde-dropdown'));
     });
 
     toolbar.addEventListener('focusout', (e) => {
@@ -11043,6 +11375,99 @@ function formatTextWithMarkup(rawText) {
     schedulePreviewRefresh();
   }
 
+  function samplePhotoFenceBody(kind) {
+    const wide = [
+      '![Lake](https://picsum.photos/id/1015/960/720)',
+      '![Forest path](https://picsum.photos/id/1018/960/720)',
+      '![Coast](https://picsum.photos/id/1016/960/720)',
+      '![Valley](https://picsum.photos/id/1043/960/720)',
+      '![Bridge](https://picsum.photos/id/1036/960/720)',
+      '![Hills](https://picsum.photos/id/1019/960/720)',
+    ];
+    if (kind === 'gallery') {
+      return [
+        '![Mountain lake](https://picsum.photos/id/1015/960/720)',
+        '![Flower video](https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4)',
+        '![Forest path](https://picsum.photos/id/1018/960/720)',
+        '![YouTube](https://www.youtube.com/embed/N9jBlg-GUYM)',
+        '![Coast](https://picsum.photos/id/1016/960/720)',
+        '![Valley](https://picsum.photos/id/1043/960/720)',
+        '![Bridge](https://picsum.photos/id/1036/960/720)',
+      ].join('\n');
+    }
+    if (kind === 'cube') {
+      return wide.map((line) => line.replace(/\/960\/720/, '/800/800')).join('\n');
+    }
+    if (kind === 'book') {
+      return wide.concat([
+        '![Town](https://picsum.photos/id/1025/960/720)',
+        '![Sky](https://picsum.photos/id/1011/960/720)',
+      ]).join('\n');
+    }
+    return wide.join('\n');
+  }
+
+  function buildPhotosToolbarDropdown() {
+    return {
+      name: 'photosMenu',
+      className: 'photos-toolbar-icon',
+      title: 'Insert photos',
+      children: [
+        {
+          name: 'insert-gallery',
+          text: 'Walk-in gallery',
+          className: 'photos-menu-item photos-menu-item--gallery',
+          title: 'Insert walk-in photo gallery demo',
+          action: (editor) => insertFenceBlock(
+            editor,
+            'gallery{title=Demo walk;mode=walk;demo;col=info}',
+            samplePhotoFenceBody('gallery'),
+          ),
+        },
+        {
+          name: 'insert-carousel',
+          text: 'Photo carousel',
+          className: 'photos-menu-item photos-menu-item--carousel',
+          title: 'Insert photo carousel',
+          action: (editor) => insertFenceBlock(
+            editor,
+            'carousel{title=Photo carousel;demo;col=info}',
+            samplePhotoFenceBody('carousel'),
+          ),
+        },
+        {
+          name: 'insert-photobook',
+          text: 'Photo book',
+          className: 'photos-menu-item photos-menu-item--book',
+          title: 'Insert photo book',
+          action: (editor) => insertFenceBlock(editor, 'photobook{col=warning}', samplePhotoFenceBody('book')),
+        },
+        {
+          name: 'insert-photocube',
+          text: 'Photo cube',
+          className: 'photos-menu-item photos-menu-item--cube',
+          title: 'Insert photo cube',
+          action: (editor) => insertFenceBlock(
+            editor,
+            'photocube{title=Photo cube;col=info}',
+            samplePhotoFenceBody('cube'),
+          ),
+        },
+        {
+          name: 'insert-labyrinth',
+          text: 'Photo labyrinth',
+          className: 'photos-menu-item photos-menu-item--labyrinth',
+          title: 'Insert photo labyrinth',
+          action: (editor) => insertFenceBlock(
+            editor,
+            'labyrinth{title=Photo labyrinth;demo;col=warning}',
+            samplePhotoFenceBody('labyrinth'),
+          ),
+        },
+      ],
+    };
+  }
+
   function buildGamesToolbarDropdown() {
     return {
       name: 'gamesMenu',
@@ -11062,10 +11487,58 @@ function formatTextWithMarkup(rawText) {
           action: (editor) => insertFenceBlock(editor, 'tictactoe{fullscreen;mode=cpu;difficulty=medium}', ''),
         },
         {
+          name: 'insert-chess',
+          text: 'Chess',
+          title: 'Insert chess',
+          action: (editor) => insertFenceBlock(editor, 'chess{fullscreen;mode=cpu;difficulty=medium}', ''),
+        },
+        {
+          name: 'insert-connect4',
+          text: 'Connect Four',
+          title: 'Insert Connect Four',
+          action: (editor) => insertFenceBlock(editor, 'connect4{fullscreen;mode=cpu;difficulty=medium}', ''),
+        },
+        {
+          name: 'insert-reversi',
+          text: 'Reversi',
+          title: 'Insert Reversi',
+          action: (editor) => insertFenceBlock(editor, 'reversi{fullscreen;mode=cpu;difficulty=medium}', ''),
+        },
+        {
           name: 'insert-tetris',
           text: 'Tetris',
           title: 'Insert Tetris',
           action: (editor) => insertFenceBlock(editor, 'tetris{fullscreen}', ''),
+        },
+        {
+          name: 'insert-sokoban',
+          text: 'Sokoban',
+          title: 'Insert Sokoban',
+          action: (editor) => insertFenceBlock(editor, 'sokoban{fullscreen}', ''),
+        },
+        {
+          name: 'insert-invaders',
+          text: 'Space Invaders',
+          title: 'Insert Space Invaders',
+          action: (editor) => insertFenceBlock(editor, 'invaders{fullscreen}', ''),
+        },
+        {
+          name: 'insert-breakout',
+          text: 'Breakout',
+          title: 'Insert Breakout',
+          action: (editor) => insertFenceBlock(editor, 'breakout{fullscreen}', ''),
+        },
+        {
+          name: 'insert-snake',
+          text: 'Snake',
+          title: 'Insert Snake',
+          action: (editor) => insertFenceBlock(editor, 'snake{fullscreen}', ''),
+        },
+        {
+          name: 'insert-marbleblast',
+          text: 'Marble blast',
+          title: 'Insert Marble blast',
+          action: (editor) => insertFenceBlock(editor, 'marbleblast{fullscreen}', ''),
         },
         {
           name: 'insert-puzzle',
@@ -11139,22 +11612,6 @@ function formatTextWithMarkup(rawText) {
               '![Fog](https://picsum.photos/id/1044/640/480)',
             ].join('\n');
             insertFenceBlock(editor, 'ghosttrain{title=Ghost train;demo;col=note}', body);
-          },
-        },
-        {
-          name: 'insert-labyrinth',
-          text: 'Photo labyrinth',
-          title: 'Insert photo labyrinth',
-          action: (editor) => {
-            const body = [
-              '![Lake](https://picsum.photos/id/1015/960/720)',
-              '![Forest](https://picsum.photos/id/1018/960/720)',
-              '![Coast](https://picsum.photos/id/1016/960/720)',
-              '![Valley](https://picsum.photos/id/1043/960/720)',
-              '![Bridge](https://picsum.photos/id/1036/960/720)',
-              '![Hills](https://picsum.photos/id/1019/960/720)',
-            ].join('\n');
-            insertFenceBlock(editor, 'labyrinth{title=Photo labyrinth;demo;col=warning}', body);
           },
         },
       ],
@@ -13899,57 +14356,7 @@ function formatTextWithMarkup(rawText) {
           className: 'fa fa-code',
           title: 'Insert Python (sandbox)',
         },
-        {
-          name: 'insert-gallery',
-          action: (editor) => {
-            const body = [
-              '![Mountain lake](https://picsum.photos/id/1015/960/720)',
-              '![Flower video](https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4)',
-              '![Forest path](https://picsum.photos/id/1018/960/720)',
-              '![YouTube](https://www.youtube.com/embed/N9jBlg-GUYM)',
-              '![Coast](https://picsum.photos/id/1016/960/720)',
-              '![Valley](https://picsum.photos/id/1043/960/720)',
-              '![Bridge](https://picsum.photos/id/1036/960/720)',
-            ].join('\n');
-            insertFenceBlock(editor, 'gallery{title=Demo walk;mode=walk;demo;col=info}', body);
-          },
-          className: 'fa fa-camera',
-          title: 'Insert walk-in photo gallery demo',
-        },
-        {
-          name: 'insert-photocube',
-          action: (editor) => {
-            const body = [
-              '![Lake](https://picsum.photos/id/1015/800/800)',
-              '![Forest](https://picsum.photos/id/1018/800/800)',
-              '![Coast](https://picsum.photos/id/1016/800/800)',
-              '![Valley](https://picsum.photos/id/1043/800/800)',
-              '![Bridge](https://picsum.photos/id/1036/800/800)',
-              '![Hills](https://picsum.photos/id/1019/800/800)',
-            ].join('\n');
-            insertFenceBlock(editor, 'photocube{title=Photo cube;col=info}', body);
-          },
-          className: 'fa fa-cube',
-          title: 'Insert photo cube',
-        },
-        {
-          name: 'insert-photobook',
-          action: (editor) => {
-            const body = [
-              '![Cover lake](https://picsum.photos/id/1015/960/720)',
-              '![Forest path](https://picsum.photos/id/1018/960/720)',
-              '![Coast](https://picsum.photos/id/1016/960/720)',
-              '![Valley](https://picsum.photos/id/1043/960/720)',
-              '![Bridge](https://picsum.photos/id/1036/960/720)',
-              '![Hills](https://picsum.photos/id/1019/960/720)',
-              '![Town](https://picsum.photos/id/1025/960/720)',
-              '![Sky](https://picsum.photos/id/1011/960/720)',
-            ].join('\n');
-            insertFenceBlock(editor, 'photobook{col=warning}', body);
-          },
-          className: 'fa fa-book',
-          title: 'Insert photo book',
-        },
+        buildPhotosToolbarDropdown(),
         buildGamesToolbarDropdown(),
         {
           name: 'insert-news',
@@ -16580,7 +16987,7 @@ function formatTextWithMarkup(rawText) {
   }
 
   document.addEventListener('paste', function (event) {
-    if (event.target.closest?.('.puzzle-block, .gallery-block, .photocube-block, .photobook-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .tetris-block')) return;
+    if (event.target.closest?.('.puzzle-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .tetris-block, .sokoban-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block')) return;
     const items = (event.clipboardData || event.originalEvent.clipboardData).items;
     for (let index in items) {
       const item = items[index];

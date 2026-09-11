@@ -1,5 +1,5 @@
 /**
- * Workspace high scores for arcade blocks (Pac-Man, Tetris, Lemmings, Mario).
+ * Workspace high scores for arcade and strategy blocks.
  */
 (function (root, factory) {
   const api = factory();
@@ -10,7 +10,7 @@
 }(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
-  const GAMES = ['pacman', 'tetris', 'lemmings', 'mario'];
+  const GAMES = ['pacman', 'tetris', 'lemmings', 'mario', 'sokoban', 'invaders', 'breakout', 'snake', 'marbleblast', 'chess', 'connect4', 'reversi'];
   const listeners = [];
   let cache = { me: {}, boards: {} };
 
