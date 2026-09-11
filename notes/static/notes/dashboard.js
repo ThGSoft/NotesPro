@@ -73,6 +73,7 @@
   let easyMDE = null;
   let autosaveTimer = null;
   let previewRefreshTimer = null;
+  let suppressPreviewRefresh = 0;
   let editorPreviewScrollLockUntil = 0;
   let previewScrollAnchors = [];
   let preservedPreviewScrollTop = null;
@@ -2088,7 +2089,7 @@
   }
 
   function isPreviewRichBlock(el) {
-    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .md-python, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .tetris-block, .sokoban-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .page-tags');
+    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .md-python, .voice-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .tetris-block, .sokoban-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .page-tags');
   }
 
   function getPreviewBlockSourceLine(node) {
@@ -3352,6 +3353,86 @@
         if (el.isConnected && el.dataset.pythonToken === token) {
           el.dataset.pythonPending = '0';
         }
+      });
+    });
+  }
+
+  const VOICE_BLOCK_RE = /```(audiorecord|transcript|dictation|voice)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function updateVoiceInMarkdown(markdown, voiceIndex, payload) {
+    const engine = window.NotesProVoice;
+    if (!engine) return markdown;
+    let idx = 0;
+    const re = /```(audiorecord|transcript|dictation|voice)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+    return String(markdown || '').replace(re, (match, fence, fenceAttrs, content = '') => {
+      const thisIndex = idx;
+      idx += 1;
+      if (thisIndex !== voiceIndex) return match;
+      const cfg = engine.parseFenceAttrs(fenceAttrs || '');
+      if (payload.lang) cfg.lang = payload.lang;
+      const parsed = engine.parseBody(content);
+      const audio = payload.audio !== undefined ? payload.audio : parsed.audio;
+      const transcript = payload.transcript !== undefined ? payload.transcript : parsed.transcript;
+      const attrs = engine.buildFenceAttrsString(cfg);
+      const body = engine.formatBody({ audio, transcript });
+      const fenceOpen = attrs ? `${fence}{${attrs}}` : fence;
+      return `\`\`\`${fenceOpen}\n${body}\`\`\``;
+    });
+  }
+
+  function parseVoiceBlocks(text) {
+    let voiceIndex = 0;
+    VOICE_BLOCK_RE.lastIndex = 0;
+    const engine = window.NotesProVoice;
+    return String(text || '').replace(VOICE_BLOCK_RE, (_, _fence, fenceAttrs, content) => {
+      const idx = voiceIndex++;
+      const html = engine?.renderBlock
+        ? engine.renderBlock(content || '', fenceAttrs || '', {
+          voiceIndex: idx,
+          resolveAudioHref: resolveMediaHref,
+        })
+        : '<div class="voice-block voice-block--error">Voice engine not loaded.</div>';
+      return wrapRichPreviewBlock(html);
+    });
+  }
+
+  function hydrateVoiceBlocks(root) {
+    const engine = window.NotesProVoice;
+    if (!engine) return;
+    (root || document).querySelectorAll('.voice-block').forEach((el) => {
+      const voiceIndex = parseInt(el.dataset.voiceIndex, 10);
+      const canEdit = userCanEdit && Number.isFinite(voiceIndex) && easyMDE;
+      engine.hydrateBlock(el, {
+        resolveAudioHref: resolveMediaHref,
+        onUploadAudio: canEdit
+          ? async (file) => {
+            syncWorkspaceIdFromDom();
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('workspace', workspaceId);
+            const data = await api('api/uploads/', 'POST', formData, true);
+            if (data.success === false) {
+              throw new Error(data.error || 'Audio upload failed.');
+            }
+            return mediaMarkdownPath(data.url || data.path || data.file?.url || data.file?.mediaName);
+          }
+          : null,
+        onPersist: canEdit
+          ? (payload) => {
+            const oldMarkdown = easyMDE.value();
+            const updated = updateVoiceInMarkdown(oldMarkdown, voiceIndex, payload || {});
+            if (updated === oldMarkdown) return;
+            suppressPreviewRefresh += 1;
+            try {
+              easyMDE.value(updated);
+              scheduleSave();
+            } finally {
+              setTimeout(() => {
+                suppressPreviewRefresh = Math.max(0, suppressPreviewRefresh - 1);
+              }, 50);
+            }
+          }
+          : null,
       });
     });
   }
@@ -9190,7 +9271,7 @@ function formatTextWithMarkup(rawText) {
     if (!root) return;
     root.querySelectorAll('pre').forEach(pre => {
       if (pre.closest('.md-code-block')) return;
-      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .md-python, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .tetris-block, .sokoban-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block')) {
+      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .md-python, .voice-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .tetris-block, .sokoban-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block')) {
         return;
       }
       const wrap = document.createElement('div');
@@ -9686,6 +9767,11 @@ function formatTextWithMarkup(rawText) {
       const label = cfg.title || 'Python';
       return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
     });
+    md = md.replace(/```(?:audiorecord|transcript|dictation|voice)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const cfg = window.NotesProVoice?.parseFenceAttrs?.(fenceAttrs) || {};
+      const label = cfg.title || 'Voice note';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
     return md;
   }
 
@@ -9753,6 +9839,7 @@ function formatTextWithMarkup(rawText) {
       md = parseGhosttrainBlocks(md, options);
       md = parseLabyrinthBlocks(md, options);
       md = parsePythonBlocks(md);
+      md = parseVoiceBlocks(md);
     } else {
       md = replaceRichBlocksWithPlaceholders(md);
     }
@@ -10131,6 +10218,7 @@ function formatTextWithMarkup(rawText) {
     renderD3Charts(preview, processed.sheetRegistry || new Map());
     hydrateNewsBlocks(preview);
     hydratePythonBlocks(preview);
+    hydrateVoiceBlocks(preview);
     hydrateSudokuBlocks(preview);
     hydratePuzzleBlocks(preview);
     hydratePinballBlocks(preview);
@@ -12163,6 +12251,23 @@ function formatTextWithMarkup(rawText) {
 
   let calendarNoteContext = null;
   let calendarNoteImages = [];
+  let calendarPasteHoverUnit = null;
+  const CALENDAR_PASTE_UNIT_SEL = '.calendar-unit--editable, .calendar-week-header--editable';
+
+  function clipboardImageFiles(clipboardData) {
+    const items = [...(clipboardData?.items || [])];
+    const fromItems = items
+      .filter((item) => item.kind === 'file' && String(item.type || '').startsWith('image/'))
+      .map((item) => item.getAsFile())
+      .filter(Boolean);
+    if (fromItems.length) return fromItems;
+    return [...(clipboardData?.files || [])].filter((file) => String(file.type || '').startsWith('image/'));
+  }
+
+  function isCalendarNoteModalOpen() {
+    const modal = document.getElementById('calendar-note-modal');
+    return Boolean(modal?.classList.contains('show') && calendarNoteContext);
+  }
 
   function syncCalendarNoteTimeUi() {
     const timed = document.getElementById('calendar-note-timed')?.checked;
@@ -12313,8 +12418,8 @@ function formatTextWithMarkup(rawText) {
     const hint = document.getElementById('calendar-note-modal-hint');
     if (hint) {
       hint.textContent = isDayMode
-        ? 'All day: set start/end dates. Start / Stop: add times. One note per line. Add as many images as you like.'
-        : 'All day or start/stop times for this slot. One note per line. Add as many images as you like.';
+        ? 'All day: set start/end dates. Start / Stop: add times. Paste or drop photos, or upload them. One note per line.'
+        : 'All day or start/stop times for this slot. Paste or drop photos, or upload them. One note per line.';
     }
     const textInput = document.getElementById('calendar-note-text');
     const imageInput = document.getElementById('calendar-note-image');
@@ -12377,6 +12482,65 @@ function formatTextWithMarkup(rawText) {
       console.warn('calendar image upload failed:', err);
       showToast(err.message || 'Image upload failed.', 'danger');
     }
+  }
+
+  async function addPastedImagesToCalendarNote(files) {
+    if (!calendarNoteContext) return false;
+    const imageFiles = [...(files || [])].filter((file) => file && String(file.type || '').startsWith('image/'));
+    if (!imageFiles.length) return false;
+    for (const file of imageFiles) {
+      await uploadCalendarNoteImage(file);
+    }
+    return true;
+  }
+
+  async function pasteImagesOntoCalendarUnit(unitEl, files) {
+    if (!unitEl || !easyMDE || !isPreviewInteractionEnabled()) return false;
+    if (isCalendarNoteModalOpen()) return addPastedImagesToCalendarNote(files);
+    const imageFiles = [...(files || [])].filter((file) => file && String(file.type || '').startsWith('image/'));
+    if (!imageFiles.length) return false;
+    const block = unitEl.closest('.calendar-block');
+    const key = normalizeCalendarStorageKey(unitEl.dataset.calendarKey);
+    const calendarIndex = parseInt(block?.dataset.calendarIndex, 10);
+    if (!block || !key || !Number.isFinite(calendarIndex)) return false;
+
+    const spec = getCalendarBlockSpec(easyMDE.value(), calendarIndex);
+    const stored = normalizeCalendarEntryList(spec?.entries?.[key]);
+    const text = calendarEntriesMarkdown(stored);
+    let images = calendarEntriesImages(stored);
+    const first = stored[0] || {};
+    const timeOpts = {
+      allday: first.allday !== false,
+      timeFrom: first.timeFrom || null,
+      timeTo: first.timeTo || null,
+    };
+
+    try {
+      for (const file of imageFiles) {
+        const mediaPath = await uploadPastedImageBlob(file, file.name || 'paste.png');
+        if (mediaPath) images = uniqueCalendarImages([...images, mediaPath]);
+      }
+    } catch (err) {
+      console.warn('calendar image paste failed:', err);
+      showToast(err.message || 'Image upload failed.', 'danger');
+      return false;
+    }
+
+    const oldMarkdown = easyMDE.value();
+    const updated = updateCalendarEntryInMarkdown(
+      oldMarkdown,
+      calendarIndex,
+      key,
+      text,
+      images,
+      timeOpts,
+    );
+    if (updated !== oldMarkdown) {
+      easyMDE.value(updated);
+      scheduleSave();
+      schedulePreviewRefresh();
+    }
+    return true;
   }
 
   function ensureCalendarHoverTooltip() {
@@ -12566,6 +12730,71 @@ function formatTextWithMarkup(rawText) {
       for (const file of files) {
         await uploadCalendarNoteImage(file);
       }
+    });
+
+    const calendarNoteModal = document.getElementById('calendar-note-modal');
+    const onCalendarNoteDrag = (e) => {
+      if (![...(e.dataTransfer?.types || [])].includes('Files')) return;
+      e.preventDefault();
+      calendarNoteModal?.classList.add('calendar-note-modal--drop');
+    };
+    calendarNoteModal?.addEventListener('dragover', onCalendarNoteDrag);
+    calendarNoteModal?.addEventListener('dragenter', onCalendarNoteDrag);
+    calendarNoteModal?.addEventListener('dragleave', (e) => {
+      if (e.target === calendarNoteModal) calendarNoteModal.classList.remove('calendar-note-modal--drop');
+    });
+    calendarNoteModal?.addEventListener('drop', async (e) => {
+      calendarNoteModal.classList.remove('calendar-note-modal--drop');
+      const files = [...(e.dataTransfer?.files || [])].filter((file) => String(file.type || '').startsWith('image/'));
+      if (!files.length) return;
+      e.preventDefault();
+      e.stopPropagation();
+      await addPastedImagesToCalendarNote(files);
+    });
+    calendarNoteModal?.addEventListener('paste', async (e) => {
+      const files = clipboardImageFiles(e.clipboardData);
+      if (!files.length) return;
+      e.preventDefault();
+      e.stopPropagation();
+      await addPastedImagesToCalendarNote(files);
+    }, true);
+
+    preview.addEventListener('pointerover', (e) => {
+      const unit = e.target.closest?.(CALENDAR_PASTE_UNIT_SEL);
+      if (unit && preview.contains(unit)) calendarPasteHoverUnit = unit;
+    });
+    preview.addEventListener('paste', async (e) => {
+      if (!isPreviewInteractionEnabled()) return;
+      const files = clipboardImageFiles(e.clipboardData);
+      if (!files.length) return;
+      const unit = e.target.closest?.(CALENDAR_PASTE_UNIT_SEL)
+        || (calendarPasteHoverUnit && preview.contains(calendarPasteHoverUnit) ? calendarPasteHoverUnit : null);
+      if (!unit) return;
+      e.preventDefault();
+      e.stopPropagation();
+      await pasteImagesOntoCalendarUnit(unit, files);
+    }, true);
+    preview.addEventListener('dragover', (e) => {
+      if (!isPreviewInteractionEnabled()) return;
+      if (![...(e.dataTransfer?.types || [])].includes('Files')) return;
+      const unit = e.target.closest?.(CALENDAR_PASTE_UNIT_SEL);
+      if (!unit || !preview.contains(unit)) return;
+      e.preventDefault();
+      unit.classList.add(unit.classList.contains('calendar-week-header') ? 'calendar-week-header--drop' : 'calendar-unit--drop');
+    });
+    preview.addEventListener('dragleave', (e) => {
+      const unit = e.target.closest?.(CALENDAR_PASTE_UNIT_SEL);
+      unit?.classList.remove('calendar-unit--drop', 'calendar-week-header--drop');
+    });
+    preview.addEventListener('drop', async (e) => {
+      const unit = e.target.closest?.(CALENDAR_PASTE_UNIT_SEL);
+      unit?.classList.remove('calendar-unit--drop', 'calendar-week-header--drop');
+      if (!unit || !preview.contains(unit) || !isPreviewInteractionEnabled()) return;
+      const files = [...(e.dataTransfer?.files || [])].filter((file) => String(file.type || '').startsWith('image/'));
+      if (!files.length) return;
+      e.preventDefault();
+      e.stopPropagation();
+      await pasteImagesOntoCalendarUnit(unit, files);
     });
   }
 
@@ -14356,6 +14585,14 @@ function formatTextWithMarkup(rawText) {
           className: 'fa fa-code',
           title: 'Insert Python (sandbox)',
         },
+        {
+          name: 'insert-voice',
+          action: (editor) => {
+            insertFenceBlock(editor, 'voice{lang=auto;title=Voice note;col=info}', '');
+          },
+          className: 'fa fa-microphone',
+          title: 'Insert voice note (record + Whisper transcript)',
+        },
         buildPhotosToolbarDropdown(),
         buildGamesToolbarDropdown(),
         {
@@ -15311,8 +15548,10 @@ function formatTextWithMarkup(rawText) {
 
   function schedulePreviewRefresh() {
     if (!isPreviewInteractionEnabled()) return;
+    if (suppressPreviewRefresh) return;
     const active = document.activeElement;
     if (active?.classList?.contains('sheet-cell-editable')) return;
+    if (active?.closest?.('.voice-block')) return;
     capturePreviewScrollPosition();
     clearTimeout(previewRefreshTimer);
     previewRefreshTimer = setTimeout(() => {
@@ -16987,7 +17226,14 @@ function formatTextWithMarkup(rawText) {
   }
 
   document.addEventListener('paste', function (event) {
-    if (event.target.closest?.('.puzzle-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .tetris-block, .sokoban-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block')) return;
+    const pasteFiles = clipboardImageFiles(event.clipboardData || event.originalEvent?.clipboardData);
+    if (pasteFiles.length && isCalendarNoteModalOpen()) {
+      event.preventDefault();
+      event.stopPropagation();
+      void addPastedImagesToCalendarNote(pasteFiles);
+      return;
+    }
+    if (event.target.closest?.('.puzzle-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .tetris-block, .sokoban-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .voice-block, .calendar-block, #calendar-note-modal')) return;
     const items = (event.clipboardData || event.originalEvent.clipboardData).items;
     for (let index in items) {
       const item = items[index];

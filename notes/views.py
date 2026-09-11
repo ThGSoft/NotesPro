@@ -930,6 +930,7 @@ def upload_file(request):
     # MD5 berechnen
     file_content = uploaded.read()
     file_hash = hashlib.md5(file_content).hexdigest()
+    uploaded.seek(0)
     print("upload_file:filehash:", file_hash)
     # Prüfen, ob dieser Hash bereits existiert
     existing_file = UploadedFile.objects.filter(

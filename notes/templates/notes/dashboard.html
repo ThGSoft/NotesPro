@@ -555,7 +555,7 @@
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <p class="small dashboard-modal-hint mb-2" id="calendar-note-modal-hint">All day: start/end dates. Start / Stop: add times. One note per line. You can attach several images to the day.</p>
+        <p class="small dashboard-modal-hint mb-2" id="calendar-note-modal-hint">All day: start/end dates. Start / Stop: add times. One note per line. Paste or drop photos, or upload them.</p>
         <fieldset class="mb-3">
           <legend class="form-label small fw-semibold mb-2">When</legend>
           <div class="d-flex flex-wrap gap-3 align-items-center mb-2 calendar-note-when-options">
@@ -599,6 +599,7 @@
           <button type="button" class="btn btn-sm btn-outline-light flex-shrink-0" id="calendar-note-image-add-btn">Add</button>
           <button type="button" class="btn btn-sm btn-outline-light flex-shrink-0" id="calendar-note-upload-btn">Upload</button>
         </div>
+        <p class="small text-muted mb-2" id="calendar-note-paste-hint">Paste a photo (Ctrl+V) or drop a file onto this dialog or a calendar day.</p>
         <input type="file" id="calendar-note-file" class="visually-hidden-file-input" accept="image/*" multiple tabindex="-1" aria-hidden="true">
         <div id="calendar-note-preview" class="calendar-note-preview d-none"></div>
       </div>
