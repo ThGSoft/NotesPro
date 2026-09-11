@@ -12264,6 +12264,121 @@ function formatTextWithMarkup(rawText) {
     return [...(clipboardData?.files || [])].filter((file) => String(file.type || '').startsWith('image/'));
   }
 
+  function markCalendarPasteUnit(unit) {
+    if (calendarPasteHoverUnit === unit) return;
+    clearCalendarPasteUnit();
+    calendarPasteHoverUnit = unit || null;
+    if (!unit) return;
+    unit.classList.add(unit.classList.contains('calendar-week-header')
+      ? 'calendar-week-header--paste-target'
+      : 'calendar-unit--paste-target');
+  }
+
+  function clearCalendarPasteUnit() {
+    calendarPasteHoverUnit?.classList.remove('calendar-unit--paste-target', 'calendar-week-header--paste-target');
+    calendarPasteHoverUnit = null;
+  }
+
+  function calendarPasteTargetUnit() {
+    const preview = document.getElementById('preview-content');
+    if (calendarPasteHoverUnit && preview?.contains(calendarPasteHoverUnit)) return calendarPasteHoverUnit;
+    return null;
+  }
+
+  function tryPasteImagesOntoHoveredCalendarDay(event) {
+    const files = clipboardImageFiles(event.clipboardData || event.originalEvent?.clipboardData);
+    if (!files.length) return false;
+    if (isCalendarNoteModalOpen()) {
+      event.preventDefault();
+      event.stopPropagation();
+      void addPastedImagesToCalendarNote(files);
+      return true;
+    }
+    if (!isPreviewInteractionEnabled()) return false;
+    const unit = calendarPasteTargetUnit();
+    if (!unit) return false;
+    event.preventDefault();
+    event.stopPropagation();
+    void pasteImagesOntoCalendarUnit(unit, files);
+    return true;
+  }
+
+  let galleryPasteHoverBlock = null;
+
+  function markGalleryPasteBlock(el) {
+    if (galleryPasteHoverBlock === el) return;
+    clearGalleryPasteBlock();
+    galleryPasteHoverBlock = el || null;
+    galleryPasteHoverBlock?.classList.add('gallery-block--paste-target');
+  }
+
+  function clearGalleryPasteBlock() {
+    galleryPasteHoverBlock?.classList.remove('gallery-block--paste-target');
+    galleryPasteHoverBlock = null;
+  }
+
+  function galleryPasteTargetBlock() {
+    const preview = document.getElementById('preview-content');
+    if (galleryPasteHoverBlock && preview?.contains(galleryPasteHoverBlock)) return galleryPasteHoverBlock;
+    const active = document.activeElement?.closest?.('.gallery-block--editable');
+    if (active && preview?.contains(active)) return active;
+    return null;
+  }
+
+  async function pasteClipboardOntoGallery(galleryIndex, files, youtubeId) {
+    if (!easyMDE || !Number.isFinite(galleryIndex)) return;
+    if (youtubeId) {
+      const oldMarkdown = easyMDE.value();
+      const updated = updateGalleryInMarkdown(oldMarkdown, galleryIndex, {
+        addYoutube: `https://www.youtube.com/embed/${youtubeId}`,
+        label: 'YouTube',
+      });
+      if (updated !== oldMarkdown) {
+        easyMDE.value(updated);
+        scheduleSave();
+        schedulePreviewRefresh();
+      }
+    }
+    for (const file of files || []) {
+      try {
+        const mediaPath = await uploadPastedImageBlob(file, file.name || 'paste.png');
+        if (!mediaPath) continue;
+        const oldMarkdown = easyMDE.value();
+        const updated = updateGalleryInMarkdown(oldMarkdown, galleryIndex, {
+          addImage: mediaPath,
+          label: file.name ? String(file.name).replace(/\.[^.]+$/, '') : 'Photo',
+        });
+        if (updated === oldMarkdown) continue;
+        easyMDE.value(updated);
+        scheduleSave();
+        schedulePreviewRefresh();
+      } catch (err) {
+        console.warn('gallery image paste failed:', err);
+        showToast(err.message || 'Image upload failed.', 'danger');
+      }
+    }
+  }
+
+  function tryPasteOntoHoveredGallery(event) {
+    if (!isPreviewInteractionEnabled() || !userCanEdit || !easyMDE) return false;
+    const gallery = galleryPasteTargetBlock();
+    if (!gallery) return false;
+    const galleryIndex = parseInt(gallery.dataset.galleryIndex, 10);
+    if (!Number.isFinite(galleryIndex)) return false;
+    const data = event.clipboardData || event.originalEvent?.clipboardData;
+    const files = clipboardImageFiles(data);
+    const html = data?.getData?.('text/html') || '';
+    const text = data?.getData?.('text/plain') || html;
+    const ytId = window.NotesProGallery?.extractYoutubeId?.(text)
+      || window.NotesProGallery?.extractYoutubeId?.(html)
+      || '';
+    if (!files.length && !ytId) return false;
+    event.preventDefault();
+    event.stopPropagation();
+    void pasteClipboardOntoGallery(galleryIndex, files, ytId);
+    return true;
+  }
+
   function isCalendarNoteModalOpen() {
     const modal = document.getElementById('calendar-note-modal');
     return Boolean(modal?.classList.contains('show') && calendarNoteContext);
@@ -12418,8 +12533,8 @@ function formatTextWithMarkup(rawText) {
     const hint = document.getElementById('calendar-note-modal-hint');
     if (hint) {
       hint.textContent = isDayMode
-        ? 'All day: set start/end dates. Start / Stop: add times. Paste or drop photos, or upload them. One note per line.'
-        : 'All day or start/stop times for this slot. Paste or drop photos, or upload them. One note per line.';
+        ? 'All day: set start/end dates. Start / Stop: add times. Paste or drop photos, or hover the day and press Ctrl+V. One note per line.'
+        : 'All day or start/stop times for this slot. Paste or drop photos, or hover the slot and press Ctrl+V. One note per line.';
     }
     const textInput = document.getElementById('calendar-note-text');
     const imageInput = document.getElementById('calendar-note-image');
@@ -12759,20 +12874,25 @@ function formatTextWithMarkup(rawText) {
       await addPastedImagesToCalendarNote(files);
     }, true);
 
-    preview.addEventListener('pointerover', (e) => {
-      const unit = e.target.closest?.(CALENDAR_PASTE_UNIT_SEL);
-      if (unit && preview.contains(unit)) calendarPasteHoverUnit = unit;
-    });
-    preview.addEventListener('paste', async (e) => {
+    preview.addEventListener('pointermove', (e) => {
       if (!isPreviewInteractionEnabled()) return;
-      const files = clipboardImageFiles(e.clipboardData);
-      if (!files.length) return;
-      const unit = e.target.closest?.(CALENDAR_PASTE_UNIT_SEL)
-        || (calendarPasteHoverUnit && preview.contains(calendarPasteHoverUnit) ? calendarPasteHoverUnit : null);
-      if (!unit) return;
-      e.preventDefault();
-      e.stopPropagation();
-      await pasteImagesOntoCalendarUnit(unit, files);
+      const unit = e.target.closest?.(CALENDAR_PASTE_UNIT_SEL);
+      if (unit && preview.contains(unit)) {
+        markCalendarPasteUnit(unit);
+        clearGalleryPasteBlock();
+        return;
+      }
+      markCalendarPasteUnit(null);
+      const gallery = e.target.closest?.('.gallery-block--editable');
+      markGalleryPasteBlock(gallery && preview.contains(gallery) ? gallery : null);
+    });
+    preview.addEventListener('pointerleave', () => {
+      clearCalendarPasteUnit();
+      clearGalleryPasteBlock();
+    });
+    preview.addEventListener('paste', (e) => {
+      if (tryPasteImagesOntoHoveredCalendarDay(e)) return;
+      tryPasteOntoHoveredGallery(e);
     }, true);
     preview.addEventListener('dragover', (e) => {
       if (!isPreviewInteractionEnabled()) return;
@@ -17226,13 +17346,9 @@ function formatTextWithMarkup(rawText) {
   }
 
   document.addEventListener('paste', function (event) {
+    if (tryPasteImagesOntoHoveredCalendarDay(event)) return;
+    if (tryPasteOntoHoveredGallery(event)) return;
     const pasteFiles = clipboardImageFiles(event.clipboardData || event.originalEvent?.clipboardData);
-    if (pasteFiles.length && isCalendarNoteModalOpen()) {
-      event.preventDefault();
-      event.stopPropagation();
-      void addPastedImagesToCalendarNote(pasteFiles);
-      return;
-    }
     if (event.target.closest?.('.puzzle-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .tetris-block, .sokoban-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .voice-block, .calendar-block, #calendar-note-modal')) return;
     const items = (event.clipboardData || event.originalEvent.clipboardData).items;
     for (let index in items) {
@@ -17267,7 +17383,7 @@ function formatTextWithMarkup(rawText) {
           });
       }
     }
-  });
+  }, true);
 
 
   function togglePanel(header) {

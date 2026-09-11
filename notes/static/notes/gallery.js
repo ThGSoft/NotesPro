@@ -284,21 +284,33 @@
     }
   }
 
+  const DEMO_SOURCE = [
+    '![Mountain lake](https://picsum.photos/id/1015/960/720)',
+    '![Flower video](https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4)',
+    '![Forest path](https://picsum.photos/id/1018/960/720)',
+    '![YouTube](https://www.youtube.com/embed/N9jBlg-GUYM)',
+    '![Coast](https://picsum.photos/id/1016/960/720)',
+    '![Valley](https://picsum.photos/id/1043/960/720)',
+    '![Bridge](https://picsum.photos/id/1036/960/720)',
+  ].join('\n');
+
   function resolveDemo(cfg) {
-    if (!Object.prototype.hasOwnProperty.call(cfg, 'demo')) return false;
+    if (!Object.prototype.hasOwnProperty.call(cfg, 'demo')) return true;
     const raw = String(cfg.demo ?? '').trim().toLowerCase();
+    if (raw === '0' || raw === 'false' || raw === 'no' || raw === 'off') return false;
     return raw === '' || raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
   }
 
   function buildSpec(source, cfg) {
     const title = String(cfg.title || 'Gallery').trim() || 'Gallery';
     const photos = parsePhotos(source);
+    const demo = resolveDemo(cfg);
     return {
       title,
       cols: resolveCols(cfg),
       mode: resolveMode(cfg),
-      demo: resolveDemo(cfg),
-      photos,
+      demo,
+      photos: photos.length ? photos : (demo ? parsePhotos(DEMO_SOURCE) : photos),
       draft: !photos.length,
     };
   }
@@ -415,7 +427,8 @@
     ].join('');
 
     let body;
-    if (spec.draft) {
+    const canWalk = spec.mode !== 'grid' && spec.photos.length;
+    if (!spec.photos.length) {
       body = renderPasteZone(editable
         ? 'Paste a photo (Ctrl+V) or add image / video / YouTube URLs in markdown'
         : 'Add photos, videos, or YouTube embeds in markdown.');
@@ -426,7 +439,7 @@
     }
 
     return [
-      `<div class="gallery-block${themeClass}${customClass}${fullClass}${editable ? ' gallery-block--editable' : ''}${spec.draft ? ' gallery-block--draft' : ''}${spec.mode === 'walk' && !spec.draft ? ' gallery-block--walk' : ''}${spec.demo ? ' gallery-block--demo' : ''}"${styleAttr}`,
+      `<div class="gallery-block${themeClass}${customClass}${fullClass}${editable ? ' gallery-block--editable' : ''}${spec.draft ? ' gallery-block--draft' : ''}${canWalk ? ' gallery-block--walk' : ''}${spec.demo ? ' gallery-block--demo' : ''}"${styleAttr}`,
       ` data-gallery-index="${galleryIndex}"`,
       ` data-gallery-spec="${escapeHtml(encoded)}" tabindex="0">`,
       renderFullscreenButton(),
@@ -1796,5 +1809,6 @@
     hydrateBlock,
     openLightbox,
     closeLightbox,
+    extractYoutubeId,
   };
 }));

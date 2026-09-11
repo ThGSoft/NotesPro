@@ -36,6 +36,7 @@ Share: [LinkedIn](https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2
 - Tab-separated `sheet` blocks (formulas) and D3 `chart` blocks linked by sheet id
 - **Calcs** blocks — engineering calculator (real/complex, ranges, matrices, multi-curve `Plot`, SCI/ENG/FIX)
 - **Python / executecode** blocks — run in a browser Pyodide sandbox; `print`, pandas, and matplotlib plots show in the preview
+- **Voice notes** — record audio in the browser and transcribe with open-source Whisper (Transformers.js / Xenova, no cloud STT API)
 - **Sudoku** blocks — interactive 9×9 puzzles (generated or custom grid in markdown)
 - **Tic Tac Toe** blocks — 3×3 vs CPU or two players
 - **Chess** blocks — full-board chess vs CPU or two players
@@ -652,7 +653,7 @@ markdown
 
 Use the toolbar **calendar** button to insert a day-mode block for the current month. Preview and edit split view both render it.
 
-In **Edit** mode, click a day / week / month / year chip in the preview to add **markdown text** and **images**. Notes are stored inside the fence. Multiple lines with the same key are all shown on that unit. A day can hold **several photos**; they appear as **thumbnails** on the day. Click a thumbnail to open a gallery of **all** calendar photos (day shown as the caption).
+In **Edit** mode, click a day / week / month / year chip in the preview to add **markdown text** and **images**. Hover a day and press **Ctrl+V** to paste a screenshot onto that day (works even while the editor is focused). You can also **drop** a file onto the day or paste inside the note dialog. Notes are stored inside the fence. Multiple lines with the same key are all shown on that unit. A day can hold **several photos**; they appear as **thumbnails** on the day. Click a thumbnail to open a gallery of **all** calendar photos (day shown as the caption).
 
 Day notes can be **all-day** or **start/stop** timed (`HH:MM` or `HH:MM-HH:MM` after the key). In day mode the note dialog shows **Start date** / **End date** for all-day events; choose **Start / Stop** to add times as well:
 
@@ -913,6 +914,32 @@ Notes:
 - Plain documentation samples that should **not** run can use another fence language (e.g. `py` or `text`).
 - Code runs only in your browser; it does not execute on the NotesPro server.
 - Use the toolbar **code** button to insert a Pandas sample.
+
+### Voice notes (record + transcript)
+
+Fenced `voice` blocks (aliases: `audiorecord`, `transcript`, `dictation`) record from the microphone with `MediaRecorder` and transcribe **in the browser** using open-source **Whisper tiny** via [Transformers.js](https://github.com/xenova/transformers.js) (`Xenova/whisper-tiny`, quantized). Nothing is sent to a cloud speech API. The first run downloads the model from a CDN (~75 MB) and caches it afterward.
+
+Use the toolbar **microphone** button to insert a block. Press **Record**, then **Stop**. The clip is stored under `media/uploads/` and the transcript is written into the fence body. Edit the transcript anytime; **Transcribe** re-runs Whisper on the saved clip.
+
+````markdown
+```voice{lang=auto;title=Voice note;col=info}
+audio: media/uploads/voice-note.webm
+---
+Your transcript appears here.
+```
+````
+
+| Option | Description |
+|--------|-------------|
+| `title` | Block heading (default `Voice note`) |
+| `lang` | Whisper language (`auto`, or `en` / `de` / `fr` / …) |
+| `col` / `color` | Theme `info` / `success` / … or any CSS color |
+| `bkcol` | Optional background color |
+
+Notes:
+- Allow the microphone when the browser asks. `http://127.0.0.1` and HTTPS are supported; other origins may block `getUserMedia`.
+- Maximum recording length is 10 minutes.
+- Safari may save `audio/mp4` instead of WebM; playback and transcription still work in that browser.
 
 ### Sudoku
 
@@ -1377,9 +1404,9 @@ Toolbar: **Insert Lemmings** adds Fun 1.
 
 ### Gallery
 
-Embed a **walk-in photo gallery** with a fenced `gallery` block. Paste your own pictures while editing — they hang in **embedded 3D frames** on the walls of a corridor you can walk through. Videos (`.mp4`, `.webm`, …) and **YouTube** embeds play on the walls with sound that gets louder as you approach.
+Embed a **walk-in photo gallery** with a fenced `gallery` block. In **Edit**, hover the gallery and press **Ctrl+V** to paste a screenshot (works even while the editor is focused). Drop files onto the block, or paste a YouTube URL. Pictures hang in **embedded 3D frames** on the walls of a corridor you can walk through. Videos (`.mp4`, `.webm`, …) and **YouTube** embeds play on the walls with sound that gets louder as you approach.
 
-Empty gallery — paste a photo, then walk the hall:
+Empty gallery — demo tour and sample walls load by default (`demo=0` skips the tour). Paste your own photos to replace them:
 
 ````markdown
 ```gallery{title=My photos;mode=walk;col=info}
@@ -1417,13 +1444,13 @@ With your own photos / videos:
 | Option | Description |
 |--------|-------------|
 | `mode` | `walk` (default) first-person corridor, or `grid` thumbnail wall |
-| `demo` | Auto-start a looping guided walk that steps close to each frame |
+| `demo` | Auto-start **Demo tour** and use sample walls when the body is empty (default on; `demo=0` to walk without a tour) |
 | `title` | Block heading |
 | `cols` | Thumbnail columns when `mode=grid` (1–6) |
 | `fullscreen` | Edge-to-edge layout (default on) |
 | `col` / `bkcol` | Theme colors |
 
-**Walk controls:** click the view to capture the mouse (also unlocks video sound) · **W A S D** / arrows move · **Shift** sprint · mouse **wheel** zoom closer / wider · **Space** open the media you're looking at · **Esc** release mouse · **Demo tour** starts / stops the auto-walk (shown only on `demo` galleries) · **Thumbnails** toggles a strip.
+**Walk controls:** click the view to capture the mouse (also unlocks video sound) · **W A S D** / arrows move · **Shift** sprint · mouse **wheel** zoom closer / wider · **Space** open the media you're looking at · **Esc** release mouse · **Demo tour** starts / stops the auto-walk · **Thumbnails** toggles a strip.
 
 On **mobile**, **Enter gallery** is hidden (the first tap enters the hall). **Demo tour** stays visible so you can start or stop the guided walk. On a `demo` gallery the tour also starts on load; the first tap unlocks sound. After that, tap a wall photo to step a little closer (again to go closer still), and drag to look around (that takes over from the tour).
 
@@ -1627,7 +1654,7 @@ Toolbar: **Insert ghost train yard** adds a sample spooky yard with photo trains
 
 ### Photo labyrinth
 
-Embed a **first-person photo maze**. Walls are textured with the pictures you paste or drop. An empty fence still builds a placeholder maze — paste photos to cover the stone.
+Embed a **first-person photo maze**. Walls are textured with the pictures you paste or drop. **Demo tour** is on by default (auto-walks the path; `demo=0` turns that off). An empty demo maze uses sample wall photos; paste your own to replace them.
 
 ````markdown
 ```labyrinth{title=Photo labyrinth;demo;col=warning}
@@ -1640,16 +1667,16 @@ Embed a **first-person photo maze**. Walls are textured with the pictures you pa
 | Option | Description |
 |--------|-------------|
 | `title` | Block heading |
-| `demo` | Show **Demo tour** and auto-start a guided walk through the maze |
+| `demo` | Auto-start **Demo tour** and use sample walls when the body is empty (default on; `demo=0` to play without a tour) |
 | `traces` | Start with floor traces on (your path as a glowing line) |
 | `fullscreen` | Edge-to-edge layout (default on) |
 | `col` / `bkcol` | Theme colors |
 
 Aliases: `photo-labyrinth`, `maze`.
 
-**Walk controls:** click the view to capture the mouse — the **timer starts when you enter** · **W A S D** / arrows move · **Shift** sprint · mouse **wheel** zoom · **Esc** release mouse · walk through the green **EXIT** doorway to stop the clock · **Traces** shows or hides the glowing path you walked · **Demo tour** starts / stops the auto-walk (shown only when `demo` is set) · **Reset** returns to the **ENTER** doorway · paste / drop images onto the walls.
+**Walk controls:** click the view to capture the mouse — the **timer starts when you enter** · **W A S D** / arrows move · **Shift** sprint · mouse **wheel** zoom · **Esc** release mouse · walk through the green **EXIT** doorway to stop the clock · **Traces** shows or hides the glowing path you walked · **Demo tour** starts / stops the auto-walk · **Reset** returns to the **ENTER** doorway · paste / drop images onto the walls.
 
-On **mobile**, **Enter labyrinth** is hidden (the first tap enters). **Demo tour** stays visible with a large tap target so you can start or stop the guided walk. On a `demo` maze the tour also starts on load; drag to look around (that takes over from the tour).
+On **mobile**, **Enter labyrinth** is hidden (the first tap enters). **Demo tour** stays visible with a large tap target so you can start or stop the guided walk. On a demo maze the tour also starts on load; drag to look around (that takes over from the tour).
 
 Toolbar: **Photos → Photo labyrinth** adds a sample maze that walks itself.
 

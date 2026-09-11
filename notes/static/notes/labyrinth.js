@@ -153,9 +153,19 @@
     return true;
   }
 
+  const DEMO_PHOTOS = [
+    { src: 'https://picsum.photos/id/1015/960/720', label: 'Lake', kind: 'image' },
+    { src: 'https://picsum.photos/id/1018/960/720', label: 'Forest', kind: 'image' },
+    { src: 'https://picsum.photos/id/1016/960/720', label: 'Coast', kind: 'image' },
+    { src: 'https://picsum.photos/id/1043/960/720', label: 'Valley', kind: 'image' },
+    { src: 'https://picsum.photos/id/1036/960/720', label: 'Bridge', kind: 'image' },
+    { src: 'https://picsum.photos/id/1019/960/720', label: 'Hills', kind: 'image' },
+  ];
+
   function resolveDemo(cfg) {
-    if (!Object.prototype.hasOwnProperty.call(cfg, 'demo')) return false;
+    if (!Object.prototype.hasOwnProperty.call(cfg, 'demo')) return true;
     const raw = String(cfg.demo ?? '').trim().toLowerCase();
+    if (raw === '0' || raw === 'false' || raw === 'no' || raw === 'off') return false;
     return raw === '' || raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
   }
 
@@ -302,11 +312,12 @@
 
   function buildSpec(source, cfg) {
     const photos = parsePhotos(source);
+    const demo = resolveDemo(cfg);
     return {
       title: String(cfg.title || 'Photo labyrinth').trim() || 'Photo labyrinth',
-      demo: resolveDemo(cfg),
+      demo,
       traces: resolveTraces(cfg),
-      photos,
+      photos: photos.length ? photos : (demo ? DEMO_PHOTOS.map((p) => ({ ...p })) : photos),
       draft: !photos.length,
     };
   }

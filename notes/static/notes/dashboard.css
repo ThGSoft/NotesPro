@@ -3282,7 +3282,9 @@ body.mobile-layout .sheet-structure-menu-btn {
 }
 
 .calendar-unit--drop,
-.calendar-week-header--drop {
+.calendar-week-header--drop,
+.calendar-unit--paste-target,
+.calendar-week-header--paste-target {
   outline: 2px dashed #38bdf8;
   outline-offset: -2px;
 }
@@ -8958,7 +8960,8 @@ table {
 }
 
 .gallery-block--uploading,
-.gallery-block--drop {
+.gallery-block--drop,
+.gallery-block--paste-target {
   outline: 2px dashed var(--gallery-accent);
   outline-offset: 2px;
 }
@@ -9247,11 +9250,6 @@ body.mobile-layout .gallery-walk-hint--desktop {
 
 body.mobile-layout .gallery-walk-hint--mobile {
   display: block;
-}
-
-/* Demo tour only exists on demo galleries */
-.gallery-block:not(.gallery-block--demo) .gallery-walk-toolbar [data-action="walk-demo"] {
-  display: none !important;
 }
 
 /* Phones: first tap enters. Keep Demo tour so the guided walk can be started or stopped. */
@@ -11017,10 +11015,6 @@ body.mobile-layout .labyrinth-pad {
   margin-top: 8px;
   font-size: 0.85rem;
   color: var(--labyrinth-meta);
-}
-
-.labyrinth-block:not(.labyrinth-block--demo) .labyrinth-toolbar [data-action="walk-demo"] {
-  display: none !important;
 }
 
 body.mobile-layout .labyrinth-toolbar [data-action="walk-focus"] {
