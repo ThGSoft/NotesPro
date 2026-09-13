@@ -48,7 +48,13 @@ def _parse_recipient_ids(raw):
 def _resolve_mail_recipients(workspace, sender, recipient_ids):
     member_ids = _workspace_member_ids(workspace)
     if recipient_ids:
-        return [uid for uid in recipient_ids if uid in member_ids and uid != sender.id]
+        wanted = [uid for uid in recipient_ids if uid in member_ids]
+        others = [uid for uid in wanted if uid != sender.id]
+        if others:
+            return others
+        if sender.id in wanted:
+            return [sender.id]
+        return []
     others = [uid for uid in member_ids if uid != sender.id]
     if others:
         return others

@@ -4,15 +4,15 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>NotesPro — Collaborative notes with markdown, chat &amp; encryption</title>
-  <meta name="description" content="NotesPro: workspaces, rich markdown, Keep notes, Kanban Gantt with cost tracking, end-to-end encrypted chat, and encrypted-at-rest storage.">
+  <meta name="description" content="NotesPro: workspaces, rich markdown, Keep notes, Speisekarte click-to-order menus, games, 3D photo galleries, Kanban Gantt with cost tracking, end-to-end encrypted chat, and encrypted-at-rest storage.">
   <meta property="og:type" content="website">
   <meta property="og:title" content="NotesPro — collaborative notes with markdown, chat &amp; encryption">
-  <meta property="og:description" content="Workspaces, rich markdown, Keep notes, project boards, and encrypted chat — pinned in one place.">
+  <meta property="og:description" content="Workspaces, rich markdown, Keep notes, project boards, click-to-order menus, and encrypted chat — pinned in one place.">
   <meta property="og:url" content="https://thgsoft.online/DjangoNotesPro/">
   <meta property="og:image" content="https://raw.githubusercontent.com/ThGSoft/NotesPro/main/docs/screenshots/dashboard-full.png">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="NotesPro">
-  <meta name="twitter:description" content="Workspaces, rich markdown, Keep notes, project boards, and encrypted chat.">
+  <meta name="twitter:description" content="Workspaces, rich markdown, Keep notes, project boards, click-to-order menus, and encrypted chat.">
   <meta name="twitter:image" content="https://raw.githubusercontent.com/ThGSoft/NotesPro/main/docs/screenshots/dashboard-full.png">
   <link rel="icon" href="favicon.ico" type="image/x-icon">
   <link rel="shortcut icon" href="favicon.ico" type="image/x-icon">
@@ -262,6 +262,120 @@
       to { opacity: 1; transform: rotate(1.2deg) translateY(0); }
     }
 
+    .gallery-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 1.15rem 1rem;
+    }
+    .gallery-item {
+      position: relative;
+      display: block;
+      background: var(--paper);
+      border: 2px solid #1a1a1a;
+      padding: 0.55rem 0.55rem 0.7rem;
+      box-shadow: 3px 5px 0 rgba(0,0,0,0.14);
+      text-decoration: none;
+      color: inherit;
+      transform: rotate(-1.2deg);
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    .gallery-item:nth-child(2n) { transform: rotate(1.1deg); background: #fffdf5; }
+    .gallery-item:nth-child(3n) { transform: rotate(-0.6deg); background: #f0e9d4; }
+    .gallery-item:nth-child(4n) { transform: rotate(0.8deg); }
+    .gallery-item::before {
+      content: "";
+      position: absolute;
+      top: -10px;
+      left: 50%;
+      width: 16px;
+      height: 16px;
+      margin-left: -8px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 30%, #ff6b6b, var(--pin) 55%, #9a0f14 100%);
+      border: 2px solid #1a1a1a;
+      box-shadow: 1px 2px 0 rgba(0,0,0,0.2);
+      z-index: 1;
+    }
+    .gallery-item:hover {
+      transform: rotate(0deg) translateY(-4px);
+      box-shadow: 5px 8px 0 rgba(0,0,0,0.16);
+    }
+    .gallery-item img {
+      display: block;
+      width: 100%;
+      height: 148px;
+      object-fit: cover;
+      object-position: top center;
+      background: #0f172a;
+      border: 1px solid #1a1a1a;
+    }
+    .gallery-item span {
+      display: block;
+      margin-top: 0.45rem;
+      font-weight: 700;
+      font-size: 0.88rem;
+      text-align: center;
+      color: var(--note-ink);
+    }
+
+    .lightbox {
+      border: 3px solid #1a1a1a;
+      background: #111;
+      padding: 0;
+      max-width: min(96vw, 1100px);
+      width: 96vw;
+      box-shadow: 8px 14px 0 rgba(0,0,0,0.28);
+    }
+    .lightbox::backdrop {
+      background: rgba(20, 16, 10, 0.72);
+    }
+    .lightbox-inner {
+      position: relative;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      min-height: 40vh;
+    }
+    .lightbox img {
+      display: block;
+      width: 100%;
+      max-height: 78vh;
+      object-fit: contain;
+      background: #0b1220;
+    }
+    .lightbox-cap {
+      margin: 0;
+      padding: 0.7rem 3.5rem 0.85rem;
+      text-align: center;
+      font-weight: 700;
+      color: var(--note);
+      background: #1a1a1a;
+    }
+    .lightbox-btn {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 2.4rem;
+      height: 2.4rem;
+      border: 2px solid #1a1a1a;
+      background: var(--note);
+      color: var(--note-ink);
+      font-size: 1.6rem;
+      line-height: 1;
+      cursor: pointer;
+      box-shadow: 2px 3px 0 rgba(0,0,0,0.2);
+    }
+    .lightbox-btn:hover { background: #f5ea8a; }
+    .lightbox-prev { left: 0.6rem; }
+    .lightbox-next { right: 0.6rem; }
+    .lightbox-close {
+      top: 0.55rem;
+      right: 0.55rem;
+      transform: none;
+      width: 2.1rem;
+      height: 2.1rem;
+      font-size: 1.25rem;
+    }
+
     section {
       max-width: 1100px;
       margin: 0 auto;
@@ -384,6 +498,7 @@
     @media (max-width: 640px) {
       .nav a[href="#advantages"] { display: none; }
       .sticky { transform: rotate(-1deg); }
+      .gallery-item img { height: 120px; }
     }
   </style>
 </head>
@@ -395,6 +510,7 @@
         NotesPro
       </a>
       <div style="display:flex;gap:0.55rem;">
+        <a class="btn btn-ghost" href="#gallery">Gallery</a>
         <a class="btn btn-ghost" href="#advantages">Advantages</a>
         <a class="btn btn-ghost" href="https://github.com/ThGSoft/NotesPro">Source</a>
         <a class="btn btn-primary" href="https://thgsoft.online/DjangoNotesPro/">Open NotesPro</a>
@@ -407,12 +523,13 @@
           <img src="favicon.ico" width="56" height="56" alt="NotesPro sticky note icon">
           <p class="wordmark">Notes<span class="line2">Pro</span></p>
         </div>
-        <p class="tagline">Workspaces, rich markdown, Keep notes, project boards, and encrypted chat — pinned in one place.</p>
+        <p class="tagline">Workspaces, rich markdown, Keep notes, project boards, click-to-order menus, and encrypted chat — pinned in one place.</p>
         <div class="hero-cta">
           <a class="btn btn-primary" href="https://thgsoft.online/DjangoNotesPro/">Go to NotesPro →</a>
           <a class="btn btn-ghost" href="https://github.com/ThGSoft/NotesPro">Get source on GitHub</a>
           <a class="btn btn-ghost" href="https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2F%2Fthgsoft.online%2FDjangoNotesPro%2F">Share on LinkedIn</a>
           <a class="btn btn-ghost" href="https://www.youtube.com/upload">Post on YouTube</a>
+          <a class="btn btn-ghost" href="#gallery">See screenshots</a>
           <a class="btn btn-ghost" href="#advantages">See advantages</a>
         </div>
       </div>
@@ -431,10 +548,93 @@
       <figcaption class="shot-caption">Full dashboard — edit, preview, Keep, and chat in one view</figcaption>
     </figure>
 
+    <section id="gallery" aria-labelledby="gallery-title">
+      <div class="section-head">
+        <h2 id="gallery-title">Screenshots</h2>
+        <p>Click a photo to open it — dashboard, boards, sheets, RSS, 3D gallery, photo cube, Pac-Man, and Tetris.</p>
+      </div>
+      <div class="gallery-grid">
+        <a class="gallery-item" href="screenshots/dashboard-overview.png" data-caption="Dashboard overview">
+          <img src="screenshots/dashboard-overview.png" alt="NotesPro dashboard overview" width="640" height="360" loading="lazy">
+          <span>Overview</span>
+        </a>
+        <a class="gallery-item" href="screenshots/dashboard-editor.png" data-caption="Markdown editor">
+          <img src="screenshots/dashboard-editor.png" alt="NotesPro markdown editor" width="640" height="360" loading="lazy">
+          <span>Editor</span>
+        </a>
+        <a class="gallery-item" href="screenshots/dashboard-preview.png" data-caption="Live preview">
+          <img src="screenshots/dashboard-preview.png" alt="NotesPro live preview" width="640" height="360" loading="lazy">
+          <span>Preview</span>
+        </a>
+        <a class="gallery-item" href="screenshots/dashboard-chat.png" data-caption="Encrypted chat and mail">
+          <img src="screenshots/dashboard-chat.png" alt="NotesPro chat and mail panel" width="640" height="360" loading="lazy">
+          <span>Chat &amp; mail</span>
+        </a>
+        <a class="gallery-item" href="screenshots/dashboard-full1.png" data-caption="Full dashboard">
+          <img src="screenshots/dashboard-full1.png" alt="NotesPro full dashboard" width="640" height="360" loading="lazy">
+          <span>Full view</span>
+        </a>
+        <a class="gallery-item" href="screenshots/Kanban.png" data-caption="Kanban board">
+          <img src="screenshots/Kanban.png" alt="Kanban board block" width="640" height="360" loading="lazy">
+          <span>Kanban</span>
+        </a>
+        <a class="gallery-item" href="screenshots/SprintBoard.png" data-caption="Kanban Gantt sprint board">
+          <img src="screenshots/SprintBoard.png" alt="Sprint board with timers and cost" width="640" height="360" loading="lazy">
+          <span>Sprint board</span>
+        </a>
+        <a class="gallery-item" href="screenshots/Mindmap.png" data-caption="Mindmap">
+          <img src="screenshots/Mindmap.png" alt="Mindmap block" width="640" height="360" loading="lazy">
+          <span>Mindmap</span>
+        </a>
+        <a class="gallery-item" href="screenshots/Panels.png" data-caption="Colored panels">
+          <img src="screenshots/Panels.png" alt="Colored callout panels" width="640" height="360" loading="lazy">
+          <span>Panels</span>
+        </a>
+        <a class="gallery-item" href="screenshots/Sheet-Charts.png" data-caption="Sheets and charts">
+          <img src="screenshots/Sheet-Charts.png" alt="Embedded sheets and charts" width="640" height="360" loading="lazy">
+          <span>Sheets &amp; charts</span>
+        </a>
+        <a class="gallery-item" href="screenshots/Sheets.png" data-caption="Spreadsheet with formulas">
+          <img src="screenshots/Sheets.png" alt="Spreadsheet with calculations" width="640" height="360" loading="lazy">
+          <span>Calculations</span>
+        </a>
+        <a class="gallery-item" href="screenshots/RSS-Feeds.png" data-caption="RSS news feeds">
+          <img src="screenshots/RSS-Feeds.png" alt="RSS news feed blocks" width="640" height="360" loading="lazy">
+          <span>RSS feeds</span>
+        </a>
+        <a class="gallery-item" href="screenshots/Gallery.png" data-caption="Walk-in 3D photo gallery">
+          <img src="screenshots/Gallery.png" alt="Walk-in 3D photo gallery corridor" width="640" height="360" loading="lazy">
+          <span>Photo gallery</span>
+        </a>
+        <a class="gallery-item" href="screenshots/PhotoCube.png" data-caption="Photo cube">
+          <img src="screenshots/PhotoCube.png" alt="3D photo cube album" width="640" height="360" loading="lazy">
+          <span>Photo cube</span>
+        </a>
+        <a class="gallery-item" href="screenshots/Pacman.png" data-caption="Pac-Man">
+          <img src="screenshots/Pacman.png" alt="Pac-Man game block" width="640" height="360" loading="lazy">
+          <span>Pac-Man</span>
+        </a>
+        <a class="gallery-item" href="screenshots/Tetris.png" data-caption="Tetris">
+          <img src="screenshots/Tetris.png" alt="Tetris game block" width="640" height="360" loading="lazy">
+          <span>Tetris</span>
+        </a>
+      </div>
+    </section>
+
+    <dialog class="lightbox" id="lightbox" aria-label="Screenshot viewer">
+      <div class="lightbox-inner">
+        <button type="button" class="lightbox-btn lightbox-close" data-lightbox-close aria-label="Close">×</button>
+        <button type="button" class="lightbox-btn lightbox-prev" data-lightbox-prev aria-label="Previous">‹</button>
+        <img id="lightbox-img" alt="">
+        <button type="button" class="lightbox-btn lightbox-next" data-lightbox-next aria-label="Next">›</button>
+        <p class="lightbox-cap" id="lightbox-cap"></p>
+      </div>
+    </dialog>
+
     <section id="advantages" aria-labelledby="advantages-title">
       <div class="section-head">
         <h2 id="advantages-title">All advantages</h2>
-        <p>Everything NotesPro brings to your team — writing, planning, files, messaging, and security.</p>
+        <p>Everything NotesPro brings to your team — writing, planning, menus, games, files, messaging, and security.</p>
       </div>
 
       <div class="grid">
@@ -472,6 +672,41 @@
           <span class="label">Ideas</span>
           <h3>Mindmap blocks</h3>
           <p>Indented idea trees in markdown for brainstorms that stay with the page.</p>
+        </article>
+        <article class="feature">
+          <span class="label">Menu</span>
+          <h3>Speisekarte</h3>
+          <p>Click a dish on a restaurant menu card to send that order by workspace mail, private chat, or group chat to a named user.</p>
+        </article>
+        <article class="feature">
+          <span class="label">Calcs</span>
+          <h3>Engineering calculator</h3>
+          <p>Octave-style calcs blocks: real and complex math, matrices, ranges, and multi-curve plots next to the source.</p>
+        </article>
+        <article class="feature">
+          <span class="label">Python</span>
+          <h3>In-browser sandbox</h3>
+          <p>Run Python in a Pyodide sandbox — print, pandas, and matplotlib plots appear in the preview.</p>
+        </article>
+        <article class="feature">
+          <span class="label">Voice</span>
+          <h3>Record &amp; transcribe</h3>
+          <p>Record in the browser and transcribe locally with open-source Whisper — no cloud speech API.</p>
+        </article>
+        <article class="feature">
+          <span class="label">News</span>
+          <h3>RSS feeds</h3>
+          <p>Embed live news feeds in a page — Magpie-style cards from BBC and other RSS sources.</p>
+        </article>
+        <article class="feature">
+          <span class="label">Games</span>
+          <h3>Play in preview</h3>
+          <p>Sudoku, chess, Tetris, Sokoban, Pac-Man, pinball, and more — interactive blocks inside the note.</p>
+        </article>
+        <article class="feature">
+          <span class="label">Photos</span>
+          <h3>3D galleries &amp; rides</h3>
+          <p>Walk-in photo corridors, cubes, books, carousels, roller coaster, scooter, ghost train, and labyrinth walls from your images.</p>
         </article>
         <article class="feature">
           <span class="label">Panels</span>
@@ -547,9 +782,57 @@
         <a href="https://github.com/ThGSoft/NotesPro">Source on GitHub</a>
         · <a href="https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2F%2Fthgsoft.online%2FDjangoNotesPro%2F">LinkedIn</a>
         · <a href="https://www.youtube.com/upload">YouTube</a>
-        · sticky notes · markdown · encrypted chat
+        · sticky notes · markdown · menus · encrypted chat
       </span>
     </footer>
   </div>
+  <script>
+    (function () {
+      const items = Array.from(document.querySelectorAll('.gallery-item'));
+      const dialog = document.getElementById('lightbox');
+      const img = document.getElementById('lightbox-img');
+      const cap = document.getElementById('lightbox-cap');
+      if (!items.length || !dialog || !img) return;
+      let index = 0;
+
+      function show(i) {
+        index = (i + items.length) % items.length;
+        const item = items[index];
+        img.src = item.getAttribute('href');
+        img.alt = item.querySelector('img')?.alt || '';
+        cap.textContent = item.dataset.caption || item.textContent.trim();
+      }
+
+      function openAt(i) {
+        show(i);
+        if (typeof dialog.showModal === 'function') dialog.showModal();
+        else dialog.setAttribute('open', '');
+      }
+
+      function close() {
+        if (typeof dialog.close === 'function') dialog.close();
+        else dialog.removeAttribute('open');
+      }
+
+      items.forEach((item, i) => {
+        item.addEventListener('click', (event) => {
+          event.preventDefault();
+          openAt(i);
+        });
+      });
+      dialog.querySelector('[data-lightbox-close]')?.addEventListener('click', close);
+      dialog.querySelector('[data-lightbox-prev]')?.addEventListener('click', () => show(index - 1));
+      dialog.querySelector('[data-lightbox-next]')?.addEventListener('click', () => show(index + 1));
+      dialog.addEventListener('click', (event) => {
+        if (event.target === dialog) close();
+      });
+      document.addEventListener('keydown', (event) => {
+        if (!dialog.open) return;
+        if (event.key === 'ArrowLeft') show(index - 1);
+        if (event.key === 'ArrowRight') show(index + 1);
+        if (event.key === 'Escape') close();
+      });
+    }());
+  </script>
 </body>
 </html>

@@ -83,7 +83,7 @@ def build_gallery_markdown(workspace, user):
     lines = [
         '# Gallery',
         '',
-        'Walk-in corridor of NotesPro screenshots. On a phone tap **Demo tour** to start or stop the guided walk.',
+        'Walk-in corridor of NotesPro screenshots. **Demo tour** starts on load — tap it to stop or start again. In **Edit**, hover the gallery and press **Ctrl+V** to paste a photo.',
         '',
         '```gallery{title=NotesPro;mode=walk;demo;col=info}',
     ]
@@ -119,7 +119,7 @@ def build_labyrinth_markdown(workspace, user):
     lines = [
         '# Photo labyrinth',
         '',
-        'First-person maze whose walls are NotesPro screenshots. Tap **Demo tour** to auto-walk the path to the exit.',
+        'First-person maze whose walls are NotesPro screenshots. **Demo tour** auto-walks the path. **Enter** starts the timer; walk through the green **EXIT** to stop it.',
         '',
         '```labyrinth{title=Photo labyrinth;demo;col=warning}',
     ]
@@ -164,6 +164,7 @@ Phase B | 15.07.26 | 31.07.26 | Delivery
 ```
 # Calendar
 ```calendar{from=01.07.26;to=11.07.26;mode=day;col=primary}
+@d:07.07.26 | **Kickoff** | ![Lake](https://picsum.photos/id/1015/640/480)
 ```
 ```calendar{from=01.07.26;to=11.07.26;mode=day;col=danger}
 ```
@@ -187,6 +188,20 @@ Todo | Create 488 Api | **Basis 488 Commmands**
 Todo | Build API
 Done | Kickoff | ![](media/uploads/photo.png)
 Done | Define Remote
+```
+
+# Speisekarte
+```speisekarte{to=demo;title=Mittagskarte;col=warning}
+# Vorspeisen
+Tagessuppe | 6.50
+Gemischter Salat | 7.90
+
+# Hauptgerichte
+Wiener Schnitzel | 18.50 | mit Pommes
+Spaghetti Aglio e Olio | 14.00
+
+# Nachspeisen
+Tiramisu | 6.50
 ```
 
 # News / RSS
@@ -238,6 +253,67 @@ sqr(1i)
 j = -10:10
 y3[j] = (j.*j)/100
 Plot([j, y3])
+```
+
+# Voice note
+Record in the browser, then Whisper tiny transcribes locally (first run downloads the open-source model).
+
+```voice{lang=auto;title=Voice note;col=info}
+```
+
+# Sheet & chart
+```sheet
+`id=quarterly
+Month	Sales	Costs
+Jan	100	80
+Feb	150	90
+Mar	200	110
+Apr	120	85
+```
+
+```chart
+quarterly
+bar
+Month
+Sales
+Costs
+```
+
+# Python
+```python{title=Pandas;col=info}
+import pandas as pd
+
+df = pd.DataFrame({
+    "name": ["Ada", "Grace", "Alan"],
+    "score": [98, 91, 87],
+})
+print(df)
+print()
+print("mean score:", df["score"].mean())
+print(df.describe())
+```
+
+```python{title=Plot;col=info}
+import matplotlib.pyplot as plt
+import numpy as np
+
+x = np.linspace(0, 2 * np.pi, 200)
+print("points:", len(x))
+plt.plot(x, np.sin(x))
+plt.show()
+```
+
+# Gallery
+Hover and press **Ctrl+V** to add a photo. **Demo tour** auto-walks the hall.
+
+```gallery{title=Demo walk;mode=walk;demo;col=info}
+![Mountain lake](https://picsum.photos/id/1015/960/720)
+![Flower video](https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4)
+![Forest path](https://picsum.photos/id/1018/960/720)
+![YouTube](https://www.youtube.com/embed/N9jBlg-GUYM)
+![Coast](https://picsum.photos/id/1016/960/720)
+![Valley](https://picsum.photos/id/1043/960/720)
+![Bridge](https://picsum.photos/id/1036/960/720)
 ```
 """
 
@@ -318,15 +394,15 @@ RSS_FEEDS_MARKDOWN = """# RSS Feeds
 
 CALENDAR_DEMO_MARKDOWN = """# Calendar
 
-Day, week, month, and year views with sample notes. Click a day in **Edit** to add events.
+Day, week, month, and year views with sample notes. In **Edit**, click a day to add events, or **hover a day and press Ctrl+V** to paste a screenshot onto it.
 
 ## Day
 
 ```calendar{from=01.09.26;to=30.09.26;mode=day;col=info;title=September 2026}
-@d:07.09.26 | **Sprint planning**
+@d:07.09.26 | **Sprint planning** | ![Lake](https://picsum.photos/id/1015/640/480) | ![Hills](https://picsum.photos/id/1016/640/480)
 @d:09.09.26 | 09:00-09:30 | Standup
 @d:09.09.26 | 14:00-15:00 | Demo review
-@d:11.09.26 | 10:00-12:00 | Workshop
+@d:11.09.26 | 10:00-12:00 | Workshop | ![Workshop](https://picsum.photos/id/1018/640/480)
 @d:15.09.26-18.09.26 | Conference
 @d:21.09.26-25.09.26 | Vacation
 ```
@@ -418,17 +494,89 @@ GAMES_DEMO_PAGES = (
         '```\n',
     ),
     (
+        'chess',
+        'Chess',
+        7,
+        '# Chess\n\n'
+        'Play white against the CPU, or switch to two players. Click a piece, then a highlighted square.\n\n'
+        '```chess{fullscreen;mode=cpu;difficulty=medium}\n'
+        '```\n',
+    ),
+    (
+        'connect4',
+        'Connect Four',
+        8,
+        '# Connect Four\n\n'
+        'Drop discs to get four in a row. CPU or hotseat.\n\n'
+        '```connect4{fullscreen;mode=cpu;difficulty=medium}\n'
+        '```\n',
+    ),
+    (
+        'reversi',
+        'Reversi',
+        9,
+        '# Reversi\n\n'
+        'You play black. Flank the CPU to flip discs; corners are gold.\n\n'
+        '```reversi{fullscreen;mode=cpu;difficulty=medium}\n'
+        '```\n',
+    ),
+    (
         'tetris',
         'Tetris',
-        7,
+        10,
         '# Tetris\n\n'
         '```tetris{fullscreen}\n'
         '```\n',
     ),
     (
+        'sokoban',
+        'Sokoban',
+        11,
+        '# Sokoban\n\n'
+        'Push every crate onto a gold target. U undoes, R resets, [ ] changes level.\n\n'
+        '```sokoban{fullscreen}\n'
+        '```\n',
+    ),
+    (
+        'invaders',
+        'Space Invaders',
+        12,
+        '# Space Invaders\n\n'
+        'Defend Earth from the descending ranks. ← → move, Space fire, P pause, R restart.\n\n'
+        '```invaders{fullscreen}\n'
+        '```\n',
+    ),
+    (
+        'breakout',
+        'Breakout',
+        13,
+        '# Breakout\n\n'
+        'Bounce the ball to clear every brick. ← → or mouse to move, Space to launch.\n\n'
+        '```breakout{fullscreen}\n'
+        '```\n',
+    ),
+    (
+        'snake',
+        'Snake',
+        14,
+        '# Snake\n\n'
+        'Eat to grow. Hit a wall or yourself and it is over. R restarts. Add `wrap` in the fence for wrap-around edges.\n\n'
+        '```snake{fullscreen}\n'
+        '```\n',
+    ),
+    (
+        'marbleblast',
+        'Marble blast',
+        15,
+        '# Marble blast\n\n'
+        'Roll the marble, collect gems, then hit the gold finish pad. Space jumps. [ ] changes course.\n\n'
+        '```marbleblast{fullscreen}\n'
+        '```\n',
+    ),
+    (
         'photocube',
         'Photo cube',
-        8,
+        16,
         '# Photo cube\n\n'
         '```photocube{title=Photo cube;col=info}\n'
         '![Lake](https://picsum.photos/id/1015/800/800)\n'
@@ -442,7 +590,7 @@ GAMES_DEMO_PAGES = (
     (
         'photobook',
         'Photo book',
-        9,
+        17,
         '# Photo book\n\n'
         '```photobook{title=Photo book;col=warning}\n'
         '![Cover lake](https://picsum.photos/id/1015/960/720)\n'
@@ -458,7 +606,7 @@ GAMES_DEMO_PAGES = (
     (
         'rollercoast',
         'Roller coaster',
-        10,
+        18,
         '# Roller coaster\n\n'
         '```rollercoast{mode=jungle;title=Jungle coaster;demo;col=success}\n'
         '![Canopy](https://picsum.photos/id/1018/960/720)\n'
@@ -470,7 +618,7 @@ GAMES_DEMO_PAGES = (
     (
         'scooter',
         'Auto scooter',
-        11,
+        19,
         '# Auto scooter\n\n'
         '```scooter{title=Auto scooter;demo;col=warning}\n'
         '![Blue](https://picsum.photos/id/1015/640/480)\n'
@@ -483,7 +631,7 @@ GAMES_DEMO_PAGES = (
     (
         'ghosttrain',
         'Ghost train',
-        12,
+        20,
         '# Ghost train\n\n'
         '```ghosttrain{title=Ghost train;demo;col=note}\n'
         '![Phantom](https://picsum.photos/id/1011/640/480)\n'
@@ -556,10 +704,10 @@ class Command(BaseCommand):
                     '# Welcome\n\n'
                     'Edit in markdown, preview when you are done.\n\n'
                     'See **README** in this folder for the full project guide and screenshots.\n\n'
-                    'Open **Blocks** for interactive gantt, calendar, mindmap, kanban, calcs, and panel examples.\n\n'
-                    'Open **Calendar** for day, week, month, and year views with sample events.\n\n'
-                    'Open **Gallery** for a walk-in corridor of NotesPro screenshots — tap **Demo tour** on a phone.\n\n'
-                    'Open **Games** for sudoku, tic-tac-toe, Tetris, jigsaw, pinball, Pac-Man, Super Mario, Lemmings, photo cube, photo book, roller coaster, auto scooter, ghost train, and photo labyrinth.\n\n'
+                    'Open **Blocks** for interactive gantt, calendar, mindmap, kanban, sheets, charts, calcs, Python, voice notes, gallery, and panel examples.\n\n'
+                    'Open **Calendar** for day, week, month, and year views — hover a day and press **Ctrl+V** to paste a photo.\n\n'
+                    'Open **Gallery** for a walk-in corridor of NotesPro screenshots — **Demo tour** starts on load.\n\n'
+                    'Open **Games** for sudoku, tic-tac-toe, chess, Connect Four, Reversi, Tetris, Sokoban, Space Invaders, Breakout, Snake, marble blast, jigsaw, pinball, Pac-Man, Super Mario, Lemmings, photo cube, photo book, photo carousel, roller coaster, auto scooter, ghost train, and photo labyrinth.\n\n'
                     'Open **RSS Feeds** for live BBC, DE, and CH news embeds.'
                 ),
             },
@@ -639,8 +787,28 @@ class Command(BaseCommand):
             parent=games,
             title='Photo labyrinth',
             is_folder=False,
-            sort_order=13,
+            sort_order=21,
             markdown_content=build_labyrinth_markdown(ws, user),
+        )
+        upsert_page(
+            ws,
+            'carousel',
+            parent=games,
+            title='Photo carousel',
+            is_folder=False,
+            sort_order=22,
+            markdown_content=(
+                '# Photo carousel\n\n'
+                'Swipe, use the arrows, or let it play.\n\n'
+                '```carousel{title=Photo carousel;demo;col=info}\n'
+                '![Lake](https://picsum.photos/id/1015/960/720)\n'
+                '![Forest path](https://picsum.photos/id/1018/960/720)\n'
+                '![Coast](https://picsum.photos/id/1016/960/720)\n'
+                '![Valley](https://picsum.photos/id/1043/960/720)\n'
+                '![Bridge](https://picsum.photos/id/1036/960/720)\n'
+                '![Hills](https://picsum.photos/id/1019/960/720)\n'
+                '```\n'
+            ),
         )
         Page.objects.filter(
             workspace=ws,

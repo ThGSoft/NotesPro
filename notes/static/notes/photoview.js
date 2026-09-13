@@ -212,9 +212,13 @@
   }
 
   function renderPasteZone(label) {
-    return `<div class="gallery-paste-zone photoview-paste-zone" tabindex="0" role="button" aria-label="Paste photo">`
+    const mobile = isPhotoviewMobile();
+    const text = label || (mobile
+      ? 'Tap to add a photo, or paste'
+      : 'Paste your photo here (Ctrl+V)');
+    return `<div class="gallery-paste-zone photoview-paste-zone" tabindex="0" role="button" aria-label="${escapeHtml(text)}">`
       + `<span class="gallery-paste-icon" aria-hidden="true">📷</span>`
-      + `<span class="gallery-paste-label">${escapeHtml(label || 'Paste your photo here (Ctrl+V)')}</span>`
+      + `<span class="gallery-paste-label">${escapeHtml(text)}</span>`
       + `</div>`;
   }
 
@@ -229,6 +233,73 @@
   function setStatus(el, message) {
     const status = el.querySelector('.photoview-status');
     if (status) status.textContent = message || '';
+  }
+
+  function armPasteTarget(el) {
+    document.querySelectorAll('.photoview-block--paste-armed').forEach((node) => {
+      if (node !== el) node.classList.remove('photoview-block--paste-armed');
+    });
+    el.classList.add('photoview-block--paste-armed');
+    focusPasteCatcher(el);
+  }
+
+  function pickImageFiles({ multiple = true } = {}) {
+    return new Promise((resolve) => {
+      let settled = false;
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.multiple = !!multiple;
+      input.className = 'visually-hidden-file-input';
+      input.tabIndex = -1;
+      input.setAttribute('aria-hidden', 'true');
+
+      const finish = (files) => {
+        if (settled) return;
+        settled = true;
+        window.removeEventListener('focus', onWindowFocus);
+        input.remove();
+        resolve(files);
+      };
+      const onWindowFocus = () => {
+        window.setTimeout(() => finish([]), 700);
+      };
+
+      input.addEventListener('change', () => finish([...(input.files || [])]));
+      input.addEventListener('cancel', () => finish([]));
+      document.body.appendChild(input);
+      window.addEventListener('focus', onWindowFocus);
+      try {
+        input.click();
+      } catch (_) {
+        finish([]);
+      }
+    });
+  }
+
+  function focusPasteCatcher(el) {
+    if (!isPhotoviewMobile()) {
+      try { el.focus({ preventScroll: true }); } catch (_) { /* ignore */ }
+      return;
+    }
+    let catcher = el.querySelector('.photoview-paste-catcher');
+    if (!catcher) {
+      catcher = document.createElement('div');
+      catcher.className = 'photoview-paste-catcher';
+      catcher.contentEditable = 'true';
+      catcher.setAttribute('role', 'textbox');
+      catcher.setAttribute('aria-label', 'Paste photo');
+      catcher.setAttribute('inputmode', 'none');
+      catcher.setAttribute('enterkeyhint', 'done');
+      catcher.spellcheck = false;
+      catcher.addEventListener('beforeinput', (e) => {
+        const type = String(e.inputType || '');
+        if (!type.includes('Paste') && !type.includes('Drop')) e.preventDefault();
+      });
+      catcher.addEventListener('input', () => { catcher.textContent = ''; });
+      el.appendChild(catcher);
+    }
+    try { catcher.focus({ preventScroll: true }); } catch (_) { /* ignore */ }
   }
 
   function shellClasses(kind, style, spec, editable, fullscreen) {
@@ -282,20 +353,25 @@
       if (ytId && typeof options.onPasteYoutube === 'function') {
         e.preventDefault();
         e.stopPropagation();
+        el.classList.remove('photoview-block--paste-armed');
         setStatus(el, 'Added YouTube still.');
         void options.onPasteYoutube(ytId, spec);
         return;
       }
       const items = [...(e.clipboardData?.items || [])];
-      const files = items
+      let files = items
         .filter(item => item.kind === 'file' && item.type.startsWith('image/'))
         .map(item => item.getAsFile())
         .filter(Boolean);
+      if (!files.length) {
+        files = [...(e.clipboardData?.files || [])].filter(f => String(f.type || '').startsWith('image/'));
+      }
       if (!files.length) return;
       e.preventDefault();
       e.stopPropagation();
+      el.classList.remove('photoview-block--paste-armed');
       void handlePasteFiles(files);
-    });
+    }, true);
 
     el.addEventListener('dragover', (e) => {
       if (![...(e.dataTransfer?.types || [])].includes('Files')) return;
@@ -310,6 +386,22 @@
       e.preventDefault();
       e.stopPropagation();
       void handlePasteFiles(files);
+    });
+
+    el.addEventListener('click', (e) => {
+      const pickHit = e.target.closest('[data-action="add-photo"], .gallery-paste-zone, .photoview-paste-zone');
+      if (!pickHit || e.target.closest('.game-fullscreen-btn')) return;
+      const openPicker = isPhotoviewMobile() || pickHit.matches('[data-action="add-photo"]');
+      armPasteTarget(el);
+      setStatus(el, isPhotoviewMobile()
+        ? 'Choose a photo, or paste here.'
+        : 'Paste an image (Ctrl+V), or choose a file.');
+      if (!openPicker) return;
+      e.preventDefault();
+      void pickImageFiles().then((files) => {
+        if (files.length) return handlePasteFiles(files);
+        focusPasteCatcher(el);
+      });
     });
   }
 
@@ -338,9 +430,12 @@
   }
 
   function renderCubeBody(spec, editable) {
+    const mobile = isPhotoviewMobile();
     if (spec.draft) {
       return renderPasteZone(editable
-        ? 'Paste a photo (Ctrl+V) or drop files onto the cube'
+        ? (mobile
+          ? 'Tap to add a photo, or paste'
+          : 'Paste a photo (Ctrl+V) or drop files onto the cube')
         : 'Add photos in markdown.');
     }
     const addBtn = editable
@@ -356,7 +451,9 @@
       renderCubeFaces(spec.photos, 0),
       `</div>`,
       `</div>`,
-      `<p class="photocube-hint">Drag to turn the cube · photos wrap around all six faces</p>`,
+      `<p class="photocube-hint">${mobile
+        ? 'Drag to turn · tap Add photo to upload or paste'
+        : 'Drag to turn the cube · photos wrap around all six faces'}</p>`,
       `<div class="photoview-toolbar">`,
       `<button type="button" class="btn btn-sm btn-outline-light" data-action="cube-spin" aria-pressed="${spec.spin ? 'true' : 'false'}">${spec.spin ? 'Pause spin' : 'Spin'}</button>`,
       moreBtn,
@@ -520,8 +617,11 @@
         return;
       }
       if (action === 'add-photo') {
-        setStatus(el, 'Paste an image (Ctrl+V) or drop a file onto the cube.');
-        el.focus({ preventScroll: true });
+        setStatus(el, isPhotoviewMobile()
+          ? 'Choose a photo, or paste here.'
+          : 'Paste an image (Ctrl+V) or drop a file onto the cube.');
+        armPasteTarget(el);
+        return;
       }
     });
 
@@ -778,7 +878,8 @@
       }
       if (action === 'add-photo') {
         setStatus(el, 'Paste an image (Ctrl+V) or drop a file onto the book.');
-        el.focus({ preventScroll: true });
+        armPasteTarget(el);
+        return;
       }
     });
 
@@ -1119,6 +1220,8 @@
     parsePhotos,
     formatPhotoBody,
     buildFenceAttrsString,
+    extractYoutubeId,
+    pickImageFiles,
     decodeSpec,
   };
 

@@ -57,7 +57,7 @@ Share: [LinkedIn](https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2
 - **Ghost train** blocks — convoy on rails; photos in frames along the track
 - **Photo labyrinth** blocks — first-person maze whose walls are your pasted photos
 - **Calendar** blocks — list days, weeks, months, or years for a `from`/`to` range
-- **Gantt** / **Kanban** / **Kanban Gantt** / **Mindmap** blocks — project timelines, boards, timed cost tracking, and indented idea trees
+- **Gantt** / **Kanban** / **Kanban Gantt** / **Mindmap** / **Speisekarte** blocks — project timelines, boards, timed cost tracking, idea trees, and click-to-order menus
 - File manager with drag-and-drop uploads; click images to open in a new tab
 - **Local file links** — paste Windows paths or insert via toolbar; click in preview to reveal in Explorer (local dev server)
 - Resizable dashboard panels (sidebar, editor, chat/mail)
@@ -776,6 +776,32 @@ Use the toolbar **kanban gantt** button to insert a sample. In **Edit** mode:
 
 Turn off **With cost** (`withcost=0`) for a time-only board: rates and money totals are hidden; timers still work.
 
+### Speisekarte
+
+Restaurant menu card. Click a dish to send an order to a workspace member. Fence names: `speisekarte` (also `speise` / `menukarte` / `menucard` / `menu`):
+
+markdown
+```speisekarte{to=demo;title=Mittagskarte;col=warning}
+# Vorspeisen
+Tagessuppe | 6.50
+Gemischter Salat | 7.90
+
+# Hauptgerichte
+Wiener Schnitzel | 18.50 | mit Pommes
+Spaghetti Aglio e Olio | 14.00
+```
+
+
+| Option | Description |
+|--------|-------------|
+| `to` | Username (or id) of the recipient. Also `user` / `an`. Comma-separated for several people. Defaults to the workspace owner |
+| `via` | `mail` (default) · `dm` · `chat` (group chat) |
+| `title` | Menu heading |
+| `col` | Theme: `info` / `success` / `warning` / `danger` / `note`, or a CSS color |
+| `msg` | Optional order text. Placeholders: `{name}` `{price}` `{note}` `{menu}` `{page}` |
+
+Each dish line is `Name | price | extra`. Section headings use `#`. Click a dish in preview to send the order immediately.
+
 ### Mindmap
 
 Embed a mindmap with a fenced `mindmap` block (also accepts `mmap` / `mind`):
@@ -1462,7 +1488,7 @@ Toolbar: **Photos → Walk-in gallery** adds a sample corridor (with a video) th
 
 A **3D photo cube** with your pictures on all six faces. Drag to turn it; it also spins slowly. Extra photos wrap around the faces — **Next faces** shifts which six are showing.
 
-Empty cube — paste or drop your own photos:
+Empty cube — in **Edit**, hover the cube and press **Ctrl+V** to paste a screenshot (works even while the editor is focused). Drop files onto it too:
 
 ````markdown
 ```photocube{title=My cube;col=info}
@@ -1489,13 +1515,13 @@ With your images:
 | `fullscreen` | Edge-to-edge layout (default on) |
 | `col` / `bkcol` | Theme colors |
 
-**Cube controls:** drag to rotate · **Pause spin** / **Spin** · **Next faces** when you have more than six photos · paste / drop to add pictures while editing.
+**Cube controls:** drag to rotate · **Pause spin** / **Spin** · **Next faces** when you have more than six photos · hover and **Ctrl+V** or drop to add pictures while editing.
 
 Toolbar: **Photos → Photo cube** adds a sample cube.
 
 ### Photo book
 
-A **hardcover photo album**. Open the cover, then turn pages like a real book. Two photos per spread. Paste or drop your own pictures while editing.
+A **hardcover photo album**. Open the cover, then turn pages like a real book. Two photos per spread. In **Edit**, hover the book and press **Ctrl+V** to paste a screenshot (works even while the editor is focused). Drop files onto it too.
 
 Empty book:
 
@@ -1521,7 +1547,7 @@ With your images:
 | `fullscreen` | Edge-to-edge layout (default on) |
 | `col` / `bkcol` | Theme colors |
 
-**Book controls:** **Open book** · click the **right page** or **Next** to turn forward · **left page** or **Prev** to go back · arrow keys · swipe on a phone · paste / drop to add pictures. The album and its photos scale to the preview (and to the monitor in fullscreen).
+**Book controls:** **Open book** · click the **right page** or **Next** to turn forward · **left page** or **Prev** to go back · arrow keys · swipe on a phone · hover and **Ctrl+V** or drop to add pictures. The album and its photos scale to the preview (and to the monitor in fullscreen).
 
 Toolbar: **Photos → Photo book** adds a sample album.
 

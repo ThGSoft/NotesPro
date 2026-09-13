@@ -2089,7 +2089,7 @@
   }
 
   function isPreviewRichBlock(el) {
-    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .md-python, .voice-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .tetris-block, .sokoban-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .page-tags');
+    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .md-python, .voice-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .tetris-block, .sokoban-block, .speisekarte-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .page-tags');
   }
 
   function getPreviewBlockSourceLine(node) {
@@ -4179,7 +4179,8 @@
     const titleHtml = title
       ? escapeHtml(title)
       : '<span class="calendar-month-event-empty">—</span>';
-    return `<li class="calendar-month-event${editClass}"${noteKey}${tipAttr}>`
+    const galleryAttr = calendarUnitGalleryAttr([entry], dateLabel);
+    return `<li class="calendar-month-event${editClass}"${noteKey}${tipAttr}${galleryAttr}>`
       + `<span class="calendar-month-event-date">${escapeHtml(dateLabel)}</span>`
       + `<span class="calendar-month-event-time">${escapeHtml(timeLabel)}</span>`
       + `<span class="calendar-month-event-title">${titleHtml}</span>`
@@ -4455,11 +4456,46 @@
     }).join('');
   }
 
-  function calendarUnitAttrs(key, editable, entryOrList = null) {
+  function calendarPhotosFromEntryList(entryOrList, label) {
+    const photos = [];
+    const seen = new Set();
+    const fallback = String(label || '').trim();
+    normalizeCalendarEntryList(entryOrList).forEach((entry) => {
+      let subtitle = fallback;
+      if (!subtitle) {
+        const from = entry.dateFrom;
+        const to = entry.dateTo || from;
+        if (from) {
+          subtitle = (!to || startOfDay(from).getTime() === startOfDay(to).getTime())
+            ? formatCalendarDateDisplay(from)
+            : formatCalendarDateRangeDisplay(from, to);
+        }
+      }
+      calendarEntryImages(entry).forEach((src) => {
+        if (seen.has(src)) return;
+        seen.add(src);
+        photos.push({ src, label: subtitle, kind: 'image' });
+      });
+    });
+    return photos;
+  }
+
+  function calendarUnitGalleryAttr(entryOrList, label) {
+    const photos = calendarPhotosFromEntryList(entryOrList, label);
+    if (!photos.length) return '';
+    const encoded = encodeCalendarGallery(photos);
+    return encoded ? ` data-calendar-day-gallery="${escapeHtml(encoded)}"` : '';
+  }
+
+  function calendarUnitAttrs(key, editable, entryOrList = null, galleryEntries = null, galleryLabel = '') {
     const editAttr = editable ? ' tabindex="0"' : '';
     const md = calendarEntriesMarkdown(entryOrList);
     const mdAttr = md ? ` data-calendar-markdown="${escapeHtml(md)}"` : '';
-    return ` data-calendar-key="${escapeHtml(key)}"${mdAttr}${editAttr}`;
+    const galleryAttr = calendarUnitGalleryAttr(
+      galleryEntries != null ? galleryEntries : entryOrList,
+      galleryLabel,
+    );
+    return ` data-calendar-key="${escapeHtml(key)}"${mdAttr}${editAttr}${galleryAttr}`;
   }
 
   function collectCalendarDays(from, to) {
@@ -4546,7 +4582,7 @@
       calendarEntryHasContent(entry) ? 'calendar-unit--has-note' : '',
       editable ? 'calendar-unit--editable' : '',
     ].filter(Boolean).join(' ');
-    return `<div class="${classes}"${calendarUnitAttrs(key, editable, dayOwn)}>`
+    return `<div class="${classes}"${calendarUnitAttrs(key, editable, dayOwn, entry, formatCalendarDateDisplay(day))}>`
       + `<span class="calendar-unit-primary">${day.getDate()}</span>`
       + calendarDayEntriesMarkup(entry)
       + `</div>`;
@@ -4905,29 +4941,47 @@
   let calendarGalleryOpenedAt = 0;
 
   function calendarGalleryHitFromEvent(e, root) {
-    const direct = e.target?.closest?.('.calendar-unit-thumb, .calendar-unit-thumbs-more, .calendar-unit-thumbs');
-    if (direct && root.contains(direct)) return direct;
-    const x = e.clientX;
-    const y = e.clientY;
-    if (!Number.isFinite(x) || !Number.isFinite(y) || typeof document.elementFromPoint !== 'function') return null;
-    const stacked = document.elementFromPoint(x, y);
-    const hit = stacked?.closest?.('.calendar-unit-thumb, .calendar-unit-thumbs-more, .calendar-unit-thumbs');
-    return hit && root.contains(hit) ? hit : null;
+    if (e.target?.closest?.('a, button, input, select, textarea')) return null;
+    const eventRow = e.target?.closest?.('.calendar-month-event');
+    if (eventRow && root.contains(eventRow) && eventRow.dataset.calendarDayGallery) {
+      const editableRow = eventRow.classList.contains('calendar-month-event--editable');
+      if (!editableRow) return eventRow;
+    }
+    const unit = e.target?.closest?.('.calendar-unit, .calendar-week-header');
+    if (!unit || !root.contains(unit) || unit.classList.contains('calendar-unit--pad')) return null;
+    const editable = unit.classList.contains('calendar-unit--editable')
+      || unit.classList.contains('calendar-week-header--editable');
+    if (editable && e.target.closest?.('.calendar-unit-note, .calendar-unit-period-bar-wrap, .calendar-unit-event-point-row, .calendar-month-event')) {
+      return null;
+    }
+    if (unit.dataset.calendarDayGallery) return unit;
+    const thumb = e.target?.closest?.('.calendar-unit-thumb, .calendar-unit-thumbs-more, .calendar-unit-thumbs');
+    return thumb && unit.contains(thumb) ? thumb : null;
+  }
+
+  function calendarGalleryPhotosFromHit(hit) {
+    if (!hit) return [];
+    const own = decodeCalendarGallery(hit.dataset?.calendarDayGallery || '');
+    if (own.length) return own;
+    const unit = hit.closest?.('.calendar-unit, .calendar-week-header, .calendar-month-event');
+    if (unit && unit !== hit) {
+      const nested = decodeCalendarGallery(unit.dataset.calendarDayGallery || '');
+      if (nested.length) return nested;
+    }
+    const thumbsRoot = hit.closest?.('.calendar-unit, .calendar-week-header') || hit;
+    return [...thumbsRoot.querySelectorAll?.('.calendar-unit-thumb') || []]
+      .map((img) => ({
+        src: img.dataset.gallerySrc || '',
+        label: '',
+        kind: 'image',
+      }))
+      .filter((photo) => photo.src);
   }
 
   function openCalendarImageGallery(hit) {
     if (!hit) return false;
     if (Date.now() - calendarGalleryOpenedAt < 500) return true;
-    const block = hit.closest?.('.calendar-block');
-    if (!block) return false;
-    let photos = decodeCalendarGallery(block.dataset.calendarGallery);
-    if (!photos.length) {
-      const calendarIndex = parseInt(block.dataset.calendarIndex, 10);
-      const spec = easyMDE && Number.isFinite(calendarIndex)
-        ? getCalendarBlockSpec(easyMDE.value(), calendarIndex)
-        : null;
-      photos = spec ? calendarGalleryPhotosFromEntries(spec.entries) : [];
-    }
+    const photos = calendarGalleryPhotosFromHit(hit);
     if (!photos.length || typeof window.NotesProGallery?.openLightbox !== 'function') return false;
     const thumb = hit.matches?.('.calendar-unit-thumb')
       ? hit
@@ -7623,6 +7677,179 @@
     window.NotesProSokoban?.hydrate?.(root);
   }
 
+  const SPEISEKARTE_BLOCK_RE = /```(?:speisekarte|speise|menukarte|menucard|menu)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function parseSpeisekarteBlocks(text) {
+    let speisekarteIndex = 0;
+    SPEISEKARTE_BLOCK_RE.lastIndex = 0;
+    return text.replace(SPEISEKARTE_BLOCK_RE, (_, fenceAttrs, content) => {
+      const engine = window.NotesProSpeisekarte;
+      const idx = speisekarteIndex++;
+      const html = engine?.renderBlock
+        ? engine.renderBlock(content || '', fenceAttrs || '', { speisekarteIndex: idx })
+        : '<div class="speisekarte-block speisekarte-block--error">Speisekarte engine not loaded.</div>';
+      return wrapRichPreviewBlock(html);
+    });
+  }
+
+  function formatSpeisekarteOrderMessage(spec, item, table) {
+    const engine = window.NotesProSpeisekarte;
+    if (engine?.formatOrderText) {
+      return engine.formatOrderText(spec, item, {
+        pageTitle: currentPage?.title || 'page',
+        table: table || spec?.table || '',
+      });
+    }
+    const pageTitle = currentPage?.title || 'page';
+    const extra = item.note ? ` (${item.note})` : '';
+    const price = item.price ? ` — ${item.price}` : '';
+    const tableLine = table ? `\nTisch: ${table}` : '';
+    return `Order from ${spec?.title || 'Speisekarte'} (${pageTitle}): ${item.name}${extra}${price}${tableLine}`;
+  }
+
+  function formatSpeisekarteBillMessage(spec, bill) {
+    const engine = window.NotesProSpeisekarte;
+    if (engine?.formatBillText) {
+      return engine.formatBillText(spec, bill, { pageTitle: currentPage?.title || 'page' });
+    }
+    const table = bill?.table || spec?.table || '—';
+    return `Rechnung Tisch ${table} — ${spec?.title || 'Speisekarte'}`;
+  }
+
+  function resolveSpeisekarteRecipients(members, spec) {
+    const tokens = (spec?.to || []).map((part) => String(part).trim()).filter(Boolean);
+    const byName = new Map((members || []).map((m) => [String(m.username || '').toLowerCase(), m]));
+    const byId = new Map((members || []).map((m) => [String(m.id), m]));
+    const found = [];
+    const seen = new Set();
+    tokens.forEach((token) => {
+      const member = byId.get(token) || byName.get(token.toLowerCase());
+      if (member && !seen.has(member.id)) {
+        seen.add(member.id);
+        found.push(member);
+      }
+    });
+    if (found.length) return found;
+    const owner = (members || []).find((m) => m.is_owner);
+    return owner ? [owner] : [];
+  }
+
+  async function dispatchSpeisekarteMessage({ spec, subject, body, toastOk } = {}) {
+    syncWorkspaceIdFromDom();
+    if (!workspaceId) {
+      throw new Error('No workspace selected.');
+    }
+    const data = await api(`api/workspaces/${workspaceId}/members/`);
+    const recipients = resolveSpeisekarteRecipients(data.members || [], spec);
+    if (!recipients.length) {
+      throw new Error('No recipient found. Set to=username in the Speisekarte fence.');
+    }
+    const names = recipients.map((r) => r.username).join(', ');
+    let via = spec?.via || 'mail';
+    const dmPeers = recipients.filter((r) => Number(r.id) !== Number(currentUserId));
+    if (via === 'dm' && !dmPeers.length) via = 'mail';
+
+    if (via === 'chat') {
+      await sendChatMessage(body);
+    } else if (via === 'dm') {
+      await openPrivateChatPanel();
+      await ensureDmKeyPair();
+      for (const rec of dmPeers) {
+        await startDmWithUser(rec.id);
+        await sendDmMessage(body);
+      }
+    } else {
+      await api(`api/workspaces/${workspaceId}/mail/send/`, 'POST', {
+        subject,
+        body,
+        recipient_ids: recipients.map((r) => r.id),
+      });
+    }
+    if (toastOk) showToast(typeof toastOk === 'function' ? toastOk({ names, via, dmPeers }) : toastOk, 'success');
+    return { names, via, dmPeers };
+  }
+
+  async function sendSpeisekarteOrder({ spec, item, btn, table } = {}) {
+    const tisch = String(table || spec?.table || '').trim();
+    if (!tisch) {
+      showToast('Enter Tisch Nr. first.', 'warning');
+      return false;
+    }
+    if (!item?.name) return false;
+    if (btn) {
+      btn.disabled = true;
+      btn.classList.add('is-sending');
+    }
+    try {
+      const body = formatSpeisekarteOrderMessage(spec, item, tisch);
+      await dispatchSpeisekarteMessage({
+        spec,
+        subject: `Order: ${item.name} · Tisch ${tisch}`,
+        body,
+        toastOk: ({ names, via, dmPeers }) => {
+          if (via === 'chat') return `Ordered “${item.name}” for Tisch ${tisch} in group chat.`;
+          if (via === 'dm') return `Ordered “${item.name}” for Tisch ${tisch} to ${dmPeers.map((r) => r.username).join(', ')}.`;
+          return `Ordered “${item.name}” for Tisch ${tisch} to ${names}.`;
+        },
+      });
+      btn?.classList.add('is-sent');
+      setTimeout(() => btn?.classList.remove('is-sent'), 1800);
+      return true;
+    } catch (err) {
+      showToast(err.message || 'Could not send order.', 'danger');
+      return false;
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.classList.remove('is-sending');
+      }
+    }
+  }
+
+  async function sendSpeisekarteBill({ spec, bill, btn, table, el } = {}) {
+    const tisch = String(table || bill?.table || spec?.table || '').trim();
+    if (!tisch) {
+      showToast('Enter Tisch Nr. first.', 'warning');
+      return false;
+    }
+    if (!bill?.lines?.length) {
+      showToast('Rechnung is empty.', 'warning');
+      return false;
+    }
+    if (btn) {
+      btn.disabled = true;
+      btn.classList.add('is-sending');
+    }
+    try {
+      const body = formatSpeisekarteBillMessage(spec, bill);
+      const sum = bill.totalLabel ? ` · ${bill.totalLabel}` : '';
+      await dispatchSpeisekarteMessage({
+        spec,
+        subject: `Rechnung: Tisch ${tisch}${sum}`,
+        body,
+        toastOk: `Sent Rechnung for Tisch ${tisch}.`,
+      });
+      window.NotesProSpeisekarte?.clearBill?.(el, spec);
+      return true;
+    } catch (err) {
+      showToast(err.message || 'Could not send Rechnung.', 'danger');
+      return false;
+    } finally {
+      if (btn) {
+        btn.classList.remove('is-sending');
+        const current = window.NotesProSpeisekarte?.getBill?.(el, spec);
+        btn.disabled = !current?.lines?.length;
+      }
+    }
+  }
+
+  function hydrateSpeisekarteBlocks(root) {
+    window.NotesProSpeisekarte?.hydrate?.(root, {
+      onOrder: (payload) => sendSpeisekarteOrder(payload),
+      onBill: (payload) => sendSpeisekarteBill(payload),
+    });
+  }
+
   const INVADERS_BLOCK_RE = /```(?:invaders|spaceinvaders|space-invaders)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
 
   function parseInvadersBlocks(text) {
@@ -9271,7 +9498,7 @@ function formatTextWithMarkup(rawText) {
     if (!root) return;
     root.querySelectorAll('pre').forEach(pre => {
       if (pre.closest('.md-code-block')) return;
-      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .md-python, .voice-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .tetris-block, .sokoban-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block')) {
+      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .md-python, .voice-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .tetris-block, .sokoban-block, .speisekarte-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block')) {
         return;
       }
       const wrap = document.createElement('div');
@@ -9632,6 +9859,11 @@ function formatTextWithMarkup(rawText) {
       const label = spec.title || 'Kanban';
       return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
     });
+    md = md.replace(/```(?:speisekarte|speise|menukarte|menucard|menu)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const cfg = window.NotesProSpeisekarte?.parseFenceAttrs?.(fenceAttrs) || {};
+      const label = cfg.title || 'Speisekarte';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
     md = md.replace(/```(?:mindmap|mmap|mind)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
       const spec = parseMindmapSpec(fenceAttrs, '');
       const label = spec.title || 'Mindmap';
@@ -9826,6 +10058,7 @@ function formatTextWithMarkup(rawText) {
       md = parseReversiBlocks(md, options);
       md = parseTetrisBlocks(md);
       md = parseSokobanBlocks(md);
+      md = parseSpeisekarteBlocks(md);
       md = parseInvadersBlocks(md);
       md = parseBreakoutBlocks(md);
       md = parseSnakeBlocks(md);
@@ -10231,6 +10464,7 @@ function formatTextWithMarkup(rawText) {
     hydrateReversiBlocks(preview);
     hydrateTetrisBlocks(preview);
     hydrateSokobanBlocks(preview);
+    hydrateSpeisekarteBlocks(preview);
     hydrateInvadersBlocks(preview);
     hydrateBreakoutBlocks(preview);
     hydrateSnakeBlocks(preview);
@@ -12303,79 +12537,178 @@ function formatTextWithMarkup(rawText) {
     return true;
   }
 
-  let galleryPasteHoverBlock = null;
+  const PHOTO_PASTE_BLOCK_SEL = '.gallery-block--editable, .photocube-block.photoview-block--editable, .photobook-block.photoview-block--editable';
+  let photoPasteHoverBlock = null;
+  let photoPastePointer = { x: 0, y: 0 };
 
-  function markGalleryPasteBlock(el) {
-    if (galleryPasteHoverBlock === el) return;
-    clearGalleryPasteBlock();
-    galleryPasteHoverBlock = el || null;
-    galleryPasteHoverBlock?.classList.add('gallery-block--paste-target');
+  function photoPasteKind(el) {
+    if (!el) return null;
+    if (el.classList.contains('gallery-block')) return 'gallery';
+    if (el.classList.contains('photobook-block')) return 'photobook';
+    if (el.classList.contains('photocube-block')) return 'photocube';
+    return null;
   }
 
-  function clearGalleryPasteBlock() {
-    galleryPasteHoverBlock?.classList.remove('gallery-block--paste-target');
-    galleryPasteHoverBlock = null;
+  function photoPasteIndex(el, kind) {
+    if (kind === 'gallery') return parseInt(el.dataset.galleryIndex, 10);
+    if (kind === 'photobook') return parseInt(el.dataset.photobookIndex, 10);
+    if (kind === 'photocube') return parseInt(el.dataset.photocubeIndex, 10);
+    return NaN;
   }
 
-  function galleryPasteTargetBlock() {
+  function markPhotoPasteBlock(el) {
+    if (photoPasteHoverBlock === el) return;
+    clearPhotoPasteBlock();
+    photoPasteHoverBlock = el || null;
+    if (!el) return;
+    el.classList.add(el.classList.contains('gallery-block')
+      ? 'gallery-block--paste-target'
+      : 'photoview-block--paste-target');
+  }
+
+  function clearPhotoPasteBlock() {
+    photoPasteHoverBlock?.classList.remove('gallery-block--paste-target', 'photoview-block--paste-target');
+    photoPasteHoverBlock = null;
+  }
+
+  function pointInRect(x, y, rect) {
+    if (!rect || rect.width <= 1 || rect.height <= 1) return false;
+    return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+  }
+
+  function photoPasteBlockAtPoint(clientX, clientY) {
     const preview = document.getElementById('preview-content');
-    if (galleryPasteHoverBlock && preview?.contains(galleryPasteHoverBlock)) return galleryPasteHoverBlock;
-    const active = document.activeElement?.closest?.('.gallery-block--editable');
+    if (!preview) return null;
+    const stack = typeof document.elementsFromPoint === 'function'
+      ? document.elementsFromPoint(clientX, clientY)
+      : [document.elementFromPoint(clientX, clientY)].filter(Boolean);
+    for (const node of stack) {
+      const block = node?.closest?.(PHOTO_PASTE_BLOCK_SEL);
+      if (block && preview.contains(block)) return block;
+    }
+    // 3D cube faces often drop out of the hit stack; use the block's 2D box.
+    const blocks = preview.querySelectorAll(PHOTO_PASTE_BLOCK_SEL);
+    for (const el of blocks) {
+      if (pointInRect(clientX, clientY, el.getBoundingClientRect())) return el;
+    }
+    return null;
+  }
+
+  function photoPasteTargetBlock() {
+    const preview = document.getElementById('preview-content');
+    const fromPoint = photoPasteBlockAtPoint(photoPastePointer.x, photoPastePointer.y);
+    if (fromPoint) return fromPoint;
+    const armed = preview?.querySelector(`${PHOTO_PASTE_BLOCK_SEL}.photoview-block--paste-armed, ${PHOTO_PASTE_BLOCK_SEL}.gallery-block--paste-armed`);
+    if (armed) return armed;
+    if (photoPasteHoverBlock && preview?.contains(photoPasteHoverBlock)) return photoPasteHoverBlock;
+    const active = document.activeElement?.closest?.(PHOTO_PASTE_BLOCK_SEL);
     if (active && preview?.contains(active)) return active;
     return null;
   }
 
-  async function pasteClipboardOntoGallery(galleryIndex, files, youtubeId) {
-    if (!easyMDE || !Number.isFinite(galleryIndex)) return;
-    if (youtubeId) {
+  async function pasteClipboardOntoPhotoBlock(kind, blockIndex, files, youtubeId) {
+    if (!easyMDE || !Number.isFinite(blockIndex)) return;
+    const labelFromFile = (file) => (file.name ? String(file.name).replace(/\.[^.]+$/, '') : 'Photo');
+    const applyUpdate = (update) => {
       const oldMarkdown = easyMDE.value();
-      const updated = updateGalleryInMarkdown(oldMarkdown, galleryIndex, {
+      const updated = kind === 'gallery'
+        ? updateGalleryInMarkdown(oldMarkdown, blockIndex, update)
+        : updatePhotoFenceInMarkdown(oldMarkdown, kind, blockIndex, update);
+      if (updated === oldMarkdown) return;
+      easyMDE.value(updated);
+      scheduleSave();
+      schedulePreviewRefresh();
+    };
+    if (youtubeId) {
+      applyUpdate({
         addYoutube: `https://www.youtube.com/embed/${youtubeId}`,
         label: 'YouTube',
       });
-      if (updated !== oldMarkdown) {
-        easyMDE.value(updated);
-        scheduleSave();
-        schedulePreviewRefresh();
-      }
     }
     for (const file of files || []) {
       try {
         const mediaPath = await uploadPastedImageBlob(file, file.name || 'paste.png');
         if (!mediaPath) continue;
-        const oldMarkdown = easyMDE.value();
-        const updated = updateGalleryInMarkdown(oldMarkdown, galleryIndex, {
+        applyUpdate({
           addImage: mediaPath,
-          label: file.name ? String(file.name).replace(/\.[^.]+$/, '') : 'Photo',
+          label: labelFromFile(file),
         });
-        if (updated === oldMarkdown) continue;
-        easyMDE.value(updated);
-        scheduleSave();
-        schedulePreviewRefresh();
       } catch (err) {
-        console.warn('gallery image paste failed:', err);
+        console.warn(`${kind} image paste failed:`, err);
         showToast(err.message || 'Image upload failed.', 'danger');
       }
     }
   }
 
-  function tryPasteOntoHoveredGallery(event) {
+  function tryPasteOntoHoveredPhotoBlock(event) {
     if (!isPreviewInteractionEnabled() || !userCanEdit || !easyMDE) return false;
-    const gallery = galleryPasteTargetBlock();
-    if (!gallery) return false;
-    const galleryIndex = parseInt(gallery.dataset.galleryIndex, 10);
-    if (!Number.isFinite(galleryIndex)) return false;
+    const block = photoPasteTargetBlock();
+    const kind = photoPasteKind(block);
+    const blockIndex = photoPasteIndex(block, kind);
+    if (!kind || !Number.isFinite(blockIndex)) return false;
     const data = event.clipboardData || event.originalEvent?.clipboardData;
     const files = clipboardImageFiles(data);
     const html = data?.getData?.('text/html') || '';
     const text = data?.getData?.('text/plain') || html;
     const ytId = window.NotesProGallery?.extractYoutubeId?.(text)
       || window.NotesProGallery?.extractYoutubeId?.(html)
+      || window.NotesProPhotocube?.extractYoutubeId?.(text)
+      || window.NotesProPhotobook?.extractYoutubeId?.(text)
       || '';
     if (!files.length && !ytId) return false;
     event.preventDefault();
     event.stopPropagation();
-    void pasteClipboardOntoGallery(galleryIndex, files, ytId);
+    block.classList.remove('photoview-block--paste-armed', 'gallery-block--paste-armed');
+    void pasteClipboardOntoPhotoBlock(kind, blockIndex, files, ytId);
+    return true;
+  }
+
+  function photoFenceAtEditorCursor() {
+    const cm = easyMDE?.codemirror;
+    if (!cm || typeof cm.getCursor !== 'function') return null;
+    let pos = 0;
+    try {
+      pos = cm.indexFromPos(cm.getCursor());
+    } catch (_) {
+      return null;
+    }
+    const text = String(cm.getValue() || '');
+    const kinds = [
+      { kind: 'gallery', re: /```gallery(?:\{[^}]*\})?[ \t]*(?:\r?\n[\s\S]*?)?```/gi },
+      { kind: 'photocube', re: /```(?:photocube|photo-cube)(?:\{[^}]*\})?[ \t]*(?:\r?\n[\s\S]*?)?```/gi },
+      { kind: 'photobook', re: /```(?:photobook|photo-book|flipbook)(?:\{[^}]*\})?[ \t]*(?:\r?\n[\s\S]*?)?```/gi },
+    ];
+    for (const { kind, re } of kinds) {
+      re.lastIndex = 0;
+      let match;
+      let idx = 0;
+      while ((match = re.exec(text)) !== null) {
+        if (pos >= match.index && pos <= match.index + match[0].length) {
+          return { kind, blockIndex: idx };
+        }
+        idx += 1;
+      }
+    }
+    return null;
+  }
+
+  function tryPasteIntoEditorPhotoFence(event) {
+    if (!isEditing || !userCanEdit || !easyMDE) return false;
+    const fence = photoFenceAtEditorCursor();
+    if (!fence) return false;
+    const data = event.clipboardData || event.originalEvent?.clipboardData;
+    const files = clipboardImageFiles(data);
+    const html = data?.getData?.('text/html') || '';
+    const text = data?.getData?.('text/plain') || html;
+    const ytId = window.NotesProGallery?.extractYoutubeId?.(text)
+      || window.NotesProGallery?.extractYoutubeId?.(html)
+      || window.NotesProPhotocube?.extractYoutubeId?.(text)
+      || window.NotesProPhotobook?.extractYoutubeId?.(text)
+      || '';
+    if (!files.length && !ytId) return false;
+    event.preventDefault();
+    event.stopPropagation();
+    void pasteClipboardOntoPhotoBlock(fence.kind, fence.blockIndex, files, ytId);
     return true;
   }
 
@@ -12788,6 +13121,20 @@ function formatTextWithMarkup(rawText) {
       openCalendarNoteModal(unit, noteKey);
     });
 
+    preview.addEventListener('dblclick', (e) => {
+      if (!isPreviewInteractionEnabled()) return;
+      const unit = e.target.closest?.('.calendar-unit--editable, .calendar-week-header--editable');
+      if (!unit || !preview.contains(unit)) return;
+      if (e.target.closest('a, button, input, textarea')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      hideCalendarHoverTooltip();
+      window.NotesProGallery?.closeLightbox?.();
+      calendarGalleryOpenedAt = 0;
+      const note = e.target.closest?.('.calendar-unit-note, .calendar-unit-period-bar-wrap, .calendar-unit-event-point-row, .calendar-month-event');
+      openCalendarNoteModal(unit, note?.dataset?.calendarKey || unit.dataset.calendarKey || null);
+    });
+
     preview.addEventListener('pointerover', e => {
       const hit = e.target.closest?.('[data-calendar-tooltip]');
       if (!hit || !preview.contains(hit)) return;
@@ -12874,25 +13221,39 @@ function formatTextWithMarkup(rawText) {
       await addPastedImagesToCalendarNote(files);
     }, true);
 
-    preview.addEventListener('pointermove', (e) => {
+    preview.addEventListener('pointerdown', (e) => {
       if (!isPreviewInteractionEnabled()) return;
+      photoPastePointer = { x: e.clientX, y: e.clientY };
       const unit = e.target.closest?.(CALENDAR_PASTE_UNIT_SEL);
       if (unit && preview.contains(unit)) {
         markCalendarPasteUnit(unit);
-        clearGalleryPasteBlock();
+        clearPhotoPasteBlock();
         return;
       }
       markCalendarPasteUnit(null);
-      const gallery = e.target.closest?.('.gallery-block--editable');
-      markGalleryPasteBlock(gallery && preview.contains(gallery) ? gallery : null);
+      markPhotoPasteBlock(photoPasteBlockAtPoint(e.clientX, e.clientY));
+    });
+    preview.addEventListener('pointermove', (e) => {
+      if (!isPreviewInteractionEnabled()) return;
+      photoPastePointer = { x: e.clientX, y: e.clientY };
+      const unit = e.target.closest?.(CALENDAR_PASTE_UNIT_SEL);
+      if (unit && preview.contains(unit)) {
+        markCalendarPasteUnit(unit);
+        clearPhotoPasteBlock();
+        return;
+      }
+      markCalendarPasteUnit(null);
+      markPhotoPasteBlock(photoPasteBlockAtPoint(e.clientX, e.clientY));
     });
     preview.addEventListener('pointerleave', () => {
       clearCalendarPasteUnit();
-      clearGalleryPasteBlock();
+      clearPhotoPasteBlock();
+      photoPastePointer = { x: Number.NaN, y: Number.NaN };
     });
     preview.addEventListener('paste', (e) => {
       if (tryPasteImagesOntoHoveredCalendarDay(e)) return;
-      tryPasteOntoHoveredGallery(e);
+      if (tryPasteOntoHoveredPhotoBlock(e)) return;
+      tryPasteIntoEditorPhotoFence(e);
     }, true);
     preview.addEventListener('dragover', (e) => {
       if (!isPreviewInteractionEnabled()) return;
@@ -14633,6 +14994,26 @@ function formatTextWithMarkup(rawText) {
           },
           className: 'fa fa-th-large',
           title: 'Insert kanban',
+        },
+        {
+          name: 'insert-speisekarte',
+          action: (editor) => {
+            const body = [
+              '# Vorspeisen',
+              'Tagessuppe | 6.50',
+              'Gemischter Salat | 7.90',
+              '',
+              '# Hauptgerichte',
+              'Wiener Schnitzel | 18.50 | mit Pommes',
+              'Spaghetti Aglio e Olio | 14.00',
+              '',
+              '# Nachspeisen',
+              'Tiramisu | 6.50',
+            ].join('\n');
+            insertFenceBlock(editor, `speisekarte{to=${currentUserName || 'demo'};title=Mittagskarte;col=warning}`, body);
+          },
+          className: 'fa fa-cutlery',
+          title: 'Insert Speisekarte (menu + Rechnung)',
         },
         {
           name: 'insert-kanbangantt',
@@ -17347,9 +17728,10 @@ function formatTextWithMarkup(rawText) {
 
   document.addEventListener('paste', function (event) {
     if (tryPasteImagesOntoHoveredCalendarDay(event)) return;
-    if (tryPasteOntoHoveredGallery(event)) return;
+    if (tryPasteOntoHoveredPhotoBlock(event)) return;
+    if (tryPasteIntoEditorPhotoFence(event)) return;
     const pasteFiles = clipboardImageFiles(event.clipboardData || event.originalEvent?.clipboardData);
-    if (event.target.closest?.('.puzzle-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .tetris-block, .sokoban-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .voice-block, .calendar-block, #calendar-note-modal')) return;
+    if (event.target.closest?.('.puzzle-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .tetris-block, .sokoban-block, .speisekarte-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .voice-block, .calendar-block, #calendar-note-modal')) return;
     const items = (event.clipboardData || event.originalEvent.clipboardData).items;
     for (let index in items) {
       const item = items[index];

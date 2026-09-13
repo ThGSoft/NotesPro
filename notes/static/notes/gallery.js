@@ -1791,6 +1791,22 @@
       e.stopPropagation();
       void handlePasteFiles(files);
     });
+
+    el.addEventListener('click', (e) => {
+      const pickHit = e.target.closest('[data-action="add-photo"], .gallery-paste-zone');
+      if (!pickHit) return;
+      const mobile = document.body.classList.contains('mobile-layout')
+        || (typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 768px)').matches);
+      const openPicker = mobile || pickHit.matches('[data-action="add-photo"]');
+      try { el.focus({ preventScroll: true }); } catch (_) { /* ignore */ }
+      if (!openPicker) return;
+      const pick = window.NotesProPhotocube?.pickImageFiles;
+      if (typeof pick !== 'function') return;
+      e.preventDefault();
+      void pick().then((files) => {
+        if (files.length) return handlePasteFiles(files);
+      });
+    });
   }
 
   function hydrate(root) {

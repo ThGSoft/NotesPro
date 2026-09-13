@@ -16,9 +16,12 @@
     KeyW: [0, -1], KeyS: [0, 1], KeyA: [-1, 0], KeyD: [1, 0],
   };
 
+  const GENERIC_TIP = 'Push crates onto gold dots. You can only push, never pull. Avoid parking a crate in a corner unless that corner is a target.';
+
   const BUILTIN = [
     {
       name: 'Crate in the corner',
+      tip: 'Walk left, then up beside the crate, then push it right onto the gold.',
       map: [
         '#####',
         '#   #',
@@ -29,6 +32,7 @@
     },
     {
       name: 'Two crates',
+      tip: 'Park one crate on a target first so the second still has a path.',
       map: [
         '######',
         '#    #',
@@ -40,6 +44,7 @@
     },
     {
       name: 'Hall push',
+      tip: 'Use the open hall. Push each crate to the nearest gold without blocking the aisle.',
       map: [
         '#######',
         '#     #',
@@ -50,6 +55,7 @@
     },
     {
       name: 'Mini warehouse',
+      tip: 'Move the lower crate aside first so you can get behind the upper one.',
       map: [
         '  ####',
         '  #  #',
@@ -61,6 +67,7 @@
     },
     {
       name: 'U-turn',
+      tip: 'Park a crate in the corridor, then loop around the wall to push the other.',
       map: [
         '########',
         '#      #',
@@ -73,6 +80,7 @@
     },
     {
       name: 'Four rooms',
+      tip: 'Do not shove a crate into a dead-end. Use a doorway as a staging square.',
       map: [
         '#########',
         '#  #    #',
@@ -86,6 +94,7 @@
     },
     {
       name: 'Narrow dock',
+      tip: 'Keep the corridor clear. Place one crate, then reverse out for the next.',
       map: [
         '  #####',
         '###   #',
@@ -98,6 +107,7 @@
     },
     {
       name: 'Yard loop',
+      tip: 'Cycle crates around the yard. Never park one in a corner that is not a target.',
       map: [
         '##########',
         '#   ..   #',
@@ -179,10 +189,14 @@
       const map = rawLines.filter((l) => /[#$@*+]/.test(l) && !/^#\s+[A-Za-z]/.test(l));
       if (!map.length) return;
       const titleLine = rawLines.find((l) => (
-        /^#\s+[A-Za-z]/.test(l) || (/^[A-Za-z]/.test(l.trim()) && !/[#$@*+]/.test(l))
+        /^#\s+[A-Za-z]/.test(l) || (/^[A-Za-z]/.test(l.trim()) && !/[#$@*+]/.test(l) && !/^tip\s*:/i.test(l))
       ));
+      const tipLine = rawLines.find((l) => /^tip\s*:/i.test(l) || /^>\s+\S/.test(l));
       levels.push({
         name: titleLine ? titleLine.replace(/^#\s*/, '').trim() : `Custom ${i + 1}`,
+        tip: tipLine
+          ? tipLine.replace(/^tip\s*:/i, '').replace(/^>\s+/, '').trim()
+          : GENERIC_TIP,
         map,
       });
     });
@@ -209,6 +223,7 @@
     });
     return {
       name: level.name || 'Sokoban',
+      tip: level.tip || GENERIC_TIP,
       walls,
       goals,
       boxes,
@@ -293,7 +308,6 @@
       `<div class="sokoban-block-title">${escapeHtml(title)}</div>`,
       `<div class="sokoban-block-meta">push crates onto the dots</div>`,
       `</div>`,
-      `<p class="sokoban-block-hint">←↑↓→ / WASD move · U undo · R reset · [ ] level</p>`,
     ].join('');
     return [
       `<div class="sokoban-block${themeClass}${customClass}${fullClass}"${styleAttr}`,
@@ -303,18 +317,30 @@
       chrome,
       `<div class="sokoban-stage">`,
       `<canvas class="sokoban-canvas" width="640" height="480" aria-label="${escapeHtml(title)}"></canvas>`,
-      `</div>`,
-      `<div class="sokoban-toolbar">`,
-      `<button type="button" class="btn btn-sm btn-outline-light" data-act="undo">Undo</button>`,
-      `<button type="button" class="btn btn-sm btn-outline-light" data-act="reset">Reset</button>`,
-      `<button type="button" class="btn btn-sm btn-outline-light" data-act="prev">Prev</button>`,
-      `<button type="button" class="btn btn-sm btn-outline-light" data-act="next">Next</button>`,
-      `</div>`,
       `<div class="sokoban-pad" aria-label="Sokoban controls">`,
       `<button type="button" class="sokoban-pad__btn sokoban-pad__btn--up" data-dir="KeyW" tabindex="-1">▲</button>`,
       `<button type="button" class="sokoban-pad__btn sokoban-pad__btn--left" data-dir="KeyA" tabindex="-1">◀</button>`,
       `<button type="button" class="sokoban-pad__btn sokoban-pad__btn--down" data-dir="KeyS" tabindex="-1">▼</button>`,
       `<button type="button" class="sokoban-pad__btn sokoban-pad__btn--right" data-dir="KeyD" tabindex="-1">▶</button>`,
+      `</div>`,
+      `<p class="sokoban-tips-bar" aria-live="polite"></p>`,
+      `<div class="sokoban-tips is-open">`,
+      `<div class="sokoban-tips__head">`,
+      `<strong>Tips</strong>`,
+      `<button type="button" class="sokoban-tips__close" data-act="tips-close" aria-label="Close tips">×</button>`,
+      `</div>`,
+      `<p class="sokoban-tips__level"></p>`,
+      `<p class="sokoban-tips__how">Push crates onto gold dots. You can only push, never pull.</p>`,
+      `<p class="sokoban-tips__controls sokoban-tips__controls--desktop">Arrows or WASD move · U / Z undo · R reset · [ ] level · H toggles tips</p>`,
+      `<p class="sokoban-tips__controls sokoban-tips__controls--mobile">Use the pad · Undo if stuck · Tips button to show this again</p>`,
+      `</div>`,
+      `</div>`,
+      `<div class="sokoban-toolbar">`,
+      `<button type="button" class="btn btn-sm btn-outline-light" data-act="tips" aria-expanded="true">Tips</button>`,
+      `<button type="button" class="btn btn-sm btn-outline-light" data-act="undo">Undo</button>`,
+      `<button type="button" class="btn btn-sm btn-outline-light" data-act="reset">Reset</button>`,
+      `<button type="button" class="btn btn-sm btn-outline-light" data-act="prev">Prev</button>`,
+      `<button type="button" class="btn btn-sm btn-outline-light" data-act="next">Next</button>`,
       `</div>`,
       `<div class="sokoban-status" aria-live="polite">Click to play</div>`,
       `</div>`,
@@ -325,6 +351,10 @@
     const canvas = el.querySelector('.sokoban-canvas');
     const status = el.querySelector('.sokoban-status');
     const pad = el.querySelector('.sokoban-pad');
+    const tipsEl = el.querySelector('.sokoban-tips');
+    const tipsBar = el.querySelector('.sokoban-tips-bar');
+    const tipsLevel = el.querySelector('.sokoban-tips__level');
+    const tipsBtn = el.querySelector('[data-act="tips"]');
     if (!canvas) return null;
     const ctx = canvas.getContext('2d');
     const levels = parseMaps(source);
@@ -342,10 +372,34 @@
       totalScore: 0,
       raf: 0,
       running: true,
+      armed: false,
     };
 
     function setStatus(text) {
       if (status) status.textContent = text;
+    }
+
+    function currentTip() {
+      return String(levels[state.levelIndex]?.tip || GENERIC_TIP);
+    }
+
+    function tipsOpen() {
+      return Boolean(tipsEl?.classList.contains('is-open'));
+    }
+
+    function setTipsOpen(open) {
+      tipsEl?.classList.toggle('is-open', open);
+      if (tipsBtn) tipsBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      if (tipsBar) tipsBar.hidden = open;
+    }
+
+    function renderTips() {
+      const tip = currentTip();
+      if (tipsLevel) {
+        const name = levels[state.levelIndex]?.name || 'Sokoban';
+        tipsLevel.innerHTML = `<strong>${escapeHtml(name)}</strong> — ${escapeHtml(tip)}`;
+      }
+      if (tipsBar) tipsBar.textContent = tip;
     }
 
     function nowMs() {
@@ -372,6 +426,7 @@
       state.reported = false;
       state.history = [];
       paint();
+      renderTips();
       setStatus(`${packed.name} · ${i + 1}/${levels.length}`);
     }
 
@@ -396,6 +451,7 @@
       if (state.history.length > 400) state.history.shift();
       state.player = { x: nx, y: ny };
       state.moves += 1;
+      if (state.moves === 1) setTipsOpen(false);
       if (won(state)) {
         state.won = true;
         state.elapsed = nowMs();
@@ -494,14 +550,6 @@
         10,
         8,
       );
-      if (!state.startedAt && !state.won) {
-        ctx.fillStyle = 'rgba(15,23,42,0.55)';
-        ctx.fillRect(0, canvas.height / 2 - 22, canvas.width, 44);
-        ctx.fillStyle = '#fde68a';
-        ctx.textAlign = 'center';
-        ctx.font = '600 16px system-ui,sans-serif';
-        ctx.fillText('Click · push every crate onto a gold dot', canvas.width / 2, canvas.height / 2 - 6);
-      }
       if (state.won) {
         ctx.fillStyle = 'rgba(6,78,59,0.55)';
         ctx.fillRect(0, canvas.height / 2 - 28, canvas.width, 56);
@@ -512,28 +560,49 @@
       }
     }
 
+    function isTypingTarget(target) {
+      if (!target) return false;
+      if (target.isContentEditable) return true;
+      const tag = String(target.tagName || '');
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+      return Boolean(target.closest?.('input, textarea, select, [contenteditable], .CodeMirror'));
+    }
+
+    function arm() {
+      state.armed = true;
+      try { el.focus({ preventScroll: true }); } catch (_) { /* ignore */ }
+    }
+
     function onKeyDown(e) {
-      if (!el.contains(document.activeElement) && document.activeElement !== el) return;
-      const tag = e.target?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || e.target?.isContentEditable) return;
-      const dir = DIRS[e.code];
+      if (isTypingTarget(e.target)) return;
+      if (!state.armed && !el.contains(document.activeElement) && document.activeElement !== el) return;
+      const dir = DIRS[e.code] || DIRS[e.key];
       if (dir) {
         e.preventDefault();
+        arm();
         tryMove(dir[0], dir[1]);
         return;
       }
-      if (e.code === 'KeyU' || e.code === 'KeyZ') {
+      if (e.code === 'KeyU' || e.code === 'KeyZ' || e.key === 'u' || e.key === 'z') {
         e.preventDefault();
+        arm();
         undo();
-      } else if (e.code === 'KeyR') {
+      } else if (e.code === 'KeyR' || e.key === 'r' || e.key === 'R') {
         e.preventDefault();
+        arm();
         loadLevel(state.levelIndex);
-      } else if (e.code === 'BracketLeft' || e.code === 'Comma') {
+      } else if (e.code === 'BracketLeft' || e.code === 'Comma' || e.key === '[' || e.key === ',') {
         e.preventDefault();
+        arm();
         loadLevel(state.levelIndex - 1);
-      } else if (e.code === 'BracketRight' || e.code === 'Period') {
+      } else if (e.code === 'BracketRight' || e.code === 'Period' || e.key === ']' || e.key === '.') {
         e.preventDefault();
+        arm();
         loadLevel(state.levelIndex + 1);
+      } else if (e.code === 'KeyH' || e.key === 'h' || e.key === 'H') {
+        e.preventDefault();
+        arm();
+        setTipsOpen(!tipsOpen());
       }
     }
 
@@ -544,25 +613,82 @@
       pad.classList.toggle('is-visible', mobile);
     }
 
+    function fitCanvas() {
+      const stage = el.querySelector('.sokoban-stage');
+      const w = Math.max(220, Math.floor(stage?.clientWidth || 0) || 640);
+      const h = Math.max(180, Math.floor(stage?.clientHeight || 0) || 480);
+      if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w;
+        canvas.height = h;
+      }
+      paint();
+    }
+
+    function applyDir(code) {
+      const dir = DIRS[code];
+      if (!dir) return;
+      arm();
+      tryMove(dir[0], dir[1]);
+    }
+
     function onClick(e) {
+      if (e.target.closest('.sokoban-pad')) return;
       const act = e.target.closest('[data-act]')?.dataset.act;
-      const dir = e.target.closest('[data-dir]')?.dataset.dir;
-      if (dir && DIRS[dir]) {
-        tryMove(DIRS[dir][0], DIRS[dir][1]);
+      if (act === 'tips') {
+        setTipsOpen(!tipsOpen());
+        arm();
+        return;
+      }
+      if (act === 'tips-close') {
+        setTipsOpen(false);
+        arm();
         return;
       }
       if (act === 'undo') undo();
       else if (act === 'reset') loadLevel(state.levelIndex);
       else if (act === 'prev') loadLevel(state.levelIndex - 1);
       else if (act === 'next') loadLevel(state.levelIndex + 1);
-      el.focus({ preventScroll: true });
+      arm();
+    }
+
+    function onPadPointer(e) {
+      const btn = e.target.closest('[data-dir]');
+      if (!btn || !pad.contains(btn)) return;
+      e.preventDefault();
+      applyDir(btn.dataset.dir);
+    }
+
+    function onCanvasPointer(e) {
+      if (e.target.closest?.('.sokoban-pad, .sokoban-toolbar, .game-fullscreen-btn, .sokoban-tips')) return;
+      setTipsOpen(false);
+      arm();
+    }
+
+    function onDocPointer(e) {
+      if (!el.contains(e.target)) state.armed = false;
     }
 
     el.addEventListener('click', onClick);
-    el.addEventListener('keydown', onKeyDown);
-    window.addEventListener('resize', syncPad);
+    pad?.addEventListener('pointerdown', onPadPointer);
+    pad?.addEventListener('contextmenu', (e) => e.preventDefault());
+    canvas.addEventListener('pointerdown', onCanvasPointer);
+    window.addEventListener('keydown', onKeyDown);
+    document.addEventListener('pointerdown', onDocPointer, true);
+    const onResize = () => {
+      syncPad();
+      fitCanvas();
+    };
+    window.addEventListener('resize', onResize);
+    const io = typeof IntersectionObserver === 'function'
+      ? new IntersectionObserver((entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) fitCanvas();
+      }, { threshold: 0.05 })
+      : null;
+    io?.observe(el);
     syncPad();
     loadLevel(startLevel);
+    setTipsOpen(true);
+    fitCanvas();
 
     function tick() {
       if (!state.running) return;
@@ -576,8 +702,12 @@
         state.running = false;
         cancelAnimationFrame(state.raf);
         el.removeEventListener('click', onClick);
-        el.removeEventListener('keydown', onKeyDown);
-        window.removeEventListener('resize', syncPad);
+        pad?.removeEventListener('pointerdown', onPadPointer);
+        canvas.removeEventListener('pointerdown', onCanvasPointer);
+        window.removeEventListener('keydown', onKeyDown);
+        document.removeEventListener('pointerdown', onDocPointer, true);
+        window.removeEventListener('resize', onResize);
+        io?.disconnect();
       },
     };
   }

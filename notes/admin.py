@@ -62,9 +62,25 @@ class GroupAdminForm(forms.ModelForm):
             self.fields['workspaces'].initial = self.instance.workspaces.all()
 
     def save(self, commit=True):
-        group = super().save(commit=commit)
+        # Admin calls save(commit=False) then form.save_m2m(); extra M2M must
+        # be applied in that hook or workspaces never persist.
+        group = super().save(commit=False)
+
+        def save_workspaces():
+            group.workspaces.set(self.cleaned_data.get('workspaces') or [])
+
         if commit:
-            group.workspaces.set(self.cleaned_data.get('workspaces', []))
+            group.save()
+            self._save_m2m()
+            save_workspaces()
+        else:
+            old_save_m2m = self.save_m2m
+
+            def save_m2m():
+                old_save_m2m()
+                save_workspaces()
+
+            self.save_m2m = save_m2m
         return group
 
 

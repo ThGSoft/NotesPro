@@ -3416,6 +3416,17 @@ body.mobile-layout .sheet-structure-menu-btn {
   outline-offset: 1px;
 }
 
+.calendar-unit[data-calendar-day-gallery],
+.calendar-week-header[data-calendar-day-gallery],
+.calendar-month-event[data-calendar-day-gallery] {
+  cursor: pointer;
+}
+
+.calendar-unit[data-calendar-day-gallery]:hover,
+.calendar-week-header[data-calendar-day-gallery]:hover {
+  filter: brightness(0.97);
+}
+
 .calendar-unit-thumbs-more {
   display: inline-flex;
   align-items: center;
@@ -4627,6 +4638,351 @@ body.mobile-layout .sheet-structure-menu-btn {
   border-color: #fecaca;
   background: #fef2f2;
   color: #b91c1c;
+}
+
+/* --- Speisekarte (menu card) --- */
+.speisekarte-block {
+  --speisekarte-bg: #fffaf3;
+  --speisekarte-border: #e7d3b0;
+  --speisekarte-title: #5c3d1e;
+  --speisekarte-meta: #a07848;
+  --speisekarte-accent: #b45309;
+  --speisekarte-item: #3f2a14;
+  --speisekarte-note: #8b6914;
+  --speisekarte-price: #9a3412;
+  --speisekarte-hover: #fff7ed;
+  border: 1px solid var(--speisekarte-border);
+  border-left: 4px solid var(--speisekarte-accent);
+  background: var(--speisekarte-bg);
+  border-radius: 14px;
+  padding: 16px 18px 18px;
+  margin: 16px 0;
+  color: var(--speisekarte-title);
+  max-width: 42rem;
+}
+
+.speisekarte-block--info {
+  --speisekarte-bg: #eff6ff;
+  --speisekarte-border: #bfdbfe;
+  --speisekarte-title: #1d4ed8;
+  --speisekarte-meta: #3b82f6;
+  --speisekarte-accent: #2563eb;
+  --speisekarte-item: #1e3a8a;
+  --speisekarte-note: #3b82f6;
+  --speisekarte-price: #1d4ed8;
+  --speisekarte-hover: #dbeafe;
+}
+
+.speisekarte-block--success {
+  --speisekarte-bg: #f0fdf4;
+  --speisekarte-border: #bbf7d0;
+  --speisekarte-title: #15803d;
+  --speisekarte-meta: #16a34a;
+  --speisekarte-accent: #16a34a;
+  --speisekarte-item: #14532d;
+  --speisekarte-note: #15803d;
+  --speisekarte-price: #166534;
+  --speisekarte-hover: #dcfce7;
+}
+
+.speisekarte-block--warning {
+  --speisekarte-bg: #fffbeb;
+  --speisekarte-border: #fde68a;
+  --speisekarte-title: #b45309;
+  --speisekarte-meta: #d97706;
+  --speisekarte-accent: #d97706;
+  --speisekarte-item: #78350f;
+  --speisekarte-note: #b45309;
+  --speisekarte-price: #9a3412;
+  --speisekarte-hover: #fef3c7;
+}
+
+.speisekarte-block--danger {
+  --speisekarte-bg: #fef2f2;
+  --speisekarte-border: #fecaca;
+  --speisekarte-title: #b91c1c;
+  --speisekarte-meta: #dc2626;
+  --speisekarte-accent: #dc2626;
+  --speisekarte-item: #7f1d1d;
+  --speisekarte-note: #b91c1c;
+  --speisekarte-price: #991b1b;
+  --speisekarte-hover: #fee2e2;
+}
+
+.speisekarte-block--note {
+  --speisekarte-bg: #f8fafc;
+  --speisekarte-border: #e2e8f0;
+  --speisekarte-title: #475569;
+  --speisekarte-meta: #64748b;
+  --speisekarte-accent: #64748b;
+  --speisekarte-item: #0f172a;
+  --speisekarte-note: #64748b;
+  --speisekarte-price: #334155;
+  --speisekarte-hover: #e2e8f0;
+}
+
+.speisekarte-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.speisekarte-title {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--speisekarte-title);
+}
+
+.speisekarte-meta {
+  font-size: 12px;
+  color: var(--speisekarte-meta);
+}
+
+.speisekarte-section + .speisekarte-section {
+  margin-top: 16px;
+}
+
+.speisekarte-section-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--speisekarte-accent);
+  margin: 0 0 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px dashed color-mix(in srgb, var(--speisekarte-accent) 45%, transparent);
+}
+
+.speisekarte-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  margin: 0;
+  padding: 8px 6px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--speisekarte-item);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.speisekarte-item:hover,
+.speisekarte-item:focus-visible {
+  background: var(--speisekarte-hover);
+  outline: none;
+}
+
+.speisekarte-item:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.speisekarte-item-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.speisekarte-item-name {
+  font-weight: 650;
+}
+
+.speisekarte-item-note {
+  font-size: 12px;
+  color: var(--speisekarte-note);
+}
+
+.speisekarte-item-dots {
+  flex: 1 1 auto;
+  min-width: 12px;
+  border-bottom: 1px dotted color-mix(in srgb, var(--speisekarte-meta) 70%, transparent);
+  transform: translateY(-4px);
+}
+
+.speisekarte-item-price {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: var(--speisekarte-price);
+}
+
+.speisekarte-block--custom {
+  background: var(--speisekarte-bg);
+}
+
+.speisekarte-empty {
+  margin: 0;
+  font-size: 13px;
+  color: var(--speisekarte-meta);
+}
+
+.speisekarte-item.is-sent .speisekarte-item-name::after {
+  content: ' ✓';
+  color: var(--speisekarte-accent);
+  font-weight: 700;
+}
+
+.speisekarte-table {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 14px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--speisekarte-meta);
+}
+
+.speisekarte-table-input {
+  width: 5.2rem;
+  padding: 5px 8px;
+  border: 1px solid var(--speisekarte-border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--speisekarte-item);
+  font: inherit;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-align: center;
+  text-transform: none;
+}
+
+.speisekarte-table-input:focus {
+  outline: 2px solid color-mix(in srgb, var(--speisekarte-accent) 55%, transparent);
+  outline-offset: 1px;
+}
+
+.speisekarte-bill {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px dashed color-mix(in srgb, var(--speisekarte-accent) 45%, transparent);
+}
+
+.speisekarte-bill-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.speisekarte-bill-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--speisekarte-accent);
+}
+
+.speisekarte-bill-clear {
+  border: 0;
+  background: transparent;
+  color: var(--speisekarte-meta);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.speisekarte-bill-clear:hover {
+  color: var(--speisekarte-title);
+  text-decoration: underline;
+}
+
+.speisekarte-bill-empty {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--speisekarte-meta);
+}
+
+.speisekarte-bill-lines {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0;
+}
+
+.speisekarte-bill-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 0;
+  font-size: 13px;
+  color: var(--speisekarte-item);
+}
+
+.speisekarte-bill-name {
+  font-weight: 650;
+}
+
+.speisekarte-bill-qty {
+  margin-left: 4px;
+  color: var(--speisekarte-meta);
+  font-weight: 700;
+}
+
+.speisekarte-bill-note {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--speisekarte-note);
+}
+
+.speisekarte-bill-price {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: var(--speisekarte-price);
+}
+
+.speisekarte-bill-total {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-weight: 700;
+  color: var(--speisekarte-title);
+}
+
+.speisekarte-bill-sum {
+  font-variant-numeric: tabular-nums;
+  color: var(--speisekarte-price);
+}
+
+.speisekarte-bill-btn {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--speisekarte-accent);
+  border-radius: 10px;
+  background: var(--speisekarte-accent);
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.speisekarte-bill-btn:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+
+.speisekarte-bill-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.speisekarte-bill-btn.is-sending {
+  cursor: wait;
 }
 
 /* --- Mindmap --- */
@@ -8079,6 +8435,7 @@ table {
 .sokoban-block-hint { font-size: 0.82rem; color: var(--sokoban-meta); margin: 0 0 8px; }
 
 .sokoban-stage {
+  position: relative;
   width: min(100%, 640px);
   border-radius: 10px;
   overflow: hidden;
@@ -8109,9 +8466,19 @@ table {
     "left down right";
   gap: 8px;
   width: min(100%, 280px);
+  user-select: none;
+  -webkit-user-select: none;
 }
 
-.sokoban-pad.is-visible { display: grid; }
+.sokoban-pad.is-visible {
+  display: grid;
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  z-index: 3;
+  margin: 0;
+  width: min(46%, 168px);
+}
 .sokoban-pad__btn {
   touch-action: none;
   border: 1px solid rgba(148, 163, 184, 0.45);
@@ -8131,6 +8498,95 @@ table {
   margin-top: 8px;
   font-size: 0.85rem;
   color: var(--sokoban-meta);
+}
+
+.sokoban-tips-bar {
+  position: absolute;
+  top: 30px;
+  left: 10px;
+  right: 52px;
+  z-index: 4;
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.78);
+  color: #fde68a;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  pointer-events: none;
+}
+
+.sokoban-tips-bar[hidden] {
+  display: none !important;
+}
+
+.sokoban-tips {
+  display: none;
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 52px;
+  z-index: 5;
+  max-height: min(64%, 280px);
+  overflow: auto;
+  padding: 8px 10px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  background: rgba(15, 23, 42, 0.94);
+  color: #e2e8f0;
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.sokoban-tips.is-open {
+  display: block;
+}
+
+.sokoban-tips__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+  color: #fde68a;
+}
+
+.sokoban-tips__close {
+  border: 0;
+  background: transparent;
+  color: #e2e8f0;
+  font-size: 1.25rem;
+  line-height: 1;
+  padding: 0 4px;
+  cursor: pointer;
+}
+
+.sokoban-tips__how,
+.sokoban-tips__controls {
+  margin: 0 0 6px;
+  color: #cbd5e1;
+}
+
+.sokoban-tips__level {
+  margin: 0 0 8px;
+  color: #fef3c7;
+}
+
+.sokoban-tips__controls--mobile {
+  display: none;
+}
+
+body.mobile-layout .sokoban-tips__controls--desktop {
+  display: none;
+}
+
+body.mobile-layout .sokoban-tips__controls--mobile {
+  display: block;
+}
+
+@media (max-width: 768px) {
+  .sokoban-tips__controls--desktop { display: none; }
+  .sokoban-tips__controls--mobile { display: block; }
 }
 
 /* --- Space Invaders --- */
@@ -8756,7 +9212,7 @@ table {
   flex: 1;
   width: 100%;
   max-width: none;
-  min-height: 0;
+  min-height: min(42vh, 360px);
   border: none;
   border-radius: 0;
   display: flex;
@@ -8765,7 +9221,7 @@ table {
 }
 
 .sokoban-block--fullscreen .sokoban-canvas {
-  width: auto;
+  width: 100%;
   height: 100%;
   max-width: 100%;
   max-height: 100%;
@@ -9334,8 +9790,22 @@ body.mobile-layout .gallery-walk-toolbar [data-action="walk-demo"] {
   height: min(86vh, 980px);
 }
 
+.photoview-paste-catcher {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+  opacity: 0;
+}
+
 .photoview-block--uploading,
-.photoview-block--drop {
+.photoview-block--drop,
+.photoview-block--paste-target,
+.photoview-block--paste-armed {
   outline: 2px dashed var(--photoview-accent);
   outline-offset: -6px;
 }
@@ -9414,6 +9884,13 @@ body.mobile-layout .gallery-walk-toolbar [data-action="walk-demo"] {
   touch-action: none;
   cursor: grab;
   user-select: none;
+  pointer-events: auto;
+}
+
+/* 3D faces fail hit-testing in edit/split preview; keep events on the 2D scene. */
+.photocube-cube,
+.photocube-face {
+  pointer-events: none;
 }
 
 .photocube-scene:active {
@@ -9997,6 +10474,16 @@ body.mobile-layout .gallery-walk-toolbar [data-action="walk-demo"] {
     font-size: 12px;
     padding: 6px 10px;
   }
+
+  .photocube-block .photoview-toolbar {
+    flex-shrink: 0;
+    position: relative;
+    z-index: 5;
+  }
+
+  .photocube-block .photoview-toolbar [data-action="add-photo"] {
+    min-height: 44px;
+  }
 }
 
 body.mobile-layout .photoview-block,
@@ -10014,12 +10501,14 @@ body.mobile-layout .photocube-block.photoview-block--fullscreen {
   max-height: min(52dvh, calc(100dvh - 7.5rem));
 }
 
-body.mobile-layout .photocube-scene {
-  --photocube-size: min(48vw, 28dvh, 168px);
-  min-height: min(32dvh, 210px);
-  max-height: min(36dvh, 240px);
-  overflow: hidden;
-  perspective: 700px;
+body.mobile-layout .photocube-block .photoview-toolbar {
+  flex-shrink: 0;
+  position: relative;
+  z-index: 5;
+}
+
+body.mobile-layout .photocube-block .photoview-toolbar [data-action="add-photo"] {
+  min-height: 44px;
 }
 
 body.mobile-layout .photobook-block,
