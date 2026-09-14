@@ -12237,7 +12237,7 @@ function formatTextWithMarkup(rawText) {
           name: 'insert-carousel',
           text: 'Photo carousel',
           className: 'photos-menu-item photos-menu-item--carousel',
-          title: 'Insert photo carousel',
+          title: 'Insert 3D photo carousel',
           action: (editor) => insertFenceBlock(
             editor,
             'carousel{title=Photo carousel;demo;col=info}',
@@ -12347,7 +12347,7 @@ function formatTextWithMarkup(rawText) {
           name: 'insert-marbleblast',
           text: 'Marble blast',
           title: 'Insert Marble blast',
-          action: (editor) => insertFenceBlock(editor, 'marbleblast{fullscreen}', ''),
+          action: (editor) => insertFenceBlock(editor, 'marbleblast{fullscreen;view=ego}', ''),
         },
         {
           name: 'insert-puzzle',

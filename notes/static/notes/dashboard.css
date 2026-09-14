@@ -10668,7 +10668,8 @@ body.mobile-layout .gallery-walk-toolbar [data-action="walk-demo"] {
 }
 
 .photocube-stage,
-.photobook-stage {
+.photobook-stage,
+.carousel-stage {
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
@@ -10983,41 +10984,116 @@ body.mobile-layout .gallery-walk-toolbar [data-action="walk-demo"] {
   overflow: hidden;
   border-radius: 14px;
   background: #020617;
-  min-height: min(52vh, 480px);
-  flex: 1;
-  touch-action: pan-y;
-  outline: none;
-  cursor: zoom-in;
-}
-
-.carousel-track {
-  display: flex;
-  height: 100%;
-  min-height: min(52vh, 480px);
-  transition: transform 0.45s ease;
-  will-change: transform;
-}
-
-.carousel-slide {
-  flex: 0 0 100%;
+  min-height: min(56vh, 520px);
+  flex: 1 1 auto;
   width: 100%;
-  height: 100%;
-  min-height: inherit;
+}
+
+.carousel-scene {
+  --carousel-card-w: 220px;
+  --carousel-card-h: 158px;
+  --carousel-radius: 320px;
+  --carousel-step: 60deg;
+  position: absolute;
+  inset: 0;
+  perspective: 1100px;
+  perspective-origin: 50% 48%;
+  transform-style: preserve-3d;
   display: flex;
   align-items: center;
   justify-content: center;
+  touch-action: none;
+  outline: none;
+  cursor: grab;
+  user-select: none;
+  pointer-events: auto;
 }
 
-.carousel-slide img,
-.carousel-slide video,
+.carousel-scene:active {
+  cursor: grabbing;
+}
+
+.carousel-ring,
+.carousel-card {
+  pointer-events: none;
+}
+
+.carousel-ring {
+  position: relative;
+  width: var(--carousel-card-w);
+  height: var(--carousel-card-h);
+  transform-style: preserve-3d;
+  transform: translateY(-6%) rotateX(-22deg) rotateY(0deg);
+  will-change: transform;
+}
+
+.carousel-scene--h .carousel-ring::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(var(--carousel-radius) * 2.15);
+  height: calc(var(--carousel-radius) * 2.15);
+  margin: calc(var(--carousel-radius) * -1.075) 0 0 calc(var(--carousel-radius) * -1.075);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, rgba(226, 232, 240, 0.16) 0%, rgba(15, 23, 42, 0.35) 42%, transparent 68%);
+  border: 1px solid rgba(248, 250, 252, 0.12);
+  transform: rotateX(90deg) translateZ(-6px);
+  pointer-events: none;
+}
+
+.carousel-scene--v .carousel-ring {
+  transform: rotateY(18deg) rotateX(0deg);
+}
+
+.carousel-card {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--carousel-card-w);
+  height: var(--carousel-card-h);
+  margin: calc(var(--carousel-card-h) / -2) 0 0 calc(var(--carousel-card-w) / -2);
+  overflow: hidden;
+  background: #0b1220;
+  border: 8px solid #f1f5f9;
+  border-radius: 4px;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.45);
+  transform-origin: center center;
+  transform: rotateY(calc(var(--carousel-i) * var(--carousel-step))) translateZ(var(--carousel-radius));
+  backface-visibility: hidden;
+}
+
+.carousel-scene--v .carousel-card {
+  transform: rotateX(calc(var(--carousel-i) * var(--carousel-step))) translateZ(var(--carousel-radius));
+}
+
+.carousel-card.is-front {
+  border-color: #fff;
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.35);
+}
+
+.carousel-card img,
+.carousel-card video,
 .carousel-media {
   width: 100%;
   height: 100%;
-  max-height: min(70vh, 720px);
-  object-fit: contain;
+  object-fit: cover;
   display: block;
   background: #020617;
   pointer-events: none;
+}
+
+.carousel-hud {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+}
+
+.carousel-nav,
+.carousel-dots {
+  pointer-events: auto;
 }
 
 .carousel-nav {
@@ -11090,9 +11166,7 @@ body.mobile-layout .gallery-walk-toolbar [data-action="walk-demo"] {
 }
 
 .photoview-block--fullscreen .carousel-viewport,
-.photoview-block--fullscreen .carousel-track,
-.carousel-block.photoview-block--fullscreen .carousel-viewport,
-.carousel-block.photoview-block--fullscreen .carousel-track {
+.carousel-block.photoview-block--fullscreen .carousel-viewport {
   min-height: min(72vh, 760px);
 }
 
@@ -11138,6 +11212,14 @@ body.mobile-layout .gallery-walk-toolbar [data-action="walk-demo"] {
 .photoview-block:-webkit-full-screen .photocube-scene,
 .photocube-block:fullscreen .photocube-scene,
 .photocube-block:-webkit-full-screen .photocube-scene {
+  min-height: 0;
+  height: 100%;
+}
+
+.photoview-block:fullscreen .carousel-viewport,
+.photoview-block:-webkit-full-screen .carousel-viewport,
+.carousel-block:fullscreen .carousel-viewport,
+.carousel-block:-webkit-full-screen .carousel-viewport {
   min-height: 0;
   height: 100%;
 }
@@ -11197,6 +11279,30 @@ body.mobile-layout .gallery-walk-toolbar [data-action="walk-demo"] {
     max-height: min(36dvh, 240px);
     overflow: hidden;
     perspective: 700px;
+  }
+
+  .carousel-block,
+  .carousel-block.photoview-block--fullscreen,
+  body.mobile-layout .carousel-block,
+  body.mobile-layout .carousel-block.photoview-block--fullscreen {
+    min-height: 0;
+    height: auto;
+    max-height: min(52dvh, calc(100dvh - 7.5rem));
+  }
+
+  .carousel-viewport,
+  body.mobile-layout .carousel-viewport {
+    min-height: min(32dvh, 210px);
+    max-height: min(36dvh, 240px);
+  }
+
+  .carousel-scene,
+  body.mobile-layout .carousel-scene {
+    perspective: 700px;
+  }
+
+  .carousel-card {
+    border-width: 5px;
   }
 
   .photocube-face {
@@ -11271,7 +11377,8 @@ body.mobile-layout .gallery-walk-toolbar [data-action="walk-demo"] {
   }
 
   .photocube-hint,
-  .photobook-hint {
+  .photobook-hint,
+  .carousel-hint {
     font-size: 0.75rem;
   }
 
@@ -11281,13 +11388,15 @@ body.mobile-layout .gallery-walk-toolbar [data-action="walk-demo"] {
     padding: 6px 10px;
   }
 
-  .photocube-block .photoview-toolbar {
+  .photocube-block .photoview-toolbar,
+  .carousel-block .photoview-toolbar {
     flex-shrink: 0;
     position: relative;
     z-index: 5;
   }
 
-  .photocube-block .photoview-toolbar [data-action="add-photo"] {
+  .photocube-block .photoview-toolbar [data-action="add-photo"],
+  .carousel-block .photoview-toolbar [data-action="add-photo"] {
     min-height: 44px;
   }
 }
@@ -11307,13 +11416,15 @@ body.mobile-layout .photocube-block.photoview-block--fullscreen {
   max-height: min(52dvh, calc(100dvh - 7.5rem));
 }
 
-body.mobile-layout .photocube-block .photoview-toolbar {
+body.mobile-layout .photocube-block .photoview-toolbar,
+body.mobile-layout .carousel-block .photoview-toolbar {
   flex-shrink: 0;
   position: relative;
   z-index: 5;
 }
 
-body.mobile-layout .photocube-block .photoview-toolbar [data-action="add-photo"] {
+body.mobile-layout .photocube-block .photoview-toolbar [data-action="add-photo"],
+body.mobile-layout .carousel-block .photoview-toolbar [data-action="add-photo"] {
   min-height: 44px;
 }
 

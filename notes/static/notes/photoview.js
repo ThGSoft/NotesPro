@@ -941,7 +941,9 @@
     bindPasteDrop(el, spec, options);
   }
 
-  /* ---------- Photo carousel ---------- */
+  /* ---------- Photo carousel (ThGCube-style 3D wheel) ---------- */
+
+  const TAU = Math.PI * 2;
 
   function resolveAutoplay(cfg) {
     const hasDemo = Object.prototype.hasOwnProperty.call(cfg, 'demo');
@@ -959,6 +961,12 @@
     return Math.max(1800, Math.min(20000, n));
   }
 
+  function resolveAxis(cfg) {
+    const raw = String(cfg.axis || cfg.wheel || cfg.orient || '').trim().toLowerCase();
+    if (raw === 'v' || raw === 'vertical' || raw === 'y' || raw === 'wheelv' || raw === 'vert') return 'v';
+    return 'h';
+  }
+
   function buildCarouselSpec(source, cfg) {
     const title = String(cfg.title || 'Photo carousel').trim() || 'Photo carousel';
     const photos = parsePhotos(source);
@@ -968,13 +976,14 @@
       draft: !photos.length,
       autoplay: resolveAutoplay(cfg),
       interval: resolveInterval(cfg),
+      axis: resolveAxis(cfg),
     };
   }
 
-  function renderCarouselSlides(photos) {
+  function renderCarouselCards(photos) {
     if (!photos.length) return '';
     return photos.map((photo, i) => (
-      `<div class="carousel-slide" data-index="${i}" aria-hidden="${i === 0 ? 'false' : 'true'}">`
+      `<div class="carousel-card" data-index="${i}" style="--carousel-i:${i}" aria-hidden="${i === 0 ? 'false' : 'true'}">`
       + renderMedia(photo, 'carousel-media')
       + `</div>`
     )).join('');
@@ -1002,22 +1011,31 @@
       : '';
     const n = spec.photos.length;
     const first = spec.photos[0];
+    const axis = spec.axis === 'v' ? 'v' : 'h';
+    const mobile = isPhotoviewMobile();
     return [
       `<div class="carousel-stage">`,
-      `<div class="carousel-viewport" tabindex="0" aria-label="Photo carousel">`,
-      `<div class="carousel-track">`,
-      renderCarouselSlides(spec.photos),
+      `<div class="carousel-viewport">`,
+      `<div class="carousel-scene carousel-scene--${axis}" tabindex="0" aria-label="Photo carousel — A/D turn, wheel tilts the camera">`,
+      `<div class="carousel-ring">`,
+      renderCarouselCards(spec.photos),
       `</div>`,
+      `<div class="carousel-hud">`,
       n > 1 ? `<button type="button" class="carousel-nav carousel-nav--prev" data-action="carousel-prev" aria-label="Previous">‹</button>` : '',
       n > 1 ? `<button type="button" class="carousel-nav carousel-nav--next" data-action="carousel-next" aria-label="Next">›</button>` : '',
       `<div class="carousel-caption">${escapeHtml(first?.label || '')}</div>`,
       renderCarouselDots(n, 0),
       `</div>`,
+      `</div>`,
+      `</div>`,
       `<p class="carousel-hint">${n > 1
-        ? 'Click a photo to open it · swipe or arrows to browse'
+        ? (mobile
+          ? 'Drag sideways to spin · tap a photo to open it'
+          : 'A/D or drag to turn · W/S or mouse wheel tilt the camera · click a photo to open it')
         : 'Click the photo to open it'}</p>`,
       `<div class="photoview-toolbar">`,
       n > 1 ? `<button type="button" class="btn btn-sm btn-outline-light" data-action="carousel-play" aria-pressed="${spec.autoplay ? 'true' : 'false'}">${spec.autoplay ? 'Pause' : 'Play'}</button>` : '',
+      n > 1 ? `<button type="button" class="btn btn-sm btn-outline-light" data-action="carousel-axis" aria-pressed="${axis === 'v' ? 'true' : 'false'}">${axis === 'v' ? 'Wheel V' : 'Wheel H'}</button>` : '',
       addBtn,
       `</div>`,
       `</div>`,
@@ -1052,24 +1070,142 @@
     bindFullscreenButton(el);
     bindPasteDrop(el, spec, options);
 
-    const track = el.querySelector('.carousel-track');
+    const scene = el.querySelector('.carousel-scene');
     const viewport = el.querySelector('.carousel-viewport');
+    const ring = el.querySelector('.carousel-ring');
     const caption = el.querySelector('.carousel-caption');
     const playBtn = el.querySelector('[data-action="carousel-play"]');
+    const axisBtn = el.querySelector('[data-action="carousel-axis"]');
     const n = spec.photos.length;
-    let index = 0;
-    let playing = n > 1 && !!spec.autoplay;
+    let axis = spec.axis === 'v' ? 'v' : 'h';
+    let phi = 0;
+    let camTilt = axis === 'v' ? 18 : -22;
+    let spinDir = 1;
+    let spinning = n > 1 && !!spec.autoplay;
     const reduceMotion = typeof window.matchMedia === 'function'
       && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (reduceMotion) playing = false;
-    let timer = 0;
-    let swipe = null;
-    let lastGestureWasSwipe = false;
+    if (reduceMotion) spinning = false;
+    let dragging = false;
+    let hovered = false;
+    let lastX = 0;
+    let lastY = 0;
+    let dragDist = 0;
+    let lastTs = 0;
+    let raf = 0;
+    let radiusPx = 220;
+    const held = { a: false, d: false };
 
-    function openCurrentPhoto() {
+    function stepAngle() {
+      return n > 0 ? TAU / n : TAU;
+    }
+
+    function frontIndex() {
+      if (n < 1) return 0;
+      const wrapped = ((phi % TAU) + TAU) % TAU;
+      return Math.round(wrapped / stepAngle()) % n;
+    }
+
+    function wrapDelta(target, current) {
+      let delta = target - current;
+      if (delta > Math.PI) delta -= TAU;
+      if (delta < -Math.PI) delta += TAU;
+      return delta;
+    }
+
+    function setAxis(next) {
+      axis = next === 'v' ? 'v' : 'h';
+      camTilt = axis === 'v' ? 18 : -22;
+      scene?.classList.toggle('carousel-scene--v', axis === 'v');
+      scene?.classList.toggle('carousel-scene--h', axis !== 'v');
+      if (axisBtn) {
+        axisBtn.setAttribute('aria-pressed', axis === 'v' ? 'true' : 'false');
+        axisBtn.textContent = axis === 'v' ? 'Wheel V' : 'Wheel H';
+      }
+      fitCarousel();
+      applyRing();
+      paintChrome();
+    }
+
+    function fitCarousel() {
+      if (!scene) return;
+      const box = viewport || scene;
+      const w = box.clientWidth || 0;
+      const h = box.clientHeight || 0;
+      const visW = window.visualViewport?.width || window.innerWidth || w;
+      const visH = window.visualViewport?.height || window.innerHeight || h;
+      const full = isPhotoviewMonitorFullscreen(el);
+      const mobile = isPhotoviewMobile();
+      const boxW = w > 40 ? w : visW;
+      const boxH = h > 80 ? h : (mobile ? visH * 0.32 : visH * 0.5);
+      const cardW = Math.max(96, Math.min(mobile ? 150 : 270, Math.floor(boxW * (mobile ? 0.4 : 0.26))));
+      const cardH = Math.max(70, Math.min(mobile ? 108 : 196, Math.floor(cardW * 0.7)));
+      const count = Math.max(n, 1);
+      const packed = count < 2 ? 0 : (cardW / 2) / Math.tan(Math.PI / count);
+      if (axis === 'v') {
+        const cap = boxH * (full ? 0.4 : mobile ? 0.32 : 0.36);
+        radiusPx = count < 2 ? 0 : Math.max(packed * 1.02, Math.min(cap, packed * 1.35));
+      } else {
+        const cap = Math.min(boxW * (full ? 0.3 : mobile ? 0.3 : 0.27), boxH * 0.32);
+        radiusPx = count < 2 ? 0 : Math.max(packed * 1.05, Math.min(cap, packed * 1.45));
+      }
+      scene.style.setProperty('--carousel-card-w', `${cardW}px`);
+      scene.style.setProperty('--carousel-card-h', `${cardH}px`);
+      scene.style.setProperty('--carousel-radius', `${radiusPx}px`);
+      scene.style.setProperty('--carousel-step', `${360 / count}deg`);
+      applyRing();
+    }
+
+    function applyRing() {
+      if (!ring) return;
+      const deg = (phi * 180) / Math.PI;
+      ring.style.transform = axis === 'v'
+        ? `rotateY(${camTilt}deg) rotateX(${-deg}deg)`
+        : `translateY(-6%) rotateX(${camTilt}deg) rotateY(${-deg}deg)`;
+      const step = stepAngle();
+      el.querySelectorAll('.carousel-card').forEach((card, i) => {
+        const ang = i * step;
+        const rel = ((ang - phi) % TAU + TAU) % TAU;
+        const facing = Math.cos(rel);
+        card.style.zIndex = String(Math.round(40 + facing * 40));
+        card.style.filter = `brightness(${(0.48 + Math.max(0, facing) * 0.52).toFixed(3)})`;
+      });
+    }
+
+    function paintChrome() {
+      const index = frontIndex();
+      el.querySelectorAll('.carousel-card').forEach((card, i) => {
+        card.setAttribute('aria-hidden', i === index ? 'false' : 'true');
+        card.classList.toggle('is-front', i === index);
+      });
+      el.querySelectorAll('.carousel-dot').forEach((dot, i) => {
+        dot.classList.toggle('is-active', i === index);
+      });
+      if (caption) caption.textContent = spec.photos[index]?.label || '';
+      if (playBtn) {
+        playBtn.setAttribute('aria-pressed', spinning ? 'true' : 'false');
+        playBtn.textContent = spinning ? 'Pause' : 'Play';
+      }
+    }
+
+    function snapTo(next) {
+      if (n < 1) return;
+      const index = ((next % n) + n) % n;
+      const current = ((phi % TAU) + TAU) % TAU;
+      phi += wrapDelta(index * stepAngle(), current);
+      applyRing();
+      paintChrome();
+    }
+
+    function setPlaying(on) {
+      spinning = n > 1 && !!on;
+      paintChrome();
+    }
+
+    function openFrontPhoto() {
       const photos = spec.photos;
       if (!photos.length) return;
-      const resume = playing;
+      const index = frontIndex();
+      const resume = spinning;
       setPlaying(false);
       const open = window.NotesProGallery?.openLightbox;
       if (typeof open === 'function') {
@@ -1082,45 +1218,41 @@
       if (href) window.open(href, '_blank', 'noopener');
     }
 
-    function paint() {
-      if (track) track.style.transform = `translateX(${-index * 100}%)`;
-      el.querySelectorAll('.carousel-slide').forEach((slide, i) => {
-        slide.setAttribute('aria-hidden', i === index ? 'false' : 'true');
-      });
-      el.querySelectorAll('.carousel-dot').forEach((dot, i) => {
-        dot.classList.toggle('is-active', i === index);
-      });
-      if (caption) caption.textContent = spec.photos[index]?.label || '';
-      if (playBtn) {
-        playBtn.setAttribute('aria-pressed', playing ? 'true' : 'false');
-        playBtn.textContent = playing ? 'Pause' : 'Play';
+    function keysActive() {
+      const ae = document.activeElement;
+      if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return false;
+      return hovered || el.contains(ae) || ae === scene;
+    }
+
+    function tick(ts) {
+      if (!el.isConnected) return;
+      const dt = lastTs ? Math.min(40, ts - lastTs) : 16;
+      lastTs = ts;
+      let turned = false;
+      if (n > 1 && !dragging) {
+        const yaw = 1.85 * (dt / 1000);
+        if (held.a) {
+          phi -= yaw;
+          spinDir = -1;
+          turned = true;
+        }
+        if (held.d) {
+          phi += yaw;
+          spinDir = 1;
+          turned = true;
+        }
       }
-    }
-
-    function go(next) {
-      if (n < 1) return;
-      index = ((next % n) + n) % n;
-      paint();
-    }
-
-    function stopTimer() {
-      if (timer) {
-        window.clearInterval(timer);
-        timer = 0;
+      if (turned) {
+        setPlaying(false);
+        applyRing();
+        paintChrome();
+      } else if (spinning && !dragging && n > 1) {
+        const omega = stepAngle() / (spec.interval || 4500);
+        phi += spinDir * omega * dt;
+        applyRing();
+        paintChrome();
       }
-    }
-
-    function startTimer() {
-      stopTimer();
-      if (!playing || n < 2) return;
-      timer = window.setInterval(() => go(index + 1), spec.interval || 4500);
-    }
-
-    function setPlaying(on) {
-      playing = n > 1 && !!on;
-      if (playing) startTimer();
-      else stopTimer();
-      paint();
+      raf = requestAnimationFrame(tick);
     }
 
     el.addEventListener('click', (e) => {
@@ -1128,21 +1260,27 @@
       const action = e.target.closest('[data-action]')?.dataset.action;
       if (action === 'carousel-prev') {
         setPlaying(false);
-        go(index - 1);
+        snapTo(frontIndex() - 1);
         return;
       }
       if (action === 'carousel-next') {
         setPlaying(false);
-        go(index + 1);
+        snapTo(frontIndex() + 1);
         return;
       }
       if (action === 'carousel-play') {
-        setPlaying(!playing);
+        setPlaying(!spinning);
+        return;
+      }
+      if (action === 'carousel-axis') {
+        setAxis(axis === 'v' ? 'h' : 'v');
         return;
       }
       if (action === 'add-photo') {
-        setStatus(el, 'Paste an image (Ctrl+V) or drop a file onto the carousel.');
-        el.focus({ preventScroll: true });
+        setStatus(el, isPhotoviewMobile()
+          ? 'Choose a photo, or paste here.'
+          : 'Paste an image (Ctrl+V) or drop a file onto the carousel.');
+        armPasteTarget(el);
       }
     });
 
@@ -1152,63 +1290,151 @@
         const i = parseInt(dot.dataset.index, 10);
         if (!Number.isFinite(i)) return;
         setPlaying(false);
-        go(i);
+        snapTo(i);
       });
     });
 
+    function nudgeTilt(delta) {
+      if (axis === 'v') {
+        camTilt = Math.max(-8, Math.min(42, camTilt + delta));
+      } else {
+        camTilt = Math.max(-52, Math.min(-6, camTilt + delta));
+      }
+      applyRing();
+    }
+
     function onKey(e) {
-      if (!el.contains(document.activeElement) && document.activeElement !== viewport) return;
-      if (e.key === 'ArrowLeft') {
+      if (!keysActive()) return;
+      const key = e.key;
+      const code = e.code;
+      if (key === 'w' || key === 'W') {
+        e.preventDefault();
+        nudgeTilt(-5);
+        return;
+      }
+      if (key === 's' || key === 'S') {
+        e.preventDefault();
+        nudgeTilt(5);
+        return;
+      }
+      if (key === 'a' || key === 'A' || code === 'KeyA') {
+        e.preventDefault();
+        held.a = true;
+        if (!e.repeat && n > 1) {
+          setPlaying(false);
+          phi -= 0.22;
+          spinDir = -1;
+          applyRing();
+          paintChrome();
+        }
+        return;
+      }
+      if (key === 'd' || key === 'D' || code === 'KeyD') {
+        e.preventDefault();
+        held.d = true;
+        if (!e.repeat && n > 1) {
+          setPlaying(false);
+          phi += 0.22;
+          spinDir = 1;
+          applyRing();
+          paintChrome();
+        }
+        return;
+      }
+      if (key === 'ArrowLeft' || (axis === 'v' && key === 'ArrowUp')) {
         e.preventDefault();
         setPlaying(false);
-        go(index - 1);
-      } else if (e.key === 'ArrowRight') {
+        snapTo(frontIndex() - 1);
+        return;
+      }
+      if (key === 'ArrowRight' || (axis === 'v' && key === 'ArrowDown')) {
         e.preventDefault();
         setPlaying(false);
-        go(index + 1);
-      } else if (e.key === ' ') {
+        snapTo(frontIndex() + 1);
+        return;
+      }
+      if (key === ' ') {
         e.preventDefault();
-        setPlaying(!playing);
+        setPlaying(!spinning);
       }
     }
 
-    function onPointerDown(e) {
-      if (e.target.closest('.carousel-nav, .carousel-dot, .photoview-toolbar, .game-fullscreen-btn')) return;
-      lastGestureWasSwipe = false;
-      swipe = { id: e.pointerId, x: e.clientX, dist: 0 };
-      try { viewport?.setPointerCapture(e.pointerId); } catch (_) { /* ignore */ }
-    }
-    function onPointerMove(e) {
-      if (!swipe || e.pointerId !== swipe.id) return;
-      swipe.dist += Math.abs(e.clientX - swipe.x);
-    }
-    function onPointerUp(e) {
-      if (!swipe || e.pointerId !== swipe.id) return;
-      const dx = e.clientX - swipe.x;
-      swipe = null;
-      if (Math.abs(dx) < 36) return;
-      lastGestureWasSwipe = true;
-      setPlaying(false);
-      go(dx < 0 ? index + 1 : index - 1);
+    function onKeyUp(e) {
+      const key = e.key;
+      const code = e.code;
+      if (key === 'a' || key === 'A' || code === 'KeyA') held.a = false;
+      if (key === 'd' || key === 'D' || code === 'KeyD') held.d = false;
     }
 
-    viewport?.addEventListener('pointerdown', onPointerDown);
-    viewport?.addEventListener('pointermove', onPointerMove);
-    viewport?.addEventListener('pointerup', onPointerUp);
-    viewport?.addEventListener('pointercancel', () => { swipe = null; });
-    viewport?.addEventListener('click', (e) => {
-      if (e.target.closest('.carousel-nav, .carousel-dot, .photoview-toolbar, .game-fullscreen-btn')) return;
-      if (lastGestureWasSwipe) return;
-      openCurrentPhoto();
-    });
+    function onWheel(e) {
+      e.preventDefault();
+      const delta = e.deltaY;
+      if (!delta) return;
+      const step = Math.sign(delta) * Math.min(10, Math.max(2.8, Math.abs(delta) * 0.035));
+      nudgeTilt(step);
+    }
+
+    if (scene) {
+      scene.addEventListener('pointerenter', () => { hovered = true; });
+      scene.addEventListener('pointerleave', () => { hovered = false; });
+      scene.addEventListener('wheel', onWheel, { passive: false });
+      scene.addEventListener('pointerdown', (e) => {
+        if (e.target.closest('.carousel-nav, .carousel-dot, .photoview-toolbar, .game-fullscreen-btn')) return;
+        scene.focus({ preventScroll: true });
+        if (e.button != null && e.button !== 0) return;
+        dragging = true;
+        dragDist = 0;
+        lastX = e.clientX;
+        lastY = e.clientY;
+        try { scene.setPointerCapture(e.pointerId); } catch (_) { /* ignore */ }
+      });
+      scene.addEventListener('pointermove', (e) => {
+        if (!dragging) return;
+        const dx = e.movementX || (e.clientX - lastX);
+        const dy = e.movementY || (e.clientY - lastY);
+        lastX = e.clientX;
+        lastY = e.clientY;
+        const primary = axis === 'v' ? dy : dx;
+        dragDist += Math.hypot(dx, dy);
+        if (Math.abs(primary) < 0.2) return;
+        phi -= primary * 0.008;
+        if (Math.abs(primary) > 0.6) spinDir = primary < 0 ? 1 : -1;
+        applyRing();
+        paintChrome();
+      });
+      const endDrag = (e) => {
+        if (!dragging) return;
+        dragging = false;
+        if (dragDist > 8 && spinning) return;
+        if (e?.type === 'pointerup' && dragDist < 8) openFrontPhoto();
+      };
+      scene.addEventListener('pointerup', endDrag);
+      scene.addEventListener('pointercancel', () => { dragging = false; });
+      scene.addEventListener('lostpointercapture', () => { dragging = false; });
+    }
+
     window.addEventListener('keydown', onKey);
-    paint();
-    startTimer();
+    window.addEventListener('keyup', onKeyUp);
+    setAxis(axis);
+    fitCarousel();
+    applyRing();
+    paintChrome();
+    raf = requestAnimationFrame(tick);
+    const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(() => fitCarousel()) : null;
+    if (ro) ro.observe(viewport || scene);
+    const onFs = () => requestAnimationFrame(fitCarousel);
+    el.addEventListener('notespro:monitor-fullscreen', onFs);
+    window.addEventListener('resize', fitCarousel);
 
     const disconnectObs = new MutationObserver(() => {
       if (!el.isConnected) {
-        stopTimer();
+        cancelAnimationFrame(raf);
+        ro?.disconnect();
         window.removeEventListener('keydown', onKey);
+        window.removeEventListener('keyup', onKeyUp);
+        scene?.removeEventListener('wheel', onWheel);
+        window.removeEventListener('resize', fitCarousel);
+        el.removeEventListener('notespro:monitor-fullscreen', onFs);
         disconnectObs.disconnect();
       }
     });

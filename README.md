@@ -47,11 +47,11 @@ Share: [LinkedIn](https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2
 - **Space Invaders** blocks — rows of aliens, shields, waves, and a mystery UFO
 - **Breakout** blocks — paddle, ball, brick rows, lives, and waves
 - **Snake** blocks — grow by eating; walls or wrap-around edges
-- **Marble blast** blocks — 3D marble rolling courses (gems, bounce pads, finish)
+- **Marble blast** blocks — 3D marble rolling courses (gems, bounce pads, finish, ego view)
 - **Puzzle** blocks — jigsaw puzzle from a pasted image (drag pieces into place)
 - **Pinball** blocks — 3D Pinball Space Cadet (WASM) in preview
 - **Gallery** blocks — walk-in 3D photo corridor with embedded wall frames
-- **Photo carousel** / **Photo cube** / **Photo book** blocks — slideshow, 3D cube, and flip-book albums of your own images
+- **Photo carousel** / **Photo cube** / **Photo book** blocks — 3D spinning photo wheel, cube, and flip-book albums of your own images
 - **Roller coaster** blocks — themed 3D ride (jungle / dune / snow / alps) with your images along the track
 - **Auto scooter** blocks — bumper-car rink; your photos ride on the other cars
 - **Ghost train** blocks — convoy on rails; photos in frames along the track
@@ -1266,29 +1266,33 @@ Toolbar: **Insert Snake**.
 
 A 3D **marble rolling** course in the spirit of Marble Blast Ultra — original parks, not a copy of MBU assets. Collect every gem, then roll onto the gold finish pad. Bounce pads launch you; orange pads give a speed boost. Falling off respawns you and counts as a fall.
 
+**Ego view** is a close chase cam just behind the marble, looking along its heading (velocity, or the last heading when you are nearly still). **Orbit** is the original distant look-around camera. Toggle with the **View** button or **C**.
+
 ````markdown
-```marbleblast{fullscreen}
+```marbleblast{fullscreen;view=ego}
 ```
 ````
 
 | Option | Description |
 |--------|-------------|
 | `fullscreen` | Edge-to-edge stage (default on) |
+| `view` / `cam` / `ego` | Start in ego chase cam: `view=ego`, `cam=ego`, or `ego`. Default is orbit (`view=orbit`) |
 | `course` | `1` Beginner Park · `2` Sky Ramps · `3` Helix Drop |
 | `title` | Block title (hidden chrome in fullscreen) |
 | `col` / `bkcol` | Theme colors |
 
 | Key | Action |
 |-----|--------|
-| **WASD** / arrows | Roll (camera-relative) |
+| **WASD** / arrows | Orbit: roll camera-relative. Ego: **W/S** roll · **A/D** turn |
 | **Space** | Jump |
 | Drag | Look around |
+| **C** | Toggle ego / orbit camera |
 | **R** | Restart course |
 | **[ ]** | Previous / next course |
 
 Faster finishes and fewer falls score higher. On phones, a WASD pad and **Jump** appear under the stage.
 
-Toolbar: **Insert Marble blast** adds Beginner Park.
+Toolbar: **Insert Marble blast** adds Beginner Park in ego view.
 
 ### Puzzle (jigsaw)
 
@@ -1581,7 +1585,7 @@ Toolbar: **Photos → Photo book** adds a sample album.
 
 ### Photo carousel
 
-A **slideshow** of your pictures. It autoplays, and you can swipe, click the arrows, or use the keyboard.
+A **horizontal 3D photo wheel**. Pictures stand around a ring and spin left to right; drag sideways to scrub and reverse it. **Wheel H** is the default. **Wheel V** stands the ring on its side.
 
 ````markdown
 ```carousel{title=Holiday slides;demo;col=info}
@@ -1597,14 +1601,15 @@ A **slideshow** of your pictures. It autoplays, and you can swipe, click the arr
 | Option | Description |
 |--------|-------------|
 | `title` | Block heading |
-| `demo` / `auto` | Autoplay (on by default; `demo=0` to stop) |
-| `interval` | Milliseconds between slides (default 4500) |
+| `demo` / `auto` | Idle spin (on by default; `demo=0` to stop) |
+| `interval` | Milliseconds per photo as the wheel turns (default 4500) |
+| `axis` | `h` (default, Wheel H) or `v` (Wheel V) |
 | `fullscreen` | Edge-to-edge layout (default on) |
 | `col` / `bkcol` | Theme colors |
 
-**Carousel controls:** click a photo to open it · ‹ › or arrow keys · swipe · dots · **Pause** / **Play** · paste / drop to add pictures while editing.
+**Carousel controls:** **A/D** or drag to turn · **W/S** or mouse wheel tilt the camera · click the front photo to open it · ‹ › or arrow keys · dots · **Pause** / **Play** · **Wheel H** / **Wheel V** · paste / drop to add pictures while editing.
 
-Toolbar: **Photos → Photo carousel** adds a sample slideshow.
+Toolbar: **Photos → Photo carousel** adds a sample wheel.
 
 ### Roller coaster
 

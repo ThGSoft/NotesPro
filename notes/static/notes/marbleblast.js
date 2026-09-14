@@ -71,6 +71,24 @@
     return true;
   }
 
+  function resolveCamMode(cfg) {
+    const raw = String(cfg.view || cfg.cam || cfg.camera || '').trim().toLowerCase();
+    if (raw === 'ego' || raw === 'fp' || raw === 'first' || raw === '1st') return 'ego';
+    if (raw === 'orbit' || raw === 'third' || raw === '3rd' || raw === 'look') return 'orbit';
+    if ('ego' in cfg) {
+      const flag = String(cfg.ego).trim().toLowerCase();
+      if (flag !== '0' && flag !== 'false' && flag !== 'no' && flag !== 'off') return 'ego';
+    }
+    return 'orbit';
+  }
+
+  function shortestAngle(from, to) {
+    let diff = to - from;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    return diff;
+  }
+
   function renderFullscreenButton() {
     return window.NotesProGameFullscreen?.renderButton?.() || '';
   }
@@ -201,6 +219,7 @@
     const title = String(cfg.title || 'Marble blast').trim() || 'Marble blast';
     const marbleIndex = Number.isFinite(options.marbleblastIndex) ? options.marbleblastIndex : 0;
     const fullscreen = resolveFullscreen(cfg);
+    const camMode = resolveCamMode(cfg);
     const themeClass = style.theme ? ` marbleblast-block--${style.theme}` : '';
     const customClass = (style.colorCss || style.bgCss) ? ' marbleblast-block--custom' : '';
     const fullClass = fullscreen ? ' marbleblast-block--fullscreen' : '';
@@ -215,12 +234,13 @@
       `<div class="marbleblast-block-title">${escapeHtml(title)}</div>`,
       `<div class="marbleblast-block-meta">roll · collect gems · hit the finish pad</div>`,
       `</div>`,
-      `<p class="marbleblast-block-hint">WASD / arrows roll · Space jump · drag to look · R restart · [ ] course</p>`,
+      `<p class="marbleblast-block-hint">WASD / arrows roll the marble · Space jump · drag to look · C view · R restart · [ ] course</p>`,
     ].join('');
     return [
       `<div class="marbleblast-block${themeClass}${customClass}${fullClass}"${styleAttr}`,
       ` data-marbleblast-index="${marbleIndex}"`,
-      ` data-marbleblast-course="${escapeHtml(String(cfg.course || ''))}" tabindex="0">`,
+      ` data-marbleblast-course="${escapeHtml(String(cfg.course || ''))}"`,
+      ` data-marbleblast-view="${escapeHtml(camMode)}" tabindex="0">`,
       renderFullscreenButton(),
       chrome,
       `<div class="marbleblast-stage">`,
@@ -235,6 +255,7 @@
       `<button type="button" class="btn btn-sm btn-outline-light" data-act="restart">Restart</button>`,
       `<button type="button" class="btn btn-sm btn-outline-light" data-act="prev">Prev course</button>`,
       `<button type="button" class="btn btn-sm btn-outline-light" data-act="next">Next course</button>`,
+      `<button type="button" class="btn btn-sm btn-outline-light" data-act="view">${camMode === 'ego' ? 'View: Ego' : 'View: Orbit'}</button>`,
       `</div>`,
       `<div class="marbleblast-pad" aria-label="Marble controls">`,
       `<button type="button" class="marbleblast-pad__btn marbleblast-pad__btn--w" data-key="KeyW" tabindex="-1">W</button>`,
@@ -291,10 +312,14 @@
     const gemsEl = el.querySelector('[data-role="mb-gems"]');
     const courseEl = el.querySelector('[data-role="mb-course"]');
     const pad = el.querySelector('.marbleblast-pad');
+    const viewBtn = el.querySelector('[data-act="view"]');
     if (!viewport || !canvas) return null;
 
     const courses = COURSES();
     let courseIndex = Math.max(0, Math.min(courses.length - 1, parseInt(cfg.course, 10) - 1 || 0));
+    let camMode = resolveCamMode(cfg) === 'ego' ? 'ego' : 'orbit';
+    const desiredCam = new THREE.Vector3();
+    let camSnap = true;
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -341,7 +366,8 @@
       falls: 0,
     };
     let camYaw = 0.4;
-    let camPitch = 0.42;
+    let camPitch = camMode === 'ego' ? 0.18 : 0.42;
+    let headingYaw = Math.PI / 2;
     let destroyed = false;
     let raf = 0;
     let last = performance.now();
@@ -350,6 +376,28 @@
 
     function setStatus(text) {
       if (status) status.textContent = text || '';
+    }
+
+    function syncCamButton() {
+      if (!viewBtn) return;
+      viewBtn.textContent = camMode === 'ego' ? 'View: Ego' : 'View: Orbit';
+    }
+
+    function controlYaw() {
+      return camMode === 'ego' ? headingYaw : camYaw;
+    }
+
+    function cycleCamera() {
+      if (camMode === 'ego') {
+        camYaw = headingYaw;
+        camMode = 'orbit';
+      } else {
+        headingYaw = camYaw;
+        camMode = 'ego';
+        camPitch = clamp(camPitch, -0.12, 0.55);
+      }
+      camSnap = true;
+      syncCamButton();
     }
 
     function paintHud() {
@@ -458,6 +506,8 @@
       body.vy = 0;
       body.vz = 0;
       body.grounded = false;
+      headingYaw = Math.PI / 2;
+      camSnap = true;
       marble.position.set(body.x, body.y, body.z);
     }
 
@@ -502,7 +552,7 @@
     }
 
     function step(dt) {
-      const yaw = camYaw;
+      const yaw = controlYaw();
       const fwdX = Math.sin(yaw);
       const fwdZ = Math.cos(yaw);
       const rightX = Math.cos(yaw);
@@ -616,6 +666,15 @@
 
       if (body.y < -6) respawn();
 
+      const hSpeed = Math.hypot(body.vx, body.vz);
+      if (camMode !== 'ego' && hSpeed > 0.45) {
+        const target = Math.atan2(body.vx, body.vz);
+        if (Math.cos(shortestAngle(headingYaw, target)) > -0.2) {
+          const follow = 1 - Math.pow(0.012, dt);
+          headingYaw += shortestAngle(headingYaw, target) * Math.min(1, follow);
+        }
+      }
+
       marble.position.set(body.x, body.y, body.z);
       const v = Math.hypot(body.vx, body.vz);
       body.spin += v * dt * 2.4;
@@ -629,6 +688,29 @@
     }
 
     function placeCamera() {
+      if (camMode === 'ego') {
+        const yaw = headingYaw;
+        const dist = 1.78;
+        const height = 0.78 + camPitch * 0.55;
+        desiredCam.set(
+          body.x - Math.sin(yaw) * dist,
+          body.y + height,
+          body.z - Math.cos(yaw) * dist,
+        );
+        if (camSnap) camera.position.copy(desiredCam);
+        else camera.position.lerp(desiredCam, 0.28);
+        camera.lookAt(
+          body.x + Math.sin(yaw) * 4.2,
+          body.y + 0.16,
+          body.z + Math.cos(yaw) * 4.2,
+        );
+        if (camera.fov !== 74) {
+          camera.fov = 74;
+          camera.updateProjectionMatrix();
+        }
+        camSnap = false;
+        return;
+      }
       const dist = 6.4;
       const height = 2.8;
       const cx = body.x - Math.sin(camYaw) * dist * Math.cos(camPitch);
@@ -636,6 +718,11 @@
       const cy = body.y + height + Math.sin(camPitch) * 2.2;
       camera.position.set(cx, cy, cz);
       camera.lookAt(body.x, body.y + 0.3, body.z);
+      if (camera.fov !== 62) {
+        camera.fov = 62;
+        camera.updateProjectionMatrix();
+      }
+      camSnap = false;
     }
 
     function tick(now) {
@@ -660,6 +747,7 @@
       }
       if (e.code === 'Space') jumpQueued = true;
       if (e.code === 'KeyR') loadCourse(courseIndex);
+      if (e.code === 'KeyC') cycleCamera();
       if (e.code === 'BracketLeft' || e.code === 'Comma') loadCourse(courseIndex - 1);
       if (e.code === 'BracketRight' || e.code === 'Period') loadCourse(courseIndex + 1);
     }
@@ -674,8 +762,15 @@
     }
     function onPointerMove(e) {
       if (!drag || e.pointerId !== drag.id) return;
-      camYaw -= (e.clientX - drag.x) * 0.006;
-      camPitch = clamp(camPitch + (e.clientY - drag.y) * 0.004, -0.15, 0.9);
+      const dx = (e.clientX - drag.x) * 0.006;
+      const dy = (e.clientY - drag.y) * 0.004;
+      if (camMode === 'ego') {
+        headingYaw -= dx;
+        camPitch = clamp(camPitch + dy, -0.12, 0.72);
+      } else {
+        camYaw -= dx;
+        camPitch = clamp(camPitch + dy, -0.15, 0.9);
+      }
       drag.x = e.clientX;
       drag.y = e.clientY;
     }
@@ -733,6 +828,7 @@
       if (act === 'restart') loadCourse(courseIndex);
       if (act === 'prev') loadCourse(courseIndex - 1);
       if (act === 'next') loadCourse(courseIndex + 1);
+      if (act === 'view') cycleCamera();
       if (act) el.focus({ preventScroll: true });
     });
     canvas.addEventListener('pointerdown', onPointerDown);
@@ -749,6 +845,7 @@
     el.addEventListener('notespro:monitor-fullscreen', () => requestAnimationFrame(resize));
     resize();
     syncPad();
+    syncCamButton();
     loadCourse(courseIndex);
     raf = requestAnimationFrame(tick);
 
@@ -772,7 +869,10 @@
 
   function hydrateBlock(el) {
     if (!el || el.dataset.marbleblastHydrated === '1') return;
-    const cfg = parseFenceAttrs(el.dataset.marbleblastCourse ? `course=${el.dataset.marbleblastCourse}` : '');
+    const cfg = parseFenceAttrs([
+      el.dataset.marbleblastCourse ? `course=${el.dataset.marbleblastCourse}` : '',
+      el.dataset.marbleblastView ? `view=${el.dataset.marbleblastView}` : '',
+    ].filter(Boolean).join(';'));
     el.dataset.marbleblastHydrated = '1';
     bindFullscreenButton(el);
     whenThreeReady(
