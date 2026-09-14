@@ -3,16 +3,16 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>NotesPro — Collaborative notes with markdown, chat &amp; encryption</title>
-  <meta name="description" content="NotesPro: workspaces, rich markdown, Keep notes, Speisekarte click-to-order menus, games, 3D photo galleries, Kanban Gantt with cost tracking, end-to-end encrypted chat, and encrypted-at-rest storage.">
+  <title>NotesPro — Collaborative notes with markdown, chat &amp; workspaces</title>
+  <meta name="description" content="NotesPro: workspaces, rich markdown, Keep notes, click-to-order menus, games, 3D photo galleries, Kanban Gantt with cost tracking, and team chat.">
   <meta property="og:type" content="website">
-  <meta property="og:title" content="NotesPro — collaborative notes with markdown, chat &amp; encryption">
-  <meta property="og:description" content="Workspaces, rich markdown, Keep notes, project boards, click-to-order menus, and encrypted chat — pinned in one place.">
+  <meta property="og:title" content="NotesPro — collaborative notes with markdown, chat &amp; workspaces">
+  <meta property="og:description" content="Workspaces, rich markdown, Keep notes, project boards, click-to-order menus, and team chat — pinned in one place.">
   <meta property="og:url" content="https://thgsoft.online/DjangoNotesPro/">
   <meta property="og:image" content="https://raw.githubusercontent.com/ThGSoft/NotesPro/main/docs/screenshots/dashboard-full.png">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="NotesPro">
-  <meta name="twitter:description" content="Workspaces, rich markdown, Keep notes, project boards, click-to-order menus, and encrypted chat.">
+  <meta name="twitter:description" content="Workspaces, rich markdown, Keep notes, project boards, click-to-order menus, and team chat.">
   <meta name="twitter:image" content="https://raw.githubusercontent.com/ThGSoft/NotesPro/main/docs/screenshots/dashboard-full.png">
   <link rel="icon" href="favicon.ico" type="image/x-icon">
   <link rel="shortcut icon" href="favicon.ico" type="image/x-icon">
@@ -495,6 +495,30 @@
       font-weight: 600;
     }
 
+    .legal {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 1.75rem clamp(1.25rem, 4vw, 3rem) 0.5rem;
+    }
+    .legal-card {
+      background: var(--paper);
+      border: 2px solid #1a1a1a;
+      border-radius: 2px;
+      padding: 1.15rem 1.25rem 1.35rem;
+      box-shadow: 3px 4px 0 rgba(0,0,0,0.12);
+    }
+    .legal-card h2 {
+      font-family: var(--font-display);
+      font-size: 1.15rem;
+      margin: 0 0 0.55rem;
+    }
+    .legal-card p {
+      margin: 0 0 0.65rem;
+      font-size: 0.92rem;
+      color: var(--muted);
+    }
+    .legal-card p:last-child { margin-bottom: 0; }
+
     @media (max-width: 640px) {
       .nav a[href="#advantages"] { display: none; }
       .sticky { transform: rotate(-1deg); }
@@ -512,6 +536,7 @@
       <div style="display:flex;gap:0.55rem;">
         <a class="btn btn-ghost" href="#gallery">Gallery</a>
         <a class="btn btn-ghost" href="#advantages">Advantages</a>
+        <a class="btn btn-ghost" href="#privacy">Privacy</a>
         <a class="btn btn-ghost" href="https://github.com/ThGSoft/NotesPro">Source</a>
         <a class="btn btn-primary" href="https://thgsoft.online/DjangoNotesPro/">Open NotesPro</a>
       </div>
@@ -523,7 +548,7 @@
           <img src="favicon.ico" width="56" height="56" alt="NotesPro sticky note icon">
           <p class="wordmark">Notes<span class="line2">Pro</span></p>
         </div>
-        <p class="tagline">Workspaces, rich markdown, Keep notes, project boards, click-to-order menus, and encrypted chat — pinned in one place.</p>
+        <p class="tagline">Workspaces, rich markdown, Keep notes, project boards, click-to-order menus, and team chat — pinned in one place.</p>
         <div class="hero-cta">
           <a class="btn btn-primary" href="https://thgsoft.online/DjangoNotesPro/">Go to NotesPro →</a>
           <a class="btn btn-ghost" href="https://github.com/ThGSoft/NotesPro">Get source on GitHub</a>
@@ -539,7 +564,7 @@
       <a class="shot-frame" href="https://thgsoft.online/DjangoNotesPro/" aria-label="Open NotesPro dashboard">
         <img
           src="screenshots/dashboard-full.png"
-          alt="NotesPro dashboard — tree, markdown editor, live preview with calendar, and encrypted chat"
+          alt="NotesPro dashboard — tree, markdown editor, live preview with calendar, and team chat"
           width="1600"
           height="900"
           loading="eager"
@@ -566,7 +591,7 @@
           <img src="screenshots/dashboard-preview.png" alt="NotesPro live preview" width="640" height="360" loading="lazy">
           <span>Preview</span>
         </a>
-        <a class="gallery-item" href="screenshots/dashboard-chat.png" data-caption="Encrypted chat and mail">
+        <a class="gallery-item" href="screenshots/dashboard-chat.png" data-caption="Chat and mail">
           <img src="screenshots/dashboard-chat.png" alt="NotesPro chat and mail panel" width="640" height="360" loading="lazy">
           <span>Chat &amp; mail</span>
         </a>
@@ -634,7 +659,7 @@
     <section id="advantages" aria-labelledby="advantages-title">
       <div class="section-head">
         <h2 id="advantages-title">All advantages</h2>
-        <p>Everything NotesPro brings to your team — writing, planning, menus, games, files, messaging, and security.</p>
+        <p>Everything NotesPro brings to your team — writing, planning, menus, games, files, messaging, and two-factor login.</p>
       </div>
 
       <div class="grid">
@@ -675,8 +700,13 @@
         </article>
         <article class="feature">
           <span class="label">Menu</span>
-          <h3>Speisekarte</h3>
-          <p>Click a dish on a restaurant menu card to send that order by workspace mail, private chat, or group chat to a named user.</p>
+          <h3>Menu card</h3>
+          <p>Each table is a panel. Use settings to set the number of tables, click dishes to order, then send a bill — archived with date and time.</p>
+        </article>
+        <article class="feature">
+          <span class="label">Shop</span>
+          <h3>E-shop</h3>
+          <p>Product catalog with images and descriptions. Checkout by mail, PayPal, or Mastercard, and the order is posted in group chat.</p>
         </article>
         <article class="feature">
           <span class="label">Calcs</span>
@@ -706,7 +736,7 @@
         <article class="feature">
           <span class="label">Photos</span>
           <h3>3D galleries &amp; rides</h3>
-          <p>Walk-in photo corridors, cubes, books, carousels, roller coaster, scooter, ghost train, and labyrinth walls from your images.</p>
+          <p>Walk-in photo corridors, cubes, books, 3D carousels, roller coaster, scooter, ghost train, and labyrinth walls from your images.</p>
         </article>
         <article class="feature">
           <span class="label">Panels</span>
@@ -726,7 +756,7 @@
         <article class="feature">
           <span class="label">Chat</span>
           <h3>Private &amp; group</h3>
-          <p>WhatsApp-style 1:1 DMs with end-to-end encryption; optional WebRTC P2P; workspace group channel.</p>
+          <p>One-to-one messages, a workspace group channel, and optional direct connection when both people are online.</p>
         </article>
         <article class="feature">
           <span class="label">Mail</span>
@@ -734,9 +764,9 @@
           <p>Inbox, sent, and compose inside the dashboard — plus NotesPro routing for incoming mail.</p>
         </article>
         <article class="feature">
-          <span class="label">Security</span>
-          <h3>2FA + encryption</h3>
-          <p>TOTP two-factor login; Fernet encryption at rest for pages, chat, mail, and secrets.</p>
+          <span class="label">Account</span>
+          <h3>Two-factor login</h3>
+          <p>Optional TOTP two-factor sign-in so you can protect your NotesPro account with an authenticator app.</p>
         </article>
         <article class="feature">
           <span class="label">Tags</span>
@@ -773,16 +803,28 @@
       </div>
     </div>
 
+    <section class="legal" id="privacy" aria-labelledby="privacy-title">
+      <div class="legal-card">
+        <h2 id="privacy-title">Privacy &amp; publisher</h2>
+        <p>NotesPro is a collaborative notes app from <strong>ThGSoft</strong>. This page describes the product. The live service is at <a href="https://thgsoft.online/DjangoNotesPro/">thgsoft.online/DjangoNotesPro</a>. Source code: <a href="https://github.com/ThGSoft/NotesPro">github.com/ThGSoft/NotesPro</a>.</p>
+        <p>This landing page does not ask you to create an account. If you open the live app, ThGSoft stores the account and workspace content you choose to save so the product can work. We do not sell personal information. We do not use this page to collect payment card numbers.</p>
+        <p>If you reach this page from a Google ad, Google may record the click under <a href="https://policies.google.com/privacy">Google’s privacy policy</a>. This page does not set advertising cookies of its own.</p>
+        <p>Contact: <a href="https://github.com/ThGSoft/NotesPro/issues">GitHub issues</a>.</p>
+      </div>
+    </section>
+
     <footer>
       <a class="brand" href="#top">
         <img class="brand-mark" src="favicon.ico" width="28" height="28" alt="">
         NotesPro
       </a>
       <span>
-        <a href="https://github.com/ThGSoft/NotesPro">Source on GitHub</a>
+        <a href="#privacy">Privacy</a>
+        · <a href="https://github.com/ThGSoft/NotesPro">Source on GitHub</a>
         · <a href="https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2F%2Fthgsoft.online%2FDjangoNotesPro%2F">LinkedIn</a>
         · <a href="https://www.youtube.com/upload">YouTube</a>
-        · sticky notes · markdown · menus · encrypted chat
+        · sticky notes · markdown · menus · team chat
+        · ThGSoft
       </span>
     </footer>
   </div>
