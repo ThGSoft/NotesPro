@@ -2070,7 +2070,7 @@
     let match;
     while ((match = re.exec(raw))) {
       const openingLine = raw.slice(0, match.index).split('\n').length - 1;
-      const contentLines = match[2].split('\n');
+      const contentLines = String(match[1] || '').split('\n');
       const lineMap = [];
       let start = 0;
 
@@ -2089,7 +2089,7 @@
   }
 
   function isPreviewRichBlock(el) {
-    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .md-python, .voice-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .tetris-block, .sokoban-block, .speisekarte-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .page-tags');
+    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .md-python, .voice-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .page-tags');
   }
 
   function getPreviewBlockSourceLine(node) {
@@ -2125,7 +2125,7 @@
 
   function setPreviewContextFromEvent(e) {
     if (!isEditing) return;
-    if (e.target.closest?.('.sheet-cell-editable, a, button, input, select, textarea, .chart-settings')) return;
+    if (e.target.closest?.('.sheet-cell-editable, a, button, input, select, textarea, .chart-settings, .speisekarte-settings, .shop-settings')) return;
     const line = getPreviewBlockSourceLine(e.target);
     if (line !== null) previewContextLine = line;
   }
@@ -3479,9 +3479,97 @@
     return ok;
   }
 
+  let shopSettingsImages = [];
+
+  function looksLikeCardNumber(value) {
+    const digits = String(value || '').replace(/\D/g, '');
+    return digits.length >= 13 && digits.length <= 19;
+  }
+
+  function shopSettingsPayloadFromForm() {
+    const paypalEnabled = !!document.getElementById('app-settings-shop-paypal-enabled')?.checked;
+    const mastercardEnabled = !!document.getElementById('app-settings-shop-mastercard-enabled')?.checked;
+    const mastercard = String(document.getElementById('app-settings-shop-mastercard')?.value || '').trim();
+    return {
+      description: String(document.getElementById('app-settings-shop-description')?.value || '').trim().slice(0, 2000),
+      images: shopSettingsImages.slice(0, 8),
+      paypal_enabled: paypalEnabled,
+      paypal: String(document.getElementById('app-settings-shop-paypal')?.value || '').trim().slice(0, 120),
+      mastercard_enabled: mastercardEnabled,
+      mastercard: looksLikeCardNumber(mastercard) ? '' : mastercard.slice(0, 240),
+    };
+  }
+
+  function renderShopSettingsImages() {
+    const host = document.getElementById('app-settings-shop-images');
+    if (!host) return;
+    if (!shopSettingsImages.length) {
+      host.innerHTML = '<p class="small dashboard-modal-hint mb-0">No shop images yet.</p>';
+      return;
+    }
+    host.innerHTML = shopSettingsImages.map((src, index) => {
+      const href = resolveMediaHref(src);
+      return `<div class="app-settings-shop-thumb">`
+        + `<img src="${escapeHtml(href)}" alt="">`
+        + `<button type="button" class="btn-close btn-close-white app-settings-shop-thumb-remove" data-shop-image-remove="${index}" aria-label="Remove image"></button>`
+        + `</div>`;
+    }).join('');
+  }
+
+  function syncShopPaymentFields() {
+    const paypalOn = !!document.getElementById('app-settings-shop-paypal-enabled')?.checked;
+    const cardOn = !!document.getElementById('app-settings-shop-mastercard-enabled')?.checked;
+    const paypalInput = document.getElementById('app-settings-shop-paypal');
+    const cardInput = document.getElementById('app-settings-shop-mastercard');
+    if (paypalInput) paypalInput.disabled = !paypalOn;
+    if (cardInput) cardInput.disabled = !cardOn;
+  }
+
+  function fillShopSettingsForm() {
+    const shop = getShopMerchantSettings();
+    shopSettingsImages = [...(shop.images || [])];
+    const desc = document.getElementById('app-settings-shop-description');
+    const paypal = document.getElementById('app-settings-shop-paypal');
+    const paypalOn = document.getElementById('app-settings-shop-paypal-enabled');
+    const card = document.getElementById('app-settings-shop-mastercard');
+    const cardOn = document.getElementById('app-settings-shop-mastercard-enabled');
+    if (desc) desc.value = shop.description || '';
+    if (paypal) paypal.value = shop.paypal || '';
+    if (paypalOn) paypalOn.checked = !!shop.paypalEnabled;
+    if (card) card.value = shop.mastercard || '';
+    if (cardOn) cardOn.checked = !!shop.mastercardEnabled;
+    renderShopSettingsImages();
+    syncShopPaymentFields();
+  }
+
+  function applyShopMerchantSettings(shop) {
+    if (!window.APP_BOOT) window.APP_BOOT = {};
+    if (!window.APP_BOOT.extraConfigs) window.APP_BOOT.extraConfigs = {};
+    window.APP_BOOT.extraConfigs.shop = shop;
+    if (typeof renderPreview === 'function') renderPreview();
+  }
+
+  async function saveAppSettings() {
+    const lang = document.getElementById('app-settings-language')?.value || 'browser';
+    const shop = shopSettingsPayloadFromForm();
+    if (shop.mastercard_enabled && looksLikeCardNumber(shop.mastercard)) {
+      showToast('Do not enter card numbers. Use IBAN or delivery instructions.', 'warning');
+      return false;
+    }
+    applyAppLanguage(lang, { rerenderPreview: false });
+    applyShopMerchantSettings(shop);
+    const ok = await updateUserSettings({ extra_configs: { language: lang, shop } });
+    if (ok) {
+      setStatus('Settings saved');
+      if (typeof renderPreview === 'function') renderPreview();
+    }
+    return ok;
+  }
+
   function openAppSettingsModal() {
     const sel = document.getElementById('app-settings-language');
     if (sel) sel.value = getStoredAppLanguage();
+    fillShopSettingsForm();
     const modalEl = document.getElementById('app-settings-modal');
     if (modalEl) openDashboardModal(modalEl);
   }
@@ -3664,9 +3752,66 @@
       openAppSettingsModal();
     });
     document.getElementById('app-settings-save')?.addEventListener('click', async () => {
-      const lang = document.getElementById('app-settings-language')?.value || 'browser';
-      const ok = await saveAppLanguage(lang);
+      const ok = await saveAppSettings();
       if (ok) closeAppSettingsModal();
+    });
+    document.getElementById('app-settings-shop-paypal-enabled')?.addEventListener('change', syncShopPaymentFields);
+    document.getElementById('app-settings-shop-mastercard-enabled')?.addEventListener('change', syncShopPaymentFields);
+    document.getElementById('app-settings-shop-image-add')?.addEventListener('click', () => {
+      const input = document.getElementById('app-settings-shop-image-url');
+      const url = String(input?.value || '').trim();
+      if (!url) return;
+      if (shopSettingsImages.length >= 8) {
+        showToast('You can add up to 8 shop images.', 'warning');
+        return;
+      }
+      shopSettingsImages.push(url);
+      if (input) input.value = '';
+      renderShopSettingsImages();
+    });
+    document.getElementById('app-settings-shop-images')?.addEventListener('click', (event) => {
+      const btn = event.target.closest?.('[data-shop-image-remove]');
+      if (!btn) return;
+      const index = parseInt(btn.dataset.shopImageRemove, 10);
+      if (!Number.isFinite(index)) return;
+      shopSettingsImages.splice(index, 1);
+      renderShopSettingsImages();
+    });
+    const shopSection = document.querySelector('.app-settings-shop');
+    async function addShopSettingsImageFiles(files) {
+      const images = [...files].filter((file) => file && String(file.type || '').startsWith('image/'));
+      if (!images.length) return;
+      for (const file of images) {
+        if (shopSettingsImages.length >= 8) {
+          showToast('You can add up to 8 shop images.', 'warning');
+          break;
+        }
+        try {
+          const mediaPath = await uploadPastedImageBlob(file, file.name || 'shop.png');
+          if (mediaPath) shopSettingsImages.push(mediaPath);
+        } catch (err) {
+          showToast(err.message || 'Image upload failed.', 'danger');
+        }
+      }
+      renderShopSettingsImages();
+    }
+    shopSection?.addEventListener('paste', (event) => {
+      const files = clipboardImageFiles(event.clipboardData);
+      if (!files.length) return;
+      event.preventDefault();
+      event.stopPropagation();
+      void addShopSettingsImageFiles(files);
+    });
+    shopSection?.addEventListener('dragover', (event) => {
+      if (![...(event.dataTransfer?.types || [])].includes('Files')) return;
+      event.preventDefault();
+    });
+    shopSection?.addEventListener('drop', (event) => {
+      const files = [...(event.dataTransfer?.files || [])].filter((file) => String(file.type || '').startsWith('image/'));
+      if (!files.length) return;
+      event.preventDefault();
+      event.stopPropagation();
+      void addShopSettingsImageFiles(files);
     });
     document.getElementById('admin-link')?.addEventListener('click', (e) => {
       e.preventDefault();
@@ -7679,15 +7824,19 @@
 
   const SPEISEKARTE_BLOCK_RE = /```(?:speisekarte|speise|menukarte|menucard|menu)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
 
-  function parseSpeisekarteBlocks(text) {
+  function parseSpeisekarteBlocks(text, options = {}) {
     let speisekarteIndex = 0;
     SPEISEKARTE_BLOCK_RE.lastIndex = 0;
     return text.replace(SPEISEKARTE_BLOCK_RE, (_, fenceAttrs, content) => {
       const engine = window.NotesProSpeisekarte;
       const idx = speisekarteIndex++;
       const html = engine?.renderBlock
-        ? engine.renderBlock(content || '', fenceAttrs || '', { speisekarteIndex: idx })
-        : '<div class="speisekarte-block speisekarte-block--error">Speisekarte engine not loaded.</div>';
+        ? engine.renderBlock(content || '', fenceAttrs || '', {
+            speisekarteIndex: idx,
+            editable: !!options.speisekarteEditable || !!options.sheetEditable,
+            archiveMarkdown: options.archiveMarkdown ?? currentPage?.archive ?? '',
+          })
+        : '<div class="speisekarte-block speisekarte-block--error">Menu engine not loaded.</div>';
       return wrapRichPreviewBlock(html);
     });
   }
@@ -7703,17 +7852,20 @@
     const pageTitle = currentPage?.title || 'page';
     const extra = item.note ? ` (${item.note})` : '';
     const price = item.price ? ` — ${item.price}` : '';
-    const tableLine = table ? `\nTisch: ${table}` : '';
-    return `Order from ${spec?.title || 'Speisekarte'} (${pageTitle}): ${item.name}${extra}${price}${tableLine}`;
+    const tableLine = table ? `\nTable: ${table}` : '';
+    return `Order from ${spec?.title || 'Menu'} (${pageTitle}): ${item.name}${extra}${price}${tableLine}`;
   }
 
-  function formatSpeisekarteBillMessage(spec, bill) {
+  function formatSpeisekarteBillMessage(spec, bill, extras = {}) {
     const engine = window.NotesProSpeisekarte;
     if (engine?.formatBillText) {
-      return engine.formatBillText(spec, bill, { pageTitle: currentPage?.title || 'page' });
+      return engine.formatBillText(spec, bill, {
+        pageTitle: currentPage?.title || 'page',
+        at: extras.at,
+      });
     }
     const table = bill?.table || spec?.table || '—';
-    return `Rechnung Tisch ${table} — ${spec?.title || 'Speisekarte'}`;
+    return `Bill · Table ${table} — ${spec?.title || 'Menu'}`;
   }
 
   function resolveSpeisekarteRecipients(members, spec) {
@@ -7742,7 +7894,7 @@
     const data = await api(`api/workspaces/${workspaceId}/members/`);
     const recipients = resolveSpeisekarteRecipients(data.members || [], spec);
     if (!recipients.length) {
-      throw new Error('No recipient found. Set to=username in the Speisekarte fence.');
+      throw new Error('No recipient found. Set to=username in the menu fence.');
     }
     const names = recipients.map((r) => r.username).join(', ');
     let via = spec?.via || 'mail';
@@ -7772,7 +7924,7 @@
   async function sendSpeisekarteOrder({ spec, item, btn, table } = {}) {
     const tisch = String(table || spec?.table || '').trim();
     if (!tisch) {
-      showToast('Enter Tisch Nr. first.', 'warning');
+      showToast('Select a table first.', 'warning');
       return false;
     }
     if (!item?.name) return false;
@@ -7784,12 +7936,12 @@
       const body = formatSpeisekarteOrderMessage(spec, item, tisch);
       await dispatchSpeisekarteMessage({
         spec,
-        subject: `Order: ${item.name} · Tisch ${tisch}`,
+        subject: `Order: ${item.name} · Table ${tisch}`,
         body,
         toastOk: ({ names, via, dmPeers }) => {
-          if (via === 'chat') return `Ordered “${item.name}” for Tisch ${tisch} in group chat.`;
-          if (via === 'dm') return `Ordered “${item.name}” for Tisch ${tisch} to ${dmPeers.map((r) => r.username).join(', ')}.`;
-          return `Ordered “${item.name}” for Tisch ${tisch} to ${names}.`;
+          if (via === 'chat') return `Ordered “${item.name}” for Table ${tisch} in group chat.`;
+          if (via === 'dm') return `Ordered “${item.name}” for Table ${tisch} to ${dmPeers.map((r) => r.username).join(', ')}.`;
+          return `Ordered “${item.name}” for Table ${tisch} to ${names}.`;
         },
       });
       btn?.classList.add('is-sent');
@@ -7809,11 +7961,11 @@
   async function sendSpeisekarteBill({ spec, bill, btn, table, el } = {}) {
     const tisch = String(table || bill?.table || spec?.table || '').trim();
     if (!tisch) {
-      showToast('Enter Tisch Nr. first.', 'warning');
+      showToast('Select a table first.', 'warning');
       return false;
     }
     if (!bill?.lines?.length) {
-      showToast('Rechnung is empty.', 'warning');
+      showToast('The bill is empty.', 'warning');
       return false;
     }
     if (btn) {
@@ -7821,23 +7973,31 @@
       btn.classList.add('is-sending');
     }
     try {
-      const body = formatSpeisekarteBillMessage(spec, bill);
+      const at = new Date();
+      const body = formatSpeisekarteBillMessage(spec, bill, { at });
       const sum = bill.totalLabel ? ` · ${bill.totalLabel}` : '';
       await dispatchSpeisekarteMessage({
         spec,
-        subject: `Rechnung: Tisch ${tisch}${sum}`,
+        subject: `Bill: Table ${tisch}${sum}`,
         body,
-        toastOk: `Sent Rechnung for Tisch ${tisch}.`,
+        toastOk: `Sent bill for Table ${tisch}.`,
       });
-      window.NotesProSpeisekarte?.clearBill?.(el, spec);
+      await archiveSpeisekarteBill(spec, bill, { at, el });
+      window.NotesProSpeisekarte?.clearBill?.(el, spec, tisch);
+      capturePreviewScrollPosition();
+      try {
+        renderPreview();
+      } catch (previewErr) {
+        console.warn('preview refresh after bill failed:', previewErr);
+      }
       return true;
     } catch (err) {
-      showToast(err.message || 'Could not send Rechnung.', 'danger');
+      showToast(err.message || 'Could not send bill.', 'danger');
       return false;
     } finally {
       if (btn) {
         btn.classList.remove('is-sending');
-        const current = window.NotesProSpeisekarte?.getBill?.(el, spec);
+        const current = window.NotesProSpeisekarte?.getBill?.(el, spec, tisch);
         btn.disabled = !current?.lines?.length;
       }
     }
@@ -7847,7 +8007,313 @@
     window.NotesProSpeisekarte?.hydrate?.(root, {
       onOrder: (payload) => sendSpeisekarteOrder(payload),
       onBill: (payload) => sendSpeisekarteBill(payload),
+      onSettings: (payload) => applySpeisekarteSettings(payload),
     });
+  }
+
+  function appendSpeisekarteBillToPageArchive(fence) {
+    const block = String(fence || '').trim();
+    if (!block) return String(currentPage?.archive || '');
+    const existing = String(currentPage?.archive || '').trim();
+    return existing ? `${existing}\n\n${block}` : block;
+  }
+
+  async function archiveSpeisekarteBill(spec, bill, extras = {}) {
+    if (!currentPage) return;
+    const engine = window.NotesProSpeisekarte;
+    if (!engine?.formatArchiveFence) return;
+    const index = extras.el?.dataset?.speisekarteIndex;
+    const fence = engine.formatArchiveFence(spec, bill, {
+      at: extras.at || new Date(),
+      index,
+    });
+    currentPage.archive = appendSpeisekarteBillToPageArchive(fence);
+    try {
+      currentPage = await api(`api/pages/${currentPageId}/update/`, 'POST', {
+        title: document.getElementById('page-title')?.value || currentPage.title || 'Untitled',
+        markdown_content: easyMDE ? easyMDE.value() : (currentPage.markdown_content || ''),
+        archive: currentPage.archive,
+      });
+    } catch (err) {
+      console.warn('archiveSpeisekarteBill failed:', err);
+    }
+  }
+
+  function updateSpeisekarteTablesInMarkdown(markdown, speisekarteIndex, tableCount) {
+    const engine = window.NotesProSpeisekarte;
+    const max = engine?.MAX_TABLES || 40;
+    const n = Math.max(1, Math.min(max, Number(tableCount) || 0));
+    if (!n) return String(markdown || '');
+    let idx = 0;
+    const re = new RegExp(SPEISEKARTE_BLOCK_RE.source, SPEISEKARTE_BLOCK_RE.flags);
+    const tablesValue = n === 1 ? '1' : `1-${n}`;
+    return String(markdown || '').replace(re, (match, fenceAttrs, content = '') => {
+      const thisIndex = idx;
+      idx += 1;
+      if (thisIndex !== speisekarteIndex) return match;
+      let nextAttrs = fenceAttrs || '';
+      ['tische', 'tisch', 'table', 'tischnr', 'tablenr', 'nr', 'count', 'n'].forEach((key) => {
+        nextAttrs = setGanttFenceAttr(nextAttrs, key, '');
+      });
+      nextAttrs = setGanttFenceAttr(nextAttrs, 'tables', tablesValue);
+      const body = content ? `\n${String(content).replace(/^\n/, '').replace(/\s+$/, '')}\n` : '\n';
+      return `\`\`\`speisekarte{${nextAttrs}}${body}\`\`\``;
+    });
+  }
+
+  function applySpeisekarteSettings({ el, tableCount } = {}) {
+    if (!el || !userCanEdit) return;
+    const index = parseInt(el.dataset.speisekarteIndex, 10);
+    if (!Number.isFinite(index)) return;
+    const source = easyMDE ? easyMDE.value() : (currentPage?.markdown_content || '');
+    const next = updateSpeisekarteTablesInMarkdown(source, index, tableCount);
+    capturePreviewScrollPosition();
+    if (easyMDE) easyMDE.value(next);
+    if (currentPage) currentPage.markdown_content = next;
+    renderPreview();
+    void savePage();
+  }
+
+  const SHOP_BLOCK_RE = /```(?:shop|eshop|webshop|store)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function parseShopBlocks(text, options = {}) {
+    let shopIndex = 0;
+    SHOP_BLOCK_RE.lastIndex = 0;
+    return text.replace(SHOP_BLOCK_RE, (_, fenceAttrs, content) => {
+      const engine = window.NotesProShop;
+      const idx = shopIndex++;
+      const html = engine?.renderBlock
+        ? engine.renderBlock(content || '', fenceAttrs || '', {
+            shopIndex: idx,
+            editable: !!options.speisekarteEditable || !!options.sheetEditable,
+            archiveMarkdown: options.archiveMarkdown ?? currentPage?.archive ?? '',
+            merchant: getShopMerchantSettings(),
+          })
+        : '<div class="shop-block shop-block--error">Shop engine not loaded.</div>';
+      return wrapRichPreviewBlock(html);
+    });
+  }
+
+  function getShopMerchantSettings() {
+    return window.NotesProShop?.normalizeMerchant?.(window.APP_BOOT?.extraConfigs?.shop) || {
+      description: '',
+      images: [],
+      paypalEnabled: false,
+      paypal: '',
+      mastercardEnabled: false,
+      mastercard: '',
+    };
+  }
+
+  function formatShopCheckoutMessage(spec, cart, extras = {}) {
+    const engine = window.NotesProShop;
+    if (engine?.formatCheckoutText) {
+      return engine.formatCheckoutText(spec, cart, {
+        pageTitle: currentPage?.title || 'page',
+        at: extras.at,
+        payment: extras.payment,
+        paymentLabel: extras.paymentLabel,
+        paymentNote: extras.paymentNote,
+      });
+    }
+    return `Shop order — ${spec?.title || 'Shop'}`;
+  }
+
+  async function sendShopCheckout({ spec, cart, btn, el, payment } = {}) {
+    if (!cart?.lines?.length) {
+      showToast('The cart is empty.', 'warning');
+      return false;
+    }
+    const merchant = getShopMerchantSettings();
+    const pay = String(payment || 'order').toLowerCase();
+    if (pay === 'paypal' && !merchant.paypal) {
+      showToast('Add a PayPal email or paypal.me name in Settings.', 'warning');
+      return false;
+    }
+    if (btn) {
+      btn.disabled = true;
+      btn.classList.add('is-sending');
+    }
+    try {
+      const at = new Date();
+      const paymentLabel = window.NotesProShop?.paymentLabel?.(pay) || pay;
+      const paymentNote = pay === 'mastercard' ? merchant.mastercard : '';
+      const body = formatShopCheckoutMessage(spec, cart, {
+        at,
+        payment: pay,
+        paymentLabel,
+        paymentNote,
+      });
+      const sum = cart.totalLabel ? ` · ${cart.totalLabel}` : '';
+      await dispatchSpeisekarteMessage({
+        spec,
+        subject: `Shop order: ${spec?.title || 'Shop'}${sum}`,
+        body,
+        toastOk: pay === 'paypal'
+          ? `Sent PayPal order from ${spec?.title || 'Shop'} and posted it in group chat.`
+          : `Sent order from ${spec?.title || 'Shop'} and posted it in group chat.`,
+      });
+      if ((spec?.via || 'mail') !== 'chat') {
+        try {
+          await sendChatMessage(body);
+        } catch (chatErr) {
+          console.warn('shop order group chat failed:', chatErr);
+          showToast('Order sent, but the group chat message could not be posted.', 'warning');
+        }
+      }
+      await archiveShopOrder(spec, cart, { at, el, payment: pay });
+      if (pay === 'paypal') {
+        const url = window.NotesProShop?.paypalCheckoutUrl?.(merchant.paypal, {
+          amount: cart.total,
+          currency: spec?.currency,
+          title: spec?.title,
+        });
+        if (url) window.open(url, '_blank', 'noopener,noreferrer');
+      }
+      window.NotesProShop?.clearCart?.(el, spec);
+      capturePreviewScrollPosition();
+      try {
+        renderPreview();
+      } catch (previewErr) {
+        console.warn('preview refresh after shop checkout failed:', previewErr);
+      }
+      return true;
+    } catch (err) {
+      showToast(err.message || 'Could not send shop order.', 'danger');
+      return false;
+    } finally {
+      if (btn) {
+        btn.classList.remove('is-sending');
+        const current = window.NotesProShop?.getCart?.(el, spec);
+        btn.disabled = !current?.lines?.length;
+      }
+    }
+  }
+
+  function stripShopProductImages(extra) {
+    return String(extra || '')
+      .replace(/!\[[^\]]*\]\([^)]+\)/g, '')
+      .replace(/https?:\/\/\S+\.(?:png|jpe?g|gif|webp|svg)(?:\?\S*)?/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function updateShopProductImageInMarkdown(markdown, shopIndex, itemIndex, imagePath) {
+    let idx = 0;
+    const re = new RegExp(SHOP_BLOCK_RE.source, SHOP_BLOCK_RE.flags);
+    const img = String(imagePath || '').trim();
+    if (!img) return String(markdown || '');
+    return String(markdown || '').replace(re, (match, fenceAttrs, content = '') => {
+      const thisIndex = idx;
+      idx += 1;
+      if (thisIndex !== shopIndex) return match;
+      let productI = -1;
+      const lines = String(content).replace(/\r\n/g, '\n').split('\n').map((line) => {
+        const indent = line.match(/^\s*/)[0];
+        const trimmed = line.trim();
+        if (!trimmed || /^#+\s+/.test(trimmed)) return line;
+        const row = trimmed.replace(/^[-*•]\s+/, '');
+        const parts = row.split('|').map((part) => part.trim());
+        if (!parts[0]) return line;
+        productI += 1;
+        if (productI !== itemIndex) return line;
+        const name = parts[0];
+        const price = parts[1] || '';
+        const extra = stripShopProductImages(parts.slice(2).join(' | '));
+        const rest = extra ? `${extra} ![](${img})` : `![](${img})`;
+        return `${indent}${name} | ${price} | ${rest}`;
+      });
+      const body = `\n${lines.join('\n').replace(/^\n/, '').replace(/\s+$/, '')}\n`;
+      return `\`\`\`shop{${fenceAttrs || ''}}${body}\`\`\``;
+    });
+  }
+
+  function applyShopProductImage(el, itemIndex, imagePath) {
+    if (!el || !userCanEdit || !imagePath) return;
+    const index = parseInt(el.dataset.shopIndex, 10);
+    if (!Number.isFinite(index)) return;
+    const source = easyMDE ? easyMDE.value() : (currentPage?.markdown_content || '');
+    const next = updateShopProductImageInMarkdown(source, index, itemIndex, imagePath);
+    if (next === source) return;
+    capturePreviewScrollPosition();
+    if (easyMDE) easyMDE.value(next);
+    if (currentPage) currentPage.markdown_content = next;
+    renderPreview();
+    void savePage();
+  }
+
+  function hydrateShopBlocks(root) {
+    window.NotesProShop?.hydrate?.(root, {
+      onCheckout: (payload) => sendShopCheckout(payload),
+      onSettings: (payload) => applyShopSettings(payload),
+      onPasteImage: userCanEdit && easyMDE
+        ? async (file, itemIndex, _spec, el) => {
+          const mediaPath = await uploadPastedImageBlob(file, file.name || 'paste.png');
+          applyShopProductImage(el, itemIndex, mediaPath);
+        }
+        : null,
+    });
+  }
+
+  function appendShopOrderToPageArchive(fence) {
+    const block = String(fence || '').trim();
+    if (!block) return String(currentPage?.archive || '');
+    const existing = String(currentPage?.archive || '').trim();
+    return existing ? `${existing}\n\n${block}` : block;
+  }
+
+  async function archiveShopOrder(spec, cart, extras = {}) {
+    if (!currentPage) return;
+    const engine = window.NotesProShop;
+    if (!engine?.formatArchiveFence) return;
+    const index = extras.el?.dataset?.shopIndex;
+    const fence = engine.formatArchiveFence(spec, cart, {
+      at: extras.at || new Date(),
+      index,
+      payment: extras.payment || extras.pay || '',
+    });
+    currentPage.archive = appendShopOrderToPageArchive(fence);
+    try {
+      currentPage = await api(`api/pages/${currentPageId}/update/`, 'POST', {
+        title: document.getElementById('page-title')?.value || currentPage.title || 'Untitled',
+        markdown_content: easyMDE ? easyMDE.value() : (currentPage.markdown_content || ''),
+        archive: currentPage.archive,
+      });
+    } catch (err) {
+      console.warn('archiveShopOrder failed:', err);
+    }
+  }
+
+  function updateShopSettingsInMarkdown(markdown, shopIndex, { currency, sendTo, billTo } = {}) {
+    let idx = 0;
+    const re = new RegExp(SHOP_BLOCK_RE.source, SHOP_BLOCK_RE.flags);
+    return String(markdown || '').replace(re, (match, fenceAttrs, content = '') => {
+      const thisIndex = idx;
+      idx += 1;
+      if (thisIndex !== shopIndex) return match;
+      let nextAttrs = fenceAttrs || '';
+      ['curr', 'sentto', 'ship', 'shipping', 'bill', 'billing'].forEach((key) => {
+        nextAttrs = setGanttFenceAttr(nextAttrs, key, '');
+      });
+      nextAttrs = setGanttFenceAttr(nextAttrs, 'currency', String(currency || '').trim());
+      nextAttrs = setGanttFenceAttr(nextAttrs, 'sendto', String(sendTo || '').replace(/[;{}\n\r]/g, ' ').trim());
+      nextAttrs = setGanttFenceAttr(nextAttrs, 'billto', String(billTo || '').replace(/[;{}\n\r]/g, ' ').trim());
+      const body = content ? `\n${String(content).replace(/^\n/, '').replace(/\s+$/, '')}\n` : '\n';
+      return `\`\`\`shop{${nextAttrs}}${body}\`\`\``;
+    });
+  }
+
+  function applyShopSettings({ el, currency, sendTo, billTo } = {}) {
+    if (!el || !userCanEdit) return;
+    const index = parseInt(el.dataset.shopIndex, 10);
+    if (!Number.isFinite(index)) return;
+    const source = easyMDE ? easyMDE.value() : (currentPage?.markdown_content || '');
+    const next = updateShopSettingsInMarkdown(source, index, { currency, sendTo, billTo });
+    capturePreviewScrollPosition();
+    if (easyMDE) easyMDE.value(next);
+    if (currentPage) currentPage.markdown_content = next;
+    renderPreview();
+    void savePage();
   }
 
   const INVADERS_BLOCK_RE = /```(?:invaders|spaceinvaders|space-invaders)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
@@ -9498,7 +9964,7 @@ function formatTextWithMarkup(rawText) {
     if (!root) return;
     root.querySelectorAll('pre').forEach(pre => {
       if (pre.closest('.md-code-block')) return;
-      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .md-python, .voice-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .tetris-block, .sokoban-block, .speisekarte-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block')) {
+      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .md-python, .voice-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block')) {
         return;
       }
       const wrap = document.createElement('div');
@@ -9861,7 +10327,24 @@ function formatTextWithMarkup(rawText) {
     });
     md = md.replace(/```(?:speisekarte|speise|menukarte|menucard|menu)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
       const cfg = window.NotesProSpeisekarte?.parseFenceAttrs?.(fenceAttrs) || {};
-      const label = cfg.title || 'Speisekarte';
+      const label = cfg.title || 'Menu';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
+    md = md.replace(/```(?:menubill|speisekarte-bill)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const cfg = window.NotesProSpeisekarte?.parseFenceAttrs?.(fenceAttrs) || {};
+      const table = cfg.table || cfg.tisch || '';
+      const label = table ? `Archived bill · Table ${table}` : 'Archived bill';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
+    md = md.replace(/```(?:shop|eshop|webshop|store)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const cfg = window.NotesProShop?.parseFenceAttrs?.(fenceAttrs) || {};
+      const label = cfg.title || 'Shop';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
+    md = md.replace(/```(?:shoporder|eshop-order|store-order)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const cfg = window.NotesProShop?.parseFenceAttrs?.(fenceAttrs) || {};
+      const when = cfg.at || cfg.date || '';
+      const label = when ? `Archived order · ${when}` : 'Archived order';
       return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
     });
     md = md.replace(/```(?:mindmap|mmap|mind)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
@@ -10058,7 +10541,8 @@ function formatTextWithMarkup(rawText) {
       md = parseReversiBlocks(md, options);
       md = parseTetrisBlocks(md);
       md = parseSokobanBlocks(md);
-      md = parseSpeisekarteBlocks(md);
+      md = parseSpeisekarteBlocks(md, options);
+      md = parseShopBlocks(md, options);
       md = parseInvadersBlocks(md);
       md = parseBreakoutBlocks(md);
       md = parseSnakeBlocks(md);
@@ -10434,6 +10918,8 @@ function formatTextWithMarkup(rawText) {
 
     const processed = preprocessMarkdown(raw, {
       sheetEditable: isPreviewInteractionEnabled(),
+      speisekarteEditable: !!userCanEdit,
+      archiveMarkdown: currentPage?.archive || '',
       richBlocks: true,
     });
     let html = marked.parse(processed.markdown) + processed.tagsHtml;
@@ -10465,6 +10951,7 @@ function formatTextWithMarkup(rawText) {
     hydrateTetrisBlocks(preview);
     hydrateSokobanBlocks(preview);
     hydrateSpeisekarteBlocks(preview);
+    hydrateShopBlocks(preview);
     hydrateInvadersBlocks(preview);
     hydrateBreakoutBlocks(preview);
     hydrateSnakeBlocks(preview);
@@ -14999,21 +15486,38 @@ function formatTextWithMarkup(rawText) {
           name: 'insert-speisekarte',
           action: (editor) => {
             const body = [
-              '# Vorspeisen',
-              'Tagessuppe | 6.50',
-              'Gemischter Salat | 7.90',
+              '# Starters',
+              'Soup of the day | 6.50',
+              'Mixed salad | 7.90',
               '',
-              '# Hauptgerichte',
-              'Wiener Schnitzel | 18.50 | mit Pommes',
-              'Spaghetti Aglio e Olio | 14.00',
+              '# Mains',
+              'Wiener schnitzel | 18.50 | with fries',
+              'Garlic spaghetti | 14.00',
               '',
-              '# Nachspeisen',
+              '# Desserts',
               'Tiramisu | 6.50',
             ].join('\n');
-            insertFenceBlock(editor, `speisekarte{to=${currentUserName || 'demo'};title=Mittagskarte;col=warning}`, body);
+            insertFenceBlock(editor, `speisekarte{to=${currentUserName || 'demo'};title=Lunch menu;col=warning;tables=1-4}`, body);
           },
           className: 'fa fa-cutlery',
-          title: 'Insert Speisekarte (menu + Rechnung)',
+          title: 'Insert menu (tables + bills)',
+        },
+        {
+          name: 'insert-shop',
+          action: (editor) => {
+            const body = [
+              '# Stationery',
+              'Notebook A5 | 4.50 | Lined, 80 pages — pocket notebook for daily notes | https://picsum.photos/id/24/400/300',
+              'Pens (pack of 10) | 3.20 | Smooth black ink, office pack | https://picsum.photos/id/367/400/300',
+              '',
+              '# Snacks',
+              'Coffee beans | 12.00 | 250g medium roast | https://picsum.photos/id/425/400/300',
+              'Tea selection | 8.50 | Assorted herbal and black teas | https://picsum.photos/id/225/400/300',
+            ].join('\n');
+            insertFenceBlock(editor, `shop{to=${currentUserName || 'demo'};title=Office shop;col=info;currency=EUR}`, body);
+          },
+          className: 'fa fa-shopping-cart',
+          title: 'Insert shop (cart + checkout)',
         },
         {
           name: 'insert-kanbangantt',
@@ -17726,12 +18230,43 @@ function formatTextWithMarkup(rawText) {
       // await api('api/save-tree-state/', 'POST', data, true);
   }
 
+  function tryPasteOntoHoveredShopCard(event) {
+    if (!userCanEdit || !easyMDE) return false;
+    const files = clipboardImageFiles(event.clipboardData || event.originalEvent?.clipboardData);
+    if (!files.length) return false;
+    const preview = document.getElementById('preview-content');
+    if (!preview) return false;
+    const x = photoPastePointer.x;
+    const y = photoPastePointer.y;
+    const node = Number.isFinite(x) && Number.isFinite(y)
+      ? document.elementFromPoint(x, y)
+      : document.activeElement;
+    const card = node?.closest?.('[data-shop-item]');
+    const block = card?.closest?.('.shop-block') || node?.closest?.('.shop-block');
+    if (!block || !preview.contains(block)) return false;
+    const itemIndex = parseInt(card?.dataset?.shopItem || '0', 10) || 0;
+    event.preventDefault();
+    event.stopPropagation();
+    void (async () => {
+      for (const file of files) {
+        try {
+          const mediaPath = await uploadPastedImageBlob(file, file.name || 'paste.png');
+          applyShopProductImage(block, itemIndex, mediaPath);
+        } catch (err) {
+          showToast(err.message || 'Image upload failed.', 'danger');
+        }
+      }
+    })();
+    return true;
+  }
+
   document.addEventListener('paste', function (event) {
     if (tryPasteImagesOntoHoveredCalendarDay(event)) return;
     if (tryPasteOntoHoveredPhotoBlock(event)) return;
+    if (tryPasteOntoHoveredShopCard(event)) return;
     if (tryPasteIntoEditorPhotoFence(event)) return;
     const pasteFiles = clipboardImageFiles(event.clipboardData || event.originalEvent?.clipboardData);
-    if (event.target.closest?.('.puzzle-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .tetris-block, .sokoban-block, .speisekarte-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .voice-block, .calendar-block, #calendar-note-modal')) return;
+    if (event.target.closest?.('.puzzle-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .voice-block, .calendar-block, #calendar-note-modal')) return;
     const items = (event.clipboardData || event.originalEvent.clipboardData).items;
     for (let index in items) {
       const item = items[index];

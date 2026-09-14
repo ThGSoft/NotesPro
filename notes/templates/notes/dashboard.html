@@ -1015,7 +1015,7 @@
 </div>
 
 <div class="modal fade dashboard-modal-root" id="app-settings-modal" tabindex="-1" aria-labelledby="app-settings-modal-title" aria-hidden="true" data-bs-theme="dark">
-  <div class="modal-dialog modal-dialog-centered">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content dashboard-modal">
       <div class="modal-header">
         <h5 class="modal-title" id="app-settings-modal-title">Settings</h5>
@@ -1030,6 +1030,39 @@
             {% endfor %}
           </select>
           <p class="small dashboard-modal-hint mt-2 mb-0">Affects calendar date and time formatting. Choose browser default to follow your device locale.</p>
+        </div>
+        <div class="app-settings-shop mt-3 pt-3 border-top border-secondary-subtle">
+          <div class="small fw-semibold mb-2">Shop</div>
+          <p class="small dashboard-modal-hint mb-2">Shown on shop blocks. PayPal and Mastercard are accepted methods — card numbers are never stored.</p>
+          <div class="mb-2">
+            <label class="form-label small fw-semibold" for="app-settings-shop-description">Description</label>
+            <textarea id="app-settings-shop-description" class="form-control form-control-sm" rows="3" maxlength="2000" placeholder="Office supplies for the workspace"></textarea>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small fw-semibold">Images</label>
+            <div id="app-settings-shop-images" class="app-settings-shop-images"></div>
+            <div class="app-settings-shop-image-row mt-2">
+              <input type="text" id="app-settings-shop-image-url" class="form-control form-control-sm" placeholder="Image URL or paste/drop a photo">
+              <button type="button" class="btn btn-sm btn-outline-light" id="app-settings-shop-image-add">Add</button>
+            </div>
+            <p class="small dashboard-modal-hint mt-1 mb-0">Paste or drop images onto this section.</p>
+          </div>
+          <div class="form-check mb-1">
+            <input class="form-check-input" type="checkbox" id="app-settings-shop-paypal-enabled">
+            <label class="form-check-label small" for="app-settings-shop-paypal-enabled">PayPal</label>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small visually-hidden" for="app-settings-shop-paypal">PayPal email or paypal.me</label>
+            <input type="text" id="app-settings-shop-paypal" class="form-control form-control-sm" maxlength="120" placeholder="PayPal email or paypal.me name" autocomplete="off">
+          </div>
+          <div class="form-check mb-1">
+            <input class="form-check-input" type="checkbox" id="app-settings-shop-mastercard-enabled">
+            <label class="form-check-label small" for="app-settings-shop-mastercard-enabled">Mastercard</label>
+          </div>
+          <div class="mb-0">
+            <label class="form-label small visually-hidden" for="app-settings-shop-mastercard">Mastercard instructions</label>
+            <textarea id="app-settings-shop-mastercard" class="form-control form-control-sm" rows="2" maxlength="240" placeholder="Card payment instructions (IBAN, terminal on delivery). Do not enter card numbers."></textarea>
+          </div>
         </div>
         <div class="app-settings-links mt-3 pt-3 border-top border-secondary-subtle">
           <div class="small fw-semibold mb-2">Go to</div>
@@ -1115,6 +1148,7 @@
 <script src="{% static 'notes/tetris.js' %}?v={% now 'YmdHis' %}"></script>
 <script src="{% static 'notes/sokoban.js' %}?v={% now 'YmdHis' %}"></script>
 <script src="{% static 'notes/speisekarte.js' %}?v={% now 'YmdHis' %}"></script>
+<script src="{% static 'notes/shop.js' %}?v={% now 'YmdHis' %}"></script>
 <script src="{% static 'notes/invaders.js' %}?v={% now 'YmdHis' %}"></script>
 <script src="{% static 'notes/breakout.js' %}?v={% now 'YmdHis' %}"></script>
 <script src="{% static 'notes/snake.js' %}?v={% now 'YmdHis' %}"></script>

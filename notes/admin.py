@@ -197,6 +197,21 @@ class UserSettingsAdmin(admin.ModelAdmin):
         'totp_enabled',
     )
     search_fields = ('user__username',)
+    fieldsets = (
+        (None, {'fields': ('user', 'theme', 'show_toolbar', 'font_size')}),
+        ('Layout', {
+            'fields': (
+                'last_workspace_id', 'last_page_id', 'workspace_pages',
+                'sidebar_width', 'left_panel_expanded',
+                'right_panel_width', 'right_panel_expanded',
+            ),
+        }),
+        ('Shop payments', {
+            'description': 'PayPal and Mastercard live in extra_configs.shop (also editable in the in-app Settings).',
+            'fields': ('extra_configs',),
+        }),
+        ('Security', {'fields': ('totp_enabled', 'totp_secret')}),
+    )
 
 
 @admin.register(IpVisitLog)

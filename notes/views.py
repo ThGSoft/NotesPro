@@ -51,6 +51,45 @@ def stored_app_language(extra_configs):
     extra = extra_configs if isinstance(extra_configs, dict) else {}
     return normalize_app_language(extra.get('language') or extra.get('locale') or 'browser')
 
+
+_SAFE_SHOP_IMAGE_RE = re.compile(
+    r'^(?:https?://[^\s]+|/media/[^\s]+|media/[^\s]+)',
+    re.IGNORECASE,
+)
+
+
+def _looks_like_card_number(value):
+    digits = re.sub(r'\D', '', str(value or ''))
+    return 13 <= len(digits) <= 19
+
+
+def normalize_shop_settings(value):
+    src = value if isinstance(value, dict) else {}
+    raw_images = src.get('images') or []
+    if isinstance(raw_images, str):
+        raw_images = [raw_images]
+    elif src.get('image') and not raw_images:
+        raw_images = [src.get('image')]
+    images = []
+    for item in raw_images[:8]:
+        url = str(item or '').strip()[:500]
+        if not url or url.lower().startswith(('javascript:', 'data:')):
+            continue
+        if _SAFE_SHOP_IMAGE_RE.match(url) or url.startswith('media/'):
+            images.append(url)
+    mastercard = str(src.get('mastercard') or src.get('card') or '').strip()[:240]
+    if _looks_like_card_number(mastercard):
+        mastercard = ''
+    paypal = str(src.get('paypal') or src.get('paypal_email') or '').strip()[:120]
+    return {
+        'description': str(src.get('description') or src.get('desc') or '').strip()[:2000],
+        'images': images,
+        'paypal_enabled': bool(src.get('paypal_enabled') or src.get('paypalEnabled')),
+        'paypal': paypal,
+        'mastercard_enabled': bool(src.get('mastercard_enabled') or src.get('mastercardEnabled')),
+        'mastercard': mastercard,
+    }
+
 from .tags import (
     list_workspace_tag_names,
     page_tag_names,
@@ -1061,6 +1100,8 @@ def updateUserSettings(request, workspace_id):
                             charts = dict(merged.get('chart_settings') or {})
                             charts.update(value)
                             merged['chart_settings'] = charts
+                        elif key == 'shop' and isinstance(value, dict):
+                            merged['shop'] = normalize_shop_settings(value)
                         elif key in ('language', 'locale'):
                             merged['language'] = normalize_app_language(value)
                             merged.pop('locale', None)

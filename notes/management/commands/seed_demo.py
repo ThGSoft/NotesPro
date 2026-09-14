@@ -6,7 +6,7 @@ from django.contrib.auth.models import User
 from django.core.files.base import ContentFile
 from django.core.management.base import BaseCommand
 
-from notes.models import Page, UploadedFile, Workspace
+from notes.models import Page, UploadedFile, UserSettings, Workspace
 from notes.media_refs import media_markdown_href
 
 SCREENSHOT_FILES = (
@@ -190,18 +190,29 @@ Done | Kickoff | ![](media/uploads/photo.png)
 Done | Define Remote
 ```
 
-# Speisekarte
-```speisekarte{to=demo;title=Mittagskarte;col=warning}
-# Vorspeisen
-Tagessuppe | 6.50
-Gemischter Salat | 7.90
+# Menu
+```speisekarte{to=demo;title=Lunch menu;col=warning;tables=1-4}
+# Starters
+Soup of the day | 6.50
+Mixed salad | 7.90
 
-# Hauptgerichte
-Wiener Schnitzel | 18.50 | mit Pommes
-Spaghetti Aglio e Olio | 14.00
+# Mains
+Wiener schnitzel | 18.50 | with fries
+Garlic spaghetti | 14.00
 
-# Nachspeisen
+# Desserts
 Tiramisu | 6.50
+```
+
+# Shop
+```shop{to=demo;title=Office shop;col=info;currency=EUR}
+# Stationery
+Notebook A5 | 4.50 | Lined, 80 pages — pocket notebook for daily notes | https://picsum.photos/id/24/400/300
+Pens (pack of 10) | 3.20 | Smooth black ink, office pack | https://picsum.photos/id/367/400/300
+
+# Snacks
+Coffee beans | 12.00 | 250g medium roast | https://picsum.photos/id/425/400/300
+Tea selection | 8.50 | Assorted herbal and black teas | https://picsum.photos/id/225/400/300
 ```
 
 # News / RSS
@@ -664,6 +675,22 @@ class Command(BaseCommand):
         if created:
             user.set_password('password')
             user.save()
+
+        settings_obj, _ = UserSettings.objects.get_or_create(user=user)
+        extra = dict(settings_obj.extra_configs or {}) if isinstance(settings_obj.extra_configs, dict) else {}
+        extra['shop'] = {
+            'description': 'Office supplies and snacks for the workspace. Pay with PayPal or Mastercard on checkout.',
+            'images': [
+                'https://picsum.photos/id/20/640/240',
+                'https://picsum.photos/id/366/640/240',
+            ],
+            'paypal_enabled': True,
+            'paypal': 'demo@example.com',
+            'mastercard_enabled': True,
+            'mastercard': 'Card terminal at reception, or pay on delivery.',
+        }
+        settings_obj.extra_configs = extra
+        settings_obj.save(update_fields=['extra_configs'])
 
         ws, _ = Workspace.objects.get_or_create(
             owner=user,

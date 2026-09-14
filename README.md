@@ -57,7 +57,7 @@ Share: [LinkedIn](https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2
 - **Ghost train** blocks — convoy on rails; photos in frames along the track
 - **Photo labyrinth** blocks — first-person maze whose walls are your pasted photos
 - **Calendar** blocks — list days, weeks, months, or years for a `from`/`to` range
-- **Gantt** / **Kanban** / **Kanban Gantt** / **Mindmap** / **Speisekarte** blocks — project timelines, boards, timed cost tracking, idea trees, and click-to-order menus
+- **Gantt** / **Kanban** / **Kanban Gantt** / **Mindmap** / **Speisekarte** / **Shop** blocks — project timelines, boards, timed cost tracking, idea trees, click-to-order menus, and a cart checkout shop
 - File manager with drag-and-drop uploads; click images to open in a new tab
 - **Local file links** — paste Windows paths or insert via toolbar; click in preview to reveal in Explorer (local dev server)
 - Resizable dashboard panels (sidebar, editor, chat/mail)
@@ -778,17 +778,17 @@ Turn off **With cost** (`withcost=0`) for a time-only board: rates and money tot
 
 ### Speisekarte
 
-Restaurant menu card. Click a dish to send an order to a workspace member. Fence names: `speisekarte` (also `speise` / `menukarte` / `menucard` / `menu`):
+Restaurant menu card with a table panel per table. Click a dish to order, then send the bill. Fence names: `speisekarte` (also `speise` / `menukarte` / `menucard` / `menu`):
 
 markdown
-```speisekarte{to=demo;title=Mittagskarte;col=warning}
-# Vorspeisen
-Tagessuppe | 6.50
-Gemischter Salat | 7.90
+```speisekarte{to=demo;title=Lunch menu;col=warning;tables=1-4}
+# Starters
+Soup of the day | 6.50
+Mixed salad | 7.90
 
-# Hauptgerichte
-Wiener Schnitzel | 18.50 | mit Pommes
-Spaghetti Aglio e Olio | 14.00
+# Mains
+Wiener schnitzel | 18.50 | with fries
+Garlic spaghetti | 14.00
 ```
 
 
@@ -797,10 +797,38 @@ Spaghetti Aglio e Olio | 14.00
 | `to` | Username (or id) of the recipient. Also `user` / `an`. Comma-separated for several people. Defaults to the workspace owner |
 | `via` | `mail` (default) · `dm` · `chat` (group chat) |
 | `title` | Menu heading |
+| `tables` | Table ids, e.g. `1-4` or `1,2,5`. Also `count` / `n` for `1` through `n`. The ⚙ settings field **Number of tables** writes this. |
 | `col` | Theme: `info` / `success` / `warning` / `danger` / `note`, or a CSS color |
-| `msg` | Optional order text. Placeholders: `{name}` `{price}` `{note}` `{menu}` `{page}` |
+| `msg` | Optional order text. Placeholders: `{name}` `{price}` `{note}` `{menu}` `{page}` `{table}` |
 
-Each dish line is `Name | price | extra`. Section headings use `#`. Click a dish in preview to send the order immediately.
+Each dish line is `Name | price | extra`. Section headings use `#`. Click a table, then a dish, to send the order. **Bill** emails the running bill and stores a dated copy in the page **archive** (`menubill` fences with date and time).
+
+### Shop
+
+Product catalog with a cart and checkout. Fence names: `shop` (also `eshop` / `webshop` / `store`):
+
+markdown
+```shop{to=demo;title=Office shop;col=info;currency=EUR}
+# Stationery
+Notebook A5 | 4.50 | Lined, 80 pages — pocket notebook | https://picsum.photos/id/24/400/300
+Pens (pack of 10) | 3.20 | Smooth black ink | https://picsum.photos/id/367/400/300
+
+# Snacks
+Coffee beans | 12.00 | 250g medium roast | https://picsum.photos/id/425/400/300
+```
+
+| Option | Description |
+|--------|-------------|
+| `to` | Username (or id) of the recipient. Defaults to the workspace owner |
+| `via` | `mail` (default) · `dm` · `chat` |
+| `title` | Shop heading |
+| `currency` | Appended to prices that have no symbol. The ⚙ settings field **Currency** writes this |
+| `sendto` | Delivery / sent-to address. The ⚙ field **Sent to address** writes this |
+| `billto` | Billing address. The ⚙ field **Bill to address** writes this. Check **Same as sent to** to copy the delivery address |
+| `col` | Theme: `info` / `success` / `warning` / `danger` / `note`, or a CSS color |
+| `msg` | Optional checkout text. Placeholders: `{shop}` `{page}` `{sum}` `{date}` `{note}` `{sendto}` `{billto}` `{pay}` `{cart}` |
+
+Each product line is `Name | price | description | image`. The image can be a URL or `![](url)`. In **Edit**, paste or drop a photo onto a product card. Shop **description**, **images**, **PayPal**, and **Mastercard** are administered in user **Settings**. Checkout sends the order, posts it in **group chat**, and can open PayPal; card numbers are never stored. **Add** puts the item in the cart; **Checkout** stores a dated copy in the page **archive** (`shoporder` fences).
 
 ### Mindmap
 
