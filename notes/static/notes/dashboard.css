@@ -5285,6 +5285,30 @@ body.mobile-layout .sheet-structure-menu-btn {
   color: var(--shop-item);
 }
 
+.shop-extra-info,
+.shop-card-info {
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: var(--shop-item);
+}
+
+.shop-extra-info summary,
+.shop-card-info summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--shop-accent);
+}
+
+.shop-extra-info p,
+.shop-card-info p {
+  margin: 6px 0 0;
+  white-space: pre-wrap;
+}
+
+.shop-card-info {
+  margin: 6px 0 0;
+}
+
 .shop-merchant-images {
   display: flex;
   gap: 8px;
@@ -5322,34 +5346,113 @@ body.mobile-layout .sheet-structure-menu-btn {
   color: #fff;
 }
 
+.shop-pay-badge--visa {
+  background: #1a1f71;
+  color: #fff;
+}
+
 .shop-pay-badge--mastercard {
   background: linear-gradient(90deg, #eb001b 0%, #f79e1b 100%);
   color: #fff;
 }
 
-.shop-pay-methods {
-  margin: 8px 0 0;
-  padding: 8px 0 0;
-  border: 0;
+.shop-pay-prompt {
+  margin-top: 10px;
+  padding-top: 10px;
   border-top: 1px dashed color-mix(in srgb, var(--shop-border) 80%, transparent);
 }
 
-.shop-pay-methods legend {
-  font-size: 12px;
+.shop-pay-prompt-title {
+  margin: 0 0 8px;
+  font-size: 13px;
   font-weight: 700;
-  color: var(--shop-accent);
-  padding: 0;
-  float: none;
-  width: auto;
+  color: var(--shop-title);
 }
 
-.shop-pay-option {
+.shop-pay-prompt-empty {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--shop-meta);
+}
+
+.shop-pay-prompt-actions {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 6px;
+}
+
+.shop-pay-prompt-btn {
+  width: 100%;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 10px;
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.shop-pay-prompt-btn--paypal {
+  background: #003087;
+}
+
+.shop-pay-prompt-btn--visa {
+  background: #1a1f71;
+}
+
+.shop-pay-prompt-btn--mastercard {
+  background: linear-gradient(90deg, #eb001b 0%, #f79e1b 100%);
+}
+
+.shop-pay-prompt-btn:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.shop-pay-prompt-btn:disabled,
+.shop-pay-prompt-btn.is-sending {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.shop-pay-prompt-cancel {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 6px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--shop-meta);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.shop-pay-prompt-cancel:hover {
+  color: var(--shop-title);
+}
+
+.shop-pay-konto-to {
+  margin: 0 0 8px;
   font-size: 12px;
   color: var(--shop-title);
-  margin-top: 4px;
+}
+
+.shop-pay-konto-to strong {
+  display: block;
+  margin-top: 2px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: 0.02em;
+}
+
+.shop-pay-konto-field {
+  flex-direction: column;
+  align-items: stretch;
+  margin: 0 0 8px;
+}
+
+.shop-pay-prompt-btn--transfer {
+  background: var(--shop-accent);
 }
 
 .shop-settings-hint {
@@ -5573,6 +5676,31 @@ body.mobile-layout .sheet-structure-menu-btn {
   justify-content: space-between;
   gap: 8px;
   padding: 8px 10px 10px;
+}
+
+.shop-card-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.shop-download-btn {
+  padding: 4px 10px;
+  border: 1px solid var(--shop-accent);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--shop-accent);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.shop-download-btn:hover {
+  background: var(--shop-hover);
+  color: var(--shop-title);
 }
 
 .shop-card-price {

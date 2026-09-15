@@ -207,7 +207,7 @@ class UserSettingsAdmin(admin.ModelAdmin):
             ),
         }),
         ('Shop payments', {
-            'description': 'PayPal and Mastercard live in extra_configs.shop (also editable in the in-app Settings).',
+            'description': 'PayPal, Visa, Mastercard, and Konto live in extra_configs.shop (also editable in the in-app Settings).',
             'fields': ('extra_configs',),
         }),
         ('Security', {'fields': ('totp_enabled', 'totp_secret')}),

@@ -59,8 +59,18 @@ _SAFE_SHOP_IMAGE_RE = re.compile(
 
 
 def _looks_like_card_number(value):
-    digits = re.sub(r'\D', '', str(value or ''))
+    raw = str(value or '').strip()
+    if re.search(r'[A-Za-z]', raw):
+        return False
+    digits = re.sub(r'\D', '', raw)
     return 13 <= len(digits) <= 19
+
+
+def _sanitize_shop_konto(value):
+    konto = re.sub(r'\s+', ' ', str(value or '').strip())[:42]
+    if _looks_like_card_number(konto):
+        return ''
+    return konto
 
 
 def normalize_shop_settings(value):
@@ -81,13 +91,17 @@ def normalize_shop_settings(value):
     if _looks_like_card_number(mastercard):
         mastercard = ''
     paypal = str(src.get('paypal') or src.get('paypal_email') or '').strip()[:120]
+    konto = _sanitize_shop_konto(src.get('konto') or src.get('iban') or src.get('account'))
     return {
         'description': str(src.get('description') or src.get('desc') or '').strip()[:2000],
+        'info': str(src.get('info') or src.get('additional_info') or src.get('about') or '').strip()[:2000],
         'images': images,
         'paypal_enabled': bool(src.get('paypal_enabled') or src.get('paypalEnabled')),
         'paypal': paypal,
+        'visa_enabled': bool(src.get('visa_enabled') or src.get('visaEnabled')),
         'mastercard_enabled': bool(src.get('mastercard_enabled') or src.get('mastercardEnabled')),
         'mastercard': mastercard,
+        'konto': konto,
     }
 
 from .tags import (

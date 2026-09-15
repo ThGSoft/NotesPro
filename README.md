@@ -57,7 +57,7 @@ Share: [LinkedIn](https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2
 - **Ghost train** blocks — convoy on rails; photos in frames along the track
 - **Photo labyrinth** blocks — first-person maze whose walls are your pasted photos
 - **Calendar** blocks — list days, weeks, months, or years for a `from`/`to` range
-- **Gantt** / **Kanban** / **Kanban Gantt** / **Mindmap** / **Speisekarte** / **Shop** blocks — project timelines, boards, timed cost tracking, idea trees, click-to-order menus, and a cart checkout shop
+- **Gantt** / **Kanban** / **Kanban Gantt** / **Mindmap** / **Speisekarte** / **Shop** / **SW Shop** blocks — project timelines, boards, timed cost tracking, idea trees, click-to-order menus, cart checkout, and software downloads
 - File manager with drag-and-drop uploads; click images to open in a new tab
 - **Local file links** — paste Windows paths or insert via toolbar; click in preview to reveal in Explorer (local dev server)
 - Resizable dashboard panels (sidebar, editor, chat/mail)
@@ -805,7 +805,7 @@ Each dish line is `Name | price | extra`. Section headings use `#`. Click a tabl
 
 ### Shop
 
-Product catalog with a cart and checkout. Fence names: `shop` (also `eshop` / `webshop` / `store`):
+Product catalog with a cart and checkout. Fence names: `shop` (also `eshop` / `webshop` / `store`). Software shop: `swshop` (also `software`, or `kind=sw`):
 
 markdown
 ```shop{to=demo;title=Office shop;col=info;currency=EUR}
@@ -817,18 +817,28 @@ Pens (pack of 10) | 3.20 | Smooth black ink | https://picsum.photos/id/367/400/3
 Coffee beans | 12.00 | 250g medium roast | https://picsum.photos/id/425/400/300
 ```
 
+```swshop{to=demo;title=SW Shop;col=info;currency=EUR;kind=sw}
+# NotesPro
+NotesPro source | 0.00 | Zip from GitHub | https://picsum.photos/id/180/640/400 | https://github.com/ThGSoft/NotesPro/archive/refs/heads/main.zip | Python and Django
+NotesPro license | 49.00 | Single-site license | https://picsum.photos/id/0/640/400 | PayPal, Visa, or Mastercard
+```
+
 | Option | Description |
 |--------|-------------|
 | `to` | Username (or id) of the recipient. Defaults to the workspace owner |
 | `via` | `mail` (default) · `dm` · `chat` |
 | `title` | Shop heading |
+| `kind` | `sw` for a software shop (Download on products) |
+| `info` | Additional info shown under the shop description |
 | `currency` | Appended to prices that have no symbol. The ⚙ settings field **Currency** writes this |
 | `sendto` | Delivery / sent-to address. The ⚙ field **Sent to address** writes this |
 | `billto` | Billing address. The ⚙ field **Bill to address** writes this. Check **Same as sent to** to copy the delivery address |
 | `col` | Theme: `info` / `success` / `warning` / `danger` / `note`, or a CSS color |
-| `msg` | Optional checkout text. Placeholders: `{shop}` `{page}` `{sum}` `{date}` `{note}` `{sendto}` `{billto}` `{pay}` `{cart}` |
+| `msg` | Optional checkout text. Placeholders: `{shop}` `{page}` `{sum}` `{date}` `{note}` `{sendto}` `{billto}` `{pay}` `{from}` `{to}` `{cart}` `{download}` |
 
-Each product line is `Name | price | description | image`. The image can be a URL or `![](url)`. In **Edit**, paste or drop a photo onto a product card. Shop **description**, **images**, **PayPal**, and **Mastercard** are administered in user **Settings**. Checkout sends the order, posts it in **group chat**, and can open PayPal; card numbers are never stored. **Add** puts the item in the cart; **Checkout** stores a dated copy in the page **archive** (`shoporder` fences).
+Each product line is `Name | price | description | image` with optional `| download | additional info`. The image can be a URL or `![](url)`. A download column (`.zip`, GitHub archive, or `download: url`) shows a **Download** button. In **Edit**, paste or drop a photo onto a product card. Shop **description**, **additional info**, **images**, **Konto**, **PayPal**, **Visa**, and **Mastercard** are administered in user **Settings**. **Checkout** asks how to pay (PayPal, Visa, or Mastercard). Visa and Mastercard then ask for the buyer **Konto** and transfer to the shop Konto from Settings. PayPal can open a checkout window. Card numbers are never stored. There is no unpaid Order option. **Add** puts the item in the cart; after payment a dated copy is stored in the page **archive** (`shoporder` fences) and the cart is cleared.
+
+Toolbar: **Insert shop** or **Insert SW shop**.
 
 ### Mindmap
 
@@ -1283,7 +1293,7 @@ A 3D **marble rolling** course in the spirit of Marble Blast Ultra — original 
 
 | Key | Action |
 |-----|--------|
-| **WASD** / arrows | Orbit: roll camera-relative. Ego: **W/S** roll · **A/D** turn |
+| **WASD** / arrows | Roll the marble (camera-relative). Ego: **A/D** strafe, drag to look |
 | **Space** | Jump |
 | Drag | Look around |
 | **C** | Toggle ego / orbit camera |

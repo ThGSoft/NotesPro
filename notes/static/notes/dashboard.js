@@ -3482,21 +3482,33 @@
   let shopSettingsImages = [];
 
   function looksLikeCardNumber(value) {
-    const digits = String(value || '').replace(/\D/g, '');
+    const raw = String(value || '').trim();
+    if (/[A-Za-z]/.test(raw)) return false;
+    const digits = raw.replace(/\D/g, '');
     return digits.length >= 13 && digits.length <= 19;
+  }
+
+  function sanitizeShopKonto(value) {
+    const konto = String(value || '').replace(/\s+/g, ' ').trim().slice(0, 42);
+    return looksLikeCardNumber(konto) ? '' : konto;
   }
 
   function shopSettingsPayloadFromForm() {
     const paypalEnabled = !!document.getElementById('app-settings-shop-paypal-enabled')?.checked;
+    const visaEnabled = !!document.getElementById('app-settings-shop-visa-enabled')?.checked;
     const mastercardEnabled = !!document.getElementById('app-settings-shop-mastercard-enabled')?.checked;
     const mastercard = String(document.getElementById('app-settings-shop-mastercard')?.value || '').trim();
+    const konto = sanitizeShopKonto(document.getElementById('app-settings-shop-konto')?.value);
     return {
       description: String(document.getElementById('app-settings-shop-description')?.value || '').trim().slice(0, 2000),
+      info: String(document.getElementById('app-settings-shop-info')?.value || '').trim().slice(0, 2000),
       images: shopSettingsImages.slice(0, 8),
       paypal_enabled: paypalEnabled,
       paypal: String(document.getElementById('app-settings-shop-paypal')?.value || '').trim().slice(0, 120),
+      visa_enabled: visaEnabled,
       mastercard_enabled: mastercardEnabled,
       mastercard: looksLikeCardNumber(mastercard) ? '' : mastercard.slice(0, 240),
+      konto,
     };
   }
 
@@ -3518,26 +3530,35 @@
 
   function syncShopPaymentFields() {
     const paypalOn = !!document.getElementById('app-settings-shop-paypal-enabled')?.checked;
+    const visaOn = !!document.getElementById('app-settings-shop-visa-enabled')?.checked;
     const cardOn = !!document.getElementById('app-settings-shop-mastercard-enabled')?.checked;
     const paypalInput = document.getElementById('app-settings-shop-paypal');
     const cardInput = document.getElementById('app-settings-shop-mastercard');
+    const kontoInput = document.getElementById('app-settings-shop-konto');
     if (paypalInput) paypalInput.disabled = !paypalOn;
-    if (cardInput) cardInput.disabled = !cardOn;
+    if (cardInput) cardInput.disabled = !visaOn && !cardOn;
+    if (kontoInput) kontoInput.disabled = !visaOn && !cardOn;
   }
 
   function fillShopSettingsForm() {
     const shop = getShopMerchantSettings();
     shopSettingsImages = [...(shop.images || [])];
     const desc = document.getElementById('app-settings-shop-description');
+    const info = document.getElementById('app-settings-shop-info');
     const paypal = document.getElementById('app-settings-shop-paypal');
     const paypalOn = document.getElementById('app-settings-shop-paypal-enabled');
+    const visaOn = document.getElementById('app-settings-shop-visa-enabled');
     const card = document.getElementById('app-settings-shop-mastercard');
     const cardOn = document.getElementById('app-settings-shop-mastercard-enabled');
+    const konto = document.getElementById('app-settings-shop-konto');
     if (desc) desc.value = shop.description || '';
+    if (info) info.value = shop.info || '';
     if (paypal) paypal.value = shop.paypal || '';
     if (paypalOn) paypalOn.checked = !!shop.paypalEnabled;
+    if (visaOn) visaOn.checked = !!shop.visaEnabled;
     if (card) card.value = shop.mastercard || '';
     if (cardOn) cardOn.checked = !!shop.mastercardEnabled;
+    if (konto) konto.value = shop.konto || '';
     renderShopSettingsImages();
     syncShopPaymentFields();
   }
@@ -3552,8 +3573,16 @@
   async function saveAppSettings() {
     const lang = document.getElementById('app-settings-language')?.value || 'browser';
     const shop = shopSettingsPayloadFromForm();
-    if (shop.mastercard_enabled && looksLikeCardNumber(shop.mastercard)) {
+    if ((shop.visa_enabled || shop.mastercard_enabled) && looksLikeCardNumber(shop.mastercard)) {
       showToast('Do not enter card numbers. Use IBAN or delivery instructions.', 'warning');
+      return false;
+    }
+    if ((shop.visa_enabled || shop.mastercard_enabled) && !shop.konto) {
+      showToast('Add a Konto (IBAN or account) for Visa and Mastercard transfers.', 'warning');
+      return false;
+    }
+    if (looksLikeCardNumber(document.getElementById('app-settings-shop-konto')?.value)) {
+      showToast('Do not enter card numbers. Use your IBAN or account as Konto.', 'warning');
       return false;
     }
     applyAppLanguage(lang, { rerenderPreview: false });
@@ -3756,6 +3785,7 @@
       if (ok) closeAppSettingsModal();
     });
     document.getElementById('app-settings-shop-paypal-enabled')?.addEventListener('change', syncShopPaymentFields);
+    document.getElementById('app-settings-shop-visa-enabled')?.addEventListener('change', syncShopPaymentFields);
     document.getElementById('app-settings-shop-mastercard-enabled')?.addEventListener('change', syncShopPaymentFields);
     document.getElementById('app-settings-shop-image-add')?.addEventListener('click', () => {
       const input = document.getElementById('app-settings-shop-image-url');
@@ -8074,17 +8104,18 @@
     void savePage();
   }
 
-  const SHOP_BLOCK_RE = /```(?:shop|eshop|webshop|store)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+  const SHOP_BLOCK_RE = /```(?:swshop|software|shop|eshop|webshop|store)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
 
   function parseShopBlocks(text, options = {}) {
     let shopIndex = 0;
     SHOP_BLOCK_RE.lastIndex = 0;
-    return text.replace(SHOP_BLOCK_RE, (_, fenceAttrs, content) => {
+    return text.replace(SHOP_BLOCK_RE, (full, fenceAttrs, content) => {
       const engine = window.NotesProShop;
       const idx = shopIndex++;
       const html = engine?.renderBlock
         ? engine.renderBlock(content || '', fenceAttrs || '', {
             shopIndex: idx,
+            kind: /^```(?:swshop|software)/i.test(full) ? 'sw' : '',
             editable: !!options.speisekarteEditable || !!options.sheetEditable,
             archiveMarkdown: options.archiveMarkdown ?? currentPage?.archive ?? '',
             merchant: getShopMerchantSettings(),
@@ -8100,8 +8131,11 @@
       images: [],
       paypalEnabled: false,
       paypal: '',
+      visaEnabled: false,
       mastercardEnabled: false,
       mastercard: '',
+      konto: '',
+      info: '',
     };
   }
 
@@ -8114,21 +8148,43 @@
         payment: extras.payment,
         paymentLabel: extras.paymentLabel,
         paymentNote: extras.paymentNote,
+        buyerKonto: extras.buyerKonto,
+        merchantKonto: extras.merchantKonto,
       });
     }
     return `Shop order — ${spec?.title || 'Shop'}`;
   }
 
-  async function sendShopCheckout({ spec, cart, btn, el, payment } = {}) {
+  async function sendShopCheckout({ spec, cart, btn, el, payment, buyerKonto, merchantKonto } = {}) {
     if (!cart?.lines?.length) {
       showToast('The cart is empty.', 'warning');
       return false;
     }
     const merchant = getShopMerchantSettings();
-    const pay = String(payment || 'order').toLowerCase();
+    const pay = String(payment || '').toLowerCase();
+    if (!pay || pay === 'order') {
+      showToast('Choose PayPal, Visa, or Mastercard.', 'warning');
+      return false;
+    }
     if (pay === 'paypal' && !merchant.paypal) {
       showToast('Add a PayPal email or paypal.me name in Settings.', 'warning');
       return false;
+    }
+    const toKonto = sanitizeShopKonto(merchantKonto || merchant.konto);
+    const fromKonto = String(buyerKonto || '').replace(/\s+/g, ' ').trim().slice(0, 42);
+    if (window.NotesProShop?.isCardPayment?.(pay)) {
+      if (!toKonto) {
+        showToast('Add a Konto in Settings to receive transfers.', 'warning');
+        return false;
+      }
+      if (!fromKonto) {
+        showToast('Enter your Konto to transfer from.', 'warning');
+        return false;
+      }
+      if (looksLikeCardNumber(fromKonto)) {
+        showToast('Do not enter card numbers. Use your IBAN or account.', 'warning');
+        return false;
+      }
     }
     if (btn) {
       btn.disabled = true;
@@ -8137,31 +8193,39 @@
     try {
       const at = new Date();
       const paymentLabel = window.NotesProShop?.paymentLabel?.(pay) || pay;
-      const paymentNote = pay === 'mastercard' ? merchant.mastercard : '';
+      const paymentNote = window.NotesProShop?.isCardPayment?.(pay) ? merchant.mastercard : '';
       const body = formatShopCheckoutMessage(spec, cart, {
         at,
         payment: pay,
         paymentLabel,
         paymentNote,
+        buyerKonto: window.NotesProShop?.isCardPayment?.(pay) ? fromKonto : '',
+        merchantKonto: window.NotesProShop?.isCardPayment?.(pay) ? toKonto : '',
       });
       const sum = cart.totalLabel ? ` · ${cart.totalLabel}` : '';
       await dispatchSpeisekarteMessage({
         spec,
-        subject: `Shop order: ${spec?.title || 'Shop'}${sum}`,
+        subject: `Shop payment: ${spec?.title || 'Shop'}${sum}`,
         body,
         toastOk: pay === 'paypal'
-          ? `Sent PayPal order from ${spec?.title || 'Shop'} and posted it in group chat.`
-          : `Sent order from ${spec?.title || 'Shop'} and posted it in group chat.`,
+          ? `Sent PayPal payment from ${spec?.title || 'Shop'} and posted it in group chat.`
+          : `Sent ${paymentLabel} payment from ${spec?.title || 'Shop'} and posted it in group chat.`,
       });
       if ((spec?.via || 'mail') !== 'chat') {
         try {
           await sendChatMessage(body);
         } catch (chatErr) {
           console.warn('shop order group chat failed:', chatErr);
-          showToast('Order sent, but the group chat message could not be posted.', 'warning');
+          showToast('Payment sent, but the group chat message could not be posted.', 'warning');
         }
       }
-      await archiveShopOrder(spec, cart, { at, el, payment: pay });
+      await archiveShopOrder(spec, cart, {
+        at,
+        el,
+        payment: pay,
+        buyerKonto: window.NotesProShop?.isCardPayment?.(pay) ? fromKonto : '',
+        merchantKonto: window.NotesProShop?.isCardPayment?.(pay) ? toKonto : '',
+      });
       if (pay === 'paypal') {
         const url = window.NotesProShop?.paypalCheckoutUrl?.(merchant.paypal, {
           amount: cart.total,
@@ -8179,7 +8243,7 @@
       }
       return true;
     } catch (err) {
-      showToast(err.message || 'Could not send shop order.', 'danger');
+      showToast(err.message || 'Could not send shop payment.', 'danger');
       return false;
     } finally {
       if (btn) {
@@ -8271,6 +8335,8 @@
       at: extras.at || new Date(),
       index,
       payment: extras.payment || extras.pay || '',
+      buyerKonto: extras.buyerKonto || '',
+      merchantKonto: extras.merchantKonto || '',
     });
     currentPage.archive = appendShopOrderToPageArchive(fence);
     try {
@@ -8299,7 +8365,8 @@
       nextAttrs = setGanttFenceAttr(nextAttrs, 'sendto', String(sendTo || '').replace(/[;{}\n\r]/g, ' ').trim());
       nextAttrs = setGanttFenceAttr(nextAttrs, 'billto', String(billTo || '').replace(/[;{}\n\r]/g, ' ').trim());
       const body = content ? `\n${String(content).replace(/^\n/, '').replace(/\s+$/, '')}\n` : '\n';
-      return `\`\`\`shop{${nextAttrs}}${body}\`\`\``;
+      const fenceName = String(match).match(/^```([a-z]+)/i)?.[1] || 'shop';
+      return `\`\`\`${fenceName}{${nextAttrs}}${body}\`\`\``;
     });
   }
 
@@ -10336,7 +10403,7 @@ function formatTextWithMarkup(rawText) {
       const label = table ? `Archived bill · Table ${table}` : 'Archived bill';
       return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
     });
-    md = md.replace(/```(?:shop|eshop|webshop|store)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+    md = md.replace(/```(?:swshop|software|shop|eshop|webshop|store)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
       const cfg = window.NotesProShop?.parseFenceAttrs?.(fenceAttrs) || {};
       const label = cfg.title || 'Shop';
       return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
@@ -15518,6 +15585,19 @@ function formatTextWithMarkup(rawText) {
           },
           className: 'fa fa-shopping-cart',
           title: 'Insert shop (cart + checkout)',
+        },
+        {
+          name: 'insert-swshop',
+          action: (editor) => {
+            const body = [
+              '# NotesPro',
+              'NotesPro source | 0.00 | Collaborative notes app — download the zip or add a license to the cart | https://picsum.photos/id/180/640/400 | https://github.com/ThGSoft/NotesPro/archive/refs/heads/main.zip | Runs with Python and Django. Source on GitHub.',
+              'NotesPro license | 49.00 | Single-site license with setup notes by mail | https://picsum.photos/id/0/640/400 | Windows, macOS, and Linux. Card numbers are never stored.',
+            ].join('\n');
+            insertFenceBlock(editor, `swshop{to=${currentUserName || 'demo'};title=SW Shop;col=info;currency=EUR;kind=sw}`, body);
+          },
+          className: 'fa fa-download',
+          title: 'Insert SW shop (download + PayPal / Visa / Mastercard)',
         },
         {
           name: 'insert-kanbangantt',

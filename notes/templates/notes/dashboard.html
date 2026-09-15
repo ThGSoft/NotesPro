@@ -1033,10 +1033,14 @@
         </div>
         <div class="app-settings-shop mt-3 pt-3 border-top border-secondary-subtle">
           <div class="small fw-semibold mb-2">Shop</div>
-          <p class="small dashboard-modal-hint mb-2">Shown on shop blocks. PayPal and Mastercard are accepted methods — card numbers are never stored.</p>
+          <p class="small dashboard-modal-hint mb-2">Shown on shop blocks. PayPal, Visa, and Mastercard are accepted methods. Visa and Mastercard transfer to your Konto. Card numbers are never stored.</p>
           <div class="mb-2">
             <label class="form-label small fw-semibold" for="app-settings-shop-description">Description</label>
             <textarea id="app-settings-shop-description" class="form-control form-control-sm" rows="3" maxlength="2000" placeholder="Office supplies for the workspace"></textarea>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small fw-semibold" for="app-settings-shop-info">Additional info</label>
+            <textarea id="app-settings-shop-info" class="form-control form-control-sm" rows="3" maxlength="2000" placeholder="License, system requirements, support hours"></textarea>
           </div>
           <div class="mb-2">
             <label class="form-label small fw-semibold">Images</label>
@@ -1056,12 +1060,21 @@
             <input type="text" id="app-settings-shop-paypal" class="form-control form-control-sm" maxlength="120" placeholder="PayPal email or paypal.me name" autocomplete="off">
           </div>
           <div class="form-check mb-1">
+            <input class="form-check-input" type="checkbox" id="app-settings-shop-visa-enabled">
+            <label class="form-check-label small" for="app-settings-shop-visa-enabled">Visa</label>
+          </div>
+          <div class="form-check mb-1">
             <input class="form-check-input" type="checkbox" id="app-settings-shop-mastercard-enabled">
             <label class="form-check-label small" for="app-settings-shop-mastercard-enabled">Mastercard</label>
           </div>
+          <div class="mb-2">
+            <label class="form-label small fw-semibold" for="app-settings-shop-konto">Konto</label>
+            <input type="text" id="app-settings-shop-konto" class="form-control form-control-sm" maxlength="42" placeholder="IBAN or account number" autocomplete="off">
+            <p class="small dashboard-modal-hint mt-1 mb-0">Buyers transfer to this Konto after Visa or Mastercard checkout.</p>
+          </div>
           <div class="mb-0">
-            <label class="form-label small visually-hidden" for="app-settings-shop-mastercard">Mastercard instructions</label>
-            <textarea id="app-settings-shop-mastercard" class="form-control form-control-sm" rows="2" maxlength="240" placeholder="Card payment instructions (IBAN, terminal on delivery). Do not enter card numbers."></textarea>
+            <label class="form-label small visually-hidden" for="app-settings-shop-mastercard">Visa / Mastercard instructions</label>
+            <textarea id="app-settings-shop-mastercard" class="form-control form-control-sm" rows="2" maxlength="240" placeholder="Optional extra instructions. Do not enter card numbers."></textarea>
           </div>
         </div>
         <div class="app-settings-links mt-3 pt-3 border-top border-secondary-subtle">

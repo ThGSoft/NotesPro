@@ -11,7 +11,7 @@
   'use strict';
 
   const THEMES = ['info', 'success', 'warning', 'danger', 'note'];
-  const FENCE_RE = /```(?:shop|eshop|webshop|store)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+  const FENCE_RE = /```(?:swshop|software|shop|eshop|webshop|store)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
   const ARCHIVE_FENCE_RE = /```(?:shoporder|eshop-order|store-order)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
   const MAX_QTY = 99;
 
@@ -165,26 +165,75 @@
     return { src: '', note: text.trim() };
   }
 
+  function looksLikeDownloadSrc(text) {
+    const t = String(text || '').trim().replace(/^download\s*[:=]\s*/i, '');
+    if (!t || /^javascript:/i.test(t) || /^data:/i.test(t)) return false;
+    if (/\.(zip|exe|msi|dmg|7z|gz|tgz|pdf|apk|deb|rpm|iso)(\?|#|$)/i.test(t)) return true;
+    if (/github\.com\/[^/\s]+\/[^/\s]+\/(?:releases|archive)/i.test(t)) return true;
+    return false;
+  }
+
+  function extractDownload(part) {
+    const text = String(part || '').trim();
+    if (!text) return { href: '', note: '' };
+    const md = text.match(/\[(?:download|dl)\]\(([^)\s]+)\)/i);
+    if (md) {
+      return { href: md[1], note: text.replace(md[0], '').replace(/\s+/g, ' ').trim() };
+    }
+    const prefixed = text.match(/^download\s*[:=]\s*(\S+)(.*)$/i);
+    if (prefixed) {
+      return { href: prefixed[1], note: String(prefixed[2] || '').trim() };
+    }
+    if (looksLikeDownloadSrc(text) && !/\s/.test(text)) {
+      return { href: text.replace(/^download\s*[:=]\s*/i, ''), note: '' };
+    }
+    return { href: '', note: text };
+  }
+
   function parseProductParts(parts) {
     const name = parts[0];
     const price = parts[1] || '';
     let image = '';
+    let download = '';
+    let info = '';
     const notes = [];
     parts.slice(2).forEach((part) => {
+      const dl = extractDownload(part);
+      if (dl.href && !download) {
+        download = dl.href;
+        if (dl.note) notes.push(dl.note);
+        return;
+      }
       const extracted = extractImage(part);
       if (extracted.src && !image) {
         image = extracted.src;
         if (extracted.note) notes.push(extracted.note);
-      } else if (part) {
-        notes.push(part);
+        return;
       }
+      if (!part) return;
+      if (!info && notes.length) info = part;
+      else notes.push(part);
     });
     return {
       name,
       price,
       note: notes.join(' — ').trim(),
       image,
+      download,
+      info,
     };
+  }
+
+  function looksLikeCardNumber(value) {
+    const raw = String(value || '').trim();
+    if (/[A-Za-z]/.test(raw)) return false;
+    const digits = raw.replace(/\D/g, '');
+    return digits.length >= 13 && digits.length <= 19;
+  }
+
+  function sanitizeKonto(value) {
+    const konto = String(value || '').replace(/\s+/g, ' ').trim().slice(0, 42);
+    return looksLikeCardNumber(konto) ? '' : konto;
   }
 
   function normalizeMerchant(raw) {
@@ -194,13 +243,17 @@
       : (src.image ? [src.image] : []);
     return {
       description: String(src.description || src.desc || '').trim(),
+      info: String(src.info || src.additional_info || src.about || '').trim(),
       images: images.map((item) => String(item || '').trim()).filter(Boolean).slice(0, 8),
       paypalEnabled: src.paypal_enabled === true || src.paypalEnabled === true
         || String(src.paypal_enabled || '').toLowerCase() === 'true',
       paypal: String(src.paypal || src.paypal_email || src.paypalme || '').trim(),
+      visaEnabled: src.visa_enabled === true || src.visaEnabled === true
+        || String(src.visa_enabled || '').toLowerCase() === 'true',
       mastercardEnabled: src.mastercard_enabled === true || src.mastercardEnabled === true
         || String(src.mastercard_enabled || '').toLowerCase() === 'true',
       mastercard: String(src.mastercard || src.card || src.card_note || '').trim(),
+      konto: sanitizeKonto(src.konto || src.iban || src.account),
     };
   }
 
@@ -242,8 +295,14 @@
   function paymentLabel(pay) {
     const key = String(pay || '').toLowerCase();
     if (key === 'paypal') return 'PayPal';
-    if (key === 'mastercard' || key === 'card') return 'Mastercard';
+    if (key === 'visa') return 'Visa';
+    if (key === 'mastercard' || key === 'master' || key === 'card') return 'Mastercard';
     return 'Order';
+  }
+
+  function isCardPayment(pay) {
+    const key = String(pay || '').toLowerCase();
+    return key === 'visa' || key === 'mastercard' || key === 'master' || key === 'card';
   }
 
   function parseCatalog(source, cfg) {
@@ -264,11 +323,17 @@
       current.items.push(parseProductParts(parts));
     });
     if (current.items.length || current.title) sections.push(current);
+    const kindRaw = String(cfg.kind || cfg.type || '').trim().toLowerCase();
+    const kind = (kindRaw === 'sw' || kindRaw === 'software' || kindRaw === 'download')
+      ? 'sw'
+      : 'shop';
     return {
-      title: String(cfg.title || 'Shop').trim() || 'Shop',
+      title: String(cfg.title || (kind === 'sw' ? 'SW Shop' : 'Shop')).trim() || (kind === 'sw' ? 'SW Shop' : 'Shop'),
+      kind,
       to: parseToList(cfg),
       via: resolveVia(cfg),
       msg: String(cfg.msg || cfg.message || cfg.text || '').trim(),
+      info: String(cfg.info || cfg.about || cfg.extra || '').trim(),
       currency: String(cfg.currency || cfg.curr || '').trim(),
       sendTo: String(cfg.sendto || cfg.sentto || cfg.ship || cfg.shipping || '').trim(),
       billTo: String(cfg.billto || cfg.bill || cfg.billing || '').trim(),
@@ -376,6 +441,8 @@
         name: item.name || '',
         price: item.price || '',
         note: item.note || '',
+        download: item.download || '',
+        info: item.info || '',
         qty: add,
       });
     }
@@ -433,6 +500,16 @@
     const payNote = String(extras.paymentNote || '').trim();
     const payLine = pay ? `\nPayment: ${payName}` : '';
     const payNoteLine = payNote ? `\nCard instructions: ${payNote}` : '';
+    const buyerKonto = String(extras.buyerKonto || extras.fromKonto || extras.from || '').trim();
+    const merchantKonto = String(extras.merchantKonto || extras.toKonto || extras.to || '').trim();
+    const fromLine = buyerKonto ? `\nTransfer from: ${buyerKonto}` : '';
+    const toLine = merchantKonto ? `\nTransfer to: ${merchantKonto}` : '';
+    const downloads = (cart.lines || [])
+      .map((line) => line.download)
+      .filter(Boolean);
+    const downloadLine = downloads.length
+      ? `\nDownload:\n${downloads.map((href) => `• ${href}`).join('\n')}`
+      : '';
     const custom = String(spec?.msg || '').trim();
     if (custom && /\{(cart|order|lines|sum)\}/i.test(custom)) {
       return custom
@@ -446,11 +523,16 @@
         .replace(/\{billto\}/gi, billTo)
         .replace(/\{pay\}/gi, payName)
         .replace(/\{payment\}/gi, payName)
+        .replace(/\{from\}/gi, buyerKonto)
+        .replace(/\{to\}/gi, merchantKonto)
+        .replace(/\{konto\}/gi, merchantKonto)
+        .replace(/\{buyerkonto\}/gi, buyerKonto)
         .replace(/\{cart\}/gi, lines.join('\n'))
         .replace(/\{order\}/gi, lines.join('\n'))
-        .replace(/\{lines\}/gi, lines.join('\n'));
+        .replace(/\{lines\}/gi, lines.join('\n'))
+        .replace(/\{download\}/gi, downloads.join('\n'));
     }
-    return `Shop order — ${shopTitle} (${pageTitle})${whenLine}${sendLine}${billLine}${payLine}${payNoteLine}${noteLine}\n${lines.join('\n')}${sum}`;
+    return `Shop payment — ${shopTitle} (${pageTitle})${whenLine}${sendLine}${billLine}${payLine}${fromLine}${toLine}${payNoteLine}${noteLine}${downloadLine}\n${lines.join('\n')}${sum}`;
   }
 
   function parseArchiveItemLine(line) {
@@ -494,6 +576,8 @@
         note: cfg.note || '',
         pay,
         payLabel: paymentLabel(pay),
+        fromKonto: String(cfg.from || cfg.buyerkonto || cfg.buyer || '').trim(),
+        toKonto: String(cfg.to || cfg.konto || cfg.merchantkonto || '').trim(),
         sendTo,
         billTo,
         at: at && !Number.isNaN(at.getTime()) ? at : null,
@@ -526,6 +610,10 @@
     if (billTo) attrs.push(`billto=${billTo}`);
     const pay = sanitizeFenceValue(extras.payment || extras.pay || '');
     if (pay) attrs.push(`pay=${pay}`);
+    const fromKonto = sanitizeFenceValue(extras.buyerKonto || extras.fromKonto || extras.from || '');
+    const toKonto = sanitizeFenceValue(extras.merchantKonto || extras.toKonto || extras.to || '');
+    if (fromKonto) attrs.push(`from=${fromKonto}`);
+    if (toKonto) attrs.push(`to=${toKonto}`);
     const lines = (cart.lines || []).map((line) => {
       const qty = Number(line.qty) > 1 ? `qty=${line.qty}` : '';
       const extra = [qty, line.note || ''].filter(Boolean).join('; ');
@@ -548,6 +636,12 @@
     const pay = entry.pay
       ? `<p class="shop-archive-address"><span>Payment</span> ${escapeHtml(entry.payLabel || paymentLabel(entry.pay))}</p>`
       : '';
+    const fromKonto = entry.fromKonto
+      ? `<p class="shop-archive-address"><span>From</span> ${escapeHtml(entry.fromKonto)}</p>`
+      : '';
+    const toKonto = entry.toKonto
+      ? `<p class="shop-archive-address"><span>To</span> ${escapeHtml(entry.toKonto)}</p>`
+      : '';
     const total = entry.totalLabel
       ? `<div class="shop-cart-total"><span>Total</span><span class="shop-cart-sum">${escapeHtml(entry.totalLabel)}</span></div>`
       : '';
@@ -567,6 +661,8 @@
       sendTo,
       billTo,
       pay,
+      fromKonto,
+      toKonto,
       note,
       lines,
       total,
@@ -607,6 +703,9 @@
     const note = item.note
       ? `<p class="shop-card-note">${escapeHtml(item.note)}</p>`
       : '';
+    const extra = item.info
+      ? `<details class="shop-card-info"><summary>Additional info</summary><p>${escapeHtml(item.info)}</p></details>`
+      : '';
     const price = item.price
       ? `<span class="shop-card-price">${escapeHtml(displayPrice(item.price, currency))}</span>`
       : '';
@@ -616,33 +715,71 @@
       : (options.editable
         ? `<div class="shop-card-image shop-card-image--empty">Paste image</div>`
         : '');
+    const downloadHref = item.download ? resolveMediaHref(item.download) : '';
+    const download = downloadHref
+      ? `<a class="shop-download-btn" href="${escapeHtml(downloadHref)}" target="_blank" rel="noopener noreferrer">Download</a>`
+      : '';
     return [
       `<article class="shop-card" data-shop-item="${index}"${options.editable ? ' tabindex="0"' : ''}>`,
       image,
       `<div class="shop-card-body">`,
       `<div class="shop-card-name">${escapeHtml(item.name)}</div>`,
       note,
+      extra,
       `</div>`,
       `<div class="shop-card-foot">`,
       price,
-      `<button type="button" class="shop-add-btn" data-shop-add="${index}">Add</button>`,
+      `<span class="shop-card-actions">${download}<button type="button" class="shop-add-btn" data-shop-add="${index}">Add</button></span>`,
       `</div>`,
       `</article>`,
     ].join('');
   }
 
-  function selectedPayment(el) {
-    const checked = el?.querySelector?.('.shop-pay-methods input[type="radio"]:checked');
-    return String(checked?.value || 'order').toLowerCase();
+  function resetPayPrompt(el) {
+    const methods = el?.querySelector?.('.shop-pay-prompt-actions');
+    const kontoStep = el?.querySelector?.('.shop-pay-konto');
+    const buyer = el?.querySelector?.('[data-shop-buyer-konto]');
+    const title = el?.querySelector?.('[data-shop-pay-title]');
+    if (methods) methods.hidden = false;
+    if (kontoStep) kontoStep.hidden = true;
+    if (title) title.hidden = false;
+    if (buyer && document.activeElement !== buyer) buyer.value = '';
+    el?.querySelector?.('[data-shop-pay-method]')?.removeAttribute('value');
   }
 
-  function syncCheckoutLabel(el) {
+  function hidePayPrompt(el) {
+    const prompt = el?.querySelector?.('.shop-pay-prompt');
     const checkoutBtn = el?.querySelector?.('[data-shop-checkout]');
-    if (!checkoutBtn) return;
-    const pay = selectedPayment(el);
-    checkoutBtn.textContent = pay === 'paypal'
-      ? 'Pay with PayPal'
-      : (pay === 'mastercard' ? 'Pay with Mastercard' : 'Checkout');
+    resetPayPrompt(el);
+    if (prompt) prompt.hidden = true;
+    if (checkoutBtn) checkoutBtn.hidden = false;
+  }
+
+  function showPayPrompt(el) {
+    const prompt = el?.querySelector?.('.shop-pay-prompt');
+    const checkoutBtn = el?.querySelector?.('[data-shop-checkout]');
+    if (!prompt) return false;
+    resetPayPrompt(el);
+    prompt.hidden = false;
+    if (checkoutBtn) checkoutBtn.hidden = true;
+    prompt.querySelector('[data-shop-pay]')?.focus();
+    return true;
+  }
+
+  function showKontoPrompt(el, payment) {
+    const prompt = el?.querySelector?.('.shop-pay-prompt');
+    const methods = el?.querySelector?.('.shop-pay-prompt-actions');
+    const kontoStep = el?.querySelector?.('.shop-pay-konto');
+    if (!prompt || !kontoStep) return false;
+    prompt.hidden = false;
+    if (methods) methods.hidden = true;
+    kontoStep.hidden = false;
+    const method = el.querySelector('[data-shop-pay-method]');
+    const title = el.querySelector('[data-shop-pay-title]');
+    if (method) method.value = String(payment || '');
+    if (title) title.hidden = true;
+    el.querySelector('[data-shop-buyer-konto]')?.focus();
+    return true;
   }
 
   function renderCart(el, spec) {
@@ -666,7 +803,7 @@
       if (emptyEl) emptyEl.hidden = false;
       if (sumEl) sumEl.textContent = '—';
       if (checkoutBtn) checkoutBtn.disabled = true;
-      syncCheckoutLabel(el);
+      hidePayPrompt(el);
       return;
     }
     if (emptyEl) emptyEl.hidden = true;
@@ -693,11 +830,11 @@
       ].join('');
     }).join('');
     if (sumEl) sumEl.textContent = cart.totalLabel || '—';
-    syncCheckoutLabel(el);
   }
 
   function renderBlock(source, fenceAttrs, options = {}) {
     const cfg = parseFenceAttrs(fenceAttrs);
+    if (options.kind === 'sw' && cfg.kind == null) cfg.kind = 'sw';
     const spec = parseCatalog(source, cfg);
     const style = spec.style;
     const themeClass = style.theme ? ` shop-block--${style.theme}` : '';
@@ -721,32 +858,57 @@
           const items = (section.items || []).map((item) => renderProduct(item, itemIndex++, spec.currency, options)).join('');
           return `<section class="shop-section">${heading}<div class="shop-products">${items}</div></section>`;
         }).join('')
-      : '<p class="shop-empty">Add products as <code>Name | price | description | image</code></p>';
+      : `<p class="shop-empty">Add products as <code>Name | price | description | image | download | additional info</code></p>`;
     const merchantImages = merchant.images.length
       ? `<div class="shop-merchant-images">${merchant.images.map((src) => `<img src="${escapeHtml(resolveMediaHref(src))}" alt="" loading="lazy">`).join('')}</div>`
       : '';
     const merchantDesc = merchant.description
       ? `<p class="shop-merchant-desc">${escapeHtml(merchant.description)}</p>`
       : '';
+    const extraInfoText = spec.info || merchant.info;
+    const extraInfo = extraInfoText
+      ? `<details class="shop-extra-info"><summary>Additional info</summary><p>${escapeHtml(extraInfoText)}</p></details>`
+      : '';
     const payBadges = [
       merchant.paypalEnabled ? '<span class="shop-pay-badge shop-pay-badge--paypal">PayPal</span>' : '',
+      merchant.visaEnabled ? '<span class="shop-pay-badge shop-pay-badge--visa">Visa</span>' : '',
       merchant.mastercardEnabled ? '<span class="shop-pay-badge shop-pay-badge--mastercard">Mastercard</span>' : '',
     ].filter(Boolean).join('');
     const payBadgeHtml = payBadges
       ? `<div class="shop-pay-badges" aria-label="Accepted payments">${payBadges}</div>`
       : '';
-    const payOptions = [
-      `<label class="shop-pay-option"><input type="radio" name="shop-pay-${index}" value="order" checked> Order</label>`,
-      merchant.paypalEnabled
-        ? `<label class="shop-pay-option"><input type="radio" name="shop-pay-${index}" value="paypal"> PayPal</label>`
-        : '',
-      merchant.mastercardEnabled
-        ? `<label class="shop-pay-option"><input type="radio" name="shop-pay-${index}" value="mastercard"> Mastercard</label>`
-        : '',
-    ].filter(Boolean).join('');
-    const payHtml = (merchant.paypalEnabled || merchant.mastercardEnabled)
-      ? `<fieldset class="shop-pay-methods"><legend>Pay with</legend>${payOptions}</fieldset>`
-      : '';
+    const payMethods = [
+      merchant.paypalEnabled ? ['paypal', 'PayPal'] : null,
+      merchant.visaEnabled ? ['visa', 'Visa'] : null,
+      merchant.mastercardEnabled ? ['mastercard', 'Mastercard'] : null,
+    ].filter(Boolean);
+    const payButtons = payMethods
+      .map(([value, label]) => `<button type="button" class="shop-pay-prompt-btn shop-pay-prompt-btn--${value}" data-shop-pay="${value}">${label}</button>`)
+      .join('');
+    const merchantKonto = sanitizeKonto(merchant.konto);
+    const kontoStepHtml = merchantKonto
+      ? [
+          `<p class="shop-pay-konto-to">Transfer to <strong data-shop-merchant-konto>${escapeHtml(merchantKonto)}</strong></p>`,
+          `<label class="shop-note-field shop-pay-konto-field">Your Konto`,
+          `<input type="text" class="shop-note-input" data-shop-buyer-konto maxlength="42" placeholder="IBAN or account" autocomplete="off">`,
+          `</label>`,
+          `<button type="button" class="shop-pay-prompt-btn shop-pay-prompt-btn--transfer" data-shop-transfer>Transfer</button>`,
+        ].join('')
+      : `<p class="shop-pay-prompt-empty">Add a Konto in Settings to receive Visa and Mastercard transfers.</p>`;
+    const payPromptHtml = [
+      `<div class="shop-pay-prompt" hidden>`,
+      `<input type="hidden" data-shop-pay-method value="">`,
+      `<p class="shop-pay-prompt-title" data-shop-pay-title>How would you like to pay?</p>`,
+      payButtons
+        ? `<div class="shop-pay-prompt-actions">${payButtons}</div>`
+        : `<p class="shop-pay-prompt-empty">Enable PayPal, Visa, or Mastercard in Settings.</p>`,
+      `<div class="shop-pay-konto" hidden>`,
+      `<p class="shop-pay-prompt-title">Transfer from your Konto</p>`,
+      kontoStepHtml,
+      `</div>`,
+      `<button type="button" class="shop-pay-prompt-cancel" data-shop-pay-cancel>Back</button>`,
+      `</div>`,
+    ].join('');
     const sameBill = spec.sendTo && spec.billTo && spec.sendTo === spec.billTo;
     const settingsHtml = options.editable
       ? [
@@ -762,7 +924,7 @@
           `<textarea class="shop-address-input" data-shop-billto rows="2" maxlength="240" placeholder="Name, street, city"${sameBill ? ' disabled' : ''}>${escapeHtml(spec.billTo || (sameBill ? spec.sendTo : ''))}</textarea>`,
           `</label>`,
           `<label class="shop-settings-check"><input type="checkbox" data-shop-bill-same${sameBill ? ' checked' : ''}> Same as sent to</label>`,
-          `<p class="shop-settings-hint">Shop images, description, PayPal and Mastercard are in user Settings.</p>`,
+          `<p class="shop-settings-hint">Shop images, description, Konto, PayPal, Visa, Mastercard and additional info are in user Settings.</p>`,
           `</div>`,
         ].join('')
       : '';
@@ -773,17 +935,19 @@
     return [
       `<div class="shop-block${themeClass}${customClass}"${styleAttr}`,
       ` data-shop-index="${index}"`,
+      ` data-shop-konto="${escapeHtml(merchantKonto)}"`,
       ` data-shop-spec="${escapeHtml(encodeSpec(spec))}">`,
       `<div class="shop-header">`,
       `<div class="shop-heading">`,
       `<div class="shop-title">${escapeHtml(spec.title)}</div>`,
-      `<div class="shop-meta">Add to cart · checkout by ${escapeHtml(viaLabel)} to ${escapeHtml(toLabel)} · posted in group chat</div>`,
+      `<div class="shop-meta">${spec.kind === 'sw' ? 'Download or add to cart · ' : 'Add to cart · '}checkout, then pay with PayPal, Visa, or Mastercard · Visa/Mastercard transfer to the Settings Konto · sent by ${escapeHtml(viaLabel)} to ${escapeHtml(toLabel)}</div>`,
       payBadgeHtml,
       `</div>`,
       settingsHtml,
       `</div>`,
       merchantImages,
       merchantDesc,
+      extraInfo,
       `<div class="shop-layout">`,
       `<div class="shop-catalog">${catalogHtml}</div>`,
       `<aside class="md-panel md-panel--${THEMES.includes(style.theme) ? style.theme : 'info'} shop-cart">`,
@@ -802,8 +966,8 @@
       `<input type="text" class="shop-note-input" data-shop-note maxlength="120" placeholder="Delivery or desk">`,
       `</label>`,
       `<div class="shop-cart-total"><span>Total</span><span class="shop-cart-sum">—</span></div>`,
-      payHtml,
       `<button type="button" class="shop-checkout-btn" data-shop-checkout disabled>Checkout</button>`,
+      payPromptHtml,
       `</div>`,
       `</aside>`,
       `</div>`,
@@ -869,11 +1033,20 @@
     noteInput?.addEventListener('keydown', (event) => event.stopPropagation());
     noteInput?.addEventListener('input', () => setCartNote(el, spec, noteInput.value));
 
-    el.querySelectorAll('.shop-pay-methods input[type="radio"]').forEach((input) => {
-      input.addEventListener('click', (event) => event.stopPropagation());
-      input.addEventListener('change', () => syncCheckoutLabel(el));
+    el.querySelector('.shop-pay-prompt')?.addEventListener('click', (event) => {
+      if (event.target.closest('[data-shop-pay], [data-shop-pay-cancel], [data-shop-transfer], [data-shop-buyer-konto]')) return;
+      event.stopPropagation();
     });
-    syncCheckoutLabel(el);
+
+    const buyerKontoInput = el.querySelector('[data-shop-buyer-konto]');
+    buyerKontoInput?.addEventListener('click', (event) => event.stopPropagation());
+    buyerKontoInput?.addEventListener('keydown', (event) => {
+      event.stopPropagation();
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        el.querySelector('[data-shop-transfer]')?.click();
+      }
+    });
 
     async function handlePasteFiles(files, itemIndex) {
       const imageFiles = [...files].filter((file) => file && String(file.type || '').startsWith('image/'));
@@ -931,8 +1104,55 @@
       if (checkoutBtn && el.contains(checkoutBtn) && !checkoutBtn.disabled) {
         event.preventDefault();
         event.stopPropagation();
+        if (!getCart(el, spec).lines.length) return;
+        showPayPrompt(el);
+        return;
+      }
+      const cancelPay = event.target.closest('[data-shop-pay-cancel]');
+      if (cancelPay && el.contains(cancelPay)) {
+        event.preventDefault();
+        event.stopPropagation();
+        const kontoStep = el.querySelector('.shop-pay-konto');
+        if (kontoStep && !kontoStep.hidden) {
+          resetPayPrompt(el);
+          el.querySelector('[data-shop-pay]')?.focus();
+          return;
+        }
+        hidePayPrompt(el);
+        return;
+      }
+      const payBtn = event.target.closest('[data-shop-pay]');
+      if (payBtn && el.contains(payBtn) && !payBtn.disabled) {
+        event.preventDefault();
+        event.stopPropagation();
         const cart = getCart(el, spec);
-        hooks.onCheckout?.({ spec, cart, el, btn: checkoutBtn, payment: selectedPayment(el) });
+        if (!cart.lines.length) return;
+        const payment = String(payBtn.dataset.shopPay || '').toLowerCase();
+        if (isCardPayment(payment)) {
+          showKontoPrompt(el, payment);
+          return;
+        }
+        hooks.onCheckout?.({ spec, cart, el, btn: payBtn, payment });
+        return;
+      }
+      const transferBtn = event.target.closest('[data-shop-transfer]');
+      if (transferBtn && el.contains(transferBtn) && !transferBtn.disabled) {
+        event.preventDefault();
+        event.stopPropagation();
+        const cart = getCart(el, spec);
+        if (!cart.lines.length) return;
+        const payment = String(el.querySelector('[data-shop-pay-method]')?.value || '').toLowerCase();
+        const buyerKonto = String(el.querySelector('[data-shop-buyer-konto]')?.value || '').replace(/\s+/g, ' ').trim();
+        const merchantKonto = sanitizeKonto(el.dataset.shopKonto || el.querySelector('[data-shop-merchant-konto]')?.textContent);
+        hooks.onCheckout?.({
+          spec,
+          cart,
+          el,
+          btn: transferBtn,
+          payment,
+          buyerKonto,
+          merchantKonto,
+        });
         return;
       }
       const qtyBtn = event.target.closest('[data-shop-qty]');
@@ -993,6 +1213,9 @@
     normalizeMerchant,
     paypalCheckoutUrl,
     paymentLabel,
+    isCardPayment,
+    looksLikeCardNumber,
+    sanitizeKonto,
     readMerchant,
   };
 }));
