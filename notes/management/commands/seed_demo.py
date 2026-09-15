@@ -215,6 +215,13 @@ Coffee beans | 12.00 | 250g medium roast | https://picsum.photos/id/425/400/300
 Tea selection | 8.50 | Assorted herbal and black teas | https://picsum.photos/id/225/400/300
 ```
 
+# Classifieds
+```craigslist{to=demo;city=Main;currency=EUR}
+# for sale
+Desk lamp | 12 | Downtown | Working LED lamp, pickup only | https://picsum.photos/id/106/400/300
+Road bike | 180 | Harbor | 21-speed, recently serviced | https://picsum.photos/id/146/400/300
+```
+
 # News / RSS
 ```news url=https://feeds.bbci.co.uk/news/world/rss.xml
 # BBC World
@@ -325,6 +332,39 @@ Hover and press **Ctrl+V** to add a photo. **Demo tour** auto-walks the hall.
 ![Coast](https://picsum.photos/id/1016/960/720)
 ![Valley](https://picsum.photos/id/1043/960/720)
 ![Bridge](https://picsum.photos/id/1036/960/720)
+```
+"""
+
+
+CLASSIFIEDS_DEMO_MARKDOWN = """# Classifieds
+
+Local ads in a Craigslist-style board. Search, pick a category, open a listing, then **Reply** to enter a message mailed to all group members. **Add item** sends a listing by mail (To, category, text).
+
+```craigslist{to=demo;city=Main;currency=EUR}
+# community
+Neighborhood picnic | free | Riverside | Saturday potluck at the park. Bring a dish.
+Lost cat | — | Elm St | Orange tabby, answers to Maple. Last seen near the bakery.
+
+# services
+Bike tune-up | 35 | Downtown | Pickup or drop-off. Same-day if booked before noon.
+Tutoring | 20 | Campus | Math and physics, evenings.
+
+# housing
+Studio loft | 780 | Old Town | Bright one-room, available Oct 1, no pets.
+Room share | 420 | Eastside | Furnished room in a 3-bed flat.
+
+# for sale
+Desk lamp | 12 | Downtown | Working LED lamp, pickup only | https://picsum.photos/id/106/400/300
+Road bike | 180 | Harbor | 21-speed, recently serviced | https://picsum.photos/id/146/400/300
+Standing desk | 90 | Midtown | Adjustable height, minor scuffs | https://picsum.photos/id/201/400/300
+
+# jobs
+Barista | hourly | Cafe Row | Weekend shifts, training provided.
+Page editor | remote | Workspace | Help keep the Docs folder tidy.
+
+# gigs
+Moving help | 40 | West End | Two hours, Saturday morning.
+Photo walk | 25 | Market | Shoot product photos for a stall.
 ```
 """
 
@@ -580,8 +620,9 @@ GAMES_DEMO_PAGES = (
         'Marble blast',
         15,
         '# Marble blast\n\n'
-        'Roll the marble, collect gems, then hit the gold finish pad. Space jumps. [ ] changes course.\n\n'
-        '```marbleblast{fullscreen}\n'
+        'Roll the marble, collect gems, then hit the gold finish pad. Space jumps. [ ] changes course. '
+        'C / **View** toggles ego chase cam vs orbit. In ego view, **WASD** rolls the marble (A/D strafe) and drag looks around. Fence `view=ego` (or `cam=ego` / `ego`) starts in ego view.\n\n'
+        '```marbleblast{fullscreen;view=ego}\n'
         '```\n',
     ),
     (
@@ -679,15 +720,18 @@ class Command(BaseCommand):
         settings_obj, _ = UserSettings.objects.get_or_create(user=user)
         extra = dict(settings_obj.extra_configs or {}) if isinstance(settings_obj.extra_configs, dict) else {}
         extra['shop'] = {
-            'description': 'Office supplies and snacks for the workspace. Pay with PayPal or Mastercard on checkout.',
+            'description': 'Software and office shop. Download builds, or pay with PayPal, Visa, or Mastercard.',
+            'info': 'Card numbers are never stored. Visa and Mastercard transfer from the buyer Konto to the shop Konto in Settings. PayPal opens a checkout window. Source downloads are zip archives from GitHub.',
             'images': [
                 'https://picsum.photos/id/20/640/240',
                 'https://picsum.photos/id/366/640/240',
             ],
             'paypal_enabled': True,
             'paypal': 'demo@example.com',
+            'visa_enabled': True,
             'mastercard_enabled': True,
-            'mastercard': 'Card terminal at reception, or pay on delivery.',
+            'konto': 'DE89 3704 0044 0532 0130 00',
+            'mastercard': 'Pay by invoice. Transfer to the shop Konto. Do not enter card numbers here.',
         }
         settings_obj.extra_configs = extra
         settings_obj.save(update_fields=['extra_configs'])
@@ -732,6 +776,8 @@ class Command(BaseCommand):
                     'Edit in markdown, preview when you are done.\n\n'
                     'See **README** in this folder for the full project guide and screenshots.\n\n'
                     'Open **Blocks** for interactive gantt, calendar, mindmap, kanban, sheets, charts, calcs, Python, voice notes, gallery, and panel examples.\n\n'
+                    'Open **SW Shop** for software downloads and PayPal / Visa / Mastercard checkout.\n\n'
+                    'Open **Classifieds** for a Craigslist-style board — search, categories, and Reply by mail.\n\n'
                     'Open **Calendar** for day, week, month, and year views — hover a day and press **Ctrl+V** to paste a photo.\n\n'
                     'Open **Gallery** for a walk-in corridor of NotesPro screenshots — **Demo tour** starts on load.\n\n'
                     'Open **Games** for sudoku, tic-tac-toe, chess, Connect Four, Reversi, Tetris, Sokoban, Space Invaders, Breakout, Snake, marble blast, jigsaw, pinball, Pac-Man, Super Mario, Lemmings, photo cube, photo book, photo carousel, roller coaster, auto scooter, ghost train, and photo labyrinth.\n\n'
@@ -752,6 +798,37 @@ class Command(BaseCommand):
             },
         )
 
+        upsert_page(
+            ws,
+            'sw-shop',
+            parent=docs,
+            title='SW Shop',
+            is_folder=False,
+            sort_order=3,
+            markdown_content=(
+                '# SW Shop\n\n'
+                'Download a build, or add a license to the cart and **Checkout**. '
+                'You are then asked to pay with **PayPal**, **Visa**, or **Mastercard**. '
+                'Visa and Mastercard ask for your **Konto** and transfer to the shop Konto in **Settings**. '
+                'Open **Additional info** for license notes. Card numbers are never stored.\n\n'
+                '```swshop{to=demo;title=SW Shop;col=info;currency=EUR;kind=sw}\n'
+                '# NotesPro\n'
+                'NotesPro source | 0.00 | Collaborative notes app — zip from GitHub | https://picsum.photos/id/180/640/400 | https://github.com/ThGSoft/NotesPro/archive/refs/heads/main.zip | Python and Django. Clone or unzip, then run locally.\n'
+                'NotesPro license | 49.00 | Single-site license, setup notes by mail | https://picsum.photos/id/0/640/400 | Windows, macOS, and Linux. PayPal, Visa, or Mastercard on checkout.\n'
+                '```\n'
+            ),
+        )
+
+        upsert_page(
+            ws,
+            'classifieds',
+            parent=docs,
+            title='Classifieds',
+            is_folder=False,
+            sort_order=4,
+            markdown_content=CLASSIFIEDS_DEMO_MARKDOWN,
+        )
+
         Page.objects.update_or_create(
             workspace=ws,
             slug='rss-feeds',
@@ -759,7 +836,7 @@ class Command(BaseCommand):
             defaults={
                 'parent': docs,
                 'title': 'RSS Feeds',
-                'sort_order': 3,
+                'sort_order': 5,
                 'markdown_content': RSS_FEEDS_MARKDOWN,
             },
         )
@@ -770,7 +847,7 @@ class Command(BaseCommand):
             parent=docs,
             title='Calendar',
             is_folder=False,
-            sort_order=4,
+            sort_order=6,
             markdown_content=CALENDAR_DEMO_MARKDOWN,
         )
 
@@ -780,7 +857,7 @@ class Command(BaseCommand):
             parent=docs,
             title='Gallery',
             is_folder=False,
-            sort_order=5,
+            sort_order=7,
             markdown_content=build_gallery_markdown(ws, user),
         )
 
@@ -792,7 +869,7 @@ class Command(BaseCommand):
                 'parent': docs,
                 'title': 'Games',
                 'is_folder': True,
-                'sort_order': 6,
+                'sort_order': 8,
                 'markdown_content': '',
             },
         )
@@ -826,7 +903,7 @@ class Command(BaseCommand):
             sort_order=22,
             markdown_content=(
                 '# Photo carousel\n\n'
-                'Swipe, use the arrows, or let it play.\n\n'
+                '**A/D** (or drag) turns the wheel. **W/S** or the mouse wheel tilts the camera. Switch to Wheel V for a vertical ring.\n\n'
                 '```carousel{title=Photo carousel;demo;col=info}\n'
                 '![Lake](https://picsum.photos/id/1015/960/720)\n'
                 '![Forest path](https://picsum.photos/id/1018/960/720)\n'

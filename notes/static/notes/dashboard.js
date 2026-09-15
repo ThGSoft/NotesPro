@@ -2089,7 +2089,7 @@
   }
 
   function isPreviewRichBlock(el) {
-    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .md-python, .voice-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .page-tags');
+    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .md-python, .voice-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .page-tags');
   }
 
   function getPreviewBlockSourceLine(node) {
@@ -2125,7 +2125,7 @@
 
   function setPreviewContextFromEvent(e) {
     if (!isEditing) return;
-    if (e.target.closest?.('.sheet-cell-editable, a, button, input, select, textarea, .chart-settings, .speisekarte-settings, .shop-settings')) return;
+    if (e.target.closest?.('.sheet-cell-editable, a, button, input, select, textarea, .chart-settings, .speisekarte-settings, .shop-settings, .cl-block')) return;
     const line = getPreviewBlockSourceLine(e.target);
     if (line !== null) previewContextLine = line;
   }
@@ -7898,10 +7898,27 @@
     return `Bill · Table ${table} — ${spec?.title || 'Menu'}`;
   }
 
+  function uniqueWorkspaceMembers(members) {
+    const seen = new Set();
+    const out = [];
+    (members || []).forEach((member) => {
+      if (!member || seen.has(member.id)) return;
+      seen.add(member.id);
+      out.push(member);
+    });
+    return out;
+  }
+
+  function isBroadcastRecipientToken(token) {
+    return /^(all|group|members|everyone|workspace|\*|alle)$/i.test(String(token || '').trim());
+  }
+
   function resolveSpeisekarteRecipients(members, spec) {
+    const all = uniqueWorkspaceMembers(members);
     const tokens = (spec?.to || []).map((part) => String(part).trim()).filter(Boolean);
-    const byName = new Map((members || []).map((m) => [String(m.username || '').toLowerCase(), m]));
-    const byId = new Map((members || []).map((m) => [String(m.id), m]));
+    if (tokens.some(isBroadcastRecipientToken)) return all;
+    const byName = new Map(all.map((m) => [String(m.username || '').toLowerCase(), m]));
+    const byId = new Map(all.map((m) => [String(m.id), m]));
     const found = [];
     const seen = new Set();
     tokens.forEach((token) => {
@@ -7912,7 +7929,7 @@
       }
     });
     if (found.length) return found;
-    const owner = (members || []).find((m) => m.is_owner);
+    const owner = all.find((m) => m.is_owner);
     return owner ? [owner] : [];
   }
 
@@ -8316,6 +8333,166 @@
           applyShopProductImage(el, itemIndex, mediaPath);
         }
         : null,
+    });
+  }
+
+  const CRAIGSLIST_BLOCK_RE = /```(?:craigslist|classifieds|clist|ads)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function parseCraigslistBlocks(text) {
+    let clIndex = 0;
+    CRAIGSLIST_BLOCK_RE.lastIndex = 0;
+    return text.replace(CRAIGSLIST_BLOCK_RE, (_full, fenceAttrs, content) => {
+      const engine = window.NotesProCraigslist;
+      const idx = clIndex++;
+      const html = engine?.renderBlock
+        ? engine.renderBlock(content || '', fenceAttrs || '', {
+            clIndex: idx,
+            locale: getAppLocale(),
+            currentUser: currentUserName || '',
+          })
+        : `<div class="cl-block cl-block--error">${escapeHtml(window.NotesProCraigslist?.t?.('fallback') || 'Classifieds')} engine not loaded.</div>`;
+      return wrapRichPreviewBlock(html);
+    });
+  }
+
+  function appendCraigslistListingInMarkdown(markdown, clIndex, { category, text } = {}) {
+    const engine = window.NotesProCraigslist;
+    const line = engine?.listingLineFromAddText?.(text) || String(text || '').trim();
+    if (!line) return String(markdown || '');
+    let idx = 0;
+    const re = new RegExp(CRAIGSLIST_BLOCK_RE.source, CRAIGSLIST_BLOCK_RE.flags);
+    return String(markdown || '').replace(re, (match, fenceAttrs, content = '') => {
+      const thisIndex = idx;
+      idx += 1;
+      if (thisIndex !== clIndex) return match;
+      const fenceName = String(match).match(/^```([a-z]+)/i)?.[1] || 'craigslist';
+      const nextBody = engine?.insertListingIntoBody
+        ? engine.insertListingIntoBody(content, category, line)
+        : `${String(content || '').replace(/\s+$/, '')}\n${line}`;
+      const body = `\n${String(nextBody).replace(/^\n/, '').replace(/\s+$/, '')}\n`;
+      return `\`\`\`${fenceName}{${fenceAttrs || ''}}${body}\`\`\``;
+    });
+  }
+
+  async function sendCraigslistReply({ spec, item, btn, to, text } = {}) {
+    const engine = window.NotesProCraigslist;
+    if (!item?.title) return false;
+    const bodyText = String(text || '').trim();
+    if (!bodyText) {
+      showToast(engine?.t?.('errReplyEmpty') || 'Enter a reply.', 'warning');
+      return false;
+    }
+    const toList = String(to || '').split(/[,+\s]+/).map((part) => part.trim()).filter(Boolean);
+    const sendSpec = { ...spec, to: toList.length ? toList : ['all'] };
+    if (btn) {
+      btn.disabled = true;
+      btn.classList.add('is-sending');
+    }
+    try {
+      const body = engine?.formatReplyText
+        ? engine.formatReplyText(sendSpec, item, {
+            pageTitle: currentPage?.title || 'page',
+            text: bodyText,
+          })
+        : bodyText;
+      await dispatchSpeisekarteMessage({
+        spec: sendSpec,
+        subject: engine?.t?.('replySubject', { title: item.title }) || `Reply: ${item.title}`,
+        body,
+        toastOk: engine?.t?.('toastReply', { title: item.title }) || `Sent reply for “${item.title}”.`,
+      });
+      return true;
+    } catch (err) {
+      showToast(err.message || engine?.t?.('errReply') || 'Could not send classifieds reply.', 'danger');
+      return false;
+    } finally {
+      if (btn) {
+        btn.classList.remove('is-sending');
+        btn.disabled = false;
+      }
+    }
+  }
+
+  async function sendCraigslistAddItem({ spec, el, btn, to, category, text } = {}) {
+    const engine = window.NotesProCraigslist;
+    const bodyText = String(text || '').trim();
+    if (!bodyText) {
+      showToast(engine?.t?.('errEmpty') || 'Enter listing text.', 'warning');
+      return false;
+    }
+    const toList = String(to || '').split(/[,+\s]+/).map((part) => part.trim()).filter(Boolean);
+    const sendSpec = { ...spec, to: toList.length ? toList : (spec?.to || []) };
+    if (btn) {
+      btn.disabled = true;
+      btn.classList.add('is-sending');
+    }
+    try {
+      const body = engine?.formatAddText
+        ? engine.formatAddText(sendSpec, { category, text: bodyText, to: toList.join(', ') }, {
+            pageTitle: currentPage?.title || 'page',
+          })
+        : bodyText;
+      const catLabel = String(category || '').trim();
+      await dispatchSpeisekarteMessage({
+        spec: sendSpec,
+        subject: engine?.t?.('addSubject', { cat: catLabel }) || (catLabel ? `New listing: ${catLabel}` : 'New listing'),
+        body,
+        toastOk: engine?.t?.('toastAdd') || 'Sent new listing.',
+      });
+      if (userCanEdit && easyMDE) {
+        const index = parseInt(el?.dataset?.clIndex, 10);
+        if (Number.isFinite(index)) {
+          const source = easyMDE.value();
+          const next = appendCraigslistListingInMarkdown(source, index, { category: catLabel, text: bodyText });
+          if (next !== source) {
+            capturePreviewScrollPosition();
+            easyMDE.value(next);
+            if (currentPage) currentPage.markdown_content = next;
+            renderPreview();
+            void savePage();
+          }
+        }
+      }
+      return true;
+    } catch (err) {
+      showToast(err.message || engine?.t?.('errAdd') || 'Could not send listing.', 'danger');
+      return false;
+    } finally {
+      if (btn) {
+        btn.classList.remove('is-sending');
+        btn.disabled = false;
+      }
+    }
+  }
+
+  async function fillCraigslistReplyTo(input) {
+    if (!input) return;
+    const before = String(input.value || '').trim();
+    if (before && !isBroadcastRecipientToken(before) && before.includes(',')) return;
+    if (input.dataset.clFilled === '1' && before && !isBroadcastRecipientToken(before)) return;
+    syncWorkspaceIdFromDom();
+    if (!workspaceId) {
+      if (!before) input.value = 'all';
+      return;
+    }
+    try {
+      const data = await api(`api/workspaces/${workspaceId}/members/`);
+      if (String(input.value || '').trim() !== before) return;
+      const names = uniqueWorkspaceMembers(data.members || [])
+        .map((member) => member.username)
+        .filter(Boolean);
+      input.value = names.length ? names.join(', ') : 'all';
+      input.dataset.clFilled = '1';
+    } catch (_) {
+      if (!String(input.value || '').trim()) input.value = 'all';
+    }
+  }
+
+  function hydrateCraigslistBlocks(root) {
+    window.NotesProCraigslist?.hydrate?.(root, {
+      onReply: (payload) => sendCraigslistReply(payload),
+      onAdd: (payload) => sendCraigslistAddItem(payload),
+      fillReplyTo: (input) => fillCraigslistReplyTo(input),
     });
   }
 
@@ -10031,7 +10208,7 @@ function formatTextWithMarkup(rawText) {
     if (!root) return;
     root.querySelectorAll('pre').forEach(pre => {
       if (pre.closest('.md-code-block')) return;
-      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .md-python, .voice-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block')) {
+      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .md-python, .voice-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block')) {
         return;
       }
       const wrap = document.createElement('div');
@@ -10414,6 +10591,11 @@ function formatTextWithMarkup(rawText) {
       const label = when ? `Archived order · ${when}` : 'Archived order';
       return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
     });
+    md = md.replace(/```(?:craigslist|classifieds|clist|ads)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const cfg = window.NotesProCraigslist?.parseFenceAttrs?.(fenceAttrs) || {};
+      const label = cfg.title || cfg.city || window.NotesProCraigslist?.t?.('fallback') || 'Classifieds';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
     md = md.replace(/```(?:mindmap|mmap|mind)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
       const spec = parseMindmapSpec(fenceAttrs, '');
       const label = spec.title || 'Mindmap';
@@ -10610,6 +10792,7 @@ function formatTextWithMarkup(rawText) {
       md = parseSokobanBlocks(md);
       md = parseSpeisekarteBlocks(md, options);
       md = parseShopBlocks(md, options);
+      md = parseCraigslistBlocks(md);
       md = parseInvadersBlocks(md);
       md = parseBreakoutBlocks(md);
       md = parseSnakeBlocks(md);
@@ -11019,6 +11202,7 @@ function formatTextWithMarkup(rawText) {
     hydrateSokobanBlocks(preview);
     hydrateSpeisekarteBlocks(preview);
     hydrateShopBlocks(preview);
+    hydrateCraigslistBlocks(preview);
     hydrateInvadersBlocks(preview);
     hydrateBreakoutBlocks(preview);
     hydrateSnakeBlocks(preview);
@@ -15600,6 +15784,34 @@ function formatTextWithMarkup(rawText) {
           title: 'Insert SW shop (download + PayPal / Visa / Mastercard)',
         },
         {
+          name: 'insert-craigslist',
+          action: (editor) => {
+            const body = [
+              '# community',
+              'Neighborhood picnic | free | Riverside | Saturday potluck at the park. Bring a dish.',
+              '',
+              '# services',
+              'Bike tune-up | 35 | Downtown | Pickup or drop-off. Same-day if booked before noon.',
+              '',
+              '# housing',
+              'Studio loft | 780 | Old Town | Bright one-room, available Oct 1.',
+              '',
+              '# for sale',
+              'Desk lamp | 12 | Downtown | Working LED lamp, pickup only | https://picsum.photos/id/106/400/300',
+              'Road bike | 180 | Harbor | 21-speed, recently serviced | https://picsum.photos/id/146/400/300',
+              '',
+              '# jobs',
+              'Barista | hourly | Cafe Row | Weekend shifts, training provided.',
+              '',
+              '# gigs',
+              'Moving help | 40 | West End | Two hours, Saturday morning.',
+            ].join('\n');
+            insertFenceBlock(editor, `craigslist{to=${currentUserName || 'demo'};city=Main;currency=EUR}`, body);
+          },
+          className: 'fa fa-list',
+          title: 'Insert classifieds (Craigslist-style ads)',
+        },
+        {
           name: 'insert-kanbangantt',
           action: (editor) => {
             const body = [
@@ -17937,6 +18149,9 @@ function formatTextWithMarkup(rawText) {
       if (isOwner || role === 'owner') {
         badgeHTML = '<span class="badge bg-warning text-dark ms-1" style="font-size: 0.65rem;">Owner</span>';
         actionHTML = '<span class="text-muted small" title="Workspace Owner">🔒</span>';
+      } else if (role === 'group') {
+        badgeHTML = '<span class="badge bg-primary text-white ms-1" style="font-size: 0.65rem;">Group</span>';
+        actionHTML = '';
       } else {
         const badgeClass = role === 'write' ? 'bg-info' : 'bg-secondary';
         const badgeText = role === 'write' ? 'write' : 'only read access';
@@ -17979,7 +18194,7 @@ function formatTextWithMarkup(rawText) {
       });
 
       const badgeElement = li.querySelector('.role-toggle-badge');
-      if (badgeElement && window.isCurrentUserOwner && role !== 'owner' && !isOwner) {
+      if (badgeElement && window.isCurrentUserOwner && role !== 'owner' && role !== 'group' && !isOwner) {
         badgeElement.addEventListener('click', (e) => {
           e.stopPropagation();
           changeMemberRole(id, badgeElement);
@@ -18346,7 +18561,7 @@ function formatTextWithMarkup(rawText) {
     if (tryPasteOntoHoveredShopCard(event)) return;
     if (tryPasteIntoEditorPhotoFence(event)) return;
     const pasteFiles = clipboardImageFiles(event.clipboardData || event.originalEvent?.clipboardData);
-    if (event.target.closest?.('.puzzle-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .voice-block, .calendar-block, #calendar-note-modal')) return;
+    if (event.target.closest?.('.puzzle-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .voice-block, .calendar-block, #calendar-note-modal')) return;
     const items = (event.clipboardData || event.originalEvent.clipboardData).items;
     for (let index in items) {
       const item = items[index];

@@ -57,7 +57,7 @@ Share: [LinkedIn](https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2
 - **Ghost train** blocks — convoy on rails; photos in frames along the track
 - **Photo labyrinth** blocks — first-person maze whose walls are your pasted photos
 - **Calendar** blocks — list days, weeks, months, or years for a `from`/`to` range
-- **Gantt** / **Kanban** / **Kanban Gantt** / **Mindmap** / **Speisekarte** / **Shop** / **SW Shop** blocks — project timelines, boards, timed cost tracking, idea trees, click-to-order menus, cart checkout, and software downloads
+- **Gantt** / **Kanban** / **Kanban Gantt** / **Mindmap** / **Speisekarte** / **Shop** / **SW Shop** / **Classifieds** blocks — project timelines, boards, timed cost tracking, idea trees, click-to-order menus, cart checkout, software downloads, and Craigslist-style ads
 - File manager with drag-and-drop uploads; click images to open in a new tab
 - **Local file links** — paste Windows paths or insert via toolbar; click in preview to reveal in Explorer (local dev server)
 - Resizable dashboard panels (sidebar, editor, chat/mail)
@@ -106,7 +106,7 @@ python manage.py runserver
 
 Open:
 - http://127.0.0.1:8000/login/
-- Demo user after `seed_demo`: `demo` / `password` — workspace **Docs → README** contains this guide with screenshots; **Docs → Blocks** has gantt/calendar/mindmap/kanban/calcs/panel examples; **Docs → Calendar** has day/week/month/year views with sample events; **Docs → Gallery** is a walk-in corridor of NotesPro screenshots (tap **Demo tour** on a phone); **Docs → Games** has sudoku, tic-tac-toe, chess, Connect Four, Reversi, Tetris, Sokoban, Space Invaders, Breakout, Snake, marble blast, jigsaw, pinball, Pac-Man, Super Mario, Lemmings, photo cube, photo book, photo carousel, roller coaster, auto scooter, ghost train, and photo labyrinth; **Docs → RSS Feeds** embeds BBC / DE / CH news feeds
+- Demo user after `seed_demo`: `demo` / `password` — workspace **Docs → README** contains this guide with screenshots; **Docs → Blocks** has gantt/calendar/mindmap/kanban/calcs/panel examples; **Docs → Calendar** has day/week/month/year views with sample events; **Docs → Gallery** is a walk-in corridor of NotesPro screenshots (tap **Demo tour** on a phone); **Docs → Games** has sudoku, tic-tac-toe, chess, Connect Four, Reversi, Tetris, Sokoban, Space Invaders, Breakout, Snake, marble blast, jigsaw, pinball, Pac-Man, Super Mario, Lemmings, photo cube, photo book, photo carousel, roller coaster, auto scooter, ghost train, and photo labyrinth; **Docs → Classifieds** is a Craigslist-style ads board; **Docs → RSS Feeds** embeds BBC / DE / CH news feeds
 
 Copy `.env.example` to `.env.dev` (or set `DJANGO_ENV`) for local settings. See [Email invitations](#email-invitations) and [Database encryption](#database-encryption) below.
 
@@ -839,6 +839,35 @@ NotesPro license | 49.00 | Single-site license | https://picsum.photos/id/0/640/
 Each product line is `Name | price | description | image` with optional `| download | additional info`. The image can be a URL or `![](url)`. A download column (`.zip`, GitHub archive, or `download: url`) shows a **Download** button. In **Edit**, paste or drop a photo onto a product card. Shop **description**, **additional info**, **images**, **Konto**, **PayPal**, **Visa**, and **Mastercard** are administered in user **Settings**. **Checkout** asks how to pay (PayPal, Visa, or Mastercard). Visa and Mastercard then ask for the buyer **Konto** and transfer to the shop Konto from Settings. PayPal can open a checkout window. Card numbers are never stored. There is no unpaid Order option. **Add** puts the item in the cart; after payment a dated copy is stored in the page **archive** (`shoporder` fences) and the cart is cleared.
 
 Toolbar: **Insert shop** or **Insert SW shop**.
+
+### Classifieds
+
+Craigslist-style local ads. Fence names: `craigslist` (also `classifieds` / `clist` / `ads`):
+
+markdown
+```craigslist{to=demo;city=Main;currency=EUR}
+# for sale
+Desk lamp | 12 | Downtown | Working LED lamp, pickup only | https://picsum.photos/id/106/400/300
+Road bike | 180 | Harbor | 21-speed, recently serviced | https://picsum.photos/id/146/400/300
+
+# housing
+Studio loft | 780 | Old Town | Bright one-room, available Oct 1
+```
+
+| Option | Description |
+|--------|-------------|
+| `to` | Recipients for **Add item**. Usernames/ids, or `all` / `group` for every workspace member (including Django group users). **Reply** defaults to all members. Also `user` / `an`. Add item without `to` uses the workspace owner |
+| `via` | `mail` (default) · `dm` · `chat` (group chat) |
+| `title` | Optional board heading. There is no default “notespro classifieds” title |
+| `brand` | `1` to show the notespro classifieds wordmark |
+| `header` | `0` hides the heading row (title, city, meta) |
+| `city` | City / area label in the header. Also `place` / `area` |
+| `currency` | Appended to prices that have no symbol |
+| `msg` | Optional reply body template. Placeholders: `{title}` `{ad}` `{listing}` `{price}` `{place}` `{location}` `{cat}` `{note}` `{board}` `{page}` `{text}` `{message}` |
+
+Each listing line is `Title | price | location | description | image`. Category headings use `#` (community, services, housing, for sale, jobs, gigs, or your own). Search filters the list; open a row for the posting, then **Reply** to enter a message mailed to all group members (To defaults to `all`; you can narrow the list). **Add item** opens To, category, and text, then mails the listing (and adds it to the page if you can edit). Labels follow **Settings → Language**.
+
+Toolbar: **Insert classifieds**.
 
 ### Mindmap
 
