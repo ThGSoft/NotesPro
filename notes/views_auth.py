@@ -7,6 +7,7 @@ from django.contrib.auth.views import LoginView
 from django.shortcuts import redirect, render
 from django.views.decorators.http import require_http_methods
 
+from .activation import register_mail_enabled, register_mobile_enabled
 from .models import UserSettings
 from .totp import generate_secret, provisioning_uri, qr_code_base64, verify_token
 
@@ -16,6 +17,12 @@ SESSION_PENDING_2FA = 'pending_2fa_user_id'
 class TwoFactorLoginView(LoginView):
     template_name = 'registration/login.html'
 
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx['register_mail'] = register_mail_enabled()
+        ctx['register_mobile'] = register_mobile_enabled()
+        return ctx
+
     def form_valid(self, form):
         user = form.get_user()
         user_settings = UserSettings.objects.filter(user=user).first()
@@ -23,6 +30,23 @@ class TwoFactorLoginView(LoginView):
             self.request.session[SESSION_PENDING_2FA] = user.id
             return redirect('verify_2fa')
         return super().form_valid(form)
+
+    def form_invalid(self, form):
+        username = (self.request.POST.get('username') or '').strip()
+        pending = User.objects.filter(username__iexact=username, is_active=False).first()
+        if pending:
+            from .activation import SESSION_PENDING_ACTIVATION
+            self.request.session[SESSION_PENDING_ACTIVATION] = pending.id
+            pending_settings = UserSettings.objects.filter(user=pending).first()
+            if pending_settings and pending_settings.mobile:
+                hint = 'Enter the SMS code sent to your mobile number.'
+            elif pending.email:
+                hint = 'Enter the activation code sent to your email.'
+            else:
+                hint = 'Enter the activation code to turn the account on.'
+            messages.info(self.request, f'This account is not activated yet. {hint}')
+            return redirect('activate')
+        return super().form_invalid(form)
 
 
 @require_http_methods(['GET', 'POST'])

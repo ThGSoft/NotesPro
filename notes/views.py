@@ -1,5 +1,6 @@
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
+from django.contrib import messages
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
 from django.db import models, transaction
@@ -116,6 +117,16 @@ from .workspace_members import (
     add_existing_user_to_workspace,
     invite_or_add_by_email,
     notify_owners_user_registered,
+)
+from .activation import (
+    SESSION_PENDING_ACTIVATION,
+    activation_channel,
+    activation_code_is_valid,
+    activation_destination_label,
+    can_resend_activation,
+    issue_activation_code,
+    register_mail_enabled,
+    register_mobile_enabled,
 )
 
 
@@ -295,6 +306,7 @@ def _page_to_dict(page):
         'sort_order': page.sort_order,
         'markdown_content': page.markdown_content,
         'archive': page.archive,
+        'settings': page.normalized_settings(),
         'tags': page_tag_names(page),
     }
 
@@ -358,6 +370,29 @@ def _tree_data(user, workspace):
     return flat
 
 
+def _registration_template_flags():
+    return {
+        'register_mail': register_mail_enabled(),
+        'register_mobile': register_mobile_enabled(),
+    }
+
+
+def _finish_new_user_login(request, user, settings_obj=None):
+    if settings_obj is not None:
+        settings_obj.activation_code_hash = ''
+        updates = ['activation_code_hash']
+        if settings_obj.mobile:
+            settings_obj.mobile_verified = True
+            updates.append('mobile_verified')
+        settings_obj.save(update_fields=updates)
+    request.session.pop(SESSION_PENDING_ACTIVATION, None)
+    accepted_invites = accept_pending_invites_for_user(user)
+    notify_owners_user_registered(user, accepted_invites)
+    login(request, user)
+    if not _workspace_qs(user).exists():
+        Workspace.objects.create(owner=user, name='Main', slug='main')
+
+
 def register_view(request):
     if request.user.is_authenticated:
         return redirect('dashboard')
@@ -368,13 +403,73 @@ def register_view(request):
     form = RegisterForm(request.POST or None, initial=initial)
     if request.method == 'POST' and form.is_valid():
         user = form.save()
-        accepted_invites = accept_pending_invites_for_user(user)
-        notify_owners_user_registered(user, accepted_invites)
-        login(request, user)
-        if not _workspace_qs(user).exists():
-            Workspace.objects.create(owner=user, name='Main', slug='main')
+        settings_obj, _ = UserSettings.objects.get_or_create(user=user)
+        channel = activation_channel(user, settings_obj)
+        if not channel:
+            _finish_new_user_login(request, user, settings_obj)
+            messages.success(request, 'Account created. Welcome.')
+            return redirect('dashboard')
+        dest = activation_destination_label(user, settings_obj)
+        try:
+            hint = issue_activation_code(user, settings_obj, channel=channel)
+            via = 'email' if channel == 'email' else 'mobile number'
+            messages.success(request, f'We sent a 6-digit code to {dest} ({via}). {hint}')
+        except Exception:
+            messages.warning(
+                request,
+                'Account created, but the activation code could not be sent. Use Resend on the next page.',
+            )
+        request.session[SESSION_PENDING_ACTIVATION] = user.id
+        return redirect('activate')
+    ctx = {'form': form, **_registration_template_flags()}
+    return render(request, 'registration/register.html', ctx)
+
+
+def activate_view(request):
+    if request.user.is_authenticated:
         return redirect('dashboard')
-    return render(request, 'registration/register.html', {'form': form})
+    user_id = request.session.get(SESSION_PENDING_ACTIVATION)
+    user = User.objects.filter(pk=user_id).first() if user_id else None
+    if not user or user.is_active:
+        messages.info(request, 'Sign in, or create an account first.')
+        return redirect('login')
+    settings_obj, _ = UserSettings.objects.get_or_create(user=user)
+    dest = activation_destination_label(user, settings_obj)
+    channel = activation_channel(user, settings_obj)
+    activate_ctx = {
+        'user': user,
+        'mobile_masked': dest,
+        'activation_channel': channel,
+        **_registration_template_flags(),
+    }
+
+    if request.method == 'POST' and request.POST.get('action') == 'resend':
+        ok, wait = can_resend_activation(settings_obj)
+        if not ok:
+            messages.warning(request, f'Wait {wait} seconds before requesting another code.')
+            return redirect('activate')
+        try:
+            hint = issue_activation_code(user, settings_obj, channel=channel)
+            messages.success(request, f'A new code was sent to {dest}. {hint}')
+        except Exception:
+            messages.error(request, 'Could not send the activation code. Try again in a minute.')
+        return redirect('activate')
+
+    if request.method == 'POST':
+        code = (request.POST.get('code') or '').strip()
+        if not activation_code_is_valid(settings_obj, code):
+            messages.error(request, 'Invalid or expired code. Check the message or request a new one.')
+            return render(request, 'registration/activate.html', activate_ctx)
+        user.is_active = True
+        user.save(update_fields=['is_active'])
+        _finish_new_user_login(request, user, settings_obj)
+        if channel == 'email':
+            messages.success(request, 'Email confirmed. Welcome.')
+        else:
+            messages.success(request, 'Mobile number confirmed. Welcome.')
+        return redirect('dashboard')
+
+    return render(request, 'registration/activate.html', activate_ctx)
 
 @login_required
 def dashboard(request):
@@ -434,6 +529,8 @@ def dashboard(request):
         'app_base': (getattr(django_settings, 'FORCE_SCRIPT_NAME', None) or request.META.get('SCRIPT_NAME') or '').rstrip('/'),
         'local_file_open_enabled': getattr(django_settings, 'LOCAL_FILE_OPEN_ENABLED', False),
         'tag_websocket_enabled': getattr(django_settings, 'ENABLE_TAG_WEBSOCKET', False),
+        'allow_games': getattr(django_settings, 'ALLOW_GAMES', True),
+        'allow_photos': getattr(django_settings, 'ALLOW_PHOTOS', True),
         'can_write_workspace': bool(
             current_workspace and _user_has_write_access(request.user, current_workspace)
         ),
@@ -624,29 +721,44 @@ def get_workspace_members(request, workspace_id):
         return JsonResponse({'status': 'error', 'message': 'Access restricted.'}, status=403)
         
     members_list = []
-    
+    seen = set()
+
+    def add_member(entry):
+        uid = entry.get('id')
+        if uid is None or uid in seen:
+            return
+        seen.add(uid)
+        members_list.append(entry)
+
     # 1. Den Besitzer (Owner) immer als ersten Eintrag hinzufügen
-    members_list.append({
+    add_member({
         'id': workspace.owner.id,
         'username': workspace.owner.username,
         'is_owner': True,
         'role': 'owner'
     })
-    
 
     # 2. NEU: Alle Mitglieder aus der Zwischentabelle laden (inklusive ihrer Rolle)
     # select_related('user') verhindert zusätzliche DB-Abfragen in der Schleife
-   
+
     memberships = WorkspaceMembership.objects.filter(workspace_id=workspace_id).select_related('user')
 
     for ms in memberships:
         print("member:", ms.user.username)
 
-        members_list.append({
+        add_member({
             'id': ms.user.id,
             'username': ms.user.username,
             'is_owner': False,
             'role': ms.role,
+        })
+
+    for user in User.objects.filter(groups__in=workspace.groups.all()).distinct().order_by('username'):
+        add_member({
+            'id': user.id,
+            'username': user.username,
+            'is_owner': False,
+            'role': 'group',
         })
 
     pending_invites = []
@@ -833,6 +945,17 @@ def page_update(request, pk):
         page.markdown_content = payload.get('markdown_content') or ''
     if not page.is_folder and 'archive' in payload:
         page.archive = payload.get('archive') or ''
+    if 'settings' in payload:
+        if not _user_has_write_access(request.user, page.workspace):
+            return JsonResponse(
+                {'status': 'error', 'message': 'You do not have write access to this workspace.'},
+                status=403,
+            )
+        incoming = payload.get('settings') if isinstance(payload.get('settings'), dict) else {}
+        merged = page.normalized_settings()
+        if 'contents' in incoming:
+            merged['contents'] = bool(incoming.get('contents'))
+        page.settings = merged
     page.slug = ''
     page.save()
     sync_page_tags(page)

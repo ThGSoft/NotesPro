@@ -172,6 +172,26 @@ def dm_message_send(request, conversation_id):
 
 @login_required
 @require_POST
+def dm_message_clear(request, conversation_id):
+    conv = get_object_or_404(DirectConversation, pk=conversation_id)
+    if not conv.involves(request.user):
+        return JsonResponse({'status': 'error', 'message': 'Access denied.'}, status=403)
+    deleted, _ = conv.messages.all().delete()
+    return JsonResponse({'status': 'success', 'deleted': deleted})
+
+
+@login_required
+@require_POST
+def dm_conversations_clear(request):
+    convs = DirectConversation.objects.filter(
+        Q(participant_a=request.user) | Q(participant_b=request.user)
+    )
+    deleted, _ = DirectMessage.objects.filter(conversation__in=convs).delete()
+    return JsonResponse({'status': 'success', 'deleted': deleted})
+
+
+@login_required
+@require_POST
 def dm_signal_send(request, user_id):
     peer = get_object_or_404(User, pk=user_id)
     if peer.id == request.user.id:

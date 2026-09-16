@@ -1210,6 +1210,15 @@
     return `<figure class="${wrapClass}" style="margin: 0; width: ${isFullWidth ? '100%' : 'auto'};">${linkedImg}</figure>`;
   }
 
+  function renderSheetCellMarkdownText(text) {
+    const raw = String(text || '');
+    if (!raw) return '';
+    if (!/[*_~`\[\]()]/.test(raw) && !/https?:\/\//i.test(raw) && !/<[a-z]/i.test(raw)) {
+      return escapeHtml(raw);
+    }
+    return renderCardMarkdown(raw, { inline: true });
+  }
+
   function renderSheetCellContent(cell, style) {
     const formatted = formatSheetDisplayValue(cell, style);
     const imageRegex = /!\[(.*?)\]\((.*?)\)\s*(?:\{(.*?)\})?/g;
@@ -1218,7 +1227,7 @@
     let match;
     while ((match = imageRegex.exec(formatted)) !== null) {
       if (match.index > lastIndex) {
-        parts.push(escapeHtml(formatted.slice(lastIndex, match.index)));
+        parts.push(renderSheetCellMarkdownText(formatted.slice(lastIndex, match.index)));
       }
       parts.push(renderSheetMarkdownImage(
         match[1],
@@ -1227,9 +1236,9 @@
       ));
       lastIndex = imageRegex.lastIndex;
     }
-    if (!parts.length) return escapeHtml(formatted);
+    if (!parts.length) return renderSheetCellMarkdownText(formatted);
     if (lastIndex < formatted.length) {
-      parts.push(escapeHtml(formatted.slice(lastIndex)));
+      parts.push(renderSheetCellMarkdownText(formatted.slice(lastIndex)));
     }
     return parts.join('');
   }
@@ -1646,7 +1655,9 @@
           ? ` data-sheet-formula="${escapeHtml(rawCell)}"`
           : '';
         const errClass = isErr ? ' sheet-cell-err' : '';
-        return `<${tag} contenteditable="plaintext-only" class="sheet-cell-editable${errClass}${bandClass}" data-sheet-index="${sheetIndex}"${sheetId ? ` data-sheet-id="${escapeHtml(sheetId)}"` : ''} data-row="${row}" data-col="${col}" spellcheck="false" tabindex="0"${formulaAttr}${styleAttr}>${display}</${tag}>`;
+        const source = isErr ? String(cell) : formatSheetDisplayValue(cell, style);
+        const sourceAttr = ` data-sheet-source="${escapeHtml(source)}"`;
+        return `<${tag} contenteditable="plaintext-only" class="sheet-cell-editable${errClass}${bandClass}" data-sheet-index="${sheetIndex}"${sheetId ? ` data-sheet-id="${escapeHtml(sheetId)}"` : ''} data-row="${row}" data-col="${col}" spellcheck="false" tabindex="0"${formulaAttr}${sourceAttr}${styleAttr}>${display}</${tag}>`;
       }
       if (isImage) {
         return `<${tag} class="sheet-cell-image${bandClass}"${styleAttr}>${display}</${tag}>`;
@@ -2362,11 +2373,14 @@
     const row = parseInt(cell.dataset.row, 10);
     const col = parseInt(cell.dataset.col, 10);
     if ([sheetIndex, row, col].some(n => Number.isNaN(n))) return;
+    if (cell.dataset.sheetEditing === '1') return;
+    cell.dataset.sheetEditing = '1';
     cell.dataset.sheetEditOriginal = getSheetCellMarkdownValue(sheetIndex, row, col);
     clearSheetRefPickHighlight();
     cell.classList.add('sheet-cell--ref-pick');
     const formula = cell.dataset.sheetFormula;
     if (formula) cell.textContent = formula;
+    else if (cell.dataset.sheetSource !== undefined) cell.textContent = cell.dataset.sheetSource;
     // Hide structure popup when switching cells; double-click shows it again.
     if (sheetCellStructureToolbarCell && sheetCellStructureToolbarCell !== cell) {
       hideSheetCellStructureToolbar();
@@ -2386,6 +2400,7 @@
     }
     sheetCellEditCancelled = true;
     delete cell.dataset.sheetEditOriginal;
+    delete cell.dataset.sheetEditing;
     cell.classList.remove('sheet-cell--ref-pick');
     const oldMarkdown = easyMDE.value();
     const updated = updateSheetCellInMarkdown(oldMarkdown, sheetIndex, row, col, original);
@@ -2466,7 +2481,10 @@
 
   function commitSheetCellEdit(cell) {
     hideSheetCellStructureToolbar();
-    if (cell?.dataset) delete cell.dataset.sheetEditOriginal;
+    if (cell?.dataset) {
+      delete cell.dataset.sheetEditOriginal;
+      delete cell.dataset.sheetEditing;
+    }
     syncSheetCellToMarkdown(cell);
   }
 
@@ -3608,6 +3626,64 @@
     if (modalEl && window.bootstrap?.Modal) {
       bootstrap.Modal.getInstance(modalEl)?.hide();
     }
+  }
+
+  function syncPageSettingsButton() {
+    const btn = document.getElementById('page-settings-btn');
+    if (!btn) return;
+    const show = Boolean(
+      userCanEdit
+      && mainView !== 'keep'
+      && currentPage
+      && !currentPage.is_folder,
+    );
+    btn.classList.toggle('d-none', !show);
+  }
+
+  function fillPageSettingsForm() {
+    const box = document.getElementById('page-settings-contents');
+    if (box) box.checked = pageContentsEnabled();
+  }
+
+  function openPageSettingsModal() {
+    if (!userCanEdit || !currentPage || currentPage.is_folder) return;
+    fillPageSettingsForm();
+    const modalEl = document.getElementById('page-settings-modal');
+    if (modalEl) openDashboardModal(modalEl);
+  }
+
+  function closePageSettingsModal() {
+    const modalEl = document.getElementById('page-settings-modal');
+    if (modalEl && window.bootstrap?.Modal) {
+      bootstrap.Modal.getInstance(modalEl)?.hide();
+    }
+  }
+
+  async function savePageSettings() {
+    if (!userCanEdit || !currentPageId || !currentPage || currentPage.is_folder) return false;
+    const contents = !!document.getElementById('page-settings-contents')?.checked;
+    const settings = { ...(currentPage.settings || {}), contents };
+    try {
+      currentPage = await api(`api/pages/${currentPageId}/update/`, 'POST', { settings });
+      closePageSettingsModal();
+      setStatus('Page settings saved');
+      if (typeof renderPreview === 'function') renderPreview();
+      syncMobileContentMenu();
+      return true;
+    } catch (err) {
+      showToast(err.message || 'Could not save page settings.', 'danger');
+      return false;
+    }
+  }
+
+  function initPageSettings() {
+    document.getElementById('page-settings-btn')?.addEventListener('click', () => {
+      closeMobileTopbarMenu();
+      openPageSettingsModal();
+    });
+    document.getElementById('page-settings-save')?.addEventListener('click', () => {
+      void savePageSettings();
+    });
   }
 
   let leaveHistoryGuardArmed = true;
@@ -8336,7 +8412,13 @@
     });
   }
 
-  const CRAIGSLIST_BLOCK_RE = /```(?:craigslist|classifieds|clist|ads)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+  const CRAIGSLIST_BLOCK_RE = /```(?:noteslist|notes-list|craigslist|classifieds|clist|ads)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function canonicalNotesListFence(name) {
+    const raw = String(name || '').toLowerCase();
+    if (!raw || /^(craigslist|classifieds|clist|ads)$/.test(raw)) return 'noteslist';
+    return raw;
+  }
 
   function parseCraigslistBlocks(text) {
     let clIndex = 0;
@@ -8349,15 +8431,40 @@
             clIndex: idx,
             locale: getAppLocale(),
             currentUser: currentUserName || '',
+            canEdit: Boolean(userCanEdit),
           })
-        : `<div class="cl-block cl-block--error">${escapeHtml(window.NotesProCraigslist?.t?.('fallback') || 'Classifieds')} engine not loaded.</div>`;
+        : `<div class="cl-block cl-block--error">${escapeHtml(window.NotesProCraigslist?.t?.('fallback') || 'NotesList')} engine not loaded.</div>`;
       return wrapRichPreviewBlock(html);
     });
   }
 
-  function appendCraigslistListingInMarkdown(markdown, clIndex, { category, text } = {}) {
+  function appendCraigslistListingInMarkdown(markdown, clIndex, fields = {}) {
     const engine = window.NotesProCraigslist;
-    const line = engine?.listingLineFromAddText?.(text) || String(text || '').trim();
+    const line = engine?.listingLineFromFields
+      ? engine.listingLineFromFields(fields)
+      : (engine?.listingLineFromAddText?.(fields.text) || String(fields.text || '').trim());
+    if (!line) return String(markdown || '');
+    const category = fields.category;
+    let idx = 0;
+    const re = new RegExp(CRAIGSLIST_BLOCK_RE.source, CRAIGSLIST_BLOCK_RE.flags);
+    return String(markdown || '').replace(re, (match, fenceAttrs, content = '') => {
+      const thisIndex = idx;
+      idx += 1;
+      if (thisIndex !== clIndex) return match;
+      const fenceName = canonicalNotesListFence(String(match).match(/^```([a-z0-9-]+)/i)?.[1]);
+      const nextBody = engine?.insertListingIntoBody
+        ? engine.insertListingIntoBody(content, category, line)
+        : `${String(content || '').replace(/\s+$/, '')}\n${line}`;
+      const body = `\n${String(nextBody).replace(/^\n/, '').replace(/\s+$/, '')}\n`;
+      return `\`\`\`${fenceName}{${fenceAttrs || ''}}${body}\`\`\``;
+    });
+  }
+
+  function replaceCraigslistListingInMarkdown(markdown, clIndex, item, fields = {}) {
+    const engine = window.NotesProCraigslist;
+    const line = engine?.listingLineFromFields
+      ? engine.listingLineFromFields({ ...fields, image: item?.image || fields.image || '' })
+      : '';
     if (!line) return String(markdown || '');
     let idx = 0;
     const re = new RegExp(CRAIGSLIST_BLOCK_RE.source, CRAIGSLIST_BLOCK_RE.flags);
@@ -8365,10 +8472,10 @@
       const thisIndex = idx;
       idx += 1;
       if (thisIndex !== clIndex) return match;
-      const fenceName = String(match).match(/^```([a-z]+)/i)?.[1] || 'craigslist';
-      const nextBody = engine?.insertListingIntoBody
-        ? engine.insertListingIntoBody(content, category, line)
-        : `${String(content || '').replace(/\s+$/, '')}\n${line}`;
+      const fenceName = canonicalNotesListFence(String(match).match(/^```([a-z0-9-]+)/i)?.[1]);
+      const nextBody = engine?.replaceListingInBody
+        ? engine.replaceListingInBody(content, item, line, fields.category)
+        : String(content || '');
       const body = `\n${String(nextBody).replace(/^\n/, '').replace(/\s+$/, '')}\n`;
       return `\`\`\`${fenceName}{${fenceAttrs || ''}}${body}\`\`\``;
     });
@@ -8413,13 +8520,26 @@
     }
   }
 
-  async function sendCraigslistAddItem({ spec, el, btn, to, category, text } = {}) {
+  async function sendCraigslistAddItem({ spec, el, btn, to, category, title, price, location, description, until, text } = {}) {
     const engine = window.NotesProCraigslist;
-    const bodyText = String(text || '').trim();
-    if (!bodyText) {
-      showToast(engine?.t?.('errEmpty') || 'Enter listing text.', 'warning');
+    const listingTitle = String(title || '').trim();
+    const listingDesc = String(description || text || '').trim();
+    const listingUntil = String(until || '').trim();
+    if (!listingTitle) {
+      showToast(engine?.t?.('errEmpty') || 'Enter a title.', 'warning');
       return false;
     }
+    if (engine?.isUntilInRange && !engine.isUntilInRange(listingUntil)) {
+      showToast(engine?.t?.('errUntil') || 'Choose an end date within one month.', 'warning');
+      return false;
+    }
+    const fields = {
+      title: listingTitle,
+      price: String(price || '').trim(),
+      location: String(location || '').trim(),
+      description: listingDesc,
+      until: listingUntil,
+    };
     const toList = String(to || '').split(/[,+\s]+/).map((part) => part.trim()).filter(Boolean);
     const sendSpec = { ...spec, to: toList.length ? toList : (spec?.to || []) };
     if (btn) {
@@ -8428,10 +8548,14 @@
     }
     try {
       const body = engine?.formatAddText
-        ? engine.formatAddText(sendSpec, { category, text: bodyText, to: toList.join(', ') }, {
+        ? engine.formatAddText(sendSpec, {
+            category,
+            to: toList.join(', '),
+            ...fields,
+          }, {
             pageTitle: currentPage?.title || 'page',
           })
-        : bodyText;
+        : listingTitle;
       const catLabel = String(category || '').trim();
       await dispatchSpeisekarteMessage({
         spec: sendSpec,
@@ -8443,7 +8567,7 @@
         const index = parseInt(el?.dataset?.clIndex, 10);
         if (Number.isFinite(index)) {
           const source = easyMDE.value();
-          const next = appendCraigslistListingInMarkdown(source, index, { category: catLabel, text: bodyText });
+          const next = appendCraigslistListingInMarkdown(source, index, { category: catLabel, ...fields });
           if (next !== source) {
             capturePreviewScrollPosition();
             easyMDE.value(next);
@@ -8488,10 +8612,66 @@
     }
   }
 
+  async function saveCraigslistItem({ spec, item, el, btn, category, title, price, location, description, until } = {}) {
+    const engine = window.NotesProCraigslist;
+    if (!userCanEdit || !easyMDE) {
+      showToast(engine?.t?.('errEdit') || 'Could not save listing.', 'warning');
+      return false;
+    }
+    const listingTitle = String(title || '').trim();
+    const listingUntil = String(until || '').trim();
+    if (!listingTitle) {
+      showToast(engine?.t?.('errEmpty') || 'Enter a title.', 'warning');
+      return false;
+    }
+    if (engine?.isUntilInRange && !engine.isUntilInRange(listingUntil)) {
+      showToast(engine?.t?.('errUntil') || 'Choose an end date within one month.', 'warning');
+      return false;
+    }
+    const fields = {
+      title: listingTitle,
+      price: String(price || '').trim(),
+      location: String(location || '').trim(),
+      description: String(description || '').trim(),
+      until: listingUntil,
+      category: String(category || item?.category || '').trim(),
+    };
+    if (btn) {
+      btn.disabled = true;
+      btn.classList.add('is-sending');
+    }
+    try {
+      const index = parseInt(el?.dataset?.clIndex, 10);
+      if (!Number.isFinite(index)) return false;
+      const source = easyMDE.value();
+      const next = replaceCraigslistListingInMarkdown(source, index, item, fields);
+      if (next === source) {
+        showToast(engine?.t?.('errEdit') || 'Could not save listing.', 'warning');
+        return false;
+      }
+      capturePreviewScrollPosition();
+      easyMDE.value(next);
+      if (currentPage) currentPage.markdown_content = next;
+      renderPreview();
+      void savePage();
+      showToast(engine?.t?.('toastEdit') || 'Saved listing.', 'success');
+      return true;
+    } catch (err) {
+      showToast(err.message || engine?.t?.('errEdit') || 'Could not save listing.', 'danger');
+      return false;
+    } finally {
+      if (btn) {
+        btn.classList.remove('is-sending');
+        btn.disabled = false;
+      }
+    }
+  }
+
   function hydrateCraigslistBlocks(root) {
     window.NotesProCraigslist?.hydrate?.(root, {
       onReply: (payload) => sendCraigslistReply(payload),
       onAdd: (payload) => sendCraigslistAddItem(payload),
+      onEdit: (payload) => saveCraigslistItem(payload),
       fillReplyTo: (input) => fillCraigslistReplyTo(input),
     });
   }
@@ -10591,9 +10771,9 @@ function formatTextWithMarkup(rawText) {
       const label = when ? `Archived order · ${when}` : 'Archived order';
       return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
     });
-    md = md.replace(/```(?:craigslist|classifieds|clist|ads)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+    md = md.replace(/```(?:noteslist|notes-list|craigslist|classifieds|clist|ads)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
       const cfg = window.NotesProCraigslist?.parseFenceAttrs?.(fenceAttrs) || {};
-      const label = cfg.title || cfg.city || window.NotesProCraigslist?.t?.('fallback') || 'Classifieds';
+      const label = cfg.title || cfg.city || window.NotesProCraigslist?.t?.('fallback') || 'NotesList';
       return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
     });
     md = md.replace(/```(?:mindmap|mmap|mind)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
@@ -11133,6 +11313,13 @@ function formatTextWithMarkup(rawText) {
     setTimeout(run, 200);
   }
 
+  function pageContentsEnabled() {
+    const value = currentPage?.settings?.contents;
+    if (value === undefined || value === null) return true;
+    if (typeof value === 'string') return !['0', 'false', 'no', 'off'].includes(value.trim().toLowerCase());
+    return Boolean(value);
+  }
+
   function renderPreview() {
     const preview = document.getElementById('preview-content');
     if (!preview) return;
@@ -11147,8 +11334,13 @@ function formatTextWithMarkup(rawText) {
     const floatingToc = document.getElementById('floating-toc');
 
     if (floatingToc) {
+      const contentsOn = pageContentsEnabled();
       const splitEdit = isEditing && document.querySelector('.editor-wrap')?.classList.contains('editor-wrap--split');
-      if (isMobileLayout()) {
+      if (!contentsOn) {
+        closeFloatingToc();
+        floatingToc.style.display = 'none';
+        floatingToc.classList.add('is-hidden');
+      } else if (isMobileLayout()) {
         floatingToc.style.display = 'flex';
         floatingToc.classList.remove('is-hidden');
       } else if (splitEdit) {
@@ -11624,7 +11816,7 @@ function formatTextWithMarkup(rawText) {
   function syncMobileContentMenu() {
     const btn = document.getElementById('toc-toggle');
     if (btn) {
-      if (!isMobileLayout()) {
+      if (!isMobileLayout() || !pageContentsEnabled()) {
         btn.classList.remove('visible');
       } else {
         const raw = easyMDE ? (easyMDE.value() || '') : '';
@@ -11681,7 +11873,7 @@ function formatTextWithMarkup(rawText) {
   }
 
   function toggleFloatingToc() {
-    if (!isMobileLayout()) return;
+    if (!isMobileLayout() || !pageContentsEnabled()) return;
     const toc = document.getElementById('floating-toc');
     const toggle = document.getElementById('toc-toggle');
     const backdrop = document.getElementById('mobile-toc-backdrop');
@@ -15784,7 +15976,7 @@ function formatTextWithMarkup(rawText) {
           title: 'Insert SW shop (download + PayPal / Visa / Mastercard)',
         },
         {
-          name: 'insert-craigslist',
+          name: 'insert-noteslist',
           action: (editor) => {
             const body = [
               '# community',
@@ -15806,10 +15998,10 @@ function formatTextWithMarkup(rawText) {
               '# gigs',
               'Moving help | 40 | West End | Two hours, Saturday morning.',
             ].join('\n');
-            insertFenceBlock(editor, `craigslist{to=${currentUserName || 'demo'};city=Main;currency=EUR}`, body);
+            insertFenceBlock(editor, `noteslist{to=${currentUserName || 'demo'};city=Main;currency=EUR}`, body);
           },
           className: 'fa fa-list',
-          title: 'Insert classifieds (Craigslist-style ads)',
+          title: 'Insert NotesList',
         },
         {
           name: 'insert-kanbangantt',
@@ -15890,8 +16082,8 @@ function formatTextWithMarkup(rawText) {
           className: 'fa fa-microphone',
           title: 'Insert voice note (record + Whisper transcript)',
         },
-        buildPhotosToolbarDropdown(),
-        buildGamesToolbarDropdown(),
+        ...(window.APP_BOOT?.allowPhotos !== false ? [buildPhotosToolbarDropdown()] : []),
+        ...(window.APP_BOOT?.allowGames !== false ? [buildGamesToolbarDropdown()] : []),
         {
           name: 'insert-news',
           action: (editor) => {
@@ -16734,6 +16926,7 @@ function formatTextWithMarkup(rawText) {
 
       await updateUserSettings();
       if (!fromHistory) syncNavHistory();
+      syncPageSettingsButton();
       setStatus('Loaded');
     } catch (err) {
       console.error('loadPage failed:', err);
@@ -16742,6 +16935,7 @@ function formatTextWithMarkup(rawText) {
       if (err.status === 404) {
         currentPageId = null;
         currentPage = null;
+        syncPageSettingsButton();
       }
     }
   }
@@ -17124,6 +17318,7 @@ function formatTextWithMarkup(rawText) {
     } else if (titlePreview && currentPage) {
       titlePreview.textContent = currentPage.title || '';
     }
+    syncPageSettingsButton();
 
     updateUserSettings({ extra_configs: { main_view: mainView } });
   }
@@ -18448,6 +18643,7 @@ function formatTextWithMarkup(rawText) {
   initSheetCellEditors();
   initCalendarNoteEditors();
   initAppSettings();
+  initPageSettings();
   initLeavePageGuard();
   initGanttNoteEditors();
   initKanbanEditors();
@@ -20069,6 +20265,80 @@ function formatTextWithMarkup(rawText) {
     });
   }
 
+  async function clearAllMail() {
+    syncWorkspaceIdFromDom();
+    if (!workspaceId) {
+      showToast('Select a workspace to clear mail.', 'warning');
+      return;
+    }
+    const box = mailBox === 'sent' ? 'sent' : 'inbox';
+    const ask = box === 'sent'
+      ? 'Clear all sent mail? This cannot be undone.'
+      : 'Clear all inbox mail? This cannot be undone.';
+    if (!window.confirm(ask)) return;
+    try {
+      await api(`api/workspaces/${workspaceId}/mail/clear/`, 'POST', { box });
+      showMailView('list');
+      await loadMailList();
+      showToast(box === 'sent' ? 'Sent mail cleared.' : 'Inbox cleared.', 'success');
+    } catch (err) {
+      showToast(err.message || 'Could not clear mail.', 'danger');
+    }
+  }
+
+  async function clearAllChats() {
+    if (chatMode === 'workspace') {
+      syncWorkspaceIdFromDom();
+      if (!workspaceId) {
+        showToast('Select a workspace to clear group chat.', 'warning');
+        return;
+      }
+      if (!window.confirm('Clear all group chat messages for everyone in this workspace? This cannot be undone.')) {
+        return;
+      }
+      try {
+        await api(`api/workspaces/${workspaceId}/chat/clear/`, 'POST', {});
+        lastChatId = 0;
+        lastSeenChatId = 0;
+        await loadChat(true);
+        showToast('Group chat cleared.', 'success');
+      } catch (err) {
+        showToast(err.message || 'Could not clear group chat.', 'danger');
+      }
+      return;
+    }
+    if (activeDmConversationId) {
+      if (!window.confirm('Clear this private chat? Messages will be deleted for both people.')) return;
+      try {
+        await api(`api/dm/conversations/${activeDmConversationId}/clear/`, 'POST', {});
+        lastDmMessageId = 0;
+        dmSeenClientIds.clear();
+        dmSeenCiphertexts.clear();
+        const box = document.getElementById('chat-messages');
+        if (box) box.innerHTML = '';
+        await loadDmThread(true);
+        showToast('Private chat cleared.', 'success');
+      } catch (err) {
+        showToast(err.message || 'Could not clear private chat.', 'danger');
+      }
+      return;
+    }
+    if (!window.confirm('Clear all private chats? Messages will be deleted for both people.')) return;
+    try {
+      await api('api/dm/conversations/clear/', 'POST', {});
+      lastDmMessageId = 0;
+      lastSeenDmMessageId = 0;
+      dmSeenClientIds.clear();
+      dmSeenCiphertexts.clear();
+      const box = document.getElementById('chat-messages');
+      if (box) box.innerHTML = '';
+      await loadDmConversations();
+      showToast('Private chats cleared.', 'success');
+    } catch (err) {
+      showToast(err.message || 'Could not clear private chats.', 'danger');
+    }
+  }
+
   async function loadMailList() {
     syncWorkspaceIdFromDom();
     if (!workspaceId || mailBox === 'compose') return;
@@ -20107,9 +20377,11 @@ function formatTextWithMarkup(rawText) {
     const list = document.getElementById('mail-list-view');
     const read = document.getElementById('mail-read-view');
     const compose = document.getElementById('mail-compose-view');
+    const clearBtn = document.getElementById('mail-clear-all-btn');
     if (list) list.classList.toggle('d-none', view !== 'list');
     if (read) read.classList.toggle('d-none', view !== 'read');
     if (compose) compose.classList.toggle('d-none', view !== 'compose');
+    if (clearBtn) clearBtn.classList.toggle('d-none', view === 'compose');
   }
 
   async function ensureMailRecipients() {
@@ -20201,6 +20473,13 @@ function formatTextWithMarkup(rawText) {
     document.getElementById('mail-back-btn')?.addEventListener('click', () => {
       showMailView('list');
       loadMailList();
+    });
+
+    document.getElementById('mail-clear-all-btn')?.addEventListener('click', () => {
+      void clearAllMail();
+    });
+    document.getElementById('chat-clear-all-btn')?.addEventListener('click', () => {
+      void clearAllChats();
     });
 
     document.getElementById('chat-form')?.addEventListener('submit', async e => {

@@ -241,6 +241,32 @@ def workspace_mail_mark_read(request, workspace_id, message_id):
 
 
 @login_required
+@require_POST
+def workspace_mail_clear(request, workspace_id):
+    workspace = _workspace_for_user(request.user, workspace_id)
+    try:
+        payload = json.loads(request.body or '{}')
+    except json.JSONDecodeError:
+        payload = {}
+    box = str(payload.get('box') or 'inbox').strip().lower()
+    if box == 'sent':
+        deleted, _ = WorkspaceMailMessage.objects.filter(
+            workspace=workspace, sender=request.user,
+        ).delete()
+    else:
+        deleted, _ = WorkspaceMailRecipient.objects.filter(
+            user=request.user,
+            message__workspace=workspace,
+        ).delete()
+    unread = WorkspaceMailRecipient.objects.filter(
+        user=request.user,
+        message__workspace=workspace,
+        read_at__isnull=True,
+    ).count()
+    return JsonResponse({'status': 'success', 'deleted': deleted, 'unread_count': unread})
+
+
+@login_required
 @require_GET
 def workspace_chat_list(request, workspace_id):
     workspace = _workspace_for_user(request.user, workspace_id)
@@ -289,3 +315,11 @@ def workspace_chat_send(request, workspace_id):
         attachment_name=attachment_name,
     )
     return JsonResponse({'status': 'success', 'message': _chat_to_dict(message)})
+
+
+@login_required
+@require_POST
+def workspace_chat_clear(request, workspace_id):
+    workspace = _workspace_for_user(request.user, workspace_id)
+    deleted, _ = WorkspaceChatMessage.objects.filter(workspace=workspace).delete()
+    return JsonResponse({'status': 'success', 'deleted': deleted})

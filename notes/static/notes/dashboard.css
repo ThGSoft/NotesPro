@@ -2514,6 +2514,29 @@ body.mobile-layout .sheet-cell-structure-toolbar .sheet-band-btn {
   background: #fff;
 }
 
+.spreadsheet-table strong,
+.spreadsheet-table b {
+  font-weight: 700;
+}
+
+.spreadsheet-table em,
+.spreadsheet-table i {
+  font-style: italic;
+}
+
+.spreadsheet-table del {
+  text-decoration: line-through;
+}
+
+.spreadsheet-table code {
+  font-size: 0.9em;
+  padding: 0 0.2em;
+}
+
+.spreadsheet-table .sheet-cell-editable a {
+  pointer-events: none;
+}
+
 .spreadsheet-table .sheet-cell-editable.sheet-cell--ref-pick:focus {
   outline: 2px solid #0d9488;
   box-shadow: inset 0 0 0 1px rgba(13, 148, 136, 0.35);
@@ -5919,7 +5942,7 @@ body.mobile-layout .sheet-structure-menu-btn {
   color: var(--shop-note);
 }
 
-/* --- Craigslist / classifieds --- */
+/* --- NotesList / classifieds --- */
 .cl-block {
   --cl-bg: #f4f4f4;
   --cl-paper: #fff;
@@ -6042,6 +6065,11 @@ body.mobile-layout .sheet-structure-menu-btn {
 
 .cl-add-to,
 .cl-add-cat,
+.cl-add-title,
+.cl-add-price,
+.cl-add-location,
+.cl-add-until,
+.cl-add-desc,
 .cl-add-text,
 .cl-reply-to,
 .cl-reply-text {
@@ -6049,6 +6077,17 @@ body.mobile-layout .sheet-structure-menu-btn {
   padding: 4px 8px;
   border: 1px solid #999;
   font: inherit;
+}
+
+.cl-until-hint {
+  font-size: 11px;
+  color: #666;
+}
+
+.cl-until {
+  display: block;
+  font-size: 12px;
+  color: #555;
 }
 
 .cl-add-actions {
@@ -6183,7 +6222,8 @@ body.mobile-layout .sheet-structure-menu-btn {
 }
 
 .cl-back,
-.cl-reply-btn {
+.cl-reply-btn,
+.cl-edit-btn {
   border: 1px solid #999;
   background: #f6f6f6;
   font: inherit;
@@ -6249,12 +6289,26 @@ body.mobile-layout .sheet-structure-menu-btn {
   display: none !important;
 }
 
-.cl-reply-btn:hover:not(:disabled) {
+.cl-posting-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.cl-edit-form {
+  margin-top: 12px;
+}
+
+.cl-reply-btn:hover:not(:disabled),
+.cl-edit-btn:hover:not(:disabled) {
   background: #ececec;
 }
 
 .cl-reply-btn.is-sending,
-.cl-reply-btn:disabled {
+.cl-reply-btn:disabled,
+.cl-edit-btn.is-sending,
+.cl-edit-btn:disabled {
   opacity: 0.65;
   cursor: wait;
 }

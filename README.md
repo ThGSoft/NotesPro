@@ -29,6 +29,7 @@ Share: [LinkedIn](https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2
 - jsTree page/folder tree with search, drag-and-drop reorder, inline rename
 - **Per-workspace page memory** — last opened page is restored when you switch workspaces
 - EasyMDE markdown editor with split edit + live preview, synced scrolling, and floating TOC
+- **Page settings** — per-page **Contents** toggle for the table of contents
 - **Two-row editor toolbar** — structure tools on the first row; find/replace, indent, colors, and font size on the second
 - **Find / replace** bar above the editor (`Ctrl+F`, `Ctrl+H`, `F3`); **Replace all** for bulk edits
 - **Snippets** — reusable text blocks (toolbar + sidebar); stored in your user settings
@@ -57,7 +58,7 @@ Share: [LinkedIn](https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2
 - **Ghost train** blocks — convoy on rails; photos in frames along the track
 - **Photo labyrinth** blocks — first-person maze whose walls are your pasted photos
 - **Calendar** blocks — list days, weeks, months, or years for a `from`/`to` range
-- **Gantt** / **Kanban** / **Kanban Gantt** / **Mindmap** / **Speisekarte** / **Shop** / **SW Shop** / **Classifieds** blocks — project timelines, boards, timed cost tracking, idea trees, click-to-order menus, cart checkout, software downloads, and Craigslist-style ads
+- **Gantt** / **Kanban** / **Kanban Gantt** / **Mindmap** / **Speisekarte** / **Shop** / **SW Shop** / **NotesList** blocks — project timelines, boards, timed cost tracking, idea trees, click-to-order menus, cart checkout, software downloads, and local ads
 - File manager with drag-and-drop uploads; click images to open in a new tab
 - **Local file links** — paste Windows paths or insert via toolbar; click in preview to reveal in Explorer (local dev server)
 - Resizable dashboard panels (sidebar, editor, chat/mail)
@@ -106,7 +107,7 @@ python manage.py runserver
 
 Open:
 - http://127.0.0.1:8000/login/
-- Demo user after `seed_demo`: `demo` / `password` — workspace **Docs → README** contains this guide with screenshots; **Docs → Blocks** has gantt/calendar/mindmap/kanban/calcs/panel examples; **Docs → Calendar** has day/week/month/year views with sample events; **Docs → Gallery** is a walk-in corridor of NotesPro screenshots (tap **Demo tour** on a phone); **Docs → Games** has sudoku, tic-tac-toe, chess, Connect Four, Reversi, Tetris, Sokoban, Space Invaders, Breakout, Snake, marble blast, jigsaw, pinball, Pac-Man, Super Mario, Lemmings, photo cube, photo book, photo carousel, roller coaster, auto scooter, ghost train, and photo labyrinth; **Docs → Classifieds** is a Craigslist-style ads board; **Docs → RSS Feeds** embeds BBC / DE / CH news feeds
+- Demo user after `seed_demo`: `demo` / `password` — workspace **Docs → README** contains this guide with screenshots; **Docs → Blocks** has gantt/calendar/mindmap/kanban/calcs/panel examples; **Docs → Calendar** has day/week/month/year views with sample events; **Docs → Gallery** is a walk-in corridor of NotesPro screenshots (tap **Demo tour** on a phone); **Docs → Games** has sudoku, tic-tac-toe, chess, Connect Four, Reversi, Tetris, Sokoban, Space Invaders, Breakout, Snake, marble blast, jigsaw, pinball, Pac-Man, Super Mario, Lemmings, photo cube, photo book, photo carousel, roller coaster, auto scooter, ghost train, and photo labyrinth; **Docs → NotesList** is a local ads board; **Docs → RSS Feeds** embeds BBC / DE / CH news feeds
 
 Copy `.env.example` to `.env.dev` (or set `DJANGO_ENV`) for local settings. See [Email invitations](#email-invitations) and [Database encryption](#database-encryption) below.
 
@@ -127,6 +128,8 @@ DB_ENCRYPTION_KEY=your-generated-key-here
 ```
 
 For local file links from preview, keep `LOCAL_FILE_OPEN_ENABLED=true` only on trusted local/dev hosts (default when `DEBUG=true`). Set `LOCAL_FILE_OPEN_ENABLED=false` in production.
+
+Hide **Insert game** / **Insert photos** on the editor toolbar with `allowGames=false` and `allowPhotos=false` in `.env` (aliases: `ALLOW_GAMES`, `ALLOW_PHOTOS`). Pages that already contain those blocks still render them.
 
 After upgrading from an older version, run migrations and optionally:
 
@@ -190,11 +193,35 @@ python manage.py send_test_email someone@example.com
 
 **Unregistered users:** In the members panel, type an email address in the search box (or use **Invite by email**). If no matching account exists, choose **Invite … (not registered)** to send an invitation email. Pending invites appear in the member list until accepted.
 
-**Owner notification:** When someone registers with the invited email address, workspace owners receive an email that the new user joined their workspace.
+**Owner notification:** When someone registers with the invited email address and activates their mobile number, workspace owners receive an email that the new user joined their workspace.
+
+## Registration
+
+Set `registerMail` and `registerMobile` in `.env` (aliases: `REGISTER_MAIL`, `REGISTER_MOBILE`). Both default to **true**.
+
+| Flags | What new accounts need |
+| --- | --- |
+| `registerMail=true`, `registerMobile=true` | Email, mobile number, and an **SMS** activation code |
+| `registerMail=true`, `registerMobile=false` | Email and a **6-digit code sent by email** |
+| `registerMail=false`, `registerMobile=true` | Mobile number and an **SMS** code (email optional) |
+| both `false` | Username and password only — the account is active immediately |
+
+New accounts with mobile on use international format, e.g. `+41 79 123 45 67`. After **Create account**, enter the code on **/activate/**. Existing demo logins are unchanged.
+
+Without Twilio credentials, SMS codes **print in the runserver terminal**. Email codes use the same backend as invites (console / file / SMTP). For real SMS:
+
+```powershell
+$env:TWILIO_ACCOUNT_SID="ACxxxxxxxx"
+$env:TWILIO_AUTH_TOKEN="your-token"
+$env:TWILIO_FROM="+15551234567"
+python manage.py runserver
+```
+
+Codes expire after 15 minutes. **Resend code** waits 60 seconds between sends.
 
 ## Sheets
 
-Sheets are tab-separated tables embedded in markdown as fenced `sheet` blocks. Tables render at **≤ 100%** page width. They support formulas, per-cell styling, **markdown images in cells**, and can be linked from `chart` blocks by sheet id.
+Sheets are tab-separated tables embedded in markdown as fenced `sheet` blocks. Tables render at **≤ 100%** page width. They support formulas, per-cell styling, **inline markdown in cells** (`**bold**`, `*italic*`, `~~strike~~`, `` `code` ``, links), **markdown images in cells**, and can be linked from `chart` blocks by sheet id.
 
 Use the **Insert sheet** toolbar button in the markdown editor, or type a block manually:
 
@@ -418,6 +445,8 @@ Header cells are editable too. In read-only preview (not editing), cells are not
 
 **Images in cells** — any cell (header or data) can contain markdown images. They render as pictures in preview; edit the markdown in the sheet block (not inline in preview).
 
+**Inline markdown** — cell text is rendered with inline markup. `**Flug**` shows as **Flug**. Click the cell in preview to edit the source (`**Flug**`). Format-cell backticks (`` `bold;align=center` ``) are unchanged and still set carry-forward style.
+
 Set **column width** with `` ```sheet{width=25%} `` on the fence, a format token (`width=25%` in backticks, carry-forward), or both. Images scale to fit the cell. Override image size only with inline `{width=20%}` on the markdown image.
 
 After `python manage.py seed_demo`, image paths in **Docs → README** are rewritten to `/media/uploads/…` automatically.
@@ -483,6 +512,8 @@ In preview, use the chart **settings** (gear) to switch type, toggle data points
 | **Preview** | Top bar **Preview** — rendered page only (full width; chat panel auto-hides) |
 
 Writers and workspace owners start in edit mode; read-only members see preview only.
+
+**Contents** (the heading table of contents) can be turned off per page: top bar **Page** → uncheck **Contents**.
 
 ### Find / replace
 
@@ -840,12 +871,12 @@ Each product line is `Name | price | description | image` with optional `| downl
 
 Toolbar: **Insert shop** or **Insert SW shop**.
 
-### Classifieds
+### NotesList
 
-Craigslist-style local ads. Fence names: `craigslist` (also `classifieds` / `clist` / `ads`):
+Local ads board. Fence name: `noteslist` (also `craigslist` / `classifieds` / `clist` / `ads`):
 
 markdown
-```craigslist{to=demo;city=Main;currency=EUR}
+```noteslist{to=demo;city=Main;currency=EUR}
 # for sale
 Desk lamp | 12 | Downtown | Working LED lamp, pickup only | https://picsum.photos/id/106/400/300
 Road bike | 180 | Harbor | 21-speed, recently serviced | https://picsum.photos/id/146/400/300
@@ -858,16 +889,16 @@ Studio loft | 780 | Old Town | Bright one-room, available Oct 1
 |--------|-------------|
 | `to` | Recipients for **Add item**. Usernames/ids, or `all` / `group` for every workspace member (including Django group users). **Reply** defaults to all members. Also `user` / `an`. Add item without `to` uses the workspace owner |
 | `via` | `mail` (default) · `dm` · `chat` (group chat) |
-| `title` | Optional board heading. There is no default “notespro classifieds” title |
-| `brand` | `1` to show the notespro classifieds wordmark |
+| `title` | Optional board heading. There is no default NotesList title |
+| `brand` | `1` to show the notespro NotesList wordmark |
 | `header` | `0` hides the heading row (title, city, meta) |
 | `city` | City / area label in the header. Also `place` / `area` |
 | `currency` | Appended to prices that have no symbol |
 | `msg` | Optional reply body template. Placeholders: `{title}` `{ad}` `{listing}` `{price}` `{place}` `{location}` `{cat}` `{note}` `{board}` `{page}` `{text}` `{message}` |
 
-Each listing line is `Title | price | location | description | image`. Category headings use `#` (community, services, housing, for sale, jobs, gigs, or your own). Search filters the list; open a row for the posting, then **Reply** to enter a message mailed to all group members (To defaults to `all`; you can narrow the list). **Add item** opens To, category, and text, then mails the listing (and adds it to the page if you can edit). Labels follow **Settings → Language**.
+Each listing line is `Title | price | location | description | until:YYYY-MM-DD | image`. The until date is optional on existing lines; **Add item** requires it and caps duration at one month. Expired listings are hidden. Category headings use `#` (community, services, housing, for sale, jobs, gigs, or your own). Search filters the list; open a row for the posting, then **Reply** to enter a message mailed to all group members (To defaults to `all`; you can narrow the list). **Add item** opens labeled Title, Price, Location, Description, and Until fields, then mails the listing (and adds it to the page if you can edit). Page owners see **Edit** on a posting to change the listing in markdown. Labels follow **Settings → Language**.
 
-Toolbar: **Insert classifieds**.
+Toolbar: **Insert NotesList**.
 
 ### Mindmap
 

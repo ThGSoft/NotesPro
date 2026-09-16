@@ -104,6 +104,7 @@ def _normalize_page_rows(pages):
             'sort_order': int(row.get('sort_order') or row.get('position') or 0),
             'markdown_content': _page_markdown(row),
             'archive': row.get('archive') or '',
+            'settings': row.get('settings') if isinstance(row.get('settings'), dict) else {},
         })
     return normalized
 
@@ -182,6 +183,7 @@ def _serialize_page_rows(pages):
             'sort_order': page.sort_order,
             'markdown_content': page.markdown_content,
             'archive': page.archive,
+            'settings': page.normalized_settings(),
         })
     return page_rows
 
@@ -476,6 +478,7 @@ def _import_pages_into_workspace(owner, workspace, data, archive=None, root_pare
                     sort_order=int(row.get('sort_order') or 0),
                     markdown_content=markdown,
                     archive=archive,
+                    settings=row.get('settings') if isinstance(row.get('settings'), dict) else {},
                 )
                 ref_to_page[ref] = page
                 created.append(page)

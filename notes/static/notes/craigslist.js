@@ -1,16 +1,17 @@
 /**
- * NotesPro ```craigslist``` / ```classifieds``` block — category ads, search, reply, add item.
+ * NotesPro ```noteslist``` block (also craigslist / classifieds) — category ads, search, reply, add, edit.
  */
 (function (root, factory) {
   const api = factory();
   root.NotesProCraigslist = api;
+  root.NotesProNotesList = api;
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = api;
   }
 }(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
-  const FENCE_RE = /```(?:craigslist|classifieds|clist|ads)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+  const FENCE_RE = /```(?:noteslist|notes-list|craigslist|classifieds|clist|ads)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
   const DEFAULT_CATS = ['community', 'services', 'housing', 'for sale', 'jobs', 'gigs'];
 
   const CAT_I18N = {
@@ -64,13 +65,15 @@
       back: '← back to listings',
       reply: 'Reply',
       add: 'Add item',
+      edit: 'Edit',
+      save: 'Save',
       to: 'To',
       toPlaceholder: 'all group members',
       category: 'Category',
       text: 'Text',
       send: 'Send',
       cancel: 'Cancel',
-      empty: 'No listings yet. Add an item, or write Title | price | location | description | image',
+      empty: 'No listings yet. Add an item, or write Title | price | location | description | until:YYYY-MM-DD | image',
       none: 'No listings match.',
       select: 'Select a listing.',
       metaMail: 'local ads · reply by mail',
@@ -82,18 +85,26 @@
       addSubject: 'New listing: {cat}',
       toastReply: 'Sent reply for “{title}”.',
       toastAdd: 'Sent new listing.',
+      toastEdit: 'Saved listing.',
       errReply: 'Could not send classifieds reply.',
       errReplyEmpty: 'Enter a reply.',
       errAdd: 'Could not send listing.',
-      errEmpty: 'Enter listing text.',
+      errEdit: 'Could not save listing.',
+      errEmpty: 'Enter a title.',
+      errUntil: 'Choose an end date within one month.',
       replyPlaceholder: 'Your message',
-      brandSub: 'classifieds',
-      fallback: 'Classifieds',
-      replyBodyTitle: 'Classifieds reply',
-      addBodyTitle: 'New classifieds listing',
+      brandSub: 'NotesList',
+      fallback: 'NotesList',
+      replyBodyTitle: 'NotesList reply',
+      addBodyTitle: 'New NotesList listing',
       labelListing: 'Listing',
+      labelTitle: 'Title',
       labelPrice: 'Price',
       labelLocation: 'Location',
+      labelDescription: 'Description',
+      labelUntil: 'Until',
+      untilHint: 'Max 1 month',
+      untilUntil: 'until {date}',
       labelTo: 'To',
       labelText: 'Text',
     },
@@ -104,13 +115,15 @@
       back: '← zurück zur Liste',
       reply: 'Antworten',
       add: 'Eintrag hinzufügen',
+      edit: 'Bearbeiten',
+      save: 'Speichern',
       to: 'An',
       toPlaceholder: 'alle Gruppenmitglieder',
       category: 'Kategorie',
       text: 'Text',
       send: 'Senden',
       cancel: 'Abbrechen',
-      empty: 'Noch keine Anzeigen. Eintrag hinzufügen oder Zeile: Titel | Preis | Ort | Text | Bild',
+      empty: 'Noch keine Anzeigen. Eintrag hinzufügen oder Zeile: Titel | Preis | Ort | Text | until:JJJJ-MM-TT | Bild',
       none: 'Keine Anzeigen gefunden.',
       select: 'Anzeige wählen.',
       metaMail: 'lokale Anzeigen · Antwort per Mail',
@@ -122,18 +135,26 @@
       addSubject: 'Neue Anzeige: {cat}',
       toastReply: 'Antwort zu „{title}“ gesendet.',
       toastAdd: 'Neue Anzeige gesendet.',
+      toastEdit: 'Anzeige gespeichert.',
       errReply: 'Antwort konnte nicht gesendet werden.',
       errReplyEmpty: 'Antwort eingeben.',
       errAdd: 'Anzeige konnte nicht gesendet werden.',
-      errEmpty: 'Text der Anzeige eingeben.',
+      errEdit: 'Anzeige konnte nicht gespeichert werden.',
+      errEmpty: 'Titel eingeben.',
+      errUntil: 'Enddatum innerhalb eines Monats wählen.',
       replyPlaceholder: 'Ihre Nachricht',
-      brandSub: 'Kleinanzeigen',
-      fallback: 'Kleinanzeigen',
+      brandSub: 'NotesList',
+      fallback: 'NotesList',
       replyBodyTitle: 'Kleinanzeigen-Antwort',
       addBodyTitle: 'Neue Kleinanzeige',
       labelListing: 'Anzeige',
+      labelTitle: 'Titel',
       labelPrice: 'Preis',
       labelLocation: 'Ort',
+      labelDescription: 'Beschreibung',
+      labelUntil: 'Bis',
+      untilHint: 'Max. 1 Monat',
+      untilUntil: 'bis {date}',
       labelTo: 'An',
       labelText: 'Text',
     },
@@ -144,13 +165,15 @@
       back: '← retour aux annonces',
       reply: 'Répondre',
       add: 'Ajouter une annonce',
+      edit: 'Modifier',
+      save: 'Enregistrer',
       to: 'À',
       toPlaceholder: 'tous les membres du groupe',
       category: 'Catégorie',
       text: 'Texte',
       send: 'Envoyer',
       cancel: 'Annuler',
-      empty: 'Pas encore d’annonces. Ajoutez une ligne : Titre | prix | lieu | texte | image',
+      empty: 'Pas encore d’annonces. Ajoutez une ligne : Titre | prix | lieu | texte | until:AAAA-MM-JJ | image',
       none: 'Aucune annonce ne correspond.',
       select: 'Choisir une annonce.',
       metaMail: 'annonces locales · réponse par mail',
@@ -162,18 +185,26 @@
       addSubject: 'Nouvelle annonce : {cat}',
       toastReply: 'Réponse envoyée pour « {title} ».',
       toastAdd: 'Nouvelle annonce envoyée.',
+      toastEdit: 'Annonce enregistrée.',
       errReply: 'Impossible d’envoyer la réponse.',
       errReplyEmpty: 'Saisir une réponse.',
       errAdd: 'Impossible d’envoyer l’annonce.',
-      errEmpty: 'Saisir le texte de l’annonce.',
+      errEdit: 'Impossible d’enregistrer l’annonce.',
+      errEmpty: 'Saisir un titre.',
+      errUntil: 'Choisir une date de fin dans le mois.',
       replyPlaceholder: 'Votre message',
-      brandSub: 'petites annonces',
-      fallback: 'Petites annonces',
+      brandSub: 'NotesList',
+      fallback: 'NotesList',
       replyBodyTitle: 'Réponse petites annonces',
       addBodyTitle: 'Nouvelle petite annonce',
       labelListing: 'Annonce',
+      labelTitle: 'Titre',
       labelPrice: 'Prix',
       labelLocation: 'Lieu',
+      labelDescription: 'Description',
+      labelUntil: 'Jusqu’au',
+      untilHint: '1 mois max.',
+      untilUntil: 'jusqu’au {date}',
       labelTo: 'À',
       labelText: 'Texte',
     },
@@ -184,13 +215,15 @@
       back: '← torna agli annunci',
       reply: 'Rispondi',
       add: 'Aggiungi annuncio',
+      edit: 'Modifica',
+      save: 'Salva',
       to: 'A',
       toPlaceholder: 'tutti i membri del gruppo',
       category: 'Categoria',
       text: 'Testo',
       send: 'Invia',
       cancel: 'Annulla',
-      empty: 'Nessun annuncio. Aggiungi una riga: Titolo | prezzo | luogo | testo | immagine',
+      empty: 'Nessun annuncio. Aggiungi una riga: Titolo | prezzo | luogo | testo | until:AAAA-MM-GG | immagine',
       none: 'Nessun annuncio corrisponde.',
       select: 'Seleziona un annuncio.',
       metaMail: 'annunci locali · risposta per mail',
@@ -202,18 +235,26 @@
       addSubject: 'Nuovo annuncio: {cat}',
       toastReply: 'Risposta inviata per “{title}”.',
       toastAdd: 'Nuovo annuncio inviato.',
+      toastEdit: 'Annuncio salvato.',
       errReply: 'Impossibile inviare la risposta.',
       errReplyEmpty: 'Inserisci una risposta.',
       errAdd: 'Impossibile inviare l’annuncio.',
-      errEmpty: 'Inserisci il testo dell’annuncio.',
+      errEdit: 'Impossibile salvare l’annuncio.',
+      errEmpty: 'Inserisci un titolo.',
+      errUntil: 'Scegli una data entro un mese.',
       replyPlaceholder: 'Il tuo messaggio',
-      brandSub: 'annunci',
-      fallback: 'Annunci',
+      brandSub: 'NotesList',
+      fallback: 'NotesList',
       replyBodyTitle: 'Risposta annunci',
       addBodyTitle: 'Nuovo annuncio',
       labelListing: 'Annuncio',
+      labelTitle: 'Titolo',
       labelPrice: 'Prezzo',
       labelLocation: 'Luogo',
+      labelDescription: 'Descrizione',
+      labelUntil: 'Fino al',
+      untilHint: 'Max 1 mese',
+      untilUntil: 'fino al {date}',
       labelTo: 'A',
       labelText: 'Testo',
     },
@@ -224,13 +265,15 @@
       back: '← volver a los anuncios',
       reply: 'Responder',
       add: 'Añadir anuncio',
+      edit: 'Editar',
+      save: 'Guardar',
       to: 'Para',
       toPlaceholder: 'todos los miembros del grupo',
       category: 'Categoría',
       text: 'Texto',
       send: 'Enviar',
       cancel: 'Cancelar',
-      empty: 'Aún no hay anuncios. Añade una línea: Título | precio | lugar | texto | imagen',
+      empty: 'Aún no hay anuncios. Añade una línea: Título | precio | lugar | texto | until:AAAA-MM-DD | imagen',
       none: 'Ningún anuncio coincide.',
       select: 'Elige un anuncio.',
       metaMail: 'anuncios locales · respuesta por correo',
@@ -242,18 +285,26 @@
       addSubject: 'Nuevo anuncio: {cat}',
       toastReply: 'Respuesta enviada para «{title}».',
       toastAdd: 'Nuevo anuncio enviado.',
+      toastEdit: 'Anuncio guardado.',
       errReply: 'No se pudo enviar la respuesta.',
       errReplyEmpty: 'Escribe una respuesta.',
       errAdd: 'No se pudo enviar el anuncio.',
-      errEmpty: 'Escribe el texto del anuncio.',
+      errEdit: 'No se pudo guardar el anuncio.',
+      errEmpty: 'Escribe un título.',
+      errUntil: 'Elige una fecha dentro de un mes.',
       replyPlaceholder: 'Tu mensaje',
-      brandSub: 'clasificados',
-      fallback: 'Clasificados',
+      brandSub: 'NotesList',
+      fallback: 'NotesList',
       replyBodyTitle: 'Respuesta de clasificados',
       addBodyTitle: 'Nuevo clasificado',
       labelListing: 'Anuncio',
+      labelTitle: 'Título',
       labelPrice: 'Precio',
       labelLocation: 'Lugar',
+      labelDescription: 'Descripción',
+      labelUntil: 'Hasta',
+      untilHint: 'Máx. 1 mes',
+      untilUntil: 'hasta {date}',
       labelTo: 'Para',
       labelText: 'Texto',
     },
@@ -340,6 +391,70 @@
       .replace(/^-|-$/g, '') || 'ads';
   }
 
+  function pad2(n) {
+    return String(n).padStart(2, '0');
+  }
+
+  function toIsoDate(date) {
+    return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+  }
+
+  function todayLocal() {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  }
+
+  function addCalendarMonths(date, months) {
+    const year = date.getFullYear();
+    const month = date.getMonth() + months;
+    const day = date.getDate();
+    const last = new Date(year, month + 1, 0).getDate();
+    return new Date(year, month, Math.min(day, last));
+  }
+
+  function parseIsoDate(value) {
+    const match = String(value || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) return null;
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    const date = new Date(year, month - 1, day);
+    if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
+      return null;
+    }
+    return date;
+  }
+
+  function dateRangeBounds() {
+    const minDate = todayLocal();
+    const maxDate = addCalendarMonths(minDate, 1);
+    return { min: toIsoDate(minDate), max: toIsoDate(maxDate) };
+  }
+
+  function looksLikeUntilToken(text) {
+    return /^(until|bis|hasta|fino|jusqu['’]?au)\s*:?\s*\d{4}-\d{2}-\d{2}$/i.test(String(text || '').trim());
+  }
+
+  function parseUntilToken(text) {
+    const match = String(text || '').trim().match(/(\d{4}-\d{2}-\d{2})/);
+    if (!match) return '';
+    return parseIsoDate(match[1]) ? match[1] : '';
+  }
+
+  function isExpiredUntil(until) {
+    const date = parseIsoDate(until);
+    if (!date) return false;
+    return toIsoDate(date) < toIsoDate(todayLocal());
+  }
+
+  function isUntilInRange(until) {
+    const date = parseIsoDate(until);
+    if (!date) return false;
+    const bounds = dateRangeBounds();
+    const iso = toIsoDate(date);
+    return iso >= bounds.min && iso <= bounds.max;
+  }
+
   function looksLikeImageSrc(text) {
     const raw = String(text || '').trim();
     if (!raw || /\s/.test(raw)) return false;
@@ -405,19 +520,29 @@
   }
 
   function parseListing(parts, category, index) {
-    const title = parts[0];
+    const title = String(parts[0] || '').trim();
     if (!title) return null;
-    const price = parts[1] || '';
-    const location = parts[2] || '';
-    const restParts = parts.slice(3);
-    const last = restParts[restParts.length - 1] || '';
+    const price = String(parts[1] || '').trim();
+    const location = String(parts[2] || '').trim();
+    const restParts = parts.slice(3).map((part) => String(part || '').trim());
+    let until = '';
+    const leftover = [];
+    restParts.forEach((part) => {
+      if (!part) return;
+      if (!until && looksLikeUntilToken(part)) {
+        until = parseUntilToken(part);
+        return;
+      }
+      leftover.push(part);
+    });
+    const last = leftover[leftover.length - 1] || '';
     let description = '';
     let image = '';
-    if (restParts.length >= 2 && looksLikeImageSrc(last)) {
+    if (leftover.length >= 2 && looksLikeImageSrc(last)) {
       image = last;
-      description = restParts.slice(0, -1).join(' | ').replace(/\s+/g, ' ').trim();
+      description = leftover.slice(0, -1).join(' | ').replace(/\s+/g, ' ').trim();
     } else {
-      const extracted = extractImage(restParts.join(' | '));
+      const extracted = extractImage(leftover.join(' | '));
       description = extracted.note;
       image = extracted.src;
     }
@@ -428,6 +553,7 @@
       location,
       description,
       image,
+      until,
       category,
       categorySlug: slugify(category),
     };
@@ -437,7 +563,7 @@
     const lang = resolveLang(options.locale || cfg.lang);
     const sections = [];
     let current = { title: '', items: [] };
-    String(source || '').replace(/\r\n/g, '\n').split('\n').forEach((line) => {
+    String(source || '').replace(/\r\n/g, '\n').split('\n').forEach((line, lineNo) => {
       const trimmed = line.trim();
       if (!trimmed) return;
       if (/^#+\s+/.test(trimmed)) {
@@ -448,15 +574,19 @@
       const row = trimmed.replace(/^[-*•]\s+/, '');
       const parts = row.split('|').map((part) => part.trim());
       const item = parseListing(parts, current.title || 'for sale', 0);
-      if (item) current.items.push(item);
+      if (item && !isExpiredUntil(item.until)) {
+        item.sourceLineNo = lineNo;
+        item.rawLine = trimmed;
+        current.items.push(item);
+      }
     });
     if (current.items.length || current.title) sections.push(current);
     if (!sections.length) {
+      const sample = parseListing(['Sample ad', '0', 'Nearby', 'Replace this listing in markdown'], 'for sale', 0);
+      if (sample) sample.ephemeral = true;
       sections.push({
         title: 'for sale',
-        items: [
-          parseListing(['Sample ad', '0', 'Nearby', 'Replace this listing in markdown'], 'for sale', 0),
-        ],
+        items: [sample].filter(Boolean),
       });
     }
     let index = 0;
@@ -491,6 +621,7 @@
       sections,
       items,
       currentUser: String(options.currentUser || '').trim(),
+      canEdit: Boolean(options.canEdit),
     };
   }
 
@@ -535,10 +666,25 @@
       `${t('labelListing', null, lang)}: ${item.title || ''}`,
       price ? `${t('labelPrice', null, lang)}: ${price}` : '',
       item.location ? `${t('labelLocation', null, lang)}: ${item.location}` : '',
+      item.until ? `${t('labelUntil', null, lang)}: ${item.until}` : '',
       item.description ? `\n${item.description}` : '',
       userText ? `\n${t('labelText', null, lang)}:\n${userText}` : '',
     ];
     return lines.filter(Boolean).join('\n');
+  }
+
+  function listingLineFromFields(fields = {}) {
+    const title = String(fields.title || '').trim();
+    if (!title) return '';
+    const price = String(fields.price || '').replace(/\|/g, '/').trim();
+    const location = String(fields.location || '').replace(/\|/g, '/').trim();
+    const description = String(fields.description || '').replace(/\r\n/g, ' ').replace(/\|/g, '/').replace(/\s+/g, ' ').trim();
+    const until = parseUntilToken(fields.until);
+    const image = String(fields.image || '').trim();
+    const parts = [title, price, location, description];
+    if (until) parts.push(`until:${until}`);
+    if (image) parts.push(image);
+    return parts.join(' | ');
   }
 
   function listingLineFromAddText(text) {
@@ -548,9 +694,10 @@
       return raw.split('\n').map((line) => line.trim()).filter(Boolean).join(' ');
     }
     const lines = raw.split('\n').map((line) => line.trim()).filter(Boolean);
-    const title = lines[0];
-    const rest = lines.slice(1).join(' ');
-    return rest ? `${title} |  |  | ${rest}` : `${title} |  |  |`;
+    return listingLineFromFields({
+      title: lines[0] || '',
+      description: lines.slice(1).join(' '),
+    });
   }
 
   function insertListingIntoBody(content, category, listingLine) {
@@ -582,6 +729,25 @@
     return [...lines.slice(0, insertAt), line, ...lines.slice(insertAt)].join('\n');
   }
 
+  function replaceListingInBody(content, item, listingLine, category) {
+    const line = String(listingLine || '').trim();
+    if (!line) return String(content || '');
+    const lines = String(content || '').replace(/\r\n/g, '\n').split('\n');
+    const lineNo = Number(item?.sourceLineNo);
+    const newCat = String(category || item?.category || '').trim();
+    const oldCat = String(item?.category || '').trim();
+    if (!Number.isFinite(lineNo) || lineNo < 0 || lineNo >= lines.length) {
+      return insertListingIntoBody(content, newCat, line);
+    }
+    if (newCat && oldCat && newCat.toLowerCase() !== oldCat.toLowerCase()) {
+      const without = [...lines.slice(0, lineNo), ...lines.slice(lineNo + 1)].join('\n');
+      return insertListingIntoBody(without, newCat, line);
+    }
+    const indent = String(lines[lineNo] || '').match(/^\s*/)[0];
+    lines[lineNo] = `${indent}${line}`;
+    return lines.join('\n');
+  }
+
   function formatAddText(spec, payload, extras = {}) {
     const lang = spec?.lang;
     const pageTitle = extras.pageTitle || 'page';
@@ -591,17 +757,25 @@
       `${t('addBodyTitle', null, lang)} — ${board} (${pageTitle})`,
       to ? `${t('labelTo', null, lang)}: ${to}` : '',
       payload?.category ? `${t('category', null, lang)}: ${payload.category}` : '',
-      `${t('labelText', null, lang)}:`,
-      payload?.text || '',
+      payload?.title ? `${t('labelTitle', null, lang)}: ${payload.title}` : '',
+      payload?.price ? `${t('labelPrice', null, lang)}: ${payload.price}` : '',
+      payload?.location ? `${t('labelLocation', null, lang)}: ${payload.location}` : '',
+      payload?.until ? `${t('labelUntil', null, lang)}: ${payload.until}` : '',
+      payload?.description ? `${t('labelDescription', null, lang)}:\n${payload.description}` : '',
+      !payload?.title && payload?.text ? `${t('labelText', null, lang)}:\n${payload.text}` : '',
     ].filter((row, i, arr) => row || i === arr.length - 1).join('\n');
   }
 
-  function renderListingRow(item, currency) {
+  function renderListingRow(item, spec) {
+    const lang = spec?.lang;
     const thumb = item.image
       ? `<img class="cl-thumb" src="${escapeHtml(resolveMediaHref(item.image))}" alt="" loading="lazy">`
       : '<span class="cl-thumb cl-thumb--empty" aria-hidden="true"></span>';
-    const price = displayPrice(item.price, currency);
+    const price = displayPrice(item.price, spec?.currency);
     const hood = item.location ? `<span class="cl-hood">(${escapeHtml(item.location)})</span>` : '';
+    const until = item.until
+      ? `<span class="cl-until">${escapeHtml(t('untilUntil', { date: item.until }, lang))}</span>`
+      : '';
     return [
       `<li class="cl-row" data-cl-item="${item.index}" data-cl-cat="${escapeHtml(item.categorySlug)}">`,
       `<button type="button" class="cl-row-btn" data-cl-open="${item.index}">`,
@@ -610,6 +784,7 @@
       `<span class="cl-row-title">${escapeHtml(item.title)}</span>`,
       price ? `<span class="cl-price">${escapeHtml(price)}</span>` : '',
       hood,
+      until,
       `</span>`,
       `</button>`,
       `</li>`,
@@ -633,11 +808,18 @@
       `<p class="cl-posting-meta">`,
       price ? `<span>${escapeHtml(price)}</span>` : '',
       item.location ? `<span>${escapeHtml(item.location)}</span>` : '',
+      item.until ? `<span>${escapeHtml(t('untilUntil', { date: item.until }, lang))}</span>` : '',
       `</p>`,
       img,
       item.description ? `<p class="cl-posting-body">${escapeHtml(item.description)}</p>` : '',
+      `<div class="cl-posting-actions">`,
       `<button type="button" class="cl-reply-btn" data-cl-reply="${item.index}" aria-expanded="false">${escapeHtml(t('reply', null, lang))}</button>`,
+      spec.canEdit && !item.ephemeral
+        ? `<button type="button" class="cl-edit-btn" data-cl-edit="${item.index}" aria-expanded="false">${escapeHtml(t('edit', null, lang))}</button>`
+        : '',
+      `</div>`,
       renderReplyForm(spec),
+      spec.canEdit && !item.ephemeral ? renderEditForm(spec, item) : '',
       `</article>`,
     ].join('');
   }
@@ -655,6 +837,44 @@
       `<div class="cl-add-actions">`,
       `<button type="submit" class="cl-add-send" data-cl-reply-send>${escapeHtml(t('send', null, lang))}</button>`,
       `<button type="button" class="cl-add-cancel" data-cl-reply-cancel>${escapeHtml(t('cancel', null, lang))}</button>`,
+      `</div>`,
+      `</form>`,
+    ].join('');
+  }
+
+  function renderEditForm(spec, item) {
+    const lang = spec.lang;
+    const listId = `cl-edit-cat-list-${item.index}`;
+    const bounds = dateRangeBounds();
+    const until = item.until && isUntilInRange(item.until) ? item.until : bounds.max;
+    const options = spec.categories.map((name) => (
+      `<option value="${escapeHtml(name)}">${escapeHtml(categoryLabel(name, lang))}</option>`
+    )).join('');
+    return [
+      `<form class="cl-add-form cl-edit-form" data-cl-edit-form hidden>`,
+      `<label class="cl-add-field">${escapeHtml(t('category', null, lang))}`,
+      `<input type="text" class="cl-add-cat" data-cl-edit-cat list="${escapeHtml(listId)}" value="${escapeHtml(item.category || '')}" autocomplete="off">`,
+      `</label>`,
+      `<datalist id="${escapeHtml(listId)}">${options}</datalist>`,
+      `<label class="cl-add-field">${escapeHtml(t('labelTitle', null, lang))}`,
+      `<input type="text" class="cl-add-title" data-cl-edit-title value="${escapeHtml(item.title || '')}" required autocomplete="off">`,
+      `</label>`,
+      `<label class="cl-add-field">${escapeHtml(t('labelPrice', null, lang))}`,
+      `<input type="text" class="cl-add-price" data-cl-edit-price value="${escapeHtml(item.price || '')}" autocomplete="off">`,
+      `</label>`,
+      `<label class="cl-add-field">${escapeHtml(t('labelLocation', null, lang))}`,
+      `<input type="text" class="cl-add-location" data-cl-edit-location value="${escapeHtml(item.location || '')}" autocomplete="off">`,
+      `</label>`,
+      `<label class="cl-add-field">${escapeHtml(t('labelUntil', null, lang))}`,
+      `<input type="date" class="cl-add-until" data-cl-edit-until min="${escapeHtml(bounds.min)}" max="${escapeHtml(bounds.max)}" value="${escapeHtml(until)}" required>`,
+      `<span class="cl-until-hint">${escapeHtml(t('untilHint', null, lang))}</span>`,
+      `</label>`,
+      `<label class="cl-add-text-field">${escapeHtml(t('labelDescription', null, lang))}`,
+      `<textarea class="cl-add-desc" data-cl-edit-desc rows="3">${escapeHtml(item.description || '')}</textarea>`,
+      `</label>`,
+      `<div class="cl-add-actions">`,
+      `<button type="submit" class="cl-add-send" data-cl-edit-send>${escapeHtml(t('save', null, lang))}</button>`,
+      `<button type="button" class="cl-add-cancel" data-cl-edit-cancel>${escapeHtml(t('cancel', null, lang))}</button>`,
       `</div>`,
       `</form>`,
     ].join('');
@@ -680,21 +900,35 @@
     const listId = `cl-cat-list-${index}`;
     const defaultTo = (spec.to && spec.to[0]) || spec.currentUser || '';
     const defaultCat = spec.categories[0] || '';
+    const bounds = dateRangeBounds();
     const options = spec.categories.map((name) => (
       `<option value="${escapeHtml(name)}">${escapeHtml(categoryLabel(name, lang))}</option>`
     )).join('');
     return [
       `<button type="button" class="cl-add-btn" data-cl-add>${escapeHtml(t('add', null, lang))}</button>`,
       `<form class="cl-add-form" data-cl-add-form hidden>`,
-      `<label class="cl-add-field">${escapeHtml(t('to', null, lang))} `,
+      `<label class="cl-add-field" data-cl-add-to-field>${escapeHtml(t('to', null, lang))}`,
       `<input type="text" class="cl-add-to" data-cl-add-to value="${escapeHtml(defaultTo)}" autocomplete="off">`,
       `</label>`,
-      `<label class="cl-add-field">${escapeHtml(t('category', null, lang))} `,
+      `<label class="cl-add-field">${escapeHtml(t('category', null, lang))}`,
       `<input type="text" class="cl-add-cat" data-cl-add-cat list="${escapeHtml(listId)}" value="${escapeHtml(defaultCat)}" autocomplete="off">`,
       `</label>`,
       `<datalist id="${escapeHtml(listId)}">${options}</datalist>`,
-      `<label class="cl-add-text-field">${escapeHtml(t('text', null, lang))} `,
-      `<textarea class="cl-add-text" data-cl-add-text rows="3" placeholder="${escapeHtml(t('textPlaceholder', null, lang))}"></textarea>`,
+      `<label class="cl-add-field">${escapeHtml(t('labelTitle', null, lang))}`,
+      `<input type="text" class="cl-add-title" data-cl-add-title required autocomplete="off">`,
+      `</label>`,
+      `<label class="cl-add-field">${escapeHtml(t('labelPrice', null, lang))}`,
+      `<input type="text" class="cl-add-price" data-cl-add-price autocomplete="off">`,
+      `</label>`,
+      `<label class="cl-add-field">${escapeHtml(t('labelLocation', null, lang))}`,
+      `<input type="text" class="cl-add-location" data-cl-add-location autocomplete="off">`,
+      `</label>`,
+      `<label class="cl-add-field">${escapeHtml(t('labelUntil', null, lang))}`,
+      `<input type="date" class="cl-add-until" data-cl-add-until min="${escapeHtml(bounds.min)}" max="${escapeHtml(bounds.max)}" value="${escapeHtml(bounds.max)}" required>`,
+      `<span class="cl-until-hint">${escapeHtml(t('untilHint', null, lang))}</span>`,
+      `</label>`,
+      `<label class="cl-add-text-field">${escapeHtml(t('labelDescription', null, lang))}`,
+      `<textarea class="cl-add-desc" data-cl-add-desc rows="3"></textarea>`,
       `</label>`,
       `<div class="cl-add-actions">`,
       `<button type="submit" class="cl-add-send" data-cl-add-send>${escapeHtml(t('send', null, lang))}</button>`,
@@ -721,7 +955,7 @@
         return `<button type="button" class="cl-cat" data-cl-cat="${escapeHtml(slug)}">${escapeHtml(categoryLabel(name, lang))} <span>${n}</span></button>`;
       }),
     ].join('');
-    const rows = spec.items.map((item) => renderListingRow(item, spec.currency)).join('');
+    const rows = spec.items.map((item) => renderListingRow(item, spec)).join('');
     const postings = spec.items.map((item) => renderPosting(item, spec)).join('');
     return [
       `<div class="cl-block" data-cl-index="${index}" data-cl-spec="${escapeHtml(encodeSpec(spec))}">`,
@@ -746,7 +980,7 @@
 
   function matchesQuery(item, query) {
     if (!query) return true;
-    const hay = [item.title, item.price, item.location, item.description, item.category]
+    const hay = [item.title, item.price, item.location, item.description, item.category, item.until]
       .join(' ')
       .toLowerCase();
     return hay.includes(query);
@@ -772,11 +1006,19 @@
     if (list) list.hidden = false;
   }
 
+  function hideEditForms(el) {
+    el.querySelectorAll('[data-cl-edit-form]').forEach((node) => { node.hidden = true; });
+    el.querySelectorAll('[data-cl-edit]').forEach((btn) => {
+      btn.setAttribute('aria-expanded', 'false');
+    });
+  }
+
   function hideReplyForms(el) {
     el.querySelectorAll('[data-cl-reply-form]').forEach((node) => { node.hidden = true; });
     el.querySelectorAll('[data-cl-reply]').forEach((btn) => {
       btn.setAttribute('aria-expanded', 'false');
     });
+    hideEditForms(el);
   }
 
   function showList(el) {
@@ -800,6 +1042,27 @@
     el.querySelectorAll('.cl-posting').forEach((node) => {
       node.hidden = String(node.dataset.clPosting) !== String(index);
     });
+  }
+
+  function applyUntilBounds(input) {
+    if (!input) return;
+    const bounds = dateRangeBounds();
+    input.min = bounds.min;
+    input.max = bounds.max;
+    if (!input.value || !isUntilInRange(input.value)) input.value = bounds.max;
+  }
+
+  function resetAddForm(form) {
+    if (!form) return;
+    const title = form.querySelector('[data-cl-add-title]');
+    const price = form.querySelector('[data-cl-add-price]');
+    const location = form.querySelector('[data-cl-add-location]');
+    const desc = form.querySelector('[data-cl-add-desc]');
+    if (title) title.value = '';
+    if (price) price.value = '';
+    if (location) location.value = '';
+    if (desc) desc.value = '';
+    applyUntilBounds(form.querySelector('[data-cl-add-until]'));
   }
 
   function hydrateBlock(el, hooks = {}) {
@@ -832,13 +1095,21 @@
       event.preventDefault();
       event.stopPropagation();
       const sendBtn = el.querySelector('[data-cl-add-send]');
-      hooks.onAdd?.({
+      void Promise.resolve(hooks.onAdd?.({
         spec,
         el,
         btn: sendBtn,
         to: el.querySelector('[data-cl-add-to]')?.value || '',
         category: el.querySelector('[data-cl-add-cat]')?.value || '',
-        text: el.querySelector('[data-cl-add-text]')?.value || '',
+        title: el.querySelector('[data-cl-add-title]')?.value || '',
+        price: el.querySelector('[data-cl-add-price]')?.value || '',
+        location: el.querySelector('[data-cl-add-location]')?.value || '',
+        description: el.querySelector('[data-cl-add-desc]')?.value || '',
+        until: el.querySelector('[data-cl-add-until]')?.value || '',
+      })).then((ok) => {
+        if (!ok) return;
+        resetAddForm(form);
+        form.hidden = true;
       });
     });
 
@@ -877,6 +1148,43 @@
       });
     });
 
+    el.querySelectorAll('[data-cl-edit-form]').forEach((editForm) => {
+      editForm.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const cancel = event.target.closest('[data-cl-edit-cancel]');
+        if (cancel && editForm.contains(cancel)) {
+          event.preventDefault();
+          editForm.hidden = true;
+          editForm.closest('.cl-posting')?.querySelector('[data-cl-edit]')?.setAttribute('aria-expanded', 'false');
+        }
+      });
+      editForm.addEventListener('keydown', (event) => event.stopPropagation());
+      editForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const posting = editForm.closest('.cl-posting');
+        const item = spec.items[parseInt(posting?.dataset?.clPosting, 10)];
+        if (!item) return;
+        const sendBtn = editForm.querySelector('[data-cl-edit-send]');
+        void Promise.resolve(hooks.onEdit?.({
+          spec,
+          item,
+          el,
+          btn: sendBtn,
+          category: editForm.querySelector('[data-cl-edit-cat]')?.value || '',
+          title: editForm.querySelector('[data-cl-edit-title]')?.value || '',
+          price: editForm.querySelector('[data-cl-edit-price]')?.value || '',
+          location: editForm.querySelector('[data-cl-edit-location]')?.value || '',
+          description: editForm.querySelector('[data-cl-edit-desc]')?.value || '',
+          until: editForm.querySelector('[data-cl-edit-until]')?.value || '',
+        })).then((ok) => {
+          if (!ok) return;
+          editForm.hidden = true;
+          posting?.querySelector('[data-cl-edit]')?.setAttribute('aria-expanded', 'false');
+        });
+      });
+    });
+
     el.addEventListener('click', (event) => {
       const addBtn = event.target.closest('.cl-add-btn');
       if (addBtn && el.contains(addBtn)) {
@@ -886,7 +1194,8 @@
           form.hidden = !form.hidden;
           if (!form.hidden) {
             showList(el);
-            el.querySelector('[data-cl-add-text]')?.focus();
+            applyUntilBounds(form.querySelector('[data-cl-add-until]'));
+            el.querySelector('[data-cl-add-title]')?.focus();
           }
         }
         return;
@@ -933,6 +1242,23 @@
             replyForm.querySelector('[data-cl-reply-text]')?.focus();
           });
         }
+        return;
+      }
+      const editBtn = event.target.closest('[data-cl-edit]');
+      if (editBtn && el.contains(editBtn) && !editBtn.disabled) {
+        event.preventDefault();
+        event.stopPropagation();
+        const posting = editBtn.closest('.cl-posting');
+        const editForm = posting?.querySelector('[data-cl-edit-form]');
+        if (!editForm) return;
+        const open = editForm.hidden;
+        hideReplyForms(el);
+        if (open) {
+          editForm.hidden = false;
+          editBtn.setAttribute('aria-expanded', 'true');
+          applyUntilBounds(editForm.querySelector('[data-cl-edit-until]'));
+          editForm.querySelector('[data-cl-edit-title]')?.focus();
+        }
       }
     });
   }
@@ -951,8 +1277,12 @@
     t,
     formatReplyText,
     formatAddText,
+    listingLineFromFields,
     listingLineFromAddText,
     insertListingIntoBody,
+    replaceListingInBody,
+    isUntilInRange,
+    dateRangeBounds,
     renderBlock,
     hydrateBlock,
     hydrate,

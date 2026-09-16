@@ -396,6 +396,7 @@ class Page(models.Model):
     sort_order = models.IntegerField(default=0)
     markdown_content = EncryptedTextField(blank=True, default='')
     archive = EncryptedTextField(blank=True, default='')
+    settings = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     deleted = models.BooleanField(default=False, db_index=True)
@@ -412,6 +413,17 @@ class Page(models.Model):
 
     def __str__(self):
         return self.title
+
+    def normalized_settings(self):
+        raw = self.settings if isinstance(self.settings, dict) else {}
+        contents = raw.get('contents', True)
+        if isinstance(contents, str):
+            contents = contents.strip().lower() in ('1', 'true', 'yes', 'on')
+        elif contents is None:
+            contents = True
+        else:
+            contents = bool(contents)
+        return {'contents': contents}
 
     def save(self, *args, **kwargs):
         if not self.slug:
@@ -546,7 +558,13 @@ class UserSettings(models.Model):
     # Two-factor authentication (TOTP)
     totp_secret = EncryptedTextField(blank=True, default='')
     totp_enabled = models.BooleanField(default=False)
-    
+
+    # Mobile registration / SMS activation
+    mobile = models.CharField(max_length=32, blank=True, default='', db_index=True)
+    mobile_verified = models.BooleanField(default=False)
+    activation_code_hash = models.CharField(max_length=128, blank=True, default='')
+    activation_sent_at = models.DateTimeField(null=True, blank=True)
+
     # Flexible Daten als JSON (z.B. für jsTree-Zustände)
     extra_configs = models.JSONField(default=dict, blank=True)
 

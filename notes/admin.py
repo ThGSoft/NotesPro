@@ -194,9 +194,9 @@ class UserSettingsAdmin(admin.ModelAdmin):
     list_display = (
         'user', 'last_workspace_id', 'theme',
         'sidebar_width', 'left_panel_expanded', 'right_panel_width', 'right_panel_expanded',
-        'totp_enabled',
+        'totp_enabled', 'mobile', 'mobile_verified',
     )
-    search_fields = ('user__username',)
+    search_fields = ('user__username', 'mobile')
     fieldsets = (
         (None, {'fields': ('user', 'theme', 'show_toolbar', 'font_size')}),
         ('Layout', {
@@ -210,7 +210,7 @@ class UserSettingsAdmin(admin.ModelAdmin):
             'description': 'PayPal, Visa, Mastercard, and Konto live in extra_configs.shop (also editable in the in-app Settings).',
             'fields': ('extra_configs',),
         }),
-        ('Security', {'fields': ('totp_enabled', 'totp_secret')}),
+        ('Security', {'fields': ('totp_enabled', 'totp_secret', 'mobile', 'mobile_verified', 'activation_sent_at')}),
     )
 
 

@@ -21,6 +21,13 @@ def _env_bool(key, default=False):
     return val.lower() in ('1', 'true', 'yes', 'on')
 
 
+def _env_bool_any(keys, default=False):
+    for key in keys:
+        if os.environ.get(key) is not None:
+            return _env_bool(key, default)
+    return default
+
+
 SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-secret-key')
 DEBUG = _env_bool('DEBUG', True)
 LOCAL_FILE_OPEN_ENABLED = _env_bool('LOCAL_FILE_OPEN_ENABLED', DEBUG)
@@ -131,6 +138,13 @@ elif _email_mode == 'file':
 else:
     EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 
+# SMS activation (Twilio). Without these, codes print in the runserver terminal.
+TWILIO_ACCOUNT_SID = os.environ.get('TWILIO_ACCOUNT_SID', '').strip()
+TWILIO_AUTH_TOKEN = os.environ.get('TWILIO_AUTH_TOKEN', '').strip()
+TWILIO_FROM = os.environ.get('TWILIO_FROM', '').strip()
+SMS_CODE_TTL_MINUTES = int(os.environ.get('SMS_CODE_TTL_MINUTES', '15'))
+SMS_CODE_RESEND_SECONDS = int(os.environ.get('SMS_CODE_RESEND_SECONDS', '60'))
+
 # Incoming IMAP (external mail → Incomes inbox). Optional; used by fetch_incoming_mail command and dashboard.
 INCOMING_MAIL_IMAP_HOST = os.environ.get('INCOMING_MAIL_IMAP_HOST', '').strip()
 INCOMING_MAIL_IMAP_PORT = int(os.environ.get('INCOMING_MAIL_IMAP_PORT', '993'))
@@ -141,6 +155,14 @@ INCOMING_MAIL_IMAP_SSL = _env_bool('INCOMING_MAIL_IMAP_SSL', True)
 
 # Tag search WebSocket (Channels/Daphne). Off by default in production — Gunicorn/WSGI cannot serve /ws/.
 ENABLE_TAG_WEBSOCKET = _env_bool('ENABLE_TAG_WEBSOCKET', DEBUG)
+
+# Editor toolbar: Insert game / Insert photos. Existing blocks still render if disabled.
+ALLOW_GAMES = _env_bool_any(('ALLOW_GAMES', 'allowGames'), True)
+ALLOW_PHOTOS = _env_bool_any(('ALLOW_PHOTOS', 'allowPhotos'), True)
+
+# Registration: require email and/or mobile. Default on (current behaviour).
+REGISTER_MAIL = _env_bool_any(('REGISTER_MAIL', 'registerMail'), True)
+REGISTER_MOBILE = _env_bool_any(('REGISTER_MOBILE', 'registerMobile'), True)
 
 IP_VISIT_LOG_ENABLED = _env_bool('IP_VISIT_LOG_ENABLED', True)
 IP_VISIT_LOG_GEO = _env_bool('IP_VISIT_LOG_GEO', True)

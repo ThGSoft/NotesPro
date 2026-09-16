@@ -23,6 +23,10 @@ def workspace_member_ids(workspace):
         WorkspaceMembership.objects.filter(workspace=workspace).values_list('user_id', flat=True),
     )
     member_ids.add(workspace.owner_id)
+    group_user_ids = User.objects.filter(
+        groups__in=workspace.groups.all(),
+    ).values_list('id', flat=True)
+    member_ids.update(group_user_ids)
     return member_ids
 
 

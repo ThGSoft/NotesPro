@@ -38,6 +38,7 @@
         <button id="view-keep-toggle" class="btn btn-sm btn-outline-light" type="button" title="Quick notes (Keep)">Keep</button>
         <button id="edit-toggle" class="btn btn-primary btn-sm">Edit</button>
         <button id="toggle-right" class="btn btn-sm btn-outline-light" type="button" title="Chat &amp; Mail">Chat &amp; Mail</button>
+        <button id="page-settings-btn" class="btn btn-sm btn-outline-light d-none" type="button" title="Page settings">Page</button>
         <button id="app-settings-btn" class="btn btn-sm btn-outline-light" type="button" title="Settings">Settings</button>
         <form action="{% url 'logout' %}" method="post">
           {% csrf_token %}
@@ -278,6 +279,7 @@
         <li class="nav-item"><button class="nav-link py-1" type="button" data-chat-mode="workspace">Group</button></li>
         <li class="nav-item"><button class="nav-link active py-1" type="button" data-chat-mode="private">Private <span class="text-muted">🔒</span> <span id="dm-unread-badge" class="badge bg-success d-none">0</span></button></li>
       </ul>
+      <button type="button" id="chat-clear-all-btn" class="btn btn-sm btn-outline-danger w-100 mb-2">Clear all</button>
 
       <div id="dm-list-view" class="dm-list-view">
         <div class="dm-list-header">
@@ -323,6 +325,7 @@
         <li class="nav-item"><button class="nav-link py-1" type="button" data-mail-box="sent">Sent</button></li>
         <li class="nav-item"><button class="nav-link py-1" type="button" data-mail-box="compose">Compose</button></li>
       </ul>
+      <button type="button" id="mail-clear-all-btn" class="btn btn-sm btn-outline-danger w-100 mb-2">Clear all</button>
       <div id="mail-list-view">
         <div id="mail-list" class="mail-list"></div>
       </div>
@@ -418,6 +421,8 @@
         canWrite: {% if can_write_workspace %}true{% else %}false{% endif %},
         localFileOpenEnabled: {{ local_file_open_enabled|yesno:"true,false" }},
         tagWebSocketEnabled: {{ tag_websocket_enabled|yesno:"true,false" }},
+        allowGames: {{ allow_games|yesno:"true,false" }},
+        allowPhotos: {{ allow_photos|yesno:"true,false" }},
         version: "{{ app_version|escapejs }}",
     };
 
@@ -1014,6 +1019,28 @@
   </div>
 </div>
 
+<div class="modal fade dashboard-modal-root" id="page-settings-modal" tabindex="-1" aria-labelledby="page-settings-modal-title" aria-hidden="true" data-bs-theme="dark">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content dashboard-modal">
+      <div class="modal-header">
+        <h5 class="modal-title" id="page-settings-modal-title">Page settings</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" id="page-settings-contents" checked>
+          <label class="form-check-label" for="page-settings-contents">Contents</label>
+        </div>
+        <p class="small dashboard-modal-hint mt-2 mb-0">Show the Contents table of contents on this page.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-sm btn-outline-light" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-sm btn-primary" id="page-settings-save">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="modal fade dashboard-modal-root" id="app-settings-modal" tabindex="-1" aria-labelledby="app-settings-modal-title" aria-hidden="true" data-bs-theme="dark">
   <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content dashboard-modal">
@@ -1029,7 +1056,7 @@
             <option value="{{ code }}"{% if code == app_language_stored %} selected{% endif %}>{{ label }}</option>
             {% endfor %}
           </select>
-          <p class="small dashboard-modal-hint mt-2 mb-0">Affects calendar dates and classifieds labels. Choose browser default to follow your device locale.</p>
+          <p class="small dashboard-modal-hint mt-2 mb-0">Affects calendar dates and NotesList labels. Choose browser default to follow your device locale.</p>
         </div>
         <div class="app-settings-shop mt-3 pt-3 border-top border-secondary-subtle">
           <div class="small fw-semibold mb-2">Shop</div>
