@@ -2747,6 +2747,38 @@ body.mobile-layout .sheet-cell-structure-toolbar .sheet-band-btn {
   overflow: hidden;
 }
 
+.spreadsheet-table .sheet-cell-form {
+  vertical-align: top;
+  padding: 4px 6px;
+}
+
+.spreadsheet-table .sheet-cell-form .form-widget {
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: 8px;
+}
+
+.spreadsheet-table .sheet-cell-form .form-widget-header {
+  margin-bottom: 6px;
+}
+
+.spreadsheet-table .sheet-cell-form .form-widget-textarea {
+  min-height: 2.4em;
+}
+
+.spreadsheet-table .sheet-cell-form .form-widget-vote-foot {
+  font-size: 0.75rem;
+}
+
+.form-widget--untitled .form-widget-title {
+  display: none;
+}
+
+.form-widget--sheet .form-widget-meta {
+  font-size: 0.7rem;
+  cursor: pointer;
+}
+
 .spreadsheet-table .sheet-cell-image .md-image-wrap--sheet-cell,
 .spreadsheet-table .sheet-cell-image .md-image-wrap--full {
   display: block;
@@ -4521,6 +4553,33 @@ body.mobile-layout .sheet-structure-menu-btn {
   margin-bottom: 10px;
 }
 
+.form-widget-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.form-widget-settings-btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--form-widget-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, #fff 70%, transparent);
+  color: var(--form-widget-title);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.form-widget-settings-btn.is-open,
+.form-widget-settings-btn:hover {
+  background: color-mix(in srgb, var(--form-widget-accent) 16%, transparent);
+  border-color: var(--form-widget-accent);
+}
+
 .form-widget-title {
   font-size: 15px;
   font-weight: 700;
@@ -4678,6 +4737,42 @@ body.mobile-layout .sheet-structure-menu-btn {
 }
 
 .form-widget--enum .form-widget-option .form-widget-choice {
+  display: none;
+}
+
+.form-widget--radio .form-widget-option-edit,
+.form-widget--radio .form-widget-delete,
+.form-widget--radio > .form-widget-add,
+.form-widget--enum .form-widget-options,
+.form-widget--enum > .form-widget-add {
+  display: none;
+}
+
+.form-widget--radio.form-widget--settings-open .form-widget-option-label {
+  display: none;
+}
+
+.form-widget--radio.form-widget--settings-open .form-widget-option-edit {
+  display: block;
+  flex: 1;
+  min-width: 0;
+}
+
+.form-widget--radio.form-widget--settings-open .form-widget-delete,
+.form-widget--radio.form-widget--settings-open > .form-widget-add {
+  display: inline-flex;
+  align-items: center;
+}
+
+.form-widget--enum.form-widget--settings-open .form-widget-options {
+  display: flex;
+}
+
+.form-widget--enum.form-widget--settings-open > .form-widget-add {
+  display: inline-block;
+}
+
+.form-widget--enum .form-widget-option-label {
   display: none;
 }
 

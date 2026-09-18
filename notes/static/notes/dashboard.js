@@ -1384,7 +1384,21 @@
 
   function sheetGridCellNumber(grid, row, col) {
     if (!grid?.[row] || grid[row][col] === undefined) return 0;
-    const val = parseSheetNumber(grid[row][col]);
+    const raw = grid[row][col];
+    const form = parseSheetFormCell(raw);
+    if (form) {
+      if (form.kind === 'number' || form.kind === 'text') {
+        const n = parseSheetNumber(form.value);
+        return Number.isNaN(n) ? 0 : n;
+      }
+      const picked = (form.items || []).find((item) => item.selected);
+      if (picked) {
+        const n = parseSheetNumber(picked.text);
+        return Number.isNaN(n) ? 0 : n;
+      }
+      return 0;
+    }
+    const val = parseSheetNumber(raw);
     return Number.isNaN(val) ? 0 : val;
   }
 
@@ -1583,6 +1597,7 @@
 
   function sheetGridToHtml(grid, config, options = {}, cellStyles, rawGrid) {
     const { sheetIndex = 0, sheetId = '', editable = false, bandSelection = null } = options;
+    const formEditable = options.formEditable != null ? !!options.formEditable : editable;
     const fontSize = config['font-size'] || 'medium';
     const hasHeader = sheetHasHeader(config) && grid.length > 0;
     const colCount = Math.max(...grid.map(row => row.length), 0);
@@ -1642,22 +1657,33 @@
       const style = cellStyles?.[row]?.[col] || {};
       const styleAttr = sheetCellStyleAttr(style, cellStyleOpts);
       const isErr = cell === '#ERR!';
-      const isImage = !isErr && sheetCellHasImage(cell, style);
+      const rawCell = String(rawGrid?.[row]?.[col] ?? cell ?? '').trim();
+      const formSpec = !isErr && parseSheetFormCell(rawCell);
+      const isImage = !isErr && !formSpec && sheetCellHasImage(cell, style);
       const display = isErr ? '#ERR!' : renderSheetCellContent(cell, style);
       const rowSelected = bandSelection?.type === 'row' && bandSelection.index === row;
       const colSelected = bandSelection?.type === 'col' && bandSelection.index === col;
       const bandClass = rowSelected
         ? ' sheet-cell--row-selected'
         : (colSelected ? ' sheet-cell--col-selected' : '');
+      const locAttrs = ` data-sheet-index="${sheetIndex}"${sheetId ? ` data-sheet-id="${escapeHtml(sheetId)}"` : ''} data-row="${row}" data-col="${col}"`;
+      if (formSpec) {
+        const widget = renderFormWidgetHtml(formSpec, {
+          editable: formEditable,
+          compact: true,
+          formIndex: `s${sheetIndex}-${row}-${col}`,
+          sheet: { sheetIndex, row, col, sheetId },
+        });
+        return `<${tag} class="sheet-cell-form${bandClass}"${locAttrs} data-sheet-source="${escapeHtml(rawCell)}"${styleAttr}>${widget}</${tag}>`;
+      }
       if (editable && !isImage) {
-        const rawCell = String(rawGrid?.[row]?.[col] ?? '').trim();
         const formulaAttr = rawCell.startsWith('=')
           ? ` data-sheet-formula="${escapeHtml(rawCell)}"`
           : '';
         const errClass = isErr ? ' sheet-cell-err' : '';
         const source = isErr ? String(cell) : formatSheetDisplayValue(cell, style);
         const sourceAttr = ` data-sheet-source="${escapeHtml(source)}"`;
-        return `<${tag} contenteditable="plaintext-only" class="sheet-cell-editable${errClass}${bandClass}" data-sheet-index="${sheetIndex}"${sheetId ? ` data-sheet-id="${escapeHtml(sheetId)}"` : ''} data-row="${row}" data-col="${col}" spellcheck="false" tabindex="0"${formulaAttr}${sourceAttr}${styleAttr}>${display}</${tag}>`;
+        return `<${tag} contenteditable="plaintext-only" class="sheet-cell-editable${errClass}${bandClass}"${locAttrs} spellcheck="false" tabindex="0"${formulaAttr}${sourceAttr}${styleAttr}>${display}</${tag}>`;
       }
       if (isImage) {
         return `<${tag} class="sheet-cell-image${bandClass}"${styleAttr}>${display}</${tag}>`;
@@ -2488,6 +2514,20 @@
     syncSheetCellToMarkdown(cell);
   }
 
+  function startSheetFormCellSourceEdit(cell) {
+    if (!cell || !isPreviewInteractionEnabled()) return;
+    const source = cell.dataset.sheetSource || '';
+    cell.classList.remove('sheet-cell-form');
+    cell.classList.add('sheet-cell-editable');
+    cell.setAttribute('contenteditable', 'plaintext-only');
+    cell.setAttribute('spellcheck', 'false');
+    cell.setAttribute('tabindex', '0');
+    delete cell.dataset.sheetEditing;
+    cell.innerHTML = '';
+    cell.textContent = source;
+    cell.focus({ preventScroll: true });
+  }
+
   function initSheetCellEditors() {
     const preview = document.getElementById('preview-content');
     if (!preview || preview.dataset.sheetEditBound === '1') return;
@@ -2564,7 +2604,7 @@
         e.stopPropagation();
         return;
       }
-      if (e.target.closest?.('.md-tag, .md-tags, .calendar-unit, a, button, input, select, textarea')) return;
+      if (e.target.closest?.('.md-tag, .md-tags, .calendar-unit, a, button, input, select, textarea, .form-widget, .sheet-cell-form')) return;
       const colBand = e.target.closest?.('.sheet-col-band');
       const rowBand = e.target.closest?.('.sheet-row-band');
       if (colBand && preview.contains(colBand)) {
@@ -2616,7 +2656,7 @@
       if (!e.target.closest?.('.sheet-preview-block')) {
         clearSheetBandSelection();
       }
-      if (!e.target.closest?.('.sheet-cell-editable')) {
+      if (!e.target.closest?.('.sheet-cell-editable, .form-widget, .sheet-cell-form')) {
         preview.focus({ preventScroll: true });
       }
     }, true);
@@ -2633,6 +2673,14 @@
 
     preview.addEventListener('dblclick', e => {
       if (!isPreviewInteractionEnabled()) return;
+      const formCell = e.target.closest?.('.sheet-cell-form');
+      if (formCell && preview.contains(formCell)
+        && (e.target === formCell || e.target.closest('.form-widget-meta'))) {
+        e.preventDefault();
+        e.stopPropagation();
+        startSheetFormCellSourceEdit(formCell);
+        return;
+      }
       const cell = e.target.closest?.('.sheet-cell-editable');
       if (!cell || !preview.contains(cell)) return;
       e.preventDefault();
@@ -2716,6 +2764,7 @@
         sheetIndex: idx,
         sheetId: id,
         editable: !!options.sheetEditable,
+        formEditable: !!options.formEditable || !!options.sheetEditable,
         bandSelection: sheetBandSelection?.sheetIndex === idx ? sheetBandSelection : null,
       }, parsed.cellStyles, parsed.rawGrid);
       return wrapRichPreviewBlock(
@@ -6160,10 +6209,82 @@
     if (/^(radiobuttons?|radiolist|radio)$/.test(raw)) return 'radio';
     if (/^(votelist|vote|poll)$/.test(raw)) return 'vote';
     if (/^(text-area|textarea)$/.test(raw)) return 'textarea';
-    if (/^(numinput|number)$/.test(raw)) return 'number';
-    if (/^(text-input|textinput|inputtext)$/.test(raw)) return 'text';
+    if (/^(numinput|number|num)$/.test(raw)) return 'number';
+    if (/^(text-input|textinput|inputtext|text)$/.test(raw)) return 'text';
     if (/^(dropdown|enum)$/.test(raw)) return 'enum';
     return '';
+  }
+
+  const SHEET_FORM_CELL_RE = /^(radio|radiolist|radiobuttons?|vote|votelist|poll|textinput|text-input|inputtext|textarea|text-area|number|numinput|enum|dropdown|text|num)\s*(?:\[([^\]]*)\])?\s*:\s*(.*)$/i;
+
+  function splitSheetFormOptions(rest) {
+    const s = String(rest || '');
+    if (s.includes('|')) return s.split('|');
+    if (s.includes(',')) return s.split(',');
+    return [s];
+  }
+
+  function parseSheetFormCell(raw) {
+    const text = String(raw ?? '').trim();
+    if (!text || text.startsWith('=')) return null;
+    const m = text.match(SHEET_FORM_CELL_RE);
+    if (!m) return null;
+    const kind = formWidgetKind(m[1]);
+    if (!kind) return null;
+    const bracket = String(m[2] || '').trim();
+    const rest = m[3] || '';
+    let fenceAttrs = '';
+    if (bracket.includes('=')) fenceAttrs = bracket.replace(/,/g, ';');
+    else if (bracket) fenceAttrs = `title=${bracket}`;
+    if (kind === 'text' || kind === 'textarea' || kind === 'number') {
+      return parseFormWidgetSpec(kind, fenceAttrs, rest);
+    }
+    const body = splitSheetFormOptions(rest).map((part) => {
+      const p = String(part || '').trim();
+      if (!p) return '';
+      if (kind === 'vote') {
+        const star = p.match(/^(.*?)\*([^*]+)$/);
+        if (star) return `- ${star[1].trim()} | ${star[2].split(/[,;]/).map((s) => s.trim()).filter(Boolean).join(', ')}`;
+        return `- ${p.replace(/^\*/, '')}`;
+      }
+      if (p.startsWith('*')) return `- (x) ${p.slice(1).trim()}`;
+      if (/^\((?:x|X|o|O|\*)\)/.test(p) || /^\[[xX ]\]/.test(p)) return `- ${p}`;
+      return `- ${p}`;
+    }).filter(Boolean).join('\n');
+    return parseFormWidgetSpec(kind, fenceAttrs, body);
+  }
+
+  function serializeSheetFormCell(kind, spec) {
+    const prefix = ({
+      radio: 'radio',
+      vote: 'vote',
+      text: 'text',
+      textarea: 'textarea',
+      number: 'number',
+      enum: 'enum',
+    })[kind] || kind;
+    const configParts = [];
+    const title = String(spec.title || '').trim();
+    if (title) configParts.push(`title=${title}`);
+    if (kind === 'number') {
+      if (spec.min !== '' && spec.min != null) configParts.push(`min=${spec.min}`);
+      if (spec.max !== '' && spec.max != null) configParts.push(`max=${spec.max}`);
+      if (spec.step !== '' && spec.step != null) configParts.push(`step=${spec.step}`);
+    }
+    const head = configParts.length ? `${prefix}[${configParts.join(',')}]` : prefix;
+    const scrub = (value) => String(value ?? '').replace(/\t/g, ' ').replace(/\r?\n/g, ' ');
+    if (kind === 'text' || kind === 'textarea' || kind === 'number') {
+      return `${head}: ${scrub(spec.value).trim()}`;
+    }
+    const parts = (spec.items || []).map((item) => {
+      const label = scrub(item.text).replace(/\|/g, '/').trim();
+      if (kind === 'vote') {
+        const votes = (item.votes || []).join(',');
+        return votes ? `${label}*${votes}` : label;
+      }
+      return item.selected ? `*${label}` : label;
+    });
+    return `${head}: ${parts.join(' | ')}`;
   }
 
   function formWidgetFenceName(match) {
@@ -6345,14 +6466,18 @@
     const choice = kind === 'enum'
       ? ''
       : `<input type="radio" class="form-widget-choice" name="${escapeHtml(group)}"${selected ? ' checked' : ''}${editable ? '' : ' disabled'} aria-label="Choose ${escapeHtml(item.text || 'option')}">`;
-    const label = editable
-      ? `<input type="text" class="form-widget-option-text" value="${escapeHtml(item.text || '')}" placeholder="Option">`
-      : `<span class="form-widget-option-text">${escapeHtml(item.text || '')}</span>`;
-    const voteMeta = kind === 'vote'
-      ? `<span class="form-widget-vote-count">${votes.length}</span><span class="form-widget-voters" data-votes="${escapeHtml(votes.join(','))}">${votes.map((name) => `<span class="form-widget-voter">${escapeHtml(name)}</span>`).join('')}</span>`
-      : '';
+    const labelSpan = `<span class="form-widget-option-label">${escapeHtml(item.text || '') || '&nbsp;'}</span>`;
+    const settingsEdit = editable && (kind === 'radio' || kind === 'enum');
+    const label = settingsEdit
+      ? `${labelSpan}<input type="text" class="form-widget-option-text form-widget-option-edit" value="${escapeHtml(item.text || '')}" placeholder="Option">`
+      : (editable
+        ? `<input type="text" class="form-widget-option-text" value="${escapeHtml(item.text || '')}" placeholder="Option">`
+        : labelSpan);
     const del = editable
       ? '<button type="button" class="form-widget-delete" title="Delete option" aria-label="Delete option">✕</button>'
+      : '';
+    const voteMeta = kind === 'vote'
+      ? `<span class="form-widget-vote-count">${votes.length}</span><span class="form-widget-voters" data-votes="${escapeHtml(votes.join(','))}">${votes.map((name) => `<span class="form-widget-voter">${escapeHtml(name)}</span>`).join('')}</span>`
       : '';
     return [
       `<div class="form-widget-option${selected ? ' is-selected' : ''}" data-item-id="${escapeHtml(item.id || '')}" data-votes="${escapeHtml(votes.join(','))}">`,
@@ -6367,17 +6492,23 @@
   function renderFormWidgetHtml(spec, options = {}) {
     const kind = spec.kind;
     const editable = !!options.editable;
+    const compact = !!options.compact;
+    const sheet = options.sheet;
     const customTitle = String(spec.title || '').trim();
     const title = customTitle || formWidgetDefaultTitle(kind);
     const idx = options.formIndex ?? 0;
     const colClass = spec.col ? ` form-widget--${escapeHtml(spec.col)}` : '';
     const colStyle = spec.colCss ? ` style="--form-widget-bg:${escapeHtml(spec.colCss)}"` : '';
     const kindLabel = formWidgetDefaultTitle(kind);
+    const untitledClass = compact && !customTitle ? ' form-widget--untitled' : '';
+    const compactClass = compact ? ' form-widget--sheet' : '';
+    const showHeader = !compact || customTitle || kind === 'radio' || kind === 'enum' || kind === 'vote';
     let body = '';
     if (kind === 'text') {
       body = `<input type="text" class="form-widget-field form-widget-text" value="${escapeHtml(spec.value || '')}" placeholder="${escapeHtml(title)}"${editable ? '' : ' disabled'}>`;
     } else if (kind === 'textarea') {
-      body = `<textarea class="form-widget-field form-widget-textarea" rows="4" placeholder="${escapeHtml(title)}"${editable ? '' : ' disabled'}>${escapeHtml(spec.value || '')}</textarea>`;
+      const rows = compact ? 2 : 4;
+      body = `<textarea class="form-widget-field form-widget-textarea" rows="${rows}" placeholder="${escapeHtml(title)}"${editable ? '' : ' disabled'}>${escapeHtml(spec.value || '')}</textarea>`;
     } else if (kind === 'number') {
       const min = spec.min !== '' ? ` min="${escapeHtml(spec.min)}"` : '';
       const max = spec.max !== '' ? ` max="${escapeHtml(spec.max)}"` : '';
@@ -6399,13 +6530,26 @@
       ? '<button type="button" class="form-widget-add">+ Add option</button>'
       : '';
     const voteFoot = kind === 'vote' ? '<div class="form-widget-vote-foot"></div>' : '';
+    const sheetAttrs = sheet
+      ? ` data-form-scope="sheet" data-sheet-index="${sheet.sheetIndex}" data-row="${sheet.row}" data-col="${sheet.col}"`
+      : ' data-form-scope="page"';
+    const header = showHeader
+      ? [
+        '<div class="form-widget-header">',
+        `<div class="form-widget-title${editable ? ' form-widget-title--editable' : ''}"${editable ? ' contenteditable="true" spellcheck="false"' : ''}>${escapeHtml(title)}</div>`,
+        '<div class="form-widget-header-actions">',
+        `<div class="form-widget-meta">${escapeHtml(kindLabel)}</div>`,
+        (editable && (kind === 'radio' || kind === 'enum'))
+          ? '<button type="button" class="form-widget-settings-btn" title="Settings" aria-expanded="false" aria-label="Settings">⚙</button>'
+          : '',
+        '</div>',
+        '</div>',
+      ].join('')
+      : '';
 
     return [
-      `<div class="form-widget form-widget--${escapeHtml(kind)}${colClass}${editable ? ' form-widget--editable' : ''}" data-form-index="${idx}" data-form-kind="${escapeHtml(kind)}" data-form-title="${escapeHtml(customTitle)}" data-form-min="${escapeHtml(spec.min)}" data-form-max="${escapeHtml(spec.max)}" data-form-step="${escapeHtml(spec.step)}"${colStyle}>`,
-      '<div class="form-widget-header">',
-      `<div class="form-widget-title${editable ? ' form-widget-title--editable' : ''}"${editable ? ' contenteditable="true" spellcheck="false"' : ''}>${escapeHtml(title)}</div>`,
-      `<div class="form-widget-meta">${escapeHtml(kindLabel)}</div>`,
-      '</div>',
+      `<div class="form-widget form-widget--${escapeHtml(kind)}${colClass}${compactClass}${untitledClass}${editable ? ' form-widget--editable' : ''}" data-form-index="${escapeHtml(String(idx))}" data-form-kind="${escapeHtml(kind)}" data-form-title="${escapeHtml(customTitle)}" data-form-min="${escapeHtml(spec.min)}" data-form-max="${escapeHtml(spec.max)}" data-form-step="${escapeHtml(spec.step)}"${sheetAttrs}${colStyle}>`,
+      header,
       body,
       voteFoot,
       addBtn,
@@ -15808,8 +15952,8 @@ function formatTextWithMarkup(rawText) {
   function formWidgetItemsFromDom(block) {
     return [...block.querySelectorAll('.form-widget-option')].map((row) => ({
       id: row.dataset.itemId || '',
-      text: row.querySelector('input.form-widget-option-text')?.value
-        ?? String(row.querySelector('span.form-widget-option-text')?.textContent || '').trim(),
+      text: row.querySelector('input.form-widget-option-edit, input.form-widget-option-text')?.value
+        ?? String(row.querySelector('.form-widget-option-label, span.form-widget-option-text')?.textContent || '').replace('\u00a0', '').trim(),
       selected: !!row.querySelector('.form-widget-choice:checked') || row.classList.contains('is-selected'),
       votes: String(row.dataset.votes || '').split(',').map((s) => s.trim()).filter(Boolean),
     }));
@@ -15839,8 +15983,64 @@ function formatTextWithMarkup(rawText) {
     if (items.some((item) => item.text === current)) select.value = current;
   }
 
+  function writeFormWidgetMarkdown(updated, oldMarkdown) {
+    if (updated === oldMarkdown) return false;
+    const cm = easyMDE.codemirror;
+    const cursor = cm?.getCursor?.();
+    const scrollInfo = cm?.getScrollInfo?.();
+    const preview = document.getElementById('preview-content');
+    const previewTop = preview?.scrollTop ?? 0;
+    suppressPreviewRefresh += 1;
+    lockEditorPreviewScroll(800);
+    try {
+      easyMDE.value(updated);
+      if (cm && cursor) {
+        try { cm.setCursor(cursor); } catch (_) { /* ignore */ }
+        if (scrollInfo) cm.scrollTo(scrollInfo.left, scrollInfo.top);
+      }
+      if (preview) preview.scrollTop = previewTop;
+      scheduleSave();
+    } finally {
+      setTimeout(() => {
+        suppressPreviewRefresh = Math.max(0, suppressPreviewRefresh - 1);
+        const pane = document.getElementById('preview-content');
+        if (pane) pane.scrollTop = previewTop;
+      }, 80);
+    }
+    return true;
+  }
+
+  function applySheetFormWidgetToMarkdown(block) {
+    const sheetIndex = parseInt(block.dataset.sheetIndex, 10);
+    const row = parseInt(block.dataset.row, 10);
+    const col = parseInt(block.dataset.col, 10);
+    if (![sheetIndex, row, col].every(Number.isFinite)) return;
+    const kind = block.dataset.formKind || 'text';
+    const title = formWidgetTitleFromDom(block);
+    block.dataset.formTitle = title;
+    const items = formWidgetItemsFromDom(block);
+    const value = formWidgetValueFromDom(block, kind, items);
+    const cellValue = serializeSheetFormCell(kind, {
+      title,
+      items,
+      value,
+      min: block.dataset.formMin || '',
+      max: block.dataset.formMax || '',
+      step: block.dataset.formStep || '',
+    });
+    const cell = block.closest('.sheet-cell-form');
+    if (cell) cell.dataset.sheetSource = cellValue;
+    const oldMarkdown = easyMDE.value();
+    const updated = updateSheetCellInMarkdown(oldMarkdown, sheetIndex, row, col, cellValue);
+    writeFormWidgetMarkdown(updated, oldMarkdown);
+  }
+
   function applyFormWidgetDomToMarkdown(block) {
     if (!easyMDE || !block || !userCanEdit) return;
+    if (block.dataset.formScope === 'sheet') {
+      applySheetFormWidgetToMarkdown(block);
+      return;
+    }
     const index = parseInt(block.dataset.formIndex, 10);
     if (!Number.isFinite(index)) return;
     const kind = block.dataset.formKind || formWidgetKind(block.dataset.formKind);
@@ -15858,10 +16058,7 @@ function formatTextWithMarkup(rawText) {
       spec.step = block.dataset.formStep || spec.step;
       return { spec, fenceAttrs };
     });
-    if (updated !== oldMarkdown) {
-      easyMDE.value(updated);
-      scheduleSave();
-    }
+    writeFormWidgetMarkdown(updated, oldMarkdown);
   }
 
   function scheduleFormWidgetMarkdownSync(block) {
@@ -15871,7 +16068,7 @@ function formatTextWithMarkup(rawText) {
 
   function insertFormWidgetOption(block, afterRow = null) {
     const kind = block.dataset.formKind;
-    const idx = parseInt(block.dataset.formIndex, 10) || 0;
+    const idx = block.dataset.formIndex || '0';
     const wrap = document.createElement('div');
     wrap.innerHTML = formWidgetOptionMarkup(kind, { id: `i${Date.now().toString(36)}`, text: '', selected: false, votes: [] }, { editable: true, formIndex: idx });
     const row = wrap.firstElementChild;
@@ -15931,6 +16128,17 @@ function formatTextWithMarkup(rawText) {
       if (!block || !preview.contains(block)) return;
       const kind = block.dataset.formKind;
 
+      const settingsBtn = e.target.closest('.form-widget-settings-btn');
+      if (settingsBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        const open = !block.classList.contains('form-widget--settings-open');
+        block.classList.toggle('form-widget--settings-open', open);
+        settingsBtn.classList.toggle('is-open', open);
+        settingsBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        return;
+      }
+
       const addBtn = e.target.closest('.form-widget-add');
       if (addBtn) {
         e.preventDefault();
@@ -15960,6 +16168,22 @@ function formatTextWithMarkup(rawText) {
         if (row && !e.target.closest('button')) {
           if (!e.target.closest('.form-widget-option-text')) e.preventDefault();
           castFormVote(block, row);
+        }
+        return;
+      }
+
+      if (kind === 'radio') {
+        const row = e.target.closest('.form-widget-option');
+        if (row && !e.target.closest('button, .form-widget-option-edit')) {
+          const check = row.querySelector('.form-widget-choice');
+          if (check && !check.disabled && !check.checked) {
+            check.checked = true;
+            check.focus({ preventScroll: true });
+            block.querySelectorAll('.form-widget-option').forEach((opt) => {
+              opt.classList.toggle('is-selected', !!opt.querySelector('.form-widget-choice:checked'));
+            });
+            applyFormWidgetDomToMarkdown(block);
+          }
         }
       }
     });
@@ -15991,6 +16215,10 @@ function formatTextWithMarkup(rawText) {
       if (!field || !preview.contains(field)) return;
       const block = field.closest('.form-widget');
       if (!block) return;
+      if (field.classList.contains('form-widget-option-edit')) {
+        const span = field.closest('.form-widget-option')?.querySelector('.form-widget-option-label');
+        if (span) span.textContent = field.value || '\u00a0';
+      }
       if (field.classList.contains('form-widget-option-text') && block.dataset.formKind === 'enum') {
         syncEnumSelect(block);
       }
@@ -16005,7 +16233,7 @@ function formatTextWithMarkup(rawText) {
         title.blur();
         return;
       }
-      const field = e.target.closest?.('input.form-widget-option-text');
+      const field = e.target.closest?.('input.form-widget-option-edit, input.form-widget-option-text');
       if (!field || !preview.contains(field)) return;
       const row = field.closest('.form-widget-option');
       const block = field.closest('.form-widget');

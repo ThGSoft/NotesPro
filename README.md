@@ -258,6 +258,7 @@ Column `%` widths are scaled down if their sum exceeds 100%.
 | **Formulas** | A cell starting with `=` is evaluated (see below). |
 | **Format cell** | A cell wrapped in backticks sets formatting for that cell and all following cells until the next format cell (see below). |
 | **Fence attrs** | Optional `{key=value;…}` on the opening fence, e.g. `` ```sheet{width=25%; id=foo} `` — same keys as config/format (column `width`, `id`, `align`, …). |
+| **Form inputs** | A cell starting with `radio:`, `vote:`, `text:`, `textarea:`, `number:`, or `enum:` renders as a form widget (same kinds as page form fences). Options are separated by `\|`. Prefix the chosen option with `*`. Double-click the type label (Radio, Select, …) to edit the cell source. |
 | **Close fence** | End the block with `` ``` `` on its **own line** before the next markdown (headings, text, …). |
 
 ### Sheet config (backtick line)
@@ -444,6 +445,8 @@ On Swiss/German keyboards, `°` and `+` share one key — unshifted selects/adds
 Header cells are editable too. In read-only preview (not editing), cells are not editable. Editing a formula cell replaces the formula with the typed value.
 
 **Images in cells** — any cell (header or data) can contain markdown images. They render as pictures in preview; edit the markdown in the sheet block (not inline in preview).
+
+**Form inputs in cells** — `radio:`, `vote:`, `text:`, `textarea:`, `number:`, and `enum:` cells render as widgets (not plaintext). Click the control to change the value; it saves back to the cell. Double-click the type label to edit the source, or type the syntax into an empty cell and press Enter.
 
 **Inline markdown** — cell text is rendered with inline markup. `**Flug**` shows as **Flug**. Click the cell in preview to edit the source (`**Flug**`). Format-cell backticks (`` `bold;align=center` ``) are unchanged and still set carry-forward style.
 
@@ -836,6 +839,20 @@ Write a remark
 ```
 
 Click a radio or vote option to choose it. Vote stores your username on that option (`Label | alice, bob`); click again to clear your vote. **+ Add option** / **✕** edit the list. Values save on the page, so you need write access.
+
+The same widgets work **inside sheet table cells**. Put the kind at the start of the cell (tabs still separate columns):
+
+```sheet
+Field	Input
+Color	radio: Red | *Green | Blue
+Status	enum: Open | *Doing | Done
+Name	text: Ada
+Count	number[min=0,max=100]: 3
+Notes	textarea: Hello
+Lunch	vote: Pizza | Sushi
+```
+
+Optional title or number bounds go in brackets: `radio[Color]: Red | *Green`, `number[min=0,max=10,step=1]: 3`. Vote tallies use `Pizza*demo,thg`. Click the control to fill it in Preview or Edit. Double-click **Radio** / **Select** / **Vote** on the widget to edit the raw cell.
 
 ### Kanban Gantt
 

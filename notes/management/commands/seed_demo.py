@@ -228,6 +228,18 @@ Done | Define Remote
 - Done
 ```
 
+# Sheet forms
+```sheet
+`id=sheetforms
+Field	Input
+Color	radio: Red | *Green | Blue
+Status	enum: Open | *Doing | Done
+Name	text: Ada
+Count	number[min=0,max=100]: 3
+Notes	textarea: Hello
+Lunch	vote: Pizza | Sushi
+```
+
 # Menu
 ```speisekarte{to=demo;title=Lunch menu;col=warning;tables=1-4}
 # Starters
