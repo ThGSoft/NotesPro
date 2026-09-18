@@ -2100,7 +2100,7 @@
   }
 
   function isPreviewRichBlock(el) {
-    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .md-python, .voice-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .page-tags');
+    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .mindmap-block, .md-news, .md-python, .voice-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .page-tags');
   }
 
   function getPreviewBlockSourceLine(node) {
@@ -5797,6 +5797,7 @@
 
   function renderKanbanBlockHtml(spec, options = {}) {
     const editable = !!options.editable;
+    const draggable = options.draggable != null ? !!options.draggable : editable;
     const customTitle = String(spec.title || '').trim();
     const title = customTitle || 'Kanban';
     const colClass = spec.col ? ` kanban-block--${escapeHtml(spec.col)}` : '';
@@ -5811,8 +5812,11 @@
         const hasNote = !!(card.text || card.image);
         const mdAttr = card.text ? ` data-kanban-markdown="${escapeHtml(card.text)}"` : '';
         const labelAttr = card.label ? ` data-kanban-label="${escapeHtml(card.label)}"` : '';
-        const dragAttr = editable ? ' draggable="true"' : '';
-        const editClass = editable ? ' kanban-card--editable' : '';
+        const dragAttr = draggable ? ' draggable="true"' : '';
+        const editClass = [
+          editable ? ' kanban-card--editable' : '',
+          draggable ? ' kanban-card--draggable' : '',
+        ].join('');
         return [
           `<div class="kanban-card${hasNote ? ' kanban-card--has-note' : ''}${editClass}" data-kanban-card-id="${escapeHtml(card.id)}" data-kanban-col="${escapeHtml(card.col)}"${mdAttr}${labelAttr}${dragAttr}>`,
           kanbanCardMarkup(card),
@@ -5961,7 +5965,190 @@
       const idx = kanbanIndex++;
       return wrapRichPreviewBlock(renderKanbanBlockHtml(spec, {
         editable: !!options.sheetEditable || !!options.kanbanEditable,
+        draggable: !!options.boardDraggable || !!options.sheetEditable || !!options.kanbanEditable,
         kanbanIndex: idx,
+      }));
+    });
+  }
+
+  const CHECKLIST_BLOCK_RE = /```(?:checklist|check-list|todolist|todo-list)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function parseChecklistAlign(raw) {
+    const s = String(raw || '').trim().toLowerCase();
+    if (['right', 'end', 'rtl', 'trailing'].includes(s)) return 'right';
+    return 'left';
+  }
+
+  function parseChecklistItemLine(trimmed) {
+    const task = trimmed.match(/^(?:[-*+]\s+)?\[([ xX])\]\s*(.*)$/);
+    if (task) {
+      return { checked: task[1].toLowerCase() === 'x', text: String(task[2] || '').trim() };
+    }
+    if (/^[☐□]/.test(trimmed)) {
+      return { checked: false, text: trimmed.replace(/^[☐□]\s*/, '').trim() };
+    }
+    if (/^[☑☒✓✔■●★]/.test(trimmed)) {
+      return { checked: true, text: trimmed.replace(/^[☑☒✓✔■●★]\s*/, '').trim() };
+    }
+    return { checked: false, text: trimmed };
+  }
+
+  function parseChecklistSpec(fenceAttrs, body = '') {
+    const config = { ...parseBacktickConfig(`\`${String(fenceAttrs || '').replace(/`/g, '')}\``) };
+    const items = [];
+    let bodyTitle = '';
+    let expectingTitle = true;
+
+    String(body || '').split('\n').forEach((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return;
+      if (expectingTitle) {
+        expectingTitle = false;
+        if (trimmed.match(/^#\s+(.+)/) && !trimmed.startsWith('##')) {
+          bodyTitle = trimmed.replace(/^#\s+/, '').trim();
+          return;
+        }
+        if (trimmed.match(/^title:\s*(.+)/i) && !trimmed.includes('[') && !trimmed.includes('|')) {
+          bodyTitle = trimmed.replace(/^title:\s*/i, '').trim();
+          return;
+        }
+      }
+      if (trimmed.startsWith('`') && trimmed.endsWith('`')) {
+        Object.assign(config, parseBacktickConfig(trimmed));
+        return;
+      }
+      const kv = trimmed.match(/^([A-Za-z_-]+)\s*[:=]\s*(.+)$/);
+      if (kv && !trimmed.includes('[') && !trimmed.includes('|')) {
+        config[kv[1].toLowerCase()] = kv[2].trim();
+        return;
+      }
+      const parsed = parseChecklistItemLine(trimmed);
+      items.push({
+        id: `i${items.length + 1}`,
+        text: parsed.text,
+        checked: parsed.checked,
+      });
+    });
+
+    const colRaw = String(config.col || config.bg || config.color || '').trim().toLowerCase();
+    const panelCols = ['info', 'success', 'warning', 'danger', 'note'];
+    let colTheme = '';
+    let colCss = '';
+    if (panelCols.includes(colRaw)) colTheme = colRaw;
+    else colCss = sanitizeSheetColor(config.col || config.bg || config.color || '');
+
+    return {
+      title: (config.title || config.name || bodyTitle || '').trim(),
+      align: parseChecklistAlign(config.align || config.check || config.checkbox || config.side),
+      items,
+      col: colTheme,
+      colCss,
+    };
+  }
+
+  function serializeChecklistItems(items) {
+    return (items || []).map((item) => {
+      const mark = item.checked ? '- [x]' : '- [ ]';
+      const text = String(item.text || '').replace(/\r?\n/g, ' ');
+      return text ? `${mark} ${text}` : mark;
+    });
+  }
+
+  function buildChecklistFenceBody(spec, fenceAttrs) {
+    const titleInFence = /(?:^|;)\s*title\s*=/i.test(String(fenceAttrs || ''));
+    const titleLine = spec.title && !titleInFence ? `# ${spec.title}` : '';
+    const itemLines = serializeChecklistItems(spec.items || []);
+    const bodyLines = [titleLine, ...itemLines].filter((line) => line != null && line !== '');
+    return bodyLines.length ? `\n${bodyLines.join('\n')}\n` : '\n';
+  }
+
+  function rewriteChecklistBlock(markdown, checklistIndex, mutateFn) {
+    let idx = 0;
+    CHECKLIST_BLOCK_RE.lastIndex = 0;
+    return String(markdown || '').replace(CHECKLIST_BLOCK_RE, (match, fenceAttrs, content = '') => {
+      const thisIndex = idx;
+      idx += 1;
+      if (thisIndex !== checklistIndex) return match;
+      const spec = parseChecklistSpec(fenceAttrs, content);
+      const next = mutateFn({
+        ...spec,
+        items: (spec.items || []).map((item) => ({ ...item })),
+      }, fenceAttrs) || {};
+      const nextSpec = next.spec || spec;
+      const nextAttrs = next.fenceAttrs != null ? next.fenceAttrs : fenceAttrs;
+      const body = buildChecklistFenceBody(nextSpec, nextAttrs);
+      const fence = nextAttrs != null && String(nextAttrs).length
+        ? `checklist{${nextAttrs}}`
+        : 'checklist';
+      return `\`\`\`${fence}${body}\`\`\``;
+    });
+  }
+
+  function checklistItemMarkup(item, { editable = false } = {}) {
+    const checked = !!item.checked;
+    const text = escapeHtml(item.text || '');
+    const check = `<input type="checkbox" class="checklist-check"${checked ? ' checked' : ''}${editable ? '' : ' disabled'} aria-label="Toggle item">`;
+    const body = editable
+      ? `<input type="text" class="checklist-text" value="${text}" placeholder="List item">`
+      : `<span class="checklist-text">${text || '&nbsp;'}</span>`;
+    const del = editable
+      ? '<button type="button" class="checklist-delete" title="Delete item" aria-label="Delete item">✕</button>'
+      : '';
+    return [
+      `<div class="checklist-item${checked ? ' is-checked' : ''}" data-item-id="${escapeHtml(item.id || '')}">`,
+      check,
+      body,
+      del,
+      '</div>',
+    ].join('');
+  }
+
+  function renderChecklistBlockHtml(spec, options = {}) {
+    const editable = !!options.editable;
+    const customTitle = String(spec.title || '').trim();
+    const title = customTitle || 'Checklist';
+    const align = spec.align === 'right' ? 'right' : 'left';
+    const items = spec.items || [];
+    const done = items.filter((item) => item.checked).length;
+    const colClass = spec.col ? ` checklist-block--${escapeHtml(spec.col)}` : '';
+    const colStyle = spec.colCss ? ` style="--checklist-bg:${escapeHtml(spec.colCss)}"` : '';
+    const itemsHtml = items.map((item) => checklistItemMarkup(item, { editable })).join('');
+    const empty = items.length
+      ? ''
+      : '<div class="checklist-empty">No items yet</div>';
+    const addBtn = editable
+      ? '<button type="button" class="checklist-add">+ Add item</button>'
+      : '';
+    const alignBtns = editable
+      ? [
+        '<div class="checklist-align" role="group" aria-label="Checkbox side">',
+        `<button type="button" class="checklist-align-btn${align === 'left' ? ' is-active' : ''}" data-align="left" title="Checkbox left">Left</button>`,
+        `<button type="button" class="checklist-align-btn${align === 'right' ? ' is-active' : ''}" data-align="right" title="Checkbox right">Right</button>`,
+        '</div>',
+      ].join('')
+      : `<div class="checklist-block-meta">${done}/${items.length}</div>`;
+
+    return [
+      `<div class="checklist-block${colClass} checklist-block--align-${align}${editable ? ' checklist-block--editable' : ''}" data-checklist-index="${options.checklistIndex ?? 0}" data-checklist-title="${escapeHtml(customTitle)}" data-checklist-align="${align}"${colStyle}>`,
+      '<div class="checklist-block-header">',
+      `<div class="checklist-block-title${editable ? ' checklist-block-title--editable' : ''}"${editable ? ' contenteditable="true" spellcheck="false"' : ''}>${escapeHtml(title)}</div>`,
+      alignBtns,
+      '</div>',
+      `<div class="checklist-items">${itemsHtml}${empty}</div>`,
+      addBtn,
+      '</div>',
+    ].join('');
+  }
+
+  function parseChecklistBlocks(text, options = {}) {
+    let checklistIndex = 0;
+    CHECKLIST_BLOCK_RE.lastIndex = 0;
+    return text.replace(CHECKLIST_BLOCK_RE, (_, fenceAttrs, content) => {
+      const spec = parseChecklistSpec(fenceAttrs, content);
+      const idx = checklistIndex++;
+      return wrapRichPreviewBlock(renderChecklistBlockHtml(spec, {
+        editable: !!options.checklistEditable || !!options.sheetEditable,
+        checklistIndex: idx,
       }));
     });
   }
@@ -6649,6 +6836,7 @@
 
   function kanbanganttCardMarkup(card, spec, now = Date.now(), options = {}) {
     const editable = !!options.editable;
+    const draggable = options.draggable != null ? !!options.draggable : editable;
     const withCost = spec.withCost !== false;
     const defaultRate = spec.rate || 0;
     const rate = card.rate != null ? card.rate : defaultRate;
@@ -6678,7 +6866,7 @@
       actions.push(`<button type="button" class="kg-action-btn kg-action-stop" data-kg-action="stop" title="Stop">■ Stop</button>`);
     }
 
-    const handleHtml = editable
+    const handleHtml = draggable
       ? `<span class="kg-drag-handle" draggable="true" title="Drag task" aria-label="Drag task">⠿</span>`
       : '';
 
@@ -6706,6 +6894,7 @@
 
   function renderKanbanganttBlockHtml(spec, options = {}) {
     const editable = !!options.editable;
+    const draggable = options.draggable != null ? !!options.draggable : editable;
     const now = Date.now();
     const customTitle = String(spec.title || '').trim();
     const title = customTitle || 'Kanban Gantt';
@@ -6740,7 +6929,10 @@
         const mdAttr = card.text ? ` data-kg-markdown="${escapeHtml(card.text)}"` : '';
         const imageAttr = card.image ? ` data-kg-image="${escapeHtml(card.image)}"` : '';
         const labelAttr = card.label ? ` data-kg-label="${escapeHtml(card.label)}"` : '';
-        const editClass = editable ? ' kg-card--editable' : '';
+        const editClass = [
+          editable ? ' kg-card--editable' : '',
+          draggable ? ' kg-card--draggable' : '',
+        ].join('');
         const startedIso = card.started instanceof Date && !Number.isNaN(card.started.getTime())
           ? card.started.toISOString()
           : '';
@@ -6761,7 +6953,7 @@
           imageAttr,
           labelAttr,
           `>`,
-          kanbanganttCardMarkup(card, spec, now, { editable }),
+          kanbanganttCardMarkup(card, spec, now, { editable, draggable }),
           `</div>`,
         ].join('');
       }).join('');
@@ -6829,6 +7021,7 @@
     if (!spec || !card) return false;
 
     const editable = isPreviewInteractionEnabled();
+    const draggable = isBoardDragEnabled();
     const startedIso = card.started instanceof Date && !Number.isNaN(card.started.getTime())
       ? card.started.toISOString()
       : '';
@@ -6842,6 +7035,7 @@
       `kg-card--${card.status || 'idle'}`,
       (card.text || card.image) ? 'kg-card--has-note' : '',
       editable ? 'kg-card--editable' : '',
+      draggable ? 'kg-card--draggable' : '',
     ].filter(Boolean).join(' ');
     cardEl.dataset.kgCol = card.col;
     cardEl.dataset.kgStatus = card.status || 'idle';
@@ -6858,7 +7052,7 @@
     if (card.label) cardEl.dataset.kgLabel = card.label;
     else delete cardEl.dataset.kgLabel;
 
-    cardEl.innerHTML = kanbanganttCardMarkup(card, spec, Date.now(), { editable });
+    cardEl.innerHTML = kanbanganttCardMarkup(card, spec, Date.now(), { editable, draggable });
 
     const column = [...block.querySelectorAll('.kg-column')].find(c => c.dataset.kgCol === card.col);
     const cardsHost = column?.querySelector('.kg-column-cards');
@@ -7180,6 +7374,7 @@
       const idx = kgIndex++;
       return wrapRichPreviewBlock(renderKanbanganttBlockHtml(spec, {
         editable: !!options.sheetEditable || !!options.kanbanEditable,
+        draggable: !!options.boardDraggable || !!options.sheetEditable || !!options.kanbanEditable,
         kgIndex: idx,
       }));
     });
@@ -10388,7 +10583,7 @@ function formatTextWithMarkup(rawText) {
     if (!root) return;
     root.querySelectorAll('pre').forEach(pre => {
       if (pre.closest('.md-code-block')) return;
-      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .mindmap-block, .md-news, .md-python, .voice-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block')) {
+      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .mindmap-block, .md-news, .md-python, .voice-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block')) {
         return;
       }
       const wrap = document.createElement('div');
@@ -10749,6 +10944,11 @@ function formatTextWithMarkup(rawText) {
       const label = spec.title || 'Kanban';
       return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
     });
+    md = md.replace(/```(?:checklist|check-list|todolist|todo-list)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const spec = parseChecklistSpec(fenceAttrs, '');
+      const label = spec.title || 'Checklist';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
     md = md.replace(/```(?:speisekarte|speise|menukarte|menucard|menu)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
       const cfg = window.NotesProSpeisekarte?.parseFenceAttrs?.(fenceAttrs) || {};
       const label = cfg.title || 'Menu';
@@ -10956,6 +11156,7 @@ function formatTextWithMarkup(rawText) {
       md = parseGanttBlocks(md, options);
       md = parseKanbanganttBlocks(md, options);
       md = parseKanbanBlocks(md, options);
+      md = parseChecklistBlocks(md, options);
       md = parseMindmapBlocks(md, options);
       md = parseCalcsBlocks(md);
       md = parseSudokuBlocks(md);
@@ -11034,6 +11235,14 @@ function formatTextWithMarkup(rawText) {
 
   function isPreviewInteractionEnabled() {
     return userCanEdit && (isEditing || isMobileLayout());
+  }
+
+  function isBoardDragEnabled() {
+    return !!userCanEdit;
+  }
+
+  function isChecklistEditEnabled() {
+    return !!userCanEdit;
   }
 
   function elementScrollTop(container, el) {
@@ -11360,6 +11569,8 @@ function formatTextWithMarkup(rawText) {
 
     const processed = preprocessMarkdown(raw, {
       sheetEditable: isPreviewInteractionEnabled(),
+      boardDraggable: isBoardDragEnabled(),
+      checklistEditable: isChecklistEditEnabled(),
       speisekarteEditable: !!userCanEdit,
       archiveMarkdown: currentPage?.archive || '',
       richBlocks: true,
@@ -12870,6 +13081,344 @@ function formatTextWithMarkup(rawText) {
     };
   }
 
+  const EDITOR_SIGN_PRESETS = [
+    { key: 'empty', label: 'empty', glyph: '☐', title: 'Empty checkbox' },
+    { key: 'checked', label: 'checked', glyph: '☑', title: 'Checked checkbox' },
+    { key: 'crossed', label: 'crossed', glyph: '☒', title: 'Crossed checkbox' },
+    { key: 'check', label: 'check', glyph: '✓', title: 'Check mark' },
+    { key: 'heavycheck', label: 'heavy check', glyph: '✔', title: 'Heavy check mark' },
+    { key: 'square', label: 'square', glyph: '□', title: 'Empty square' },
+    { key: 'filledsquare', label: 'filled square', glyph: '■', title: 'Filled square' },
+    { key: 'circle', label: 'circle', glyph: '○', title: 'Empty circle' },
+    { key: 'filledcircle', label: 'filled circle', glyph: '●', title: 'Filled circle' },
+    { key: 'star', label: 'star', glyph: '☆', title: 'Empty star' },
+    { key: 'filledstar', label: 'filled star', glyph: '★', title: 'Filled star' },
+    { key: 'taskempty', label: 'empty task', glyph: '- [ ]', insert: '- [ ] ', title: 'Empty checklist item', task: true },
+    { key: 'taskchecked', label: 'checked task', glyph: '- [x]', insert: '- [x] ', title: 'Checked checklist item', task: true },
+  ];
+
+  const EDITOR_EMOJI_FACES = [
+    ["😀", "Grinning Face"],
+    ["😁", "Beaming Face With Smiling Eyes"],
+    ["😂", "Face With Tears of Joy"],
+    ["🤣", "Rolling on the Floor Laughing"],
+    ["😃", "Grinning Face With Big Eyes"],
+    ["😄", "Grinning Face With Smiling Eyes"],
+    ["😅", "Grinning Face With Sweat"],
+    ["😆", "Grinning Squinting Face"],
+    ["😉", "Winking Face"],
+    ["😊", "Smiling Face With Smiling Eyes"],
+    ["😋", "Face Savoring Food"],
+    ["😎", "Smiling Face With Sunglasses"],
+    ["😍", "Smiling Face With Heart-Eyes"],
+    ["😘", "Face Blowing a Kiss"],
+    ["😗", "Kissing Face"],
+    ["😙", "Kissing Face With Smiling Eyes"],
+    ["😚", "Kissing Face With Closed Eyes"],
+    ["🙂", "Slightly Smiling Face"],
+    ["🤗", "Hugging Face"],
+    ["🤩", "Star-Struck"],
+    ["🤔", "Thinking Face"],
+    ["🤨", "Face With Raised Eyebrow"],
+    ["😐", "Neutral Face"],
+    ["😑", "Expressionless Face"],
+    ["😶", "Face Without Mouth"],
+    ["🙄", "Face With Rolling Eyes"],
+    ["😏", "Smirking Face"],
+    ["😣", "Persevering Face"],
+    ["😥", "Sad but Relieved Face"],
+    ["😮", "Face With Open Mouth"],
+    ["🤐", "Zipper-Mouth Face"],
+    ["😯", "Hushed Face"],
+    ["😪", "Sleepy Face"],
+    ["😫", "Tired Face"],
+    ["😴", "Sleeping Face"],
+    ["😌", "Relieved Face"],
+    ["😛", "Face With Tongue"],
+    ["😜", "Winking Face With Tongue"],
+    ["😝", "Squinting Face With Tongue"],
+    ["🤤", "Drooling Face"],
+    ["😒", "Unamused Face"],
+    ["😓", "Downcast Face With Sweat"],
+    ["😔", "Pensive Face"],
+    ["😕", "Confused Face"],
+    ["🙃", "Upside-Down Face"],
+    ["🤑", "Money-Mouth Face"],
+    ["😲", "Astonished Face"],
+    ["☹", "Frowning Face"],
+    ["🙁", "Slightly Frowning Face"],
+    ["😖", "Confounded Face"],
+    ["😞", "Disappointed Face"],
+    ["😟", "Worried Face"],
+    ["😤", "Face With Steam From Nose"],
+    ["😢", "Crying Face"],
+    ["😭", "Loudly Crying Face"],
+    ["😦", "Frowning Face With Open Mouth"],
+    ["😧", "Anguished Face"],
+    ["😨", "Fearful Face"],
+    ["😩", "Weary Face"],
+    ["🤯", "Exploding Head"],
+    ["😬", "Grimacing Face"],
+    ["😰", "Anxious Face With Sweat"],
+    ["😱", "Face Screaming in Fear"],
+    ["😳", "Flushed Face"],
+    ["🤪", "Zany Face"],
+    ["😵", "Dizzy Face"],
+    ["😡", "Pouting Face"],
+    ["😠", "Angry Face"],
+    ["🤬", "Face With Symbols on Mouth"],
+    ["😷", "Face With Medical Mask"],
+    ["🤒", "Face With Thermometer"],
+    ["🤕", "Face With Head-Bandage"],
+    ["🤢", "Nauseated Face"],
+    ["🤮", "Face Vomiting"],
+    ["🤧", "Sneezing Face"],
+    ["😇", "Smiling Face With Halo"],
+    ["🤠", "Cowboy Hat Face"],
+    ["🤡", "Clown Face"],
+    ["🤥", "Lying Face"],
+    ["🤫", "Shushing Face"],
+    ["🤭", "Face With Hand Over Mouth"],
+    ["🧐", "Face With Monocle"],
+    ["🤓", "Nerd Face"],
+    ["😈", "Red Devil With Horns"],
+    ["👿", "Red Devil Face With Horns"],
+    ["👹", "Ogre"],
+    ["👺", "Goblin"],
+    ["💀", "Skull"],
+    ["👻", "Ghost"],
+    ["👽", "Alien"],
+    ["🤖", "Robot Face"],
+    ["💩", "Pile of Poo"],
+  ];
+  const EDITOR_EMOJI_MORE = [
+    "🌀🌁🌂🌃🌄🌅🌆🌇🌈🌉🌊🌋🌌🌍🌎🌏🌐🌑🌒🌓🌔🌕🌖🌗🌘🌙🌚🌛🌜🌝🌞🌟🌠🌡🌤🌥🌦🌧🌨🌩🌪🌫🌬🌭🌮🌯🌰🌱🌲🌳",
+    "🌴🌵🌶🌷🌸🌹🌺🌻🌼🌽🌾🌿🍀🍁🍂🍃🍄🍅🍆🍇🍈🍉🍊🍋🍌🍍🍎🍏🍐🍑🍒🍓🍔🍕🍖🍗🍘🍙🍚🍛🍜🍝🍞🍟🍠🍡🍢🍣🍤🍥",
+    "🍦🍧🍨🍩🍪🍫🍬🍭🍮🍯🍰🍱🍲🍳🍴🍵🍶🍷🍸🍹🍺🍻🍼🍽🍾🍿🎀🎁🎂🎃🎄🎅🎆🎇🎈🎉🎊🎋🎌🎍🎎🎏🎐🎑🎒🎓🎖🎗🎙🎚",
+    "🎛🎞🎟🎠🎡🎢🎣🎤🎥🎦🎧🎨🎩🎪🎫🎬🎭🎮🎯🎰🎱🎲🎳🎴🎵🎶🎷🎸🎹🎺🎻🎼🎽🎾🎿🏀🏁🏂🏃🏄🏅🏆🏇🏈🏉🏊🏋🏌🏍🏎",
+    "🏏🏐🏑🏒🏓🏔🏕🏖🏗🏘🏙🏚🏛🏜🏝🏞🏟🏠🏡🏢🏣🏤🏥🏦🏧🏨🏩🏪🏫🏬🏭🏮🏯🏰🏳🏴🏵🏷🏸🏹🏺🐀🐁🐂🐃🐄🐅🐆🐇🐈",
+    "🐉🐊🐋🐌🐍🐎🐏🐐🐑🐒🐓🐔🐕🐖🐗🐘🐙🐚🐛🐜🐝🐞🐟🐠🐡🐢🐣🐤🐥🐦🐧🐨🐩🐪🐫🐬🐭🐮🐯🐰🐱🐲🐳🐴🐵🐶🐷🐸🐹🐺",
+    "🐻🐼🐽🐾🐿👀👁👂👃👄👅👆👇👈👉👊👋👌👍👎👏👐👑👒👓👔👕👖👗👘👙👚👛👜👝👞👟👠👡👢👣👤👥👦👧👨👩👪👫👬",
+    "👭👮👯👰👱👲👳👴👵👶👷👸👼👾💁💂💃💄💅💆💇💈💉💊💋💌💍💎💏💐💑💒💓💔💕💖💗💘💙💚💛💜💝💞💟💠💡💢💣💤",
+    "💥💦💧💨💪💫💬💭💮💯💰💱💲💳💴💵💶💷💸💹💺💻💼💽💾💿📀📁📂📃📄📅📆📇📈📉📊📋📌📍📎📏📐📑📒📓📔📕📖📗",
+    "📘📙📚📛📜📝📞📟📠📡📢📣📤📥📦📧📨📩📪📫📬📭📮📯📰📱📲📳📴📵📶📷📸📹📺📻📼📽📾📿🔀🔁🔂🔃🔄🔅🔆🔇🔈🔉",
+    "🔊🔋🔌🔍🔎🔏🔐🔑🔒🔓🔔🔕🔖🔗🔘🔙🔚🔛🔜🔝🔞🔟🔠🔡🔢🔣🔤🔥🔦🔧🔨🔩🔪🔫🔬🔭🔮🔯🔰🔱🔲🔳🔴🔵🔶🔷🔸🔹🔺🔻",
+    "🔼🔽🕉🕊🕋🕌🕍🕎🕐🕑🕒🕓🕔🕕🕖🕗🕘🕙🕚🕛🕜🕝🕞🕟🕠🕡🕢🕣🕤🕥🕦🕧🕯🕰🕳🕴🕵🕶🕷🕸🕹🕺🖇🖊🖋🖌🖍🖐🖕🖖",
+    "🖤🖥🖨🖱🖲🖼🗂🗃🗄🗑🗒🗓🗜🗝🗞🗡🗣🗨🗯🗳🗺🗻🗼🗽🗾🗿😸😹😺😻😼😽😾😿🙀🙅🙆🙇🙈🙉🙊🙋🙌🙍🙎🙏🚀🚁🚂🚃",
+    "🚄🚅🚆🚇🚈🚉🚊🚋🚌🚍🚎🚏🚐🚑🚒🚓🚔🚕🚖🚗🚘🚙🚚🚛🚜🚝🚞🚟🚠🚡🚢🚣🚤🚥🚦🚧🚨🚩🚪🚫🚬🚭🚮🚯🚰🚱🚲🚳🚴🚵",
+    "🚶🚷🚸🚹🚺🚻🚼🚽🚾🚿🛀🛁🛂🛃🛄🛅🛋🛌🛍🛎🛏🛐🛑🛒🛠🛡🛢🛣🛤🛥🛩🛫🛬🛰🛳🛴🛵🛶",
+  ].join('');
+
+  function prefixLinesWithTaskMark(text, prefix) {
+    const mark = String(prefix || '').replace(/\s+$/, '');
+    return String(text || '').split('\n').map((line) => {
+      const body = line.replace(/^\s*(?:[-*+]\s+(?:\[[ xX]\]\s*)?)?/, '');
+      return body ? `${mark} ${body}` : `${mark} `;
+    }).join('\n');
+  }
+
+  function insertEditorSign(editor, preset) {
+    const insert = preset.insert != null ? preset.insert : `${preset.glyph} `;
+    const field = getFocusedMarkdownModalField();
+    if (field) {
+      const saved = modalFieldSelections.get(field);
+      field.focus();
+      if (saved) {
+        try {
+          field.setSelectionRange(saved.start, saved.end);
+        } catch (_) { /* ignore */ }
+      }
+      const start = field.selectionStart ?? 0;
+      const end = field.selectionEnd ?? start;
+      const value = String(field.value || '');
+      const selected = value.slice(start, end);
+      const next = (preset.task && selected.includes('\n'))
+        ? prefixLinesWithTaskMark(selected, insert)
+        : insert + selected;
+      field.value = value.slice(0, start) + next + value.slice(end);
+      const cursor = start + next.length;
+      field.focus();
+      field.setSelectionRange(selected ? start : cursor, cursor);
+      rememberModalFieldSelection(field);
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+      return;
+    }
+    const cm = editor?.codemirror || easyMDE?.codemirror;
+    if (!cm) return;
+    const selected = cm.getSelection();
+    const next = (preset.task && selected.includes('\n'))
+      ? prefixLinesWithTaskMark(selected, insert)
+      : insert + selected;
+    cm.replaceSelection(next, selected ? 'around' : 'end');
+    cm.focus();
+    scheduleSave();
+    schedulePreviewRefresh();
+  }
+
+  function insertEditorEmojiHtml(editor, glyph) {
+    insertEditorSign(editor, {
+      glyph,
+      insert: `<span style="font-size:350%">${glyph}</span>`,
+    });
+  }
+
+  let editorEmojiPickerEditor = null;
+  let editorEmojiPickerIgnoreClose = false;
+
+  function emojiPickerEditor() {
+    return editorEmojiPickerEditor || easyMDE;
+  }
+
+  function hideEditorEmojiPicker() {
+    document.getElementById('editor-emoji-picker')?.classList.add('d-none');
+    editorEmojiPickerEditor = null;
+  }
+
+  function positionEditorEmojiPicker() {
+    const picker = document.getElementById('editor-emoji-picker');
+    const toolbar = document.querySelector('.EasyMDEContainer .editor-toolbar');
+    const trigger = toolbar?.querySelector('button.signs-toolbar-icon');
+    if (!picker) return;
+    const margin = 8;
+    const rect = (trigger || toolbar)?.getBoundingClientRect();
+    picker.classList.remove('d-none');
+    const pickerRect = picker.getBoundingClientRect();
+    let left = rect ? rect.left : margin;
+    let top = rect ? rect.bottom + 4 : margin;
+    if (left + pickerRect.width > window.innerWidth - margin) {
+      left = window.innerWidth - pickerRect.width - margin;
+    }
+    if (top + pickerRect.height > window.innerHeight - margin) {
+      top = (rect ? rect.top : pickerRect.height) - pickerRect.height - 4;
+    }
+    if (left < margin) left = margin;
+    if (top < margin) top = margin;
+    picker.style.top = `${Math.round(top)}px`;
+    picker.style.left = `${Math.round(left)}px`;
+  }
+
+  function renderEditorEmojiPickerGrid() {
+    const checks = document.getElementById('editor-emoji-checks');
+    const grid = document.getElementById('editor-emoji-grid');
+    if (checks && checks.dataset.ready !== '1') {
+      checks.replaceChildren();
+      EDITOR_SIGN_PRESETS.forEach((preset) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'editor-emoji-check';
+        btn.textContent = preset.glyph;
+        btn.title = preset.title;
+        btn.dataset.signKey = preset.key;
+        btn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          insertEditorSign(emojiPickerEditor(), preset);
+          hideEditorEmojiPicker();
+        });
+        checks.appendChild(btn);
+      });
+      checks.dataset.ready = '1';
+    }
+    if (!grid || grid.dataset.ready === '1') return;
+    const frag = document.createDocumentFragment();
+    const addCell = (glyph, name) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'editor-emoji-cell';
+      btn.textContent = glyph;
+      btn.title = name || glyph;
+      btn.dataset.glyph = glyph;
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        insertEditorEmojiHtml(emojiPickerEditor(), glyph);
+        hideEditorEmojiPicker();
+      });
+      frag.appendChild(btn);
+    };
+    EDITOR_EMOJI_FACES.forEach(([glyph, name]) => addCell(glyph, name));
+    [...EDITOR_EMOJI_MORE].forEach((glyph) => addCell(glyph, glyph));
+    grid.appendChild(frag);
+    grid.dataset.ready = '1';
+  }
+
+  function openEditorEmojiPicker(editor) {
+    hideEditorColorPicker();
+    const picker = document.getElementById('editor-emoji-picker');
+    if (!picker) return;
+    editorEmojiPickerEditor = editor || easyMDE;
+    renderEditorEmojiPickerGrid();
+    picker.classList.remove('d-none');
+    positionEditorEmojiPicker();
+    editorEmojiPickerIgnoreClose = true;
+    setTimeout(() => { editorEmojiPickerIgnoreClose = false; }, 0);
+  }
+
+  function eventElement(target) {
+    if (!target) return null;
+    return target.nodeType === 1 ? target : target.parentElement;
+  }
+
+  function applyEmojiPickerClick(target) {
+    const picker = document.getElementById('editor-emoji-picker');
+    const el = eventElement(target);
+    if (!picker || picker.classList.contains('d-none') || !el) return false;
+    if (el.closest('#editor-emoji-picker-close')) {
+      hideEditorEmojiPicker();
+      return true;
+    }
+    const checkBtn = el.closest('#editor-emoji-checks [data-sign-key]');
+    if (checkBtn) {
+      const preset = EDITOR_SIGN_PRESETS.find((p) => p.key === checkBtn.dataset.signKey);
+      if (preset) insertEditorSign(emojiPickerEditor(), preset);
+      hideEditorEmojiPicker();
+      return true;
+    }
+    const cell = el.closest('#editor-emoji-grid .editor-emoji-cell');
+    if (cell?.dataset.glyph) {
+      insertEditorEmojiHtml(emojiPickerEditor(), cell.dataset.glyph);
+      hideEditorEmojiPicker();
+      return true;
+    }
+    return false;
+  }
+
+  function initEditorEmojiPicker() {
+    const pickerEl = document.getElementById('editor-emoji-picker');
+    document.getElementById('editor-emoji-picker-close')
+      ?.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        hideEditorEmojiPicker();
+      });
+    pickerEl?.addEventListener('click', (e) => {
+      applyEmojiPickerClick(e.target);
+    });
+    document.addEventListener('mousedown', (e) => {
+      if (editorEmojiPickerIgnoreClose) return;
+      const picker = document.getElementById('editor-emoji-picker');
+      const el = eventElement(e.target);
+      if (!picker || picker.classList.contains('d-none')) return;
+      if (picker.contains(e.target) || picker.contains(el)) return;
+      if (el?.closest('.editor-toolbar .signs-toolbar-icon')) return;
+      hideEditorEmojiPicker();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      const picker = document.getElementById('editor-emoji-picker');
+      if (picker && !picker.classList.contains('d-none')) hideEditorEmojiPicker();
+    });
+  }
+
+  function buildSignsToolbarDropdown() {
+    return {
+      name: 'signsMenu',
+      className: 'fa fa-smile-o signs-toolbar-icon no-disable',
+      title: 'Insert checkbox / emoji',
+      action: (editor) => openEditorEmojiPicker(editor || easyMDE),
+    };
+  }
+
   function buildHorizontalRuleToolbarDropdown() {
     return {
       name: 'horizontalRuleMenu',
@@ -12983,6 +13532,7 @@ function formatTextWithMarkup(rawText) {
     const title = document.getElementById('editor-color-picker-title');
     if (!picker || !title) return;
 
+    hideEditorEmojiPicker();
     editorColorPickerState = { editor, styleProp };
     title.textContent = styleProp === 'color' ? 'Text color' : 'Background color';
     renderEditorColorPickerGrid();
@@ -14533,7 +15083,7 @@ function formatTextWithMarkup(rawText) {
     if (updated !== oldMarkdown) {
       easyMDE.value(updated);
       scheduleSave();
-      schedulePreviewRefresh();
+      schedulePreviewRefresh({ force: true });
     }
   }
 
@@ -14561,8 +15111,8 @@ function formatTextWithMarkup(rawText) {
     });
 
     preview.addEventListener('dragstart', e => {
-      if (!isPreviewInteractionEnabled()) return;
-      const card = e.target.closest?.('.kanban-card--editable');
+      if (!isBoardDragEnabled()) return;
+      const card = e.target.closest?.('.kanban-card--draggable, .kanban-card--editable');
       if (!card || !preview.contains(card)) return;
       const block = card.closest('.kanban-block');
       const kanbanIndex = parseInt(block?.dataset?.kanbanIndex, 10);
@@ -14592,7 +15142,7 @@ function formatTextWithMarkup(rawText) {
     });
 
     preview.addEventListener('dragover', e => {
-      if (!kanbanDragState || !isPreviewInteractionEnabled()) return;
+      if (!kanbanDragState || !isBoardDragEnabled()) return;
       updatePreviewDragAutoScroll(e.clientX, e.clientY);
       const column = e.target.closest?.('.kanban-column');
       if (!column || !preview.contains(column)) {
@@ -14621,7 +15171,7 @@ function formatTextWithMarkup(rawText) {
     });
 
     preview.addEventListener('drop', e => {
-      if (!kanbanDragState || !isPreviewInteractionEnabled()) return;
+      if (!kanbanDragState || !isBoardDragEnabled()) return;
       const column = e.target.closest?.('.kanban-column');
       if (!column || !preview.contains(column)) return;
       e.preventDefault();
@@ -14659,6 +15209,192 @@ function formatTextWithMarkup(rawText) {
     document.getElementById('kanban-title-clear-btn')?.addEventListener('click', () => {
       saveKanbanTitleFromModal({ clear: true });
     });
+  }
+
+  let checklistSyncTimer = null;
+
+  function checklistItemsFromDom(block) {
+    return [...block.querySelectorAll('.checklist-item')].map((row) => ({
+      id: row.dataset.itemId || '',
+      text: row.querySelector('input.checklist-text')?.value
+        ?? String(row.querySelector('span.checklist-text')?.textContent || '').replace('\u00a0', ''),
+      checked: !!row.querySelector('.checklist-check')?.checked,
+    }));
+  }
+
+  function applyChecklistDomToMarkdown(block) {
+    if (!easyMDE || !block || !userCanEdit) return;
+    const index = parseInt(block.dataset.checklistIndex, 10);
+    if (!Number.isFinite(index)) return;
+    const items = checklistItemsFromDom(block);
+    const titleEl = block.querySelector('.checklist-block-title');
+    const rawTitle = String(titleEl?.textContent || '').trim();
+    const title = rawTitle === 'Checklist' && !block.dataset.checklistTitle ? '' : rawTitle;
+    block.dataset.checklistTitle = title;
+    const align = block.dataset.checklistAlign === 'right' ? 'right' : 'left';
+    const oldMarkdown = easyMDE.value();
+    const updated = rewriteChecklistBlock(oldMarkdown, index, (spec, fenceAttrs) => {
+      spec.items = items;
+      spec.title = title;
+      spec.align = align;
+      const nextAttrs = setGanttFenceAttr(String(fenceAttrs || ''), 'align', align);
+      return { spec, fenceAttrs: nextAttrs };
+    });
+    if (updated !== oldMarkdown) {
+      easyMDE.value(updated);
+      scheduleSave();
+    }
+  }
+
+  function scheduleChecklistMarkdownSync(block) {
+    clearTimeout(checklistSyncTimer);
+    checklistSyncTimer = setTimeout(() => applyChecklistDomToMarkdown(block), 250);
+  }
+
+  function newChecklistItemId() {
+    return `i${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
+  }
+
+  function insertChecklistItemRow(block, afterRow = null, item = null) {
+    const next = item || { id: newChecklistItemId(), text: '', checked: false };
+    const wrap = document.createElement('div');
+    wrap.innerHTML = checklistItemMarkup(next, { editable: true });
+    const row = wrap.firstElementChild;
+    const list = block.querySelector('.checklist-items');
+    if (!list || !row) return null;
+    list.querySelector('.checklist-empty')?.remove();
+    if (afterRow?.parentNode === list) afterRow.after(row);
+    else list.appendChild(row);
+    return row;
+  }
+
+  function setChecklistAlign(block, align) {
+    const next = align === 'right' ? 'right' : 'left';
+    block.dataset.checklistAlign = next;
+    block.classList.toggle('checklist-block--align-right', next === 'right');
+    block.classList.toggle('checklist-block--align-left', next === 'left');
+    block.querySelectorAll('.checklist-align-btn').forEach((btn) => {
+      btn.classList.toggle('is-active', btn.dataset.align === next);
+    });
+    applyChecklistDomToMarkdown(block);
+  }
+
+  function initChecklistEditors() {
+    const preview = document.getElementById('preview-content');
+    if (!preview || preview.dataset.checklistEditBound === '1') return;
+    preview.dataset.checklistEditBound = '1';
+
+    preview.addEventListener('click', (e) => {
+      if (!isChecklistEditEnabled()) return;
+      const block = e.target.closest?.('.checklist-block');
+      if (!block || !preview.contains(block)) return;
+
+      const alignBtn = e.target.closest('.checklist-align-btn');
+      if (alignBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        setChecklistAlign(block, alignBtn.dataset.align);
+        return;
+      }
+
+      const addBtn = e.target.closest('.checklist-add');
+      if (addBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        const row = insertChecklistItemRow(block);
+        applyChecklistDomToMarkdown(block);
+        row?.querySelector('.checklist-text')?.focus();
+        return;
+      }
+
+      const delBtn = e.target.closest('.checklist-delete');
+      if (delBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        const row = delBtn.closest('.checklist-item');
+        row?.remove();
+        const list = block.querySelector('.checklist-items');
+        if (list && !list.querySelector('.checklist-item')) {
+          list.innerHTML = '<div class="checklist-empty">No items yet</div>';
+        }
+        applyChecklistDomToMarkdown(block);
+        return;
+      }
+
+      const item = e.target.closest('.checklist-item');
+      if (item && !e.target.closest('input, button, textarea')) {
+        const check = item.querySelector('.checklist-check');
+        if (check && !check.disabled) {
+          e.preventDefault();
+          check.checked = !check.checked;
+          item.classList.toggle('is-checked', check.checked);
+          applyChecklistDomToMarkdown(block);
+        }
+      }
+    });
+
+    preview.addEventListener('change', (e) => {
+      if (!isChecklistEditEnabled()) return;
+      const check = e.target.closest?.('.checklist-check');
+      if (!check || !preview.contains(check)) return;
+      const row = check.closest('.checklist-item');
+      const block = check.closest('.checklist-block');
+      if (!row || !block) return;
+      row.classList.toggle('is-checked', check.checked);
+      applyChecklistDomToMarkdown(block);
+    });
+
+    preview.addEventListener('input', (e) => {
+      if (!isChecklistEditEnabled()) return;
+      const field = e.target.closest?.('.checklist-text, .checklist-block-title');
+      if (!field || !preview.contains(field)) return;
+      const block = field.closest('.checklist-block');
+      if (block) scheduleChecklistMarkdownSync(block);
+    });
+
+    preview.addEventListener('keydown', (e) => {
+      if (!isChecklistEditEnabled()) return;
+      const title = e.target.closest?.('.checklist-block-title--editable');
+      if (title && preview.contains(title) && e.key === 'Enter') {
+        e.preventDefault();
+        title.blur();
+        return;
+      }
+      const field = e.target.closest?.('input.checklist-text');
+      if (!field || !preview.contains(field)) return;
+      const row = field.closest('.checklist-item');
+      const block = field.closest('.checklist-block');
+      if (!row || !block) return;
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const next = insertChecklistItemRow(block, row);
+        applyChecklistDomToMarkdown(block);
+        next?.querySelector('.checklist-text')?.focus();
+        return;
+      }
+      if (e.key === 'Backspace' && !field.value && block.querySelectorAll('.checklist-item').length > 1) {
+        e.preventDefault();
+        const prev = row.previousElementSibling?.classList.contains('checklist-item')
+          ? row.previousElementSibling
+          : row.nextElementSibling;
+        row.remove();
+        applyChecklistDomToMarkdown(block);
+        const prevField = prev?.querySelector?.('.checklist-text');
+        if (prevField) {
+          prevField.focus();
+          const len = prevField.value.length;
+          prevField.setSelectionRange(len, len);
+        }
+      }
+    });
+
+    preview.addEventListener('blur', (e) => {
+      if (!isChecklistEditEnabled()) return;
+      const title = e.target.closest?.('.checklist-block-title--editable');
+      if (!title || !preview.contains(title)) return;
+      const block = title.closest('.checklist-block');
+      if (block) applyChecklistDomToMarkdown(block);
+    }, true);
   }
 
   let kgCardContext = null;
@@ -15113,9 +15849,8 @@ function formatTextWithMarkup(rawText) {
     scheduleSave();
     if (refreshKgPreviewCard(cardId, kgIndex)) {
       restorePreviewScrollPosition(document.getElementById('preview-content'));
-    } else {
-      schedulePreviewRefresh();
     }
+    schedulePreviewRefresh({ force: true });
   }
 
   function tickKgRunningCards() {
@@ -15240,10 +15975,10 @@ function formatTextWithMarkup(rawText) {
     });
 
     preview.addEventListener('dragstart', e => {
-      if (!isPreviewInteractionEnabled()) return;
+      if (!isBoardDragEnabled()) return;
       const handle = e.target.closest?.('.kg-drag-handle');
       if (!handle || !preview.contains(handle)) return;
-      const card = handle.closest('.kg-card--editable');
+      const card = handle.closest('.kg-card--draggable, .kg-card--editable');
       if (!card || !preview.contains(card)) return;
       const block = card.closest('.kg-block');
       const kgIndex = parseInt(block?.dataset?.kgIndex, 10);
@@ -15273,7 +16008,7 @@ function formatTextWithMarkup(rawText) {
     });
 
     preview.addEventListener('dragover', e => {
-      if (!kgDragState || !isPreviewInteractionEnabled()) return;
+      if (!kgDragState || !isBoardDragEnabled()) return;
       updatePreviewDragAutoScroll(e.clientX, e.clientY);
       const column = e.target.closest?.('.kg-column');
       if (!column || !preview.contains(column)) {
@@ -15305,7 +16040,7 @@ function formatTextWithMarkup(rawText) {
     });
 
     preview.addEventListener('drop', e => {
-      if (!kgDragState || !isPreviewInteractionEnabled()) return;
+      if (!kgDragState || !isBoardDragEnabled()) return;
       const column = e.target.closest?.('.kg-column');
       if (!column || !preview.contains(column)) return;
       e.preventDefault();
@@ -15926,6 +16661,20 @@ function formatTextWithMarkup(rawText) {
           title: 'Insert kanban',
         },
         {
+          name: 'insert-checklist',
+          action: (editor) => {
+            const body = [
+              '# Checklist',
+              '- [ ] First item',
+              '- [ ] Second item',
+              '- [x] Done item',
+            ].join('\n');
+            insertFenceBlock(editor, 'checklist{align=left;col=info}', body);
+          },
+          className: 'fa fa-check-square-o',
+          title: 'Insert checklist',
+        },
+        {
           name: 'insert-speisekarte',
           action: (editor) => {
             const body = [
@@ -16154,6 +16903,7 @@ function formatTextWithMarkup(rawText) {
           className: "fa fa-level-down fa-rotate-90", // Icon das wie ein Return-Pfeil aussieht
           title: "Zeilenumbruch (br)",
         },
+        buildSignsToolbarDropdown(),
         {
           name: "indent",
           action: () => editorIndent(),
@@ -17031,18 +17781,19 @@ function formatTextWithMarkup(rawText) {
   }
 
   function scheduleSave() {
-    if (!currentPageId || !isPreviewInteractionEnabled()) return;
+    if (!currentPageId || !userCanEdit) return;
     clearTimeout(autosaveTimer);
     setStatus('Typing...');
     autosaveTimer = setTimeout(savePage, 700);
   }
 
-  function schedulePreviewRefresh() {
-    if (!isPreviewInteractionEnabled()) return;
+  function schedulePreviewRefresh(opts = {}) {
+    if (!userCanEdit) return;
+    if (!opts.force && !isPreviewInteractionEnabled()) return;
     if (suppressPreviewRefresh) return;
     const active = document.activeElement;
     if (active?.classList?.contains('sheet-cell-editable')) return;
-    if (active?.closest?.('.voice-block')) return;
+    if (active?.closest?.('.voice-block, .checklist-block')) return;
     capturePreviewScrollPosition();
     clearTimeout(previewRefreshTimer);
     previewRefreshTimer = setTimeout(() => {
@@ -18628,6 +19379,7 @@ function formatTextWithMarkup(rawText) {
   sortWorkspaceSelect();
   bindUi();
   initEditorColorPicker();
+  initEditorEmojiPicker();
   try {
     initEditors();
   } catch (err) {
@@ -18647,6 +19399,7 @@ function formatTextWithMarkup(rawText) {
   initLeavePageGuard();
   initGanttNoteEditors();
   initKanbanEditors();
+  initChecklistEditors();
   initKanbanganttEditors();
   initMindmapEditors();
   initChartInsertModal();

@@ -564,6 +564,14 @@ Click a preset to apply it to the selection (or current line).
 
 **Color palette** opens a floating picker with the presets plus orange, teal, purple, pink, indigo, secondary, and dark. **Click** a swatch to preview; **double-click** to apply and close. Use **Custom** + **Apply** for any other color.
 
+#### Checkbox and emoji signs
+
+**Signs** (smile icon) on the second toolbar row opens a **10-column** emoji table.
+
+The top row still has checkbox marks (☐ empty, ☑ checked, ☒ crossed, ✓ / ✔, squares, circles, stars) and **empty task** / **checked task** (`- [ ]` / `- [x]`).
+
+The grid lists named faces first, then nature, food, sports, places, animals, objects, and transport. Click a cell to insert `<span style="font-size:350%">😀</span>` at the cursor. Hover a face for its name.
+
 #### Indent and outdent
 
 Toolbar **indent** / **outdent** buttons, or `Tab` / `Shift+Tab` in the markdown editor.
@@ -755,7 +763,28 @@ Each card line is:
 
 You can also group with `## Column` headings and write `Label | note` under each.
 
-Use the toolbar **kanban** button to insert a sample board. In **Edit** mode, **drag cards** between columns (or reorder within a column), click the **title** to edit name/columns, or click a **card** to edit label, column, note, and image.
+Use the toolbar **kanban** button to insert a sample board. **Drag cards** between columns (or reorder within a column) in **Preview** or **Edit** mode. In **Edit** mode, click the **title** to edit name/columns, or click a **card** to edit label, column, note, and image.
+
+### Checklist
+
+Interactive to-do list. Fence name: `checklist` (also `check-list` / `todolist`):
+
+```checklist{align=left;col=info}
+# Packing
+- [ ] Passport
+- [x] Tickets
+- [ ] Charger
+```
+
+| Option | Description |
+|--------|-------------|
+| `align` | Checkbox side: `left` (default) or `right`. Also `check` / `checkbox` / `side` |
+| `col` | Theme: `info` / `success` / `warning` / `danger` / `note`, or a CSS color |
+| `title` | Optional title via fence `title=…`, body `# Title`, or `title: …` |
+
+Each item line is `- [ ] text` or `- [x] text` (plain lines count as unchecked). Click the **checkbox** to toggle. Use **Left** / **Right** to move checkboxes. **+ Add item** and **✕** delete an item. All of that works in **Preview** or **Edit** when you can edit the page.
+
+Use the toolbar **checklist** button to insert a sample list.
 
 ### Kanban Gantt
 
@@ -799,10 +828,9 @@ A **week calendar** above the board lists each task **start** (`▶` time + titl
 
 **Cost** = `(elapsed + live running time) / 3600 × rate`. The board footer and each column show totals.
 
-Use the toolbar **kanban gantt** button to insert a sample. In **Edit** mode:
+Use the toolbar **kanban gantt** button to insert a sample. **Drag** tasks between columns (or reorder within a column) using the **⠿ handle** in **Preview** or **Edit** mode. In **Edit** mode:
 
 - **Start** / **Suspend** / **Stop** on a card append each start/stop pair to `sessions` in the markdown
-- **Drag** tasks between columns (or reorder within a column) using the **⠿ handle** on each card
 - Click the **title** for board rate/currency/columns and the **With cost** toggle, or a **card** (outside the buttons) to edit start/stop dates, rate, status, note, and image — **Delete** removes the task; each session in the list has **✕** to remove that start/stop only
 
 Turn off **With cost** (`withcost=0`) for a time-only board: rates and money totals are hidden; timers still work.

@@ -190,6 +190,14 @@ Done | Kickoff | ![](media/uploads/photo.png)
 Done | Define Remote
 ```
 
+# Checklist
+```checklist{align=left;col=info}
+# Packing
+- [ ] Passport
+- [x] Tickets
+- [ ] Charger
+```
+
 # Menu
 ```speisekarte{to=demo;title=Lunch menu;col=warning;tables=1-4}
 # Starters
@@ -215,8 +223,8 @@ Coffee beans | 12.00 | 250g medium roast | https://picsum.photos/id/425/400/300
 Tea selection | 8.50 | Assorted herbal and black teas | https://picsum.photos/id/225/400/300
 ```
 
-# Classifieds
-```craigslist{to=demo;city=Main;currency=EUR}
+# NotesList
+```noteslist{to=demo;city=Main;currency=EUR}
 # for sale
 Desk lamp | 12 | Downtown | Working LED lamp, pickup only | https://picsum.photos/id/106/400/300
 Road bike | 180 | Harbor | 21-speed, recently serviced | https://picsum.photos/id/146/400/300
@@ -336,11 +344,11 @@ Hover and press **Ctrl+V** to add a photo. **Demo tour** auto-walks the hall.
 """
 
 
-CLASSIFIEDS_DEMO_MARKDOWN = """# Classifieds
+NOTESLIST_DEMO_MARKDOWN = """# NotesList
 
-Local ads in a Craigslist-style board. Search, pick a category, open a listing, then **Reply** to enter a message mailed to all group members. **Add item** sends a listing by mail (To, category, text).
+Local ads board. Search, pick a category, open a listing, then **Reply** to enter a message mailed to all group members. **Add item** sends a listing by mail. Page owners can **Edit** a listing.
 
-```craigslist{to=demo;city=Main;currency=EUR}
+```noteslist{to=demo;city=Main;currency=EUR}
 # community
 Neighborhood picnic | free | Riverside | Saturday potluck at the park. Bring a dish.
 Lost cat | — | Elm St | Orange tabby, answers to Maple. Last seen near the bakery.
@@ -777,7 +785,7 @@ class Command(BaseCommand):
                     'See **README** in this folder for the full project guide and screenshots.\n\n'
                     'Open **Blocks** for interactive gantt, calendar, mindmap, kanban, sheets, charts, calcs, Python, voice notes, gallery, and panel examples.\n\n'
                     'Open **SW Shop** for software downloads and PayPal / Visa / Mastercard checkout.\n\n'
-                    'Open **Classifieds** for a Craigslist-style board — search, categories, and Reply by mail.\n\n'
+                    'Open **NotesList** for a local ads board — search, categories, Reply by mail, and Edit if you own the page.\n\n'
                     'Open **Calendar** for day, week, month, and year views — hover a day and press **Ctrl+V** to paste a photo.\n\n'
                     'Open **Gallery** for a walk-in corridor of NotesPro screenshots — **Demo tour** starts on load.\n\n'
                     'Open **Games** for sudoku, tic-tac-toe, chess, Connect Four, Reversi, Tetris, Sokoban, Space Invaders, Breakout, Snake, marble blast, jigsaw, pinball, Pac-Man, Super Mario, Lemmings, photo cube, photo book, photo carousel, roller coaster, auto scooter, ghost train, and photo labyrinth.\n\n'
@@ -819,14 +827,15 @@ class Command(BaseCommand):
             ),
         )
 
+        Page.objects.filter(workspace=ws, slug='classifieds', deleted=False).update(slug='noteslist', title='NotesList')
         upsert_page(
             ws,
-            'classifieds',
+            'noteslist',
             parent=docs,
-            title='Classifieds',
+            title='NotesList',
             is_folder=False,
             sort_order=4,
-            markdown_content=CLASSIFIEDS_DEMO_MARKDOWN,
+            markdown_content=NOTESLIST_DEMO_MARKDOWN,
         )
 
         Page.objects.update_or_create(

@@ -1196,20 +1196,6 @@
 <script src="{% static 'notes/marbleblast.js' %}?v={% now 'YmdHis' %}"></script>
 <script src="{% static 'notes/python-exec.js' %}?v={% now 'YmdHis' %}"></script>
 <script src="{% static 'notes/voice.js' %}?v={% now 'YmdHis' %}"></script>
-<script src="{% static 'notes/dashboard.js' %}?v={% now 'YmdHis' %}"></script>
-
-
-<!-- Toast-Container (Fest positioniert) -->
-<div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 1055;">
-  <div id="action-toast" class="toast align-items-center text-white border-0 shadow" role="alert" aria-live="assertive" aria-atomic="true">
-    <div class="d-flex">
-      <div class="toast-body" id="toast-message">
-        <!-- Nachricht wird dynamisch via JS eingefügt -->
-      </div>
-      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
-    </div>
-  </div>
-</div>
 
 <div id="editor-color-picker" class="editor-color-picker d-none" role="dialog" aria-labelledby="editor-color-picker-title">
   <div class="editor-color-picker-header">
@@ -1222,6 +1208,30 @@
     <label class="editor-color-picker-custom-label" for="editor-color-picker-input">Custom</label>
     <input type="color" id="editor-color-picker-input" class="editor-color-picker-input" value="#0d6efd">
     <button type="button" id="editor-color-picker-apply" class="btn btn-sm btn-outline-primary">Apply</button>
+  </div>
+</div>
+
+<div id="editor-emoji-picker" class="editor-emoji-picker d-none" role="dialog" aria-labelledby="editor-emoji-picker-title">
+  <div class="editor-emoji-picker-header">
+    <span id="editor-emoji-picker-title" class="editor-emoji-picker-title">Signs</span>
+    <button type="button" id="editor-emoji-picker-close" class="btn-close btn-close-sm" aria-label="Close"></button>
+  </div>
+  <div id="editor-emoji-checks" class="editor-emoji-checks" aria-label="Checkbox signs"></div>
+  <div id="editor-emoji-grid" class="editor-emoji-grid" role="listbox" aria-label="Emoji"></div>
+</div>
+
+<script src="{% static 'notes/dashboard.js' %}?v={% now 'YmdHis' %}"></script>
+
+
+<!-- Toast-Container (Fest positioniert) -->
+<div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 1055;">
+  <div id="action-toast" class="toast align-items-center text-white border-0 shadow" role="alert" aria-live="assertive" aria-atomic="true">
+    <div class="d-flex">
+      <div class="toast-body" id="toast-message">
+        <!-- Nachricht wird dynamisch via JS eingefügt -->
+      </div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+    </div>
   </div>
 </div>
 

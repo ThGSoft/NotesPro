@@ -608,6 +608,100 @@ body.editing #preview-content:focus {
 .editor-toolbar .easymde-dropdown-content button.hr-thickness-swatch--thick::before { height: 6px; }
 .editor-toolbar .easymde-dropdown-content button.hr-thickness-swatch--heavy::before { height: 10px; }
 
+.editor-toolbar button.signs-toolbar-icon::before {
+  font-size: 14px;
+}
+
+.editor-toolbar .easymde-dropdown-content button.sign-menu-item {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+
+.editor-emoji-picker {
+  position: fixed;
+  z-index: 1060;
+  width: min(520px, calc(100vw - 16px));
+  padding: 10px 12px;
+  background: var(--bs-body-bg);
+  border: 1px solid var(--bs-border-color);
+  border-radius: var(--bs-border-radius);
+  box-shadow: var(--bs-box-shadow);
+}
+
+.editor-emoji-picker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.editor-emoji-picker-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.editor-emoji-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--bs-border-color);
+}
+
+.editor-emoji-check {
+  min-width: 2rem;
+  height: 2rem;
+  padding: 0 6px;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  user-select: none;
+}
+
+.editor-emoji-check:hover,
+.editor-emoji-cell:hover {
+  background: color-mix(in srgb, var(--bs-primary) 16%, transparent);
+}
+
+.editor-emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  gap: 2px;
+  max-height: min(60vh, 420px);
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.editor-emoji-cell {
+  aspect-ratio: 1;
+  min-height: 2.1rem;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  font-size: 1.35rem;
+  line-height: 1;
+  cursor: pointer;
+  user-select: none;
+}
+
+.preview-content .task-list-item,
+.EasyMDEContainer .editor-preview .task-list-item {
+  list-style: none;
+}
+
+.preview-content .task-list-item input[type="checkbox"],
+.EasyMDEContainer .editor-preview .task-list-item input[type="checkbox"] {
+  margin: 0 0.4em 0 -1.4em;
+  vertical-align: middle;
+}
+
 .editor-toolbar button.photos-toolbar-icon {
   position: relative;
 }
@@ -3997,11 +4091,13 @@ body.mobile-layout .sheet-structure-menu-btn {
   user-select: none;
 }
 
-.kanban-card--editable {
+.kanban-card--editable,
+.kanban-card--draggable {
   cursor: grab;
 }
 
-.kanban-card--editable:active {
+.kanban-card--editable:active,
+.kanban-card--draggable:active {
   cursor: grabbing;
 }
 
@@ -4053,6 +4149,216 @@ body.mobile-layout .sheet-structure-menu-btn {
   border-radius: 6px;
   margin-bottom: 6px;
   pointer-events: none;
+}
+
+.checklist-block {
+  --checklist-bg: #fff;
+  --checklist-border: #cbd5e1;
+  --checklist-title: #0f172a;
+  --checklist-meta: #64748b;
+  --checklist-row: #f8fafc;
+  --checklist-accent: #2563eb;
+  border: 1px solid var(--checklist-border);
+  border-left: 4px solid var(--checklist-accent);
+  background: var(--checklist-bg);
+  border-radius: 14px;
+  padding: 14px 16px 12px;
+  margin: 16px 0;
+  color: var(--checklist-title);
+}
+
+.checklist-block--info {
+  --checklist-bg: #eff6ff;
+  --checklist-border: #bfdbfe;
+  --checklist-title: #1d4ed8;
+  --checklist-meta: #3b82f6;
+  --checklist-row: #dbeafe;
+  --checklist-accent: #2563eb;
+}
+
+.checklist-block--success {
+  --checklist-bg: #f0fdf4;
+  --checklist-border: #bbf7d0;
+  --checklist-title: #15803d;
+  --checklist-meta: #16a34a;
+  --checklist-row: #dcfce7;
+  --checklist-accent: #16a34a;
+}
+
+.checklist-block--warning {
+  --checklist-bg: #fffbeb;
+  --checklist-border: #fde68a;
+  --checklist-title: #b45309;
+  --checklist-meta: #d97706;
+  --checklist-row: #fef3c7;
+  --checklist-accent: #d97706;
+}
+
+.checklist-block--danger {
+  --checklist-bg: #fef2f2;
+  --checklist-border: #fecaca;
+  --checklist-title: #b91c1c;
+  --checklist-meta: #ef4444;
+  --checklist-row: #fee2e2;
+  --checklist-accent: #dc2626;
+}
+
+.checklist-block--note {
+  --checklist-bg: #f8fafc;
+  --checklist-border: #cbd5e1;
+  --checklist-title: #334155;
+  --checklist-meta: #64748b;
+  --checklist-row: #e2e8f0;
+  --checklist-accent: #64748b;
+}
+
+.checklist-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.checklist-block-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--checklist-title);
+  min-width: 0;
+  outline: none;
+}
+
+.checklist-block-title--editable {
+  cursor: text;
+  border-radius: 6px;
+  padding: 2px 4px;
+  margin: -2px -4px;
+}
+
+.checklist-block-title--editable:hover,
+.checklist-block-title--editable:focus {
+  background: color-mix(in srgb, var(--checklist-row) 70%, transparent);
+}
+
+.checklist-block-meta {
+  font-size: 12px;
+  color: var(--checklist-meta);
+  white-space: nowrap;
+}
+
+.checklist-align {
+  display: inline-flex;
+  border: 1px solid var(--checklist-border);
+  border-radius: 999px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.checklist-align-btn {
+  border: 0;
+  background: transparent;
+  color: var(--checklist-meta);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+
+.checklist-align-btn.is-active {
+  background: var(--checklist-accent);
+  color: #fff;
+}
+
+.checklist-items {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.checklist-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--checklist-row) 65%, transparent);
+}
+
+.checklist-check {
+  order: 0;
+  flex-shrink: 0;
+  width: 1.1rem;
+  height: 1.1rem;
+  margin: 0;
+  accent-color: var(--checklist-accent);
+  cursor: pointer;
+}
+
+.checklist-text {
+  order: 1;
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  outline: none;
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.4;
+  padding: 2px 0;
+}
+
+.checklist-delete {
+  order: 2;
+  flex-shrink: 0;
+  width: 1.6rem;
+  height: 1.6rem;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--checklist-meta);
+  cursor: pointer;
+  line-height: 1;
+}
+
+.checklist-delete:hover {
+  background: color-mix(in srgb, var(--checklist-accent) 16%, transparent);
+  color: var(--checklist-title);
+}
+
+.checklist-block--align-right .checklist-text { order: 0; }
+.checklist-block--align-right .checklist-check { order: 1; }
+.checklist-block--align-right .checklist-delete { order: 2; }
+
+.checklist-item.is-checked .checklist-text {
+  text-decoration: line-through;
+  opacity: 0.65;
+}
+
+.checklist-empty {
+  font-size: 13px;
+  color: var(--checklist-meta);
+  padding: 8px 4px;
+}
+
+.checklist-add {
+  margin-top: 8px;
+  border: 0;
+  background: transparent;
+  color: var(--checklist-accent);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 4px 2px;
+  cursor: pointer;
+}
+
+.checklist-add:hover {
+  text-decoration: underline;
+}
+
+.checklist-check:disabled {
+  cursor: default;
 }
 
 /* --- Kanban Gantt (time + cost) --- */
