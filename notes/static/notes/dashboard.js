@@ -2100,7 +2100,7 @@
   }
 
   function isPreviewRichBlock(el) {
-    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .mindmap-block, .md-news, .md-python, .voice-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .page-tags');
+    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .form-widget, .mindmap-block, .md-news, .md-python, .voice-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .page-tags');
   }
 
   function getPreviewBlockSourceLine(node) {
@@ -6150,6 +6150,330 @@
         editable: !!options.checklistEditable || !!options.sheetEditable,
         checklistIndex: idx,
       }));
+    });
+  }
+
+  const FORM_WIDGET_FENCE_RE = /```(?:radiobuttons?|radiolist|radio|votelist|vote|poll|text-area|textarea|text-input|textinput|inputtext|numinput|number|dropdown|enum)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function formWidgetKind(name) {
+    const raw = String(name || '').replace(/^```/, '').split(/[{ \t\r\n]/)[0].toLowerCase();
+    if (/^(radiobuttons?|radiolist|radio)$/.test(raw)) return 'radio';
+    if (/^(votelist|vote|poll)$/.test(raw)) return 'vote';
+    if (/^(text-area|textarea)$/.test(raw)) return 'textarea';
+    if (/^(numinput|number)$/.test(raw)) return 'number';
+    if (/^(text-input|textinput|inputtext)$/.test(raw)) return 'text';
+    if (/^(dropdown|enum)$/.test(raw)) return 'enum';
+    return '';
+  }
+
+  function formWidgetFenceName(match) {
+    return String(match || '').replace(/^```/, '').split(/[{ \t\r\n]/)[0] || 'radio';
+  }
+
+  function formWidgetDefaultTitle(kind) {
+    return ({
+      radio: 'Radio',
+      vote: 'Vote',
+      text: 'Text',
+      textarea: 'Notes',
+      number: 'Number',
+      enum: 'Select',
+    })[kind] || 'Input';
+  }
+
+  function parseFormChoiceLine(trimmed, kind) {
+    let selected = false;
+    let text = trimmed.replace(/^[-*+]\s+/, '');
+    let votes = [];
+    const marked = trimmed.match(/^(?:[-*+]\s+)?(?:\(([xXoO*])\)|\[([xX ])\])\s*(.*)$/);
+    if (marked) {
+      const flag = (marked[1] || marked[2] || '').toLowerCase();
+      selected = flag !== '' && flag !== ' ';
+      text = String(marked[3] || '').trim();
+    } else if (/^\*\s+\S/.test(trimmed)) {
+      selected = true;
+      text = trimmed.replace(/^\*\s+/, '').trim();
+    }
+    if (kind === 'vote' && text.includes('|')) {
+      const idx = text.indexOf('|');
+      votes = text.slice(idx + 1).split(/[,;]/).map((s) => s.trim()).filter(Boolean);
+      text = text.slice(0, idx).trim();
+    }
+    return { text, selected, votes };
+  }
+
+  function parseFormWidgetSpec(kind, fenceAttrs, body = '') {
+    const config = { ...parseBacktickConfig(`\`${String(fenceAttrs || '').replace(/`/g, '')}\``) };
+    const items = [];
+    const valueLines = [];
+    let bodyTitle = '';
+    let expectingTitle = true;
+
+    String(body || '').split('\n').forEach((line) => {
+      const trimmed = line.trim();
+      if (expectingTitle) {
+        expectingTitle = false;
+        if (trimmed.match(/^#\s+(.+)/) && !trimmed.startsWith('##')) {
+          bodyTitle = trimmed.replace(/^#\s+/, '').trim();
+          return;
+        }
+        if (trimmed.match(/^title:\s*(.+)/i) && !trimmed.includes('|')) {
+          bodyTitle = trimmed.replace(/^title:\s*/i, '').trim();
+          return;
+        }
+      }
+      if (!trimmed) {
+        if (kind === 'textarea') valueLines.push('');
+        return;
+      }
+      if (trimmed.startsWith('`') && trimmed.endsWith('`')) {
+        Object.assign(config, parseBacktickConfig(trimmed));
+        return;
+      }
+      if (kind === 'text' || kind === 'textarea' || kind === 'number') {
+        valueLines.push(kind === 'textarea' ? line.replace(/\s+$/, '') : trimmed);
+        return;
+      }
+      const parsed = parseFormChoiceLine(trimmed, kind);
+      if (!parsed.text && !parsed.votes.length) return;
+      items.push({
+        id: `i${items.length + 1}`,
+        text: parsed.text,
+        selected: parsed.selected,
+        votes: parsed.votes,
+      });
+    });
+
+    if (kind === 'radio' || kind === 'enum') {
+      let found = false;
+      items.forEach((item) => {
+        if (!item.selected) return;
+        if (found) item.selected = false;
+        else found = true;
+      });
+    }
+
+    let value = String(config.value != null ? config.value : '');
+    if (kind === 'textarea') value = valueLines.join('\n').replace(/^\n+|\n+$/g, '');
+    else if (kind === 'text' || kind === 'number') value = valueLines.join(' ').trim() || value;
+    if (kind === 'radio' || kind === 'enum') {
+      const selected = items.find((item) => item.selected);
+      if (selected) value = selected.text;
+      else if (value) {
+        const match = items.find((item) => item.text.toLowerCase() === value.toLowerCase());
+        if (match) match.selected = true;
+      }
+    }
+
+    const min = config.min != null && config.min !== '' ? config.min : '';
+    const max = config.max != null && config.max !== '' ? config.max : '';
+    const step = config.step != null && config.step !== '' ? config.step : '';
+
+    const colRaw = String(config.col || config.bg || config.color || '').trim().toLowerCase();
+    const panelCols = ['info', 'success', 'warning', 'danger', 'note'];
+    let colTheme = '';
+    let colCss = '';
+    if (panelCols.includes(colRaw)) colTheme = colRaw;
+    else colCss = sanitizeSheetColor(config.col || config.bg || config.color || '');
+
+    return {
+      kind,
+      title: (config.title || config.name || bodyTitle || '').trim(),
+      items,
+      value,
+      min,
+      max,
+      step,
+      col: colTheme,
+      colCss,
+    };
+  }
+
+  function serializeFormWidgetBody(kind, spec, fenceAttrs) {
+    const titleInFence = /(?:^|;)\s*title\s*=/i.test(String(fenceAttrs || ''));
+    const titleLine = spec.title && !titleInFence ? `# ${spec.title}` : '';
+    if (kind === 'text' || kind === 'textarea' || kind === 'number') {
+      const value = String(spec.value ?? '');
+      const lines = [];
+      if (titleLine) lines.push(titleLine);
+      lines.push(value);
+      return `\n${lines.join('\n')}\n`;
+    }
+    const itemLines = (spec.items || []).map((item) => {
+      const label = String(item.text || '').replace(/\r?\n/g, ' ').trim();
+      if (kind === 'vote') {
+        const votes = (item.votes || []).join(', ');
+        return votes ? `- ${label} | ${votes}` : `- ${label}`;
+      }
+      return item.selected ? `- (x) ${label}` : `- ${label}`;
+    });
+    const bodyLines = [titleLine, ...itemLines].filter(Boolean);
+    return bodyLines.length ? `\n${bodyLines.join('\n')}\n` : '\n';
+  }
+
+  function rewriteFormWidgetBlock(markdown, formIndex, mutateFn) {
+    let idx = 0;
+    FORM_WIDGET_FENCE_RE.lastIndex = 0;
+    return String(markdown || '').replace(FORM_WIDGET_FENCE_RE, (match, fenceAttrs, content = '') => {
+      const thisIndex = idx;
+      idx += 1;
+      if (thisIndex !== formIndex) return match;
+      const fenceName = formWidgetFenceName(match);
+      const kind = formWidgetKind(fenceName);
+      const spec = parseFormWidgetSpec(kind, fenceAttrs, content);
+      const next = mutateFn({
+        ...spec,
+        items: (spec.items || []).map((item) => ({ ...item, votes: [...(item.votes || [])] })),
+      }, fenceAttrs, fenceName) || {};
+      const nextSpec = next.spec || spec;
+      const nextAttrs = next.fenceAttrs != null ? next.fenceAttrs : fenceAttrs;
+      const body = serializeFormWidgetBody(kind, nextSpec, nextAttrs);
+      const fence = nextAttrs != null && String(nextAttrs).length
+        ? `${fenceName}{${nextAttrs}}`
+        : fenceName;
+      return `\`\`\`${fence}${body}\`\`\``;
+    });
+  }
+
+  function formWidgetOptionMarkup(kind, item, { editable = false, formIndex = 0 } = {}) {
+    const me = String(currentUserName || '').trim().toLowerCase();
+    const votes = item.votes || [];
+    const selected = kind === 'vote'
+      ? votes.some((name) => String(name).toLowerCase() === me)
+      : !!item.selected;
+    const group = `form-widget-${kind}-${formIndex}`;
+    const choice = kind === 'enum'
+      ? ''
+      : `<input type="radio" class="form-widget-choice" name="${escapeHtml(group)}"${selected ? ' checked' : ''}${editable ? '' : ' disabled'} aria-label="Choose ${escapeHtml(item.text || 'option')}">`;
+    const label = editable
+      ? `<input type="text" class="form-widget-option-text" value="${escapeHtml(item.text || '')}" placeholder="Option">`
+      : `<span class="form-widget-option-text">${escapeHtml(item.text || '')}</span>`;
+    const voteMeta = kind === 'vote'
+      ? `<span class="form-widget-vote-count">${votes.length}</span><span class="form-widget-voters" data-votes="${escapeHtml(votes.join(','))}">${votes.map((name) => `<span class="form-widget-voter">${escapeHtml(name)}</span>`).join('')}</span>`
+      : '';
+    const del = editable
+      ? '<button type="button" class="form-widget-delete" title="Delete option" aria-label="Delete option">✕</button>'
+      : '';
+    return [
+      `<div class="form-widget-option${selected ? ' is-selected' : ''}" data-item-id="${escapeHtml(item.id || '')}" data-votes="${escapeHtml(votes.join(','))}">`,
+      choice,
+      label,
+      voteMeta,
+      del,
+      '</div>',
+    ].join('');
+  }
+
+  function renderFormWidgetHtml(spec, options = {}) {
+    const kind = spec.kind;
+    const editable = !!options.editable;
+    const customTitle = String(spec.title || '').trim();
+    const title = customTitle || formWidgetDefaultTitle(kind);
+    const idx = options.formIndex ?? 0;
+    const colClass = spec.col ? ` form-widget--${escapeHtml(spec.col)}` : '';
+    const colStyle = spec.colCss ? ` style="--form-widget-bg:${escapeHtml(spec.colCss)}"` : '';
+    const kindLabel = formWidgetDefaultTitle(kind);
+    let body = '';
+    if (kind === 'text') {
+      body = `<input type="text" class="form-widget-field form-widget-text" value="${escapeHtml(spec.value || '')}" placeholder="${escapeHtml(title)}"${editable ? '' : ' disabled'}>`;
+    } else if (kind === 'textarea') {
+      body = `<textarea class="form-widget-field form-widget-textarea" rows="4" placeholder="${escapeHtml(title)}"${editable ? '' : ' disabled'}>${escapeHtml(spec.value || '')}</textarea>`;
+    } else if (kind === 'number') {
+      const min = spec.min !== '' ? ` min="${escapeHtml(spec.min)}"` : '';
+      const max = spec.max !== '' ? ` max="${escapeHtml(spec.max)}"` : '';
+      const step = spec.step !== '' ? ` step="${escapeHtml(spec.step)}"` : ' step="any"';
+      body = `<input type="number" class="form-widget-field form-widget-number" value="${escapeHtml(spec.value || '')}"${min}${max}${step}${editable ? '' : ' disabled'}>`;
+    } else if (kind === 'enum') {
+      const opts = (spec.items || []).map((item) => (
+        `<option value="${escapeHtml(item.text)}"${item.selected ? ' selected' : ''}>${escapeHtml(item.text)}</option>`
+      )).join('');
+      body = `<select class="form-widget-field form-widget-select"${editable ? '' : ' disabled'}>${opts}</select>`;
+      if (editable) {
+        body += `<div class="form-widget-options">${(spec.items || []).map((item) => formWidgetOptionMarkup(kind, item, { editable, formIndex: idx })).join('')}</div>`;
+      }
+    } else {
+      const rows = (spec.items || []).map((item) => formWidgetOptionMarkup(kind, item, { editable, formIndex: idx })).join('');
+      body = `<div class="form-widget-options">${rows || '<div class="form-widget-empty">No options yet</div>'}</div>`;
+    }
+    const addBtn = editable && (kind === 'radio' || kind === 'vote' || kind === 'enum')
+      ? '<button type="button" class="form-widget-add">+ Add option</button>'
+      : '';
+    const voteFoot = kind === 'vote' ? '<div class="form-widget-vote-foot"></div>' : '';
+
+    return [
+      `<div class="form-widget form-widget--${escapeHtml(kind)}${colClass}${editable ? ' form-widget--editable' : ''}" data-form-index="${idx}" data-form-kind="${escapeHtml(kind)}" data-form-title="${escapeHtml(customTitle)}" data-form-min="${escapeHtml(spec.min)}" data-form-max="${escapeHtml(spec.max)}" data-form-step="${escapeHtml(spec.step)}"${colStyle}>`,
+      '<div class="form-widget-header">',
+      `<div class="form-widget-title${editable ? ' form-widget-title--editable' : ''}"${editable ? ' contenteditable="true" spellcheck="false"' : ''}>${escapeHtml(title)}</div>`,
+      `<div class="form-widget-meta">${escapeHtml(kindLabel)}</div>`,
+      '</div>',
+      body,
+      voteFoot,
+      addBtn,
+      '</div>',
+    ].join('');
+  }
+
+  function parseFormWidgetBlocks(text, options = {}) {
+    let formIndex = 0;
+    FORM_WIDGET_FENCE_RE.lastIndex = 0;
+    return text.replace(FORM_WIDGET_FENCE_RE, (match, fenceAttrs, content) => {
+      const kind = formWidgetKind(formWidgetFenceName(match));
+      if (!kind) return match;
+      const spec = parseFormWidgetSpec(kind, fenceAttrs, content);
+      const idx = formIndex++;
+      return wrapRichPreviewBlock(renderFormWidgetHtml(spec, {
+        editable: !!options.formEditable || !!options.sheetEditable,
+        formIndex: idx,
+      }));
+    });
+  }
+
+  let formVoteMembersCache = { ws: null, members: [] };
+
+  async function ensureFormVoteMembers() {
+    syncWorkspaceIdFromDom();
+    if (!workspaceId) return [];
+    if (formVoteMembersCache.ws === workspaceId && formVoteMembersCache.members.length) {
+      return formVoteMembersCache.members;
+    }
+    try {
+      const data = await api(`api/workspaces/${workspaceId}/members/`);
+      formVoteMembersCache = {
+        ws: workspaceId,
+        members: uniqueWorkspaceMembers(data.members || []),
+      };
+    } catch (_) {
+      formVoteMembersCache = { ws: workspaceId, members: [] };
+    }
+    return formVoteMembersCache.members;
+  }
+
+  function refreshFormVoteFoot(block) {
+    const foot = block.querySelector('.form-widget-vote-foot');
+    if (!foot) return;
+    const voted = new Set();
+    block.querySelectorAll('.form-widget-option').forEach((row) => {
+      String(row.dataset.votes || '').split(',').forEach((name) => {
+        const n = name.trim();
+        if (n) voted.add(n.toLowerCase());
+      });
+    });
+    const members = formVoteMembersCache.ws === workspaceId ? formVoteMembersCache.members : [];
+    const missing = members
+      .map((m) => m.username)
+      .filter((name) => name && !voted.has(String(name).toLowerCase()));
+    const total = members.length || voted.size;
+    foot.textContent = missing.length
+      ? `Not voted (${missing.length}/${total || missing.length}): ${missing.join(', ')}`
+      : (total ? `All ${total} members voted` : `${voted.size} vote(s)`);
+  }
+
+  function hydrateFormWidgets(preview) {
+    if (!preview) return;
+    const votes = preview.querySelectorAll('.form-widget--vote');
+    if (!votes.length) return;
+    ensureFormVoteMembers().then(() => {
+      preview.querySelectorAll('.form-widget--vote').forEach(refreshFormVoteFoot);
     });
   }
 
@@ -10583,7 +10907,7 @@ function formatTextWithMarkup(rawText) {
     if (!root) return;
     root.querySelectorAll('pre').forEach(pre => {
       if (pre.closest('.md-code-block')) return;
-      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .mindmap-block, .md-news, .md-python, .voice-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block')) {
+      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .form-widget, .mindmap-block, .md-news, .md-python, .voice-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block')) {
         return;
       }
       const wrap = document.createElement('div');
@@ -10949,6 +11273,12 @@ function formatTextWithMarkup(rawText) {
       const label = spec.title || 'Checklist';
       return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
     });
+    md = md.replace(/```(?:radiobuttons?|radiolist|radio|votelist|vote|poll|text-area|textarea|text-input|textinput|inputtext|numinput|number|dropdown|enum)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (match, fenceAttrs) => {
+      const kind = formWidgetKind(formWidgetFenceName(match));
+      const spec = parseFormWidgetSpec(kind, fenceAttrs, '');
+      const label = spec.title || formWidgetDefaultTitle(kind);
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
     md = md.replace(/```(?:speisekarte|speise|menukarte|menucard|menu)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
       const cfg = window.NotesProSpeisekarte?.parseFenceAttrs?.(fenceAttrs) || {};
       const label = cfg.title || 'Menu';
@@ -11157,6 +11487,7 @@ function formatTextWithMarkup(rawText) {
       md = parseKanbanganttBlocks(md, options);
       md = parseKanbanBlocks(md, options);
       md = parseChecklistBlocks(md, options);
+      md = parseFormWidgetBlocks(md, options);
       md = parseMindmapBlocks(md, options);
       md = parseCalcsBlocks(md);
       md = parseSudokuBlocks(md);
@@ -11571,6 +11902,7 @@ function formatTextWithMarkup(rawText) {
       sheetEditable: isPreviewInteractionEnabled(),
       boardDraggable: isBoardDragEnabled(),
       checklistEditable: isChecklistEditEnabled(),
+      formEditable: isChecklistEditEnabled(),
       speisekarteEditable: !!userCanEdit,
       archiveMarkdown: currentPage?.archive || '',
       richBlocks: true,
@@ -11618,6 +11950,7 @@ function formatTextWithMarkup(rawText) {
     hydrateScooterBlocks(preview);
     hydrateGhosttrainBlocks(preview);
     hydrateLabyrinthBlocks(preview);
+    hydrateFormWidgets(preview);
     buildFloatingToc();
     annotatePreviewSourceLines(raw, preview);
     if (isEditing) preview.tabIndex = -1;
@@ -13416,6 +13749,71 @@ function formatTextWithMarkup(rawText) {
       className: 'fa fa-smile-o signs-toolbar-icon no-disable',
       title: 'Insert checkbox / emoji',
       action: (editor) => openEditorEmojiPicker(editor || easyMDE),
+    };
+  }
+
+  function buildFormToolbarDropdown() {
+    const samples = [
+      {
+        name: 'insert-radio',
+        text: 'Radio list',
+        className: 'form-menu-item form-menu-item--radio',
+        title: 'Insert radio list',
+        fence: 'radio{col=info}',
+        body: ['# Color', '- Red', '- (x) Green', '- Blue'].join('\n'),
+      },
+      {
+        name: 'insert-vote',
+        text: 'Vote (members)',
+        className: 'form-menu-item form-menu-item--vote',
+        title: 'Insert vote list for group members',
+        fence: 'vote{col=info}',
+        body: ['# Lunch', '- Pizza', '- Sushi', '- Salad'].join('\n'),
+      },
+      {
+        name: 'insert-textinput',
+        text: 'Text input',
+        className: 'form-menu-item form-menu-item--text',
+        title: 'Insert text input',
+        fence: 'textinput{col=info}',
+        body: '# Name\n',
+      },
+      {
+        name: 'insert-textarea',
+        text: 'Textarea',
+        className: 'form-menu-item form-menu-item--textarea',
+        title: 'Insert textarea',
+        fence: 'textarea{col=info}',
+        body: '# Notes\n',
+      },
+      {
+        name: 'insert-number',
+        text: 'Number',
+        className: 'form-menu-item form-menu-item--number',
+        title: 'Insert number input',
+        fence: 'number{min=0;max=100;step=1;col=info}',
+        body: '# Count\n0',
+      },
+      {
+        name: 'insert-enum',
+        text: 'Enum / select',
+        className: 'form-menu-item form-menu-item--enum',
+        title: 'Insert enum select',
+        fence: 'enum{col=info}',
+        body: ['# Status', '- Open', '- (x) Doing', '- Done'].join('\n'),
+      },
+    ];
+    return {
+      name: 'formMenu',
+      className: 'form-toolbar-icon',
+      title: 'Insert form input',
+      children: samples.map((item) => ({
+        name: item.name,
+        text: item.text,
+        className: item.className,
+        title: item.title,
+        action: (editor) => insertFenceBlock(editor, item.fence, item.body),
+      })),
     };
   }
 
@@ -15397,6 +15795,238 @@ function formatTextWithMarkup(rawText) {
     }, true);
   }
 
+  let formWidgetSyncTimer = null;
+
+  function formWidgetTitleFromDom(block) {
+    const kind = block.dataset.formKind || 'text';
+    const raw = String(block.querySelector('.form-widget-title')?.textContent || '').trim();
+    const fallback = formWidgetDefaultTitle(kind);
+    if (raw === fallback && !block.dataset.formTitle) return '';
+    return raw;
+  }
+
+  function formWidgetItemsFromDom(block) {
+    return [...block.querySelectorAll('.form-widget-option')].map((row) => ({
+      id: row.dataset.itemId || '',
+      text: row.querySelector('input.form-widget-option-text')?.value
+        ?? String(row.querySelector('span.form-widget-option-text')?.textContent || '').trim(),
+      selected: !!row.querySelector('.form-widget-choice:checked') || row.classList.contains('is-selected'),
+      votes: String(row.dataset.votes || '').split(',').map((s) => s.trim()).filter(Boolean),
+    }));
+  }
+
+  function formWidgetValueFromDom(block, kind, items) {
+    if (kind === 'text' || kind === 'textarea' || kind === 'number') {
+      return block.querySelector('.form-widget-field')?.value ?? '';
+    }
+    if (kind === 'enum') {
+      const selected = block.querySelector('.form-widget-select')?.value || '';
+      items.forEach((item) => { item.selected = item.text === selected; });
+      return selected;
+    }
+    const picked = items.find((item) => item.selected);
+    return picked ? picked.text : '';
+  }
+
+  function syncEnumSelect(block) {
+    const select = block.querySelector('.form-widget-select');
+    if (!select) return;
+    const current = select.value;
+    const items = formWidgetItemsFromDom(block);
+    select.innerHTML = items.map((item) => (
+      `<option value="${escapeHtml(item.text)}">${escapeHtml(item.text)}</option>`
+    )).join('');
+    if (items.some((item) => item.text === current)) select.value = current;
+  }
+
+  function applyFormWidgetDomToMarkdown(block) {
+    if (!easyMDE || !block || !userCanEdit) return;
+    const index = parseInt(block.dataset.formIndex, 10);
+    if (!Number.isFinite(index)) return;
+    const kind = block.dataset.formKind || formWidgetKind(block.dataset.formKind);
+    const title = formWidgetTitleFromDom(block);
+    block.dataset.formTitle = title;
+    const items = formWidgetItemsFromDom(block);
+    const value = formWidgetValueFromDom(block, kind, items);
+    const oldMarkdown = easyMDE.value();
+    const updated = rewriteFormWidgetBlock(oldMarkdown, index, (spec, fenceAttrs) => {
+      spec.title = title;
+      spec.items = items;
+      spec.value = value;
+      spec.min = block.dataset.formMin || spec.min;
+      spec.max = block.dataset.formMax || spec.max;
+      spec.step = block.dataset.formStep || spec.step;
+      return { spec, fenceAttrs };
+    });
+    if (updated !== oldMarkdown) {
+      easyMDE.value(updated);
+      scheduleSave();
+    }
+  }
+
+  function scheduleFormWidgetMarkdownSync(block) {
+    clearTimeout(formWidgetSyncTimer);
+    formWidgetSyncTimer = setTimeout(() => applyFormWidgetDomToMarkdown(block), 250);
+  }
+
+  function insertFormWidgetOption(block, afterRow = null) {
+    const kind = block.dataset.formKind;
+    const idx = parseInt(block.dataset.formIndex, 10) || 0;
+    const wrap = document.createElement('div');
+    wrap.innerHTML = formWidgetOptionMarkup(kind, { id: `i${Date.now().toString(36)}`, text: '', selected: false, votes: [] }, { editable: true, formIndex: idx });
+    const row = wrap.firstElementChild;
+    let list = block.querySelector('.form-widget-options');
+    if (!list) {
+      list = document.createElement('div');
+      list.className = 'form-widget-options';
+      block.appendChild(list);
+    }
+    list.querySelector('.form-widget-empty')?.remove();
+    if (afterRow?.parentNode === list) afterRow.after(row);
+    else list.appendChild(row);
+    if (kind === 'enum') syncEnumSelect(block);
+    return row;
+  }
+
+  function paintVoteRow(row) {
+    const votes = String(row.dataset.votes || '').split(',').map((s) => s.trim()).filter(Boolean);
+    const me = String(currentUserName || '').trim().toLowerCase();
+    const choice = row.querySelector('.form-widget-choice');
+    const mine = votes.some((name) => name.toLowerCase() === me);
+    if (choice) choice.checked = mine;
+    row.classList.toggle('is-selected', mine);
+    const count = row.querySelector('.form-widget-vote-count');
+    if (count) count.textContent = String(votes.length);
+    const box = row.querySelector('.form-widget-voters');
+    if (box) {
+      box.dataset.votes = votes.join(',');
+      box.innerHTML = votes.map((name) => `<span class="form-widget-voter">${escapeHtml(name)}</span>`).join('');
+    }
+  }
+
+  function castFormVote(block, optionRow) {
+    const me = String(currentUserName || '').trim();
+    if (!me) return;
+    const mineKey = me.toLowerCase();
+    const already = String(optionRow.dataset.votes || '').split(',').some((n) => n.trim().toLowerCase() === mineKey);
+    block.querySelectorAll('.form-widget-option').forEach((row) => {
+      let votes = String(row.dataset.votes || '').split(',').map((s) => s.trim()).filter(Boolean)
+        .filter((name) => name.toLowerCase() !== mineKey);
+      if (row === optionRow && !already) votes.push(me);
+      row.dataset.votes = votes.join(',');
+      paintVoteRow(row);
+    });
+    refreshFormVoteFoot(block);
+    applyFormWidgetDomToMarkdown(block);
+  }
+
+  function initFormWidgetEditors() {
+    const preview = document.getElementById('preview-content');
+    if (!preview || preview.dataset.formWidgetBound === '1') return;
+    preview.dataset.formWidgetBound = '1';
+
+    preview.addEventListener('click', (e) => {
+      if (!isChecklistEditEnabled()) return;
+      const block = e.target.closest?.('.form-widget');
+      if (!block || !preview.contains(block)) return;
+      const kind = block.dataset.formKind;
+
+      const addBtn = e.target.closest('.form-widget-add');
+      if (addBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        const row = insertFormWidgetOption(block);
+        applyFormWidgetDomToMarkdown(block);
+        row?.querySelector('.form-widget-option-text')?.focus();
+        return;
+      }
+
+      const delBtn = e.target.closest('.form-widget-delete');
+      if (delBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        delBtn.closest('.form-widget-option')?.remove();
+        const list = block.querySelector('.form-widget-options');
+        if (list && !list.querySelector('.form-widget-option')) {
+          list.innerHTML = '<div class="form-widget-empty">No options yet</div>';
+        }
+        if (kind === 'enum') syncEnumSelect(block);
+        applyFormWidgetDomToMarkdown(block);
+        return;
+      }
+
+      if (kind === 'vote') {
+        const row = e.target.closest('.form-widget-option');
+        if (row && !e.target.closest('button')) {
+          if (!e.target.closest('.form-widget-option-text')) e.preventDefault();
+          castFormVote(block, row);
+        }
+      }
+    });
+
+    preview.addEventListener('change', (e) => {
+      if (!isChecklistEditEnabled()) return;
+      const block = e.target.closest?.('.form-widget');
+      if (!block || !preview.contains(block)) return;
+      const kind = block.dataset.formKind;
+      if (kind === 'vote') return;
+      if (e.target.classList.contains('form-widget-choice')) {
+        block.querySelectorAll('.form-widget-option').forEach((row) => {
+          row.classList.toggle('is-selected', !!row.querySelector('.form-widget-choice:checked'));
+        });
+      }
+      if (kind === 'enum' && e.target.classList.contains('form-widget-select')) {
+        const value = e.target.value;
+        block.querySelectorAll('.form-widget-option').forEach((row) => {
+          const text = row.querySelector('.form-widget-option-text')?.value || '';
+          row.classList.toggle('is-selected', text === value);
+        });
+      }
+      applyFormWidgetDomToMarkdown(block);
+    });
+
+    preview.addEventListener('input', (e) => {
+      if (!isChecklistEditEnabled()) return;
+      const field = e.target.closest?.('.form-widget-field, .form-widget-option-text, .form-widget-title');
+      if (!field || !preview.contains(field)) return;
+      const block = field.closest('.form-widget');
+      if (!block) return;
+      if (field.classList.contains('form-widget-option-text') && block.dataset.formKind === 'enum') {
+        syncEnumSelect(block);
+      }
+      scheduleFormWidgetMarkdownSync(block);
+    });
+
+    preview.addEventListener('keydown', (e) => {
+      if (!isChecklistEditEnabled()) return;
+      const title = e.target.closest?.('.form-widget-title--editable');
+      if (title && preview.contains(title) && e.key === 'Enter') {
+        e.preventDefault();
+        title.blur();
+        return;
+      }
+      const field = e.target.closest?.('input.form-widget-option-text');
+      if (!field || !preview.contains(field)) return;
+      const row = field.closest('.form-widget-option');
+      const block = field.closest('.form-widget');
+      if (!row || !block) return;
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const next = insertFormWidgetOption(block, row);
+        applyFormWidgetDomToMarkdown(block);
+        next?.querySelector('.form-widget-option-text')?.focus();
+      }
+    });
+
+    preview.addEventListener('blur', (e) => {
+      if (!isChecklistEditEnabled()) return;
+      const field = e.target.closest?.('.form-widget-title--editable, .form-widget-field, .form-widget-option-text');
+      if (!field || !preview.contains(field)) return;
+      const block = field.closest('.form-widget');
+      if (block) applyFormWidgetDomToMarkdown(block);
+    }, true);
+  }
+
   let kgCardContext = null;
   let kgTitleContext = null;
   let kgDragState = null;
@@ -16674,6 +17304,7 @@ function formatTextWithMarkup(rawText) {
           className: 'fa fa-check-square-o',
           title: 'Insert checklist',
         },
+        buildFormToolbarDropdown(),
         {
           name: 'insert-speisekarte',
           action: (editor) => {
@@ -17793,7 +18424,7 @@ function formatTextWithMarkup(rawText) {
     if (suppressPreviewRefresh) return;
     const active = document.activeElement;
     if (active?.classList?.contains('sheet-cell-editable')) return;
-    if (active?.closest?.('.voice-block, .checklist-block')) return;
+    if (active?.closest?.('.voice-block, .checklist-block, .form-widget')) return;
     capturePreviewScrollPosition();
     clearTimeout(previewRefreshTimer);
     previewRefreshTimer = setTimeout(() => {
@@ -19400,6 +20031,7 @@ function formatTextWithMarkup(rawText) {
   initGanttNoteEditors();
   initKanbanEditors();
   initChecklistEditors();
+  initFormWidgetEditors();
   initKanbanganttEditors();
   initMindmapEditors();
   initChartInsertModal();

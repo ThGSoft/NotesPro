@@ -784,6 +784,97 @@ body.editing #preview-content:focus {
     linear-gradient(currentColor, currentColor) 6px 9px / 8px 1.5px no-repeat;
 }
 
+.editor-toolbar button.form-toolbar-icon {
+  position: relative;
+}
+
+.editor-toolbar button.form-toolbar-icon::before {
+  content: '';
+  position: absolute;
+  left: 7px;
+  top: 5px;
+  width: 12px;
+  height: 14px;
+  box-sizing: border-box;
+  border: 1.5px solid currentColor;
+  border-radius: 2px;
+  background:
+    radial-gradient(circle, currentColor 1.2px, transparent 1.4px) 2px 2px / 6px 6px no-repeat,
+    linear-gradient(currentColor, currentColor) 8px 3px / 2px 1.5px no-repeat,
+    linear-gradient(currentColor, currentColor) 3px 9px / 6px 1.5px no-repeat;
+  pointer-events: none;
+}
+
+.editor-toolbar .easymde-dropdown-content button.form-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 12.5rem;
+}
+
+.editor-toolbar .easymde-dropdown-content button.form-menu-item::before {
+  content: '';
+  box-sizing: border-box;
+  flex: 0 0 16px;
+  width: 16px;
+  height: 14px;
+  position: relative;
+  color: inherit;
+}
+
+.editor-toolbar .easymde-dropdown-content button.form-menu-item--radio::before {
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  background: radial-gradient(circle, currentColor 3px, transparent 3.2px);
+}
+
+.editor-toolbar .easymde-dropdown-content button.form-menu-item--vote::before {
+  width: 16px;
+  height: 12px;
+  border: 1.5px solid currentColor;
+  border-radius: 2px;
+  background:
+    radial-gradient(circle, currentColor 1.4px, transparent 1.6px) 2px 1px / 5px 5px no-repeat,
+    radial-gradient(circle, currentColor 1.4px, transparent 1.6px) 8px 1px / 5px 5px no-repeat,
+    linear-gradient(currentColor, currentColor) 3px 8px / 3px 1.5px no-repeat,
+    linear-gradient(currentColor, currentColor) 9px 8px / 3px 1.5px no-repeat;
+}
+
+.editor-toolbar .easymde-dropdown-content button.form-menu-item--text::before {
+  border: 1.5px solid currentColor;
+  border-radius: 2px;
+  background: linear-gradient(currentColor, currentColor) 3px 6px / 8px 1.5px no-repeat;
+}
+
+.editor-toolbar .easymde-dropdown-content button.form-menu-item--textarea::before {
+  height: 16px;
+  border: 1.5px solid currentColor;
+  border-radius: 2px;
+  background:
+    linear-gradient(currentColor, currentColor) 3px 3px / 10px 1.5px no-repeat,
+    linear-gradient(currentColor, currentColor) 3px 7px / 10px 1.5px no-repeat,
+    linear-gradient(currentColor, currentColor) 3px 11px / 6px 1.5px no-repeat;
+}
+
+.editor-toolbar .easymde-dropdown-content button.form-menu-item--number::before {
+  border: 1.5px solid currentColor;
+  border-radius: 2px;
+  background:
+    linear-gradient(currentColor, currentColor) 4px 3px / 1.5px 8px no-repeat,
+    linear-gradient(currentColor, currentColor) 8px 3px / 1.5px 8px no-repeat,
+    linear-gradient(currentColor, currentColor) 3px 6px / 8px 1.5px no-repeat;
+}
+
+.editor-toolbar .easymde-dropdown-content button.form-menu-item--enum::before {
+  border: 1.5px solid currentColor;
+  border-radius: 2px;
+  background:
+    linear-gradient(currentColor, currentColor) 3px 5px / 6px 1.5px no-repeat,
+    linear-gradient(transparent 40%, currentColor 40% 60%, transparent 60%) 10px 4px / 4px 6px no-repeat;
+}
+
 .preview-layout hr,
 .editor-preview hr,
 .md-hr {
@@ -4358,6 +4449,239 @@ body.mobile-layout .sheet-structure-menu-btn {
 }
 
 .checklist-check:disabled {
+  cursor: default;
+}
+
+.form-widget {
+  --form-widget-bg: #fff;
+  --form-widget-border: #cbd5e1;
+  --form-widget-title: #0f172a;
+  --form-widget-meta: #64748b;
+  --form-widget-row: #f8fafc;
+  --form-widget-accent: #2563eb;
+  border: 1px solid var(--form-widget-border);
+  border-left: 4px solid var(--form-widget-accent);
+  background: var(--form-widget-bg);
+  border-radius: 14px;
+  padding: 14px 16px 12px;
+  margin: 16px 0;
+  color: var(--form-widget-title);
+}
+
+.form-widget--info {
+  --form-widget-bg: #eff6ff;
+  --form-widget-border: #bfdbfe;
+  --form-widget-title: #1d4ed8;
+  --form-widget-meta: #3b82f6;
+  --form-widget-row: #dbeafe;
+  --form-widget-accent: #2563eb;
+}
+
+.form-widget--success {
+  --form-widget-bg: #f0fdf4;
+  --form-widget-border: #bbf7d0;
+  --form-widget-title: #15803d;
+  --form-widget-meta: #16a34a;
+  --form-widget-row: #dcfce7;
+  --form-widget-accent: #16a34a;
+}
+
+.form-widget--warning {
+  --form-widget-bg: #fffbeb;
+  --form-widget-border: #fde68a;
+  --form-widget-title: #b45309;
+  --form-widget-meta: #d97706;
+  --form-widget-row: #fef3c7;
+  --form-widget-accent: #d97706;
+}
+
+.form-widget--danger {
+  --form-widget-bg: #fef2f2;
+  --form-widget-border: #fecaca;
+  --form-widget-title: #b91c1c;
+  --form-widget-meta: #ef4444;
+  --form-widget-row: #fee2e2;
+  --form-widget-accent: #dc2626;
+}
+
+.form-widget--note {
+  --form-widget-bg: #f8fafc;
+  --form-widget-border: #cbd5e1;
+  --form-widget-title: #334155;
+  --form-widget-meta: #64748b;
+  --form-widget-row: #e2e8f0;
+  --form-widget-accent: #64748b;
+}
+
+.form-widget-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.form-widget-title {
+  font-size: 15px;
+  font-weight: 700;
+  min-width: 0;
+  outline: none;
+}
+
+.form-widget-title--editable {
+  cursor: text;
+  border-radius: 6px;
+  padding: 2px 4px;
+  margin: -2px -4px;
+}
+
+.form-widget-title--editable:hover,
+.form-widget-title--editable:focus {
+  background: color-mix(in srgb, var(--form-widget-row) 70%, transparent);
+}
+
+.form-widget-meta {
+  font-size: 12px;
+  color: var(--form-widget-meta);
+  white-space: nowrap;
+}
+
+.form-widget-field {
+  width: 100%;
+  border: 1px solid var(--form-widget-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, #fff 70%, transparent);
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+  padding: 8px 10px;
+}
+
+.form-widget-textarea {
+  min-height: 6rem;
+  resize: vertical;
+}
+
+.form-widget-select,
+.form-widget-number {
+  max-width: 20rem;
+}
+
+.form-widget-options {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.form-widget-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--form-widget-row) 65%, transparent);
+}
+
+.form-widget-option.is-selected {
+  outline: 1px solid color-mix(in srgb, var(--form-widget-accent) 45%, transparent);
+}
+
+.form-widget-choice {
+  flex-shrink: 0;
+  width: 1.1rem;
+  height: 1.1rem;
+  margin: 0;
+  accent-color: var(--form-widget-accent);
+  cursor: pointer;
+}
+
+.form-widget-option-text {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  outline: none;
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+}
+
+.form-widget-vote-count {
+  flex-shrink: 0;
+  min-width: 1.4rem;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--form-widget-accent);
+}
+
+.form-widget-voters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-width: 40%;
+}
+
+.form-widget-voter {
+  font-size: 11px;
+  line-height: 1.2;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--form-widget-accent) 16%, transparent);
+  color: var(--form-widget-title);
+}
+
+.form-widget-delete {
+  flex-shrink: 0;
+  width: 1.6rem;
+  height: 1.6rem;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--form-widget-meta);
+  cursor: pointer;
+  line-height: 1;
+}
+
+.form-widget-delete:hover {
+  background: color-mix(in srgb, var(--form-widget-accent) 16%, transparent);
+  color: var(--form-widget-title);
+}
+
+.form-widget-empty {
+  font-size: 13px;
+  color: var(--form-widget-meta);
+  padding: 8px 4px;
+}
+
+.form-widget-add {
+  margin-top: 8px;
+  border: 0;
+  background: transparent;
+  color: var(--form-widget-accent);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 4px 2px;
+  cursor: pointer;
+}
+
+.form-widget-add:hover {
+  text-decoration: underline;
+}
+
+.form-widget-vote-foot {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--form-widget-meta);
+}
+
+.form-widget--enum .form-widget-option .form-widget-choice {
+  display: none;
+}
+
+.form-widget-choice:disabled {
   cursor: default;
 }
 

@@ -786,6 +786,57 @@ Each item line is `- [ ] text` or `- [x] text` (plain lines count as unchecked).
 
 Use the toolbar **checklist** button to insert a sample list.
 
+### Form inputs
+
+Interactive fields for surveys and group votes. Toolbar **form input** (list icon) inserts:
+
+| Fence | What it is |
+|--------|-------------|
+| `radio` | One choice for the page (also `radiolist` / `radiobutton`) |
+| `vote` | One vote per group member, with counts and names (also `votelist` / `poll`) |
+| `textinput` | Single-line text |
+| `textarea` | Multi-line text |
+| `number` | Number, optional `min` / `max` / `step` |
+| `enum` | Dropdown (also `dropdown`) |
+
+```radio{col=info}
+# Color
+- Red
+- (x) Green
+- Blue
+```
+
+```vote{col=info}
+# Lunch
+- Pizza | demo,thg
+- Sushi
+- Salad
+```
+
+```textinput{col=info}
+# Name
+Ada
+```
+
+```textarea{col=info}
+# Notes
+Write a remark
+```
+
+```number{min=0;max=100;step=1;col=info}
+# Count
+3
+```
+
+```enum{col=info}
+# Status
+- Open
+- (x) Doing
+- Done
+```
+
+Click a radio or vote option to choose it. Vote stores your username on that option (`Label | alice, bob`); click again to clear your vote. **+ Add option** / **✕** edit the list. Values save on the page, so you need write access.
+
 ### Kanban Gantt
 
 A kanban board with per-task timers and hourly cost rollups. Fence name: `kanbangantt` (also `kbgantt` / `kgantt`):

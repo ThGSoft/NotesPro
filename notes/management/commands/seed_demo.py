@@ -198,6 +198,36 @@ Done | Define Remote
 - [ ] Charger
 ```
 
+# Form inputs
+```radio{col=info}
+# Color
+- Red
+- (x) Green
+- Blue
+```
+```vote{col=info}
+# Lunch
+- Pizza
+- Sushi
+- Salad
+```
+```textinput{col=info}
+# Name
+```
+```textarea{col=info}
+# Notes
+```
+```number{min=0;max=100;step=1;col=info}
+# Count
+0
+```
+```enum{col=info}
+# Status
+- Open
+- (x) Doing
+- Done
+```
+
 # Menu
 ```speisekarte{to=demo;title=Lunch menu;col=warning;tables=1-4}
 # Starters
