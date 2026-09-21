@@ -11,6 +11,7 @@ from . import views_games
 
 urlpatterns = [
     path('', views.dashboard, name='dashboard'),
+    path('sw.js', views.service_worker, name='service_worker'),
     path('favicon.ico', RedirectView.as_view(url=settings.STATIC_URL + 'images/favicon.ico')),
 
     path('register/', views.register_view, name='register'),

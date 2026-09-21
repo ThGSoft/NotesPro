@@ -8539,6 +8539,25 @@ body.mobile-layout .sheet-structure-menu-btn {
   font-size: 14px;
 }
 
+.offline-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #92400e;
+  color: #fef3c7;
+  white-space: nowrap;
+}
+
+.offline-badge.is-syncing {
+  background: #1e3a8a;
+  color: #dbeafe;
+}
+
 .workspace-members-body {
   padding-top: 0;
 }
@@ -8936,6 +8955,10 @@ button, select, input {
     display: inline-flex;
     pointer-events: auto;
     position: static;
+  }
+
+  body.mobile-layout .mobile-page-fabs .mobile-undo-btn.visible {
+    min-width: 64px;
   }
 
   body.mobile-layout .floating-toc {
@@ -14427,6 +14450,12 @@ body.mobile-layout .labyrinth-toolbar [data-action="walk-demo"] {
 .keep-md a {
   color: #1a73e8;
   word-break: break-word;
+}
+
+.keep-md a.keep-external-link,
+.keep-checklist-item a.keep-external-link {
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .keep-md img.md-image,

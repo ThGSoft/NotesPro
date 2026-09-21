@@ -131,6 +131,15 @@ For local file links from preview, keep `LOCAL_FILE_OPEN_ENABLED=true` only on t
 
 Hide **Insert game** / **Insert photos** on the editor toolbar with `allowGames=false` and `allowPhotos=false` in `.env` (aliases: `ALLOW_GAMES`, `ALLOW_PHOTOS`). Pages that already contain those blocks still render them.
 
+### Offline mode
+
+When **Offline mode** is on (Settings, default on; disable globally with `allowOffline=false` / `ALLOW_OFFLINE=false`):
+
+- Pages and the folder tree you open are cached on this device.
+- If the network drops, you can keep reading and editing those pages. Status shows **Saved offline — will sync**.
+- Coming back online flushes queued saves. An **Offline** badge appears in the top bar while you are disconnected or waiting to sync.
+- A service worker caches the dashboard shell and static files so a refresh can still open the last loaded app (you must have visited while online first). Chat, mail, and new pages still need the server.
+
 After upgrading from an older version, run migrations and optionally:
 
 ```bash
@@ -637,6 +646,7 @@ Quick notes are separate from the page tree — lightweight sticky notes for eac
 - Open from the top bar **Keep** button (toggle back with the same button or by clicking a page/folder in the tree).
 - **Composer** at the top: title, body (markdown), optional checklist, and card color.
 - **Cards** in a grid: pin, recolor, checklist, archive, or delete from the card footer on hover. Collapsed cards render markdown (bold, lists, links, images, …); expand to edit the source.
+- **External links** — paste `https://…` or `[label](https://…)` in a note; they become clickable and open in a new tab. Use the **🔗** button while composing or editing to insert a link.
 - **Drag and drop** cards to reorder (writers only). Dropping onto a pinned/unpinned card moves the note into that group. Disabled while search is active.
 - **Search** filters title and body; **Show archived** lists archived notes.
 - Pinned notes stay at the top; your last view (**Pages** vs **Keep**) is saved in user settings.
@@ -785,7 +795,7 @@ Interactive to-do list. Fence name: `checklist` (also `check-list` / `todolist`)
 | `col` | Theme: `info` / `success` / `warning` / `danger` / `note`, or a CSS color |
 | `title` | Optional title via fence `title=…`, body `# Title`, or `title: …` |
 
-Each item line is `- [ ] text` or `- [x] text` (plain lines count as unchecked). Click the **checkbox** to toggle. Use **Left** / **Right** to move checkboxes. **+ Add item** and **✕** delete an item. All of that works in **Preview** or **Edit** when you can edit the page.
+Each item line is `- [ ] text` or `- [x] text` (plain lines count as unchecked). Click the **checkbox** to toggle. Use **Left** / **Right** to move checkboxes. **+ Add item** adds a row. **✕** deletes an item after a confirm prompt. All of that works in **Preview** or **Edit** when you can edit the page.
 
 Use the toolbar **checklist** button to insert a sample list.
 

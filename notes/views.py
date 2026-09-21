@@ -7,6 +7,7 @@ from django.db import models, transaction
 from django.http import HttpResponseBadRequest, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.conf import settings as django_settings
+from django.contrib.staticfiles import finders
 from django.views.decorators.http import require_GET, require_POST
 from .forms import RegisterForm
 from .models import Page, Workspace, UploadedFile, PastedFile, \
@@ -531,6 +532,7 @@ def dashboard(request):
         'tag_websocket_enabled': getattr(django_settings, 'ENABLE_TAG_WEBSOCKET', False),
         'allow_games': getattr(django_settings, 'ALLOW_GAMES', True),
         'allow_photos': getattr(django_settings, 'ALLOW_PHOTOS', True),
+        'allow_offline': getattr(django_settings, 'ALLOW_OFFLINE', True),
         'can_write_workspace': bool(
             current_workspace and _user_has_write_access(request.user, current_workspace)
         ),
@@ -539,6 +541,26 @@ def dashboard(request):
         'app_credits': CREDITS,
         'game_highscores': serialize_workspace_highscores(current_workspace, request.user),
     })
+
+
+@require_GET
+def service_worker(request):
+    """Serve the offline service worker at /sw.js with a root scope."""
+    if not getattr(django_settings, 'ALLOW_OFFLINE', True):
+        return HttpResponse(status=404)
+    path = finders.find('notes/offline-sw.js')
+    if not path:
+        fallback = Path(django_settings.BASE_DIR) / 'notes' / 'static' / 'notes' / 'offline-sw.js'
+        path = str(fallback) if fallback.is_file() else None
+    if not path:
+        return HttpResponse(status=404)
+    body = Path(path).read_text(encoding='utf-8')
+    response = HttpResponse(body, content_type='application/javascript; charset=utf-8')
+    script = (getattr(django_settings, 'FORCE_SCRIPT_NAME', None) or request.META.get('SCRIPT_NAME') or '').rstrip('/')
+    response['Service-Worker-Allowed'] = f'{script}/' if script else '/'
+    response['Cache-Control'] = 'no-cache'
+    return response
+
 
 @login_required
 def workspace_list_create(request):

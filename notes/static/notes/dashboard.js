@@ -216,6 +216,284 @@
     return JSON.parse(text);
   }
 
+  const OFFLINE_DB_NAME = 'notespro-offline';
+  const OFFLINE_DB_VERSION = 1;
+  let offlinePendingCount = 0;
+  let offlineFlushBusy = false;
+
+  function isOfflineModeAllowed() {
+    return window.APP_BOOT?.allowOffline !== false;
+  }
+
+  function isOfflineModeEnabled() {
+    if (!isOfflineModeAllowed()) return false;
+    const cfg = window.APP_BOOT?.extraConfigs || {};
+    if (cfg.offline_mode === false || cfg.offlineMode === false) return false;
+    return true;
+  }
+
+  function isBrowserOffline() {
+    return typeof navigator !== 'undefined' && navigator.onLine === false;
+  }
+
+  function offlineDbRequest(req) {
+    return new Promise((resolve, reject) => {
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  function offlineTxDone(tx) {
+    return new Promise((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error || new Error('offline tx aborted'));
+    });
+  }
+
+  function openOfflineDb() {
+    if (!window.indexedDB) return Promise.reject(new Error('IndexedDB unavailable'));
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(OFFLINE_DB_NAME, OFFLINE_DB_VERSION);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains('pages')) db.createObjectStore('pages', { keyPath: 'id' });
+        if (!db.objectStoreNames.contains('meta')) db.createObjectStore('meta', { keyPath: 'key' });
+        if (!db.objectStoreNames.contains('queue')) db.createObjectStore('queue', { keyPath: 'id', autoIncrement: true });
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async function offlineStoreGet(storeName, key) {
+    try {
+      const db = await openOfflineDb();
+      const tx = db.transaction(storeName, 'readonly');
+      const value = await offlineDbRequest(tx.objectStore(storeName).get(key));
+      await offlineTxDone(tx);
+      return value;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  async function offlineStorePut(storeName, value) {
+    try {
+      const db = await openOfflineDb();
+      const tx = db.transaction(storeName, 'readwrite');
+      tx.objectStore(storeName).put(value);
+      await offlineTxDone(tx);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  async function offlineStoreGetAll(storeName) {
+    try {
+      const db = await openOfflineDb();
+      const tx = db.transaction(storeName, 'readonly');
+      const value = await offlineDbRequest(tx.objectStore(storeName).getAll());
+      await offlineTxDone(tx);
+      return value || [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  async function offlineCachePage(page) {
+    if (!isOfflineModeEnabled() || !page?.id) return;
+    await offlineStorePut('pages', {
+      ...page,
+      _cachedAt: Date.now(),
+      _workspaceId: page.workspace || workspaceId,
+    });
+  }
+
+  async function offlineGetPage(pageId) {
+    const row = await offlineStoreGet('pages', Number(pageId) || pageId);
+    if (!row) return null;
+    const copy = { ...row };
+    delete copy._cachedAt;
+    delete copy._workspaceId;
+    return copy;
+  }
+
+  async function offlineCacheTree(wsId, data) {
+    if (!isOfflineModeEnabled() || !wsId) return;
+    await offlineStorePut('meta', { key: `tree:${wsId}`, data, at: Date.now() });
+  }
+
+  async function offlineGetTree(wsId) {
+    const row = await offlineStoreGet('meta', `tree:${wsId}`);
+    return row?.data || null;
+  }
+
+  async function offlineCacheKeep(wsId, archived, notes) {
+    if (!isOfflineModeEnabled() || !wsId) return;
+    await offlineStorePut('meta', { key: `keep:${wsId}:${archived}`, notes, at: Date.now() });
+  }
+
+  async function offlineGetKeep(wsId, archived) {
+    const row = await offlineStoreGet('meta', `keep:${wsId}:${archived}`);
+    return row?.notes || null;
+  }
+
+  async function refreshOfflinePendingCount() {
+    const items = await offlineStoreGetAll('queue');
+    offlinePendingCount = items.length;
+    syncOfflineBadge();
+    return items;
+  }
+
+  async function offlineQueueUpsertPageSave(pageId, payload) {
+    const items = await offlineStoreGetAll('queue');
+    const existing = items.find((item) => item.type === 'page-save' && String(item.pageId) === String(pageId));
+    const next = { type: 'page-save', pageId, payload, at: Date.now() };
+    try {
+      const db = await openOfflineDb();
+      const tx = db.transaction('queue', 'readwrite');
+      const store = tx.objectStore('queue');
+      if (existing?.id != null) {
+        next.id = existing.id;
+        store.put(next);
+      } else {
+        store.add(next);
+      }
+      await offlineTxDone(tx);
+    } catch (_) { /* ignore */ }
+    await refreshOfflinePendingCount();
+  }
+
+  async function offlineQueueClear() {
+    try {
+      const db = await openOfflineDb();
+      const tx = db.transaction('queue', 'readwrite');
+      tx.objectStore('queue').clear();
+      await offlineTxDone(tx);
+    } catch (_) { /* ignore */ }
+    offlinePendingCount = 0;
+    syncOfflineBadge();
+  }
+
+  function syncOfflineBadge() {
+    const badge = document.getElementById('offline-badge');
+    if (!badge) return;
+    const allowed = isOfflineModeEnabled();
+    const offline = isBrowserOffline();
+    const pending = offlinePendingCount > 0;
+    if (!allowed || (!offline && !pending)) {
+      badge.hidden = true;
+      badge.classList.add('d-none');
+      return;
+    }
+    badge.hidden = false;
+    badge.classList.remove('d-none');
+    badge.classList.toggle('is-syncing', !offline && pending);
+    badge.textContent = offline
+      ? (pending ? `Offline · ${offlinePendingCount}` : 'Offline')
+      : `Syncing ${offlinePendingCount}`;
+  }
+
+  function serviceWorkerUrl() {
+    return `${appBase || ''}/sw.js`;
+  }
+
+  function serviceWorkerScope() {
+    return `${appBase || ''}/` || '/';
+  }
+
+  async function registerOfflineServiceWorker() {
+    if (!isOfflineModeEnabled() || !('serviceWorker' in navigator)) return;
+    try {
+      await navigator.serviceWorker.register(serviceWorkerUrl(), { scope: serviceWorkerScope() });
+    } catch (err) {
+      console.warn('offline SW register failed:', err);
+    }
+  }
+
+  async function unregisterOfflineServiceWorker() {
+    if (!('serviceWorker' in navigator)) return;
+    try {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map((reg) => {
+        const script = String(reg.active?.scriptURL || reg.installing?.scriptURL || reg.waiting?.scriptURL || '');
+        if (script.endsWith('/sw.js') || script.includes('/sw.js')) return reg.unregister();
+        return Promise.resolve();
+      }));
+    } catch (err) {
+      console.warn('offline SW unregister failed:', err);
+    }
+  }
+
+  async function flushOfflineQueue() {
+    if (!isOfflineModeEnabled() || isBrowserOffline() || offlineFlushBusy) return;
+    const items = await refreshOfflinePendingCount();
+    if (!items.length) return;
+    offlineFlushBusy = true;
+    syncOfflineBadge();
+    try {
+      for (const item of items) {
+        if (item.type !== 'page-save') continue;
+        await api(`api/pages/${item.pageId}/update/`, 'POST', item.payload);
+      }
+      await offlineQueueClear();
+      showToast(items.length === 1 ? 'Offline change synced.' : `${items.length} offline changes synced.`, 'success', 2500);
+      setStatus('Synced');
+    } catch (err) {
+      console.warn('flushOfflineQueue failed:', err);
+      if (!err.network) setStatus(err.message || 'Sync failed');
+    } finally {
+      offlineFlushBusy = false;
+      await refreshOfflinePendingCount();
+    }
+  }
+
+  function applyPageToEditor(page, { fromHistory = false, statusText = 'Loaded' } = {}) {
+    currentPage = page;
+    currentPageId = page.id;
+    setWorkspacePageId(workspaceId, currentPageId);
+    const titleInput = document.getElementById('page-title');
+    const titlePreview = document.getElementById('page-title-preview');
+    const slugEl = document.getElementById('page-slug');
+    if (titleInput) titleInput.value = currentPage.title || '';
+    if (titlePreview) titlePreview.textContent = currentPage.title || 'Untitled';
+    if (slugEl) slugEl.textContent = currentPage.slug || '';
+    if (easyMDE) {
+      easyMDE.value(currentPage.markdown_content || '');
+      const cm = easyMDE.codemirror;
+      cm.setCursor({ line: 0, ch: 0 });
+      cm.scrollTo(0, 0);
+    }
+    if (isEditing) switchMode('markdown');
+    else switchMode('preview');
+    if (!fromHistory) syncNavHistory();
+    syncPageSettingsButton();
+    setStatus(statusText);
+  }
+
+  function initOfflineMode() {
+    refreshOfflinePendingCount();
+    window.addEventListener('online', () => {
+      syncOfflineBadge();
+      flushOfflineQueue();
+    });
+    window.addEventListener('offline', syncOfflineBadge);
+    window.addEventListener('beforeunload', (event) => {
+      if (!offlinePendingCount) return;
+      event.preventDefault();
+      event.returnValue = '';
+    });
+    if (isOfflineModeEnabled()) {
+      registerOfflineServiceWorker();
+      if (!isBrowserOffline()) flushOfflineQueue();
+    } else {
+      unregisterOfflineServiceWorker();
+    }
+    syncOfflineBadge();
+  }
+
   function slugifyHeading(text) {
     return (text || '')
       .toLowerCase()
@@ -3654,9 +3932,18 @@
     }
     applyAppLanguage(lang, { rerenderPreview: false });
     applyShopMerchantSettings(shop);
-    const ok = await updateUserSettings({ extra_configs: { language: lang, shop } });
+    const offlineMode = isOfflineModeAllowed()
+      ? !!document.getElementById('app-settings-offline')?.checked
+      : false;
+    if (!window.APP_BOOT) window.APP_BOOT = {};
+    if (!window.APP_BOOT.extraConfigs) window.APP_BOOT.extraConfigs = {};
+    window.APP_BOOT.extraConfigs.offline_mode = offlineMode;
+    const ok = await updateUserSettings({ extra_configs: { language: lang, shop, offline_mode: offlineMode } });
     if (ok) {
       setStatus('Settings saved');
+      if (offlineMode) registerOfflineServiceWorker();
+      else unregisterOfflineServiceWorker();
+      syncOfflineBadge();
       if (typeof renderPreview === 'function') renderPreview();
     }
     return ok;
@@ -3666,6 +3953,10 @@
     const sel = document.getElementById('app-settings-language');
     if (sel) sel.value = getStoredAppLanguage();
     fillShopSettingsForm();
+    const offlineWrap = document.getElementById('app-settings-offline-wrap');
+    const offlineBox = document.getElementById('app-settings-offline');
+    if (offlineWrap) offlineWrap.classList.toggle('d-none', !isOfflineModeAllowed());
+    if (offlineBox) offlineBox.checked = isOfflineModeEnabled();
     const modalEl = document.getElementById('app-settings-modal');
     if (modalEl) openDashboardModal(modalEl);
   }
@@ -12488,6 +12779,22 @@ function formatTextWithMarkup(rawText) {
     setLeftPanelExpanded(false);
   }
 
+  function syncMobileUndoButton() {
+    const btn = document.getElementById('mobile-undo-toggle');
+    if (!btn) return;
+    const show = isMobileLayout() && userCanEdit && isEditing && mainView !== 'keep';
+    btn.classList.toggle('visible', show);
+  }
+
+  function undoEditorChange() {
+    const cm = easyMDE?.codemirror || getEditorCm?.();
+    if (!cm?.undo) return;
+    cm.focus();
+    cm.undo();
+    if (typeof scheduleSave === 'function') scheduleSave();
+    if (typeof schedulePreviewRefresh === 'function') schedulePreviewRefresh();
+  }
+
   function syncMobileEditButton() {
     const btn = document.getElementById('mobile-edit-toggle');
     if (!btn) return;
@@ -12499,6 +12806,7 @@ function formatTextWithMarkup(rawText) {
     else btn.textContent = text;
     btn.setAttribute('aria-label', isEditing ? 'Switch to preview' : 'Switch to edit');
     btn.setAttribute('aria-pressed', isEditing ? 'true' : 'false');
+    syncMobileUndoButton();
   }
 
   function syncMobileContentMenu() {
@@ -15854,6 +16162,15 @@ function formatTextWithMarkup(rawText) {
         e.preventDefault();
         e.stopPropagation();
         const row = delBtn.closest('.checklist-item');
+        const label = String(
+          row?.querySelector('input.checklist-text')?.value
+          || row?.querySelector('.checklist-text')?.textContent
+          || '',
+        ).trim();
+        const ask = label
+          ? `Delete checklist item “${label}”?`
+          : 'Delete this checklist item?';
+        if (!window.confirm(ask)) return;
         row?.remove();
         const list = block.querySelector('.checklist-items');
         if (list && !list.querySelector('.checklist-item')) {
@@ -17429,6 +17746,19 @@ function formatTextWithMarkup(rawText) {
       sideBySideFullscreen: false,
       minHeight: '200px',
       toolbar: [
+        {
+          name: 'undo',
+          action: (editor) => editor?.codemirror?.undo?.(),
+          className: 'fa fa-undo',
+          title: 'Undo',
+        },
+        {
+          name: 'redo',
+          action: (editor) => editor?.codemirror?.redo?.(),
+          className: 'fa fa-repeat',
+          title: 'Redo',
+        },
+        '|',
         'code',
         {
           name: 'bold',
@@ -18425,7 +18755,19 @@ function formatTextWithMarkup(rawText) {
   async function loadTree(selectId = null, { skipSelectLoad = false } = {}) {
     syncWorkspaceIdFromDom();
     if (!workspaceId) return Promise.resolve();
-    const data = await api(`api/workspaces/${workspaceId}/tree/`);
+    let data;
+    try {
+      data = await api(`api/workspaces/${workspaceId}/tree/`);
+      await offlineCacheTree(workspaceId, data);
+    } catch (err) {
+      if (err.network && isOfflineModeEnabled()) {
+        data = await offlineGetTree(workspaceId);
+        if (data) {
+          setStatus('Offline — showing cached folders');
+        }
+      }
+      if (!data) throw err;
+    }
     const existing = $('#tree').jstree(true);
     const target = selectId ?? currentPageId;
     const explicitSelect = selectId != null && selectId !== '';
@@ -18512,33 +18854,19 @@ function formatTextWithMarkup(rawText) {
     try {
       setStatus('Loading...');
       currentPage = await api(`api/pages/${pageId}/`);
-      currentPageId = currentPage.id;
-      setWorkspacePageId(workspaceId, currentPageId);
-
-      const titleInput = document.getElementById('page-title');
-      const titlePreview = document.getElementById('page-title-preview');
-      const slugEl = document.getElementById('page-slug');
-
-      if (titleInput) titleInput.value = currentPage.title || '';
-      if (titlePreview) titlePreview.textContent = currentPage.title || 'Untitled';
-      if (slugEl) slugEl.textContent = currentPage.slug || '';
-
-      if (easyMDE) {
-        easyMDE.value(currentPage.markdown_content || '');
-        const cm = easyMDE.codemirror;
-        cm.setCursor({ line: 0, ch: 0 });
-        cm.scrollTo(0, 0);
-      }
-
-      if (isEditing) switchMode('markdown');
-      else switchMode('preview');
-
+      applyPageToEditor(currentPage, { fromHistory });
+      await offlineCachePage(currentPage);
       await updateUserSettings();
-      if (!fromHistory) syncNavHistory();
-      syncPageSettingsButton();
       setStatus('Loaded');
     } catch (err) {
       console.error('loadPage failed:', err);
+      if ((err.network || isBrowserOffline()) && isOfflineModeEnabled()) {
+        const cached = await offlineGetPage(pageId);
+        if (cached) {
+          applyPageToEditor(cached, { fromHistory, statusText: 'Offline copy' });
+          return;
+        }
+      }
       const msg = err.message || 'Failed to load page';
       setStatus(msg.length > 80 ? 'Failed to load page' : msg);
       if (err.status === 404) {
@@ -18632,9 +18960,25 @@ function formatTextWithMarkup(rawText) {
       const tree = $('#tree').jstree(true);
       if (tree && currentPageId) tree.rename_node(String(currentPageId), currentPage.title);
 
+      await offlineCachePage(currentPage);
       setStatus('Saved');
     } catch (err) {
       console.warn('savePage failed:', err);
+      if ((err.network || isBrowserOffline()) && isOfflineModeEnabled()) {
+        currentPage = {
+          ...currentPage,
+          title: payload.title,
+          markdown_content: payload.markdown_content,
+          archive: payload.archive,
+        };
+        if (titlePreview) titlePreview.textContent = currentPage.title || 'Untitled';
+        const tree = $('#tree').jstree(true);
+        if (tree && currentPageId) tree.rename_node(String(currentPageId), currentPage.title);
+        await offlineCachePage(currentPage);
+        await offlineQueueUpsertPageSave(currentPageId, payload);
+        setStatus('Saved offline — will sync');
+        return;
+      }
       setStatus(err.network ? 'Server offline — not saved' : 'Save failed');
     }
   }
@@ -18952,8 +19296,18 @@ function formatTextWithMarkup(rawText) {
       quickNotesCache = data.notes || [];
       sortQuickNotesCache();
       renderKeepGrid();
+      await offlineCacheKeep(workspaceId, archived, quickNotesCache);
     } catch (err) {
       console.warn('loadQuickNotes failed:', err);
+      if ((err.network || isBrowserOffline()) && isOfflineModeEnabled()) {
+        const cached = await offlineGetKeep(workspaceId, archived);
+        if (cached) {
+          quickNotesCache = cached;
+          sortQuickNotesCache();
+          renderKeepGrid();
+          setStatus('Offline — showing cached Keep notes');
+        }
+      }
     }
   }
 
@@ -18997,6 +19351,95 @@ function formatTextWithMarkup(rawText) {
     } catch (_) {
       return escapeHtml(raw);
     }
+  }
+
+  const KEEP_BARE_URL_RE = /https?:\/\/[^\s<>"'`]+/gi;
+
+  function trimKeepUrlMatch(raw) {
+    return String(raw || '').replace(/[),.;:!?]+$/g, '');
+  }
+
+  function autolinkKeepTextNode(node) {
+    const text = node.nodeValue || '';
+    KEEP_BARE_URL_RE.lastIndex = 0;
+    if (!KEEP_BARE_URL_RE.test(text)) return;
+    KEEP_BARE_URL_RE.lastIndex = 0;
+    const frag = document.createDocumentFragment();
+    let last = 0;
+    let match;
+    while ((match = KEEP_BARE_URL_RE.exec(text))) {
+      const href = trimKeepUrlMatch(match[0]);
+      if (!href) continue;
+      const start = match.index;
+      const end = start + href.length;
+      if (start > last) frag.appendChild(document.createTextNode(text.slice(last, start)));
+      const a = document.createElement('a');
+      a.href = href;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      a.className = 'keep-external-link';
+      a.textContent = href;
+      frag.appendChild(a);
+      last = end;
+      KEEP_BARE_URL_RE.lastIndex = last;
+    }
+    if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
+    if (last) node.parentNode.replaceChild(frag, node);
+  }
+
+  function enhanceKeepExternalLinks(root) {
+    if (!root) return;
+    root.querySelectorAll('a[href]').forEach((a) => {
+      const href = a.getAttribute('href') || '';
+      if (/^https?:\/\//i.test(href) || href.startsWith('mailto:') || href.startsWith('//')) {
+        a.setAttribute('target', '_blank');
+        a.setAttribute('rel', 'noopener noreferrer');
+        a.classList.add('keep-external-link');
+      }
+    });
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode(node) {
+        if (!node.nodeValue || !/https?:\/\//i.test(node.nodeValue)) return NodeFilter.FILTER_REJECT;
+        if (node.parentElement?.closest('a, code, pre, textarea, input, script, style')) {
+          return NodeFilter.FILTER_REJECT;
+        }
+        return NodeFilter.FILTER_ACCEPT;
+      },
+    });
+    const nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    nodes.forEach(autolinkKeepTextNode);
+  }
+
+  function insertMarkdownLinkAtCursor(el, href, label) {
+    if (!el) return;
+    const start = el.selectionStart ?? el.value.length;
+    const end = el.selectionEnd ?? start;
+    const selected = el.value.slice(start, end);
+    const text = label || selected || href;
+    const md = `[${text}](${href})`;
+    el.value = `${el.value.slice(0, start)}${md}${el.value.slice(end)}`;
+    el.focus();
+    const pos = start + md.length;
+    if (typeof el.setSelectionRange === 'function') el.setSelectionRange(pos, pos);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
+  function promptKeepExternalLink(el) {
+    if (!el) return;
+    const selected = el.value.slice(el.selectionStart, el.selectionEnd);
+    const preset = /^https?:\/\//i.test(selected.trim()) ? selected.trim() : 'https://';
+    const url = window.prompt('External link URL', preset);
+    if (url == null) return;
+    let href = String(url).trim();
+    if (!href) return;
+    if (!/^[a-z][a-z0-9+.-]*:/i.test(href)) href = `https://${href}`;
+    if (!/^https?:\/\//i.test(href) && !href.startsWith('mailto:')) {
+      showToast('Use an http(s) or mailto link.', 'warning');
+      return;
+    }
+    const label = selected && !/^https?:\/\//i.test(selected.trim()) ? selected : href.replace(/^https?:\/\//i, '');
+    insertMarkdownLinkAtCursor(el, href, label);
   }
 
   function keepSearchActive() {
@@ -19049,6 +19492,7 @@ function formatTextWithMarkup(rawText) {
             <div class="keep-card-footer">
               <button type="button" class="keep-icon-btn keep-note-pin${note.pinned ? ' active' : ''}" title="Pin">📌</button>
               <div class="keep-color-picker keep-note-colors"></div>
+              <button type="button" class="keep-icon-btn keep-note-link" title="Add link">🔗</button>
               <button type="button" class="keep-icon-btn keep-note-checklist" title="Checklist">☑</button>
               <button type="button" class="keep-icon-btn keep-note-archive" title="${note.archived ? 'Unarchive' : 'Archive'}">📥</button>
               <button type="button" class="keep-icon-btn keep-note-delete" title="Delete">🗑️</button>
@@ -19092,6 +19536,8 @@ function formatTextWithMarkup(rawText) {
     });
     applyPreviewImageStyles(grid);
     enhanceMarkdownCodeBlocks(grid);
+    markFileLinks(grid);
+    enhanceKeepExternalLinks(grid);
     requestAnimationFrame(() => {
       if (keepWrap) keepWrap.scrollTop = savedScrollTop;
       if (anchorNoteId != null) {
@@ -19351,6 +19797,10 @@ function formatTextWithMarkup(rawText) {
       keepComposerChecklist = !keepComposerChecklist;
       renderComposerChecklist();
     });
+    document.getElementById('keep-composer-link-btn')?.addEventListener('click', () => {
+      expandKeepComposer();
+      promptKeepExternalLink(document.getElementById('keep-composer-body'));
+    });
 
     document.getElementById('keep-search')?.addEventListener('input', scheduleKeepSearch);
     document.getElementById('keep-show-archived')?.addEventListener('change', e => {
@@ -19404,6 +19854,21 @@ function formatTextWithMarkup(rawText) {
         deleteQuickNote(noteId);
         return;
       }
+      if (e.target.closest('.keep-note-link')) {
+        e.stopPropagation();
+        if (!userCanEdit) return;
+        if (card.classList.contains('keep-card--expanded')) {
+          promptKeepExternalLink(card.querySelector('.keep-note-body'));
+          return;
+        }
+        expandedKeepCardId = noteId;
+        renderKeepGrid();
+        focusExpandedKeepNote();
+        requestAnimationFrame(() => {
+          promptKeepExternalLink(document.querySelector('.keep-card.keep-card--expanded .keep-note-body'));
+        });
+        return;
+      }
       if (e.target.closest('.keep-note-checklist')) {
         e.stopPropagation();
         const note = quickNotesCache.find(n => n.id === noteId);
@@ -19422,7 +19887,16 @@ function formatTextWithMarkup(rawText) {
         if (e.target.closest('a, button, input, textarea, label')) return;
         return;
       }
-      if (e.target.closest('a[href]')) return;
+      const keepLink = e.target.closest('a[href]');
+      if (keepLink) {
+        e.stopPropagation();
+        const href = keepLink.getAttribute('href') || '';
+        if (/^https?:\/\//i.test(href) || href.startsWith('mailto:')) {
+          keepLink.setAttribute('target', '_blank');
+          keepLink.setAttribute('rel', 'noopener noreferrer');
+        }
+        return;
+      }
       if (!userCanEdit) return;
       if (expandedKeepCardId !== noteId) {
         expandedKeepCardId = noteId;
@@ -20190,6 +20664,7 @@ function formatTextWithMarkup(rawText) {
 
     initTagSearch();
     initKeepNotes();
+    initOfflineMode();
 
     document.getElementById('file-input')?.addEventListener('change', async e => {
       await handleFiles(e.target.files);
@@ -20223,6 +20698,10 @@ function formatTextWithMarkup(rawText) {
       closeFloatingToc();
       closeMobileTopbarMenu();
       setEditing(!isEditing);
+    });
+    document.getElementById('mobile-undo-toggle')?.addEventListener('click', () => {
+      if (!userCanEdit || !isEditing) return;
+      undoEditorChange();
     });
 
     const initialWsOption = document.getElementById('workspace-select')?.options[

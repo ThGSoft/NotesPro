@@ -21,6 +21,7 @@
     <div class="title-wrap d-flex align-items-center gap-4">
       <button id="toggle-left" class="btn btn-sm btn-outline-light">☰</button>
       <span class="topbar-app-label"><strong>Notes Pro</strong>: {{ user.username }}</span>
+      <span id="offline-badge" class="offline-badge d-none" hidden>Offline</span>
 
       <div class="flex-grow-1">
         <div id="page-title-preview" class="page-title-preview"></div>
@@ -209,6 +210,7 @@
           <div id="keep-composer-checklist" class="keep-checklist d-none"></div>
           <div class="keep-composer-actions">
             <button type="button" id="keep-composer-checklist-btn" class="keep-icon-btn" title="Checklist">☑</button>
+            <button type="button" id="keep-composer-link-btn" class="keep-icon-btn" title="Add link">🔗</button>
             <div class="keep-color-picker" id="keep-composer-colors"></div>
             <button type="button" id="keep-composer-close" class="btn btn-sm btn-light ms-auto">Close</button>
             <button type="button" id="keep-composer-save" class="btn btn-sm btn-primary">Save</button>
@@ -244,6 +246,9 @@
       </div>
       <div id="editor-splitter" class="panel-splitter panel-splitter--editor" role="separator" aria-orientation="vertical" aria-label="Resize editor and preview" tabindex="0"></div>
       <div id="mobile-page-fabs" class="mobile-page-fabs">
+        <button id="mobile-undo-toggle" class="mobile-toc-btn mobile-undo-btn" type="button" aria-label="Undo">
+          <span>Undo</span>
+        </button>
         <button id="mobile-edit-toggle" class="mobile-toc-btn mobile-edit-btn" type="button" aria-label="Switch to edit" aria-pressed="false">
           <span>Edit</span>
         </button>
@@ -423,6 +428,7 @@
         tagWebSocketEnabled: {{ tag_websocket_enabled|yesno:"true,false" }},
         allowGames: {{ allow_games|yesno:"true,false" }},
         allowPhotos: {{ allow_photos|yesno:"true,false" }},
+        allowOffline: {{ allow_offline|yesno:"true,false" }},
         version: "{{ app_version|escapejs }}",
     };
 
@@ -1057,6 +1063,13 @@
             {% endfor %}
           </select>
           <p class="small dashboard-modal-hint mt-2 mb-0">Affects calendar dates and NotesList labels. Choose browser default to follow your device locale.</p>
+        </div>
+        <div class="mt-3" id="app-settings-offline-wrap">
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="app-settings-offline">
+            <label class="form-check-label small" for="app-settings-offline">Offline mode</label>
+          </div>
+          <p class="small dashboard-modal-hint mt-2 mb-0">Cache pages on this device and keep editing when the network drops. Changes sync when you are back online.</p>
         </div>
         <div class="app-settings-shop mt-3 pt-3 border-top border-secondary-subtle">
           <div class="small fw-semibold mb-2">Shop</div>

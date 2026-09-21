@@ -934,12 +934,15 @@
     function poseInFrontOf(frame, dist) {
       const origin = new THREE.Vector3();
       frame.mesh.getWorldPosition(origin);
-      const normal = new THREE.Vector3();
-      frame.mesh.getWorldDirection(normal);
-      if (origin.x * normal.x > 0.01) normal.negate();
-      const pos = origin.clone().addScaledVector(normal, Math.max(WALL_PAD + 0.15, dist));
-      const lookYaw = origin.x >= 0 ? -Math.PI / 2 : Math.PI / 2;
-      const clamped = clampHall(pos.x, pos.z);
+      const inward = new THREE.Vector3();
+      frame.mesh.getWorldDirection(inward);
+      inward.y = 0;
+      if (inward.lengthSq() < 1e-6) inward.set(-Math.sign(origin.x || 1), 0, 0);
+      else inward.normalize();
+      if (origin.x * inward.x > 0.01) inward.negate();
+      const pos = origin.clone().addScaledVector(inward, Math.max(WALL_PAD + 0.15, dist));
+      const clamped = clampHall(pos.x, origin.z);
+      const lookYaw = Math.atan2(origin.x - clamped.x, origin.z - clamped.z);
       return { x: clamped.x, z: clamped.z, yaw: lookYaw };
     }
 
@@ -958,48 +961,38 @@
     }
 
     function buildTourWaypoints() {
-      const pts = [{ x: 0, z: 0.7, yaw: 0, pitch: 0, hold: 0.5, fov: FOV_DEFAULT, travel: 1.1 }];
+      const pts = [{ x: 0, z: 0.7, yaw: 0, pitch: 0, hold: 0.45, fov: FOV_DEFAULT, travel: 1.0 }];
       frames.forEach((f) => {
-        const fill = (f.kind === 'video' || f.kind === 'youtube' || f.kind === 'audio') ? 0.78 : 0.68;
+        const fill = (f.kind === 'video' || f.kind === 'youtube' || f.kind === 'audio') ? 0.82 : 0.72;
         const close = distToFitFrame(f, LOOK_FOV, fill);
-        const approach = poseInFrontOf(f, close + 0.85);
         const front = poseInFrontOf(f, close);
-        const dwell = (f.kind === 'video' || f.kind === 'youtube' || f.kind === 'audio') ? 5.2 : 2.6;
+        const dwell = (f.kind === 'video' || f.kind === 'youtube' || f.kind === 'audio') ? 5.2 : 2.8;
         pts.push({
-          x: approach.x,
-          z: approach.z,
-          yaw: approach.yaw * 0.35,
-          pitch: -0.02,
+          x: 0,
+          z: front.z,
+          yaw: front.yaw * 0.22,
+          pitch: 0,
           hold: 0.12,
           fov: 58,
-          travel: 1.2,
+          travel: 0.95,
         });
         pts.push({
           x: front.x,
           z: front.z,
           yaw: front.yaw,
-          pitch: -0.02,
+          pitch: 0,
           hold: dwell,
           fov: LOOK_FOV,
-          travel: 1.35,
-        });
-        pts.push({
-          x: front.x,
-          z: front.z,
-          yaw: 0,
-          pitch: 0,
-          hold: 0.28,
-          fov: FOV_DEFAULT,
-          travel: 0.65,
+          travel: 1.25,
         });
         pts.push({
           x: 0,
-          z: Math.max(0.7, f.z + 0.85),
+          z: front.z,
           yaw: 0,
           pitch: 0,
-          hold: 0.12,
+          hold: 0.14,
           fov: FOV_DEFAULT,
-          travel: 0.9,
+          travel: 0.95,
         });
       });
       pts.push({
