@@ -111,6 +111,7 @@ class Command(BaseCommand):
                 'LOCAL_FILE_OPEN_ENABLED',
                 'ALLOW_GAMES',
                 'ALLOW_PHOTOS',
+                'ALLOW_OFFLINE',
                 'REGISTER_MAIL',
                 'REGISTER_MOBILE',
                 'DB_ENCRYPTION_KEY',
