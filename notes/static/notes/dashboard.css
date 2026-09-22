@@ -2964,6 +2964,13 @@ body.mobile-layout .sheet-structure-menu-btn {
   --calendar-accent: #64748b;
 }
 
+.app-settings-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
 .app-settings-links .btn {
   min-width: 4.5rem;
 }

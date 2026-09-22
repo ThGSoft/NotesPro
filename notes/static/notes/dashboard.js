@@ -16470,7 +16470,19 @@ function formatTextWithMarkup(rawText) {
       if (delBtn) {
         e.preventDefault();
         e.stopPropagation();
-        delBtn.closest('.form-widget-option')?.remove();
+        const row = delBtn.closest('.form-widget-option');
+        if (kind === 'enum') {
+          const label = String(
+            row?.querySelector('input.form-widget-option-text')?.value
+            || row?.querySelector('.form-widget-option-label')?.textContent
+            || '',
+          ).trim();
+          const ask = label
+            ? `Delete enum option “${label}”?`
+            : 'Delete this enum option?';
+          if (!window.confirm(ask)) return;
+        }
+        row?.remove();
         const list = block.querySelector('.form-widget-options');
         if (list && !list.querySelector('.form-widget-option')) {
           list.innerHTML = '<div class="form-widget-empty">No options yet</div>';

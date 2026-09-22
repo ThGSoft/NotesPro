@@ -1055,6 +1055,12 @@
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
+        <div class="app-settings-links mb-3">
+          {% if user.is_staff %}
+          <a id="admin-link" href="{% url 'admin:index' %}" class="btn btn-sm btn-outline-light d-none" title="Django Admin">Admin</a>
+          {% endif %}
+          <a id="app-settings-2fa-link" href="{% url 'setup_2fa' %}" class="btn btn-sm btn-outline-light" title="Two-factor authentication">2FA</a>
+        </div>
         <div class="mb-2">
           <label class="form-label small fw-semibold" for="app-settings-language">Language</label>
           <select id="app-settings-language" class="form-select form-select-sm">
@@ -1115,15 +1121,6 @@
           <div class="mb-0">
             <label class="form-label small visually-hidden" for="app-settings-shop-mastercard">Visa / Mastercard instructions</label>
             <textarea id="app-settings-shop-mastercard" class="form-control form-control-sm" rows="2" maxlength="240" placeholder="Optional extra instructions. Do not enter card numbers."></textarea>
-          </div>
-        </div>
-        <div class="app-settings-links mt-3 pt-3 border-top border-secondary-subtle">
-          <div class="small fw-semibold mb-2">Go to</div>
-          <div class="d-flex flex-wrap gap-2">
-            {% if user.is_staff %}
-            <a id="admin-link" href="{% url 'admin:index' %}" class="btn btn-sm btn-outline-light d-none" title="Django Admin">Admin</a>
-            {% endif %}
-            <a id="app-settings-2fa-link" href="{% url 'setup_2fa' %}" class="btn btn-sm btn-outline-light" title="Two-factor authentication">2FA</a>
           </div>
         </div>
         <div class="app-settings-about mt-3 pt-3 border-top border-secondary-subtle">
