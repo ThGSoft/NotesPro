@@ -11806,12 +11806,62 @@ body.mobile-layout .sokoban-tips__controls--mobile {
   display: none;
 }
 
+.gallery-walk-pad {
+  display: none;
+  position: absolute;
+  left: 10px;
+  bottom: 12px;
+  z-index: 3;
+  grid-template-columns: 56px 56px 56px 56px;
+  grid-template-areas:
+    ". w . in"
+    "a s d out";
+  gap: 8px;
+  pointer-events: auto;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.gallery-walk-pad.is-visible,
+body.mobile-layout .gallery-walk-pad {
+  display: grid;
+}
+
+.gallery-walk-pad__btn {
+  touch-action: none;
+  border: 1px solid rgba(253, 230, 138, 0.45);
+  background: rgba(18, 12, 6, 0.78);
+  color: #fde68a;
+  font: 700 16px/1 system-ui, sans-serif;
+  border-radius: 14px;
+  min-height: 52px;
+  min-width: 52px;
+}
+
+.gallery-walk-pad__btn--w { grid-area: w; }
+.gallery-walk-pad__btn--a { grid-area: a; }
+.gallery-walk-pad__btn--s { grid-area: s; }
+.gallery-walk-pad__btn--d { grid-area: d; }
+.gallery-walk-pad__btn--in { grid-area: in; }
+.gallery-walk-pad__btn--out { grid-area: out; }
+
+.gallery-walk-pad__btn:active,
+.gallery-walk-pad__btn.is-active {
+  background: rgba(234, 179, 8, 0.42);
+  border-color: rgba(253, 230, 138, 0.95);
+  color: #fff;
+}
+
 body.mobile-layout .gallery-walk-hint--desktop {
   display: none;
 }
 
 body.mobile-layout .gallery-walk-hint--mobile {
   display: block;
+}
+
+body.mobile-layout .gallery-walk-overlay {
+  padding-left: 260px;
 }
 
 /* Phones: first tap enters. Keep Demo tour so the guided walk can be started or stopped. */
@@ -11831,6 +11881,14 @@ body.mobile-layout .gallery-walk-toolbar [data-action="walk-demo"] {
 
   .gallery-walk-hint--mobile {
     display: block;
+  }
+
+  .gallery-walk-pad {
+    display: grid;
+  }
+
+  .gallery-walk-overlay {
+    padding-left: 260px;
   }
 
   .gallery-walk-toolbar [data-action="walk-focus"] {

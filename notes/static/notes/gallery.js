@@ -523,9 +523,17 @@
       `<div class="gallery-walk-overlay">`,
       `<p class="gallery-walk-hint gallery-walk-hint--desktop">Click a picture to open · click empty space to look · <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> walk · wheel zoom · <kbd>Space</kbd> open</p>`,
       `<p class="gallery-walk-hint gallery-walk-hint--mobile">${spec.demo
-        ? 'Tap Demo tour — or tap a picture to open'
-        : 'Tap a picture to open · drag to look'}</p>`,
+        ? 'WASD pad walk · +/− zoom · tap a picture to open'
+        : 'WASD pad walk · +/− zoom · tap a picture to open · drag to look'}</p>`,
       `<div class="gallery-walk-caption" aria-live="polite"></div>`,
+      `</div>`,
+      `<div class="gallery-walk-pad" aria-label="WASD walk pad">`,
+      `<button type="button" class="gallery-walk-pad__btn gallery-walk-pad__btn--w" data-key="KeyW" tabindex="-1" aria-label="Forward">W</button>`,
+      `<button type="button" class="gallery-walk-pad__btn gallery-walk-pad__btn--a" data-key="KeyA" tabindex="-1" aria-label="Left">A</button>`,
+      `<button type="button" class="gallery-walk-pad__btn gallery-walk-pad__btn--s" data-key="KeyS" tabindex="-1" aria-label="Back">S</button>`,
+      `<button type="button" class="gallery-walk-pad__btn gallery-walk-pad__btn--d" data-key="KeyD" tabindex="-1" aria-label="Right">D</button>`,
+      `<button type="button" class="gallery-walk-pad__btn gallery-walk-pad__btn--in" data-zoom="in" tabindex="-1" aria-label="Zoom in">+</button>`,
+      `<button type="button" class="gallery-walk-pad__btn gallery-walk-pad__btn--out" data-zoom="out" tabindex="-1" aria-label="Zoom out">−</button>`,
       `</div>`,
       `</div>`,
       `<div class="gallery-walk-toolbar">`,
@@ -671,6 +679,7 @@
     const demoBtn = el.querySelector('[data-action="walk-demo"]');
     const cssRoot = el.querySelector('.gallery-walk-css3d');
     const cssCam = el.querySelector('.gallery-walk-css3d-cam');
+    const pad = el.querySelector('.gallery-walk-pad');
     if (!viewport || !canvas || !photos.length) return null;
 
     const FOV_MIN = 32;
@@ -1068,6 +1077,10 @@
       fov = Math.max(FOV_MIN, Math.min(FOV_MAX, next));
       camera.fov = fov;
       camera.updateProjectionMatrix();
+    }
+
+    function nudgeZoom(dir) {
+      setFov(fov + (dir < 0 ? 4.5 : -4.5));
     }
 
     function syncDemoButton() {
@@ -1474,6 +1487,11 @@
         if (tour?.active) stopTour();
         e.preventDefault();
       }
+      if (['Equal', 'NumpadAdd', 'Minus', 'NumpadSubtract'].includes(e.code)) {
+        if (tour?.active) stopTour();
+        e.preventDefault();
+        if (!e.repeat) nudgeZoom(e.code === 'Minus' || e.code === 'NumpadSubtract' ? -1 : 1);
+      }
       if (e.code === 'Space') {
         e.preventDefault();
         const lbOpen = document.getElementById('notespro-gallery-lightbox');
@@ -1522,7 +1540,7 @@
       if (startDemo && options.demo && !tour?.active) startTour();
       entered = true;
       if (isGalleryMobile() && mobileHintEl) {
-        mobileHintEl.textContent = 'Tap a picture to open · drag to look';
+        mobileHintEl.textContent = 'WASD pad walk · +/− zoom · tap a picture to open · drag to look';
       }
     }
 
@@ -1585,6 +1603,96 @@
       viewport.classList.toggle('gallery-walk-viewport--locked', locked);
     }
 
+    function syncPad() {
+      if (!pad) return;
+      const mobile = isGalleryMobile();
+      el.classList.toggle('gallery-block--mobile', mobile);
+      pad.classList.toggle('is-visible', mobile);
+    }
+
+    function bindPad() {
+      if (!pad) return () => {};
+      const held = new Map();
+      let zoomTimer = 0;
+      const setKey = (code, down, btn) => {
+        if (!code) return;
+        keys[code] = !!down;
+        btn?.classList.toggle('is-active', !!down);
+        if (down) {
+          enterGallery({ startDemo: false, stopTourIfActive: true, lockPointer: false });
+        }
+      };
+      const stopZoomRepeat = () => {
+        if (zoomTimer) {
+          clearInterval(zoomTimer);
+          zoomTimer = 0;
+        }
+      };
+      const startZoom = (dir, btn) => {
+        enterGallery({ startDemo: false, stopTourIfActive: true, lockPointer: false });
+        nudgeZoom(dir);
+        btn?.classList.add('is-active');
+        stopZoomRepeat();
+        zoomTimer = window.setInterval(() => nudgeZoom(dir), 140);
+      };
+      const onDown = (event) => {
+        const btn = event.currentTarget;
+        const code = btn.getAttribute('data-key');
+        const zoom = btn.getAttribute('data-zoom');
+        if (!code && !zoom) return;
+        event.preventDefault();
+        event.stopPropagation();
+        try { btn.setPointerCapture(event.pointerId); } catch (_) { /* ignore */ }
+        if (zoom) {
+          held.set(event.pointerId, { zoom, btn });
+          startZoom(zoom === 'in' ? 1 : -1, btn);
+          return;
+        }
+        held.set(event.pointerId, { code, btn });
+        setKey(code, true, btn);
+      };
+      const onUp = (event) => {
+        const rec = held.get(event.pointerId);
+        if (!rec) return;
+        held.delete(event.pointerId);
+        if (rec.zoom) {
+          stopZoomRepeat();
+          rec.btn?.classList.remove('is-active');
+          return;
+        }
+        setKey(rec.code, false, rec.btn);
+      };
+      const onContext = (event) => event.preventDefault();
+      pad.querySelectorAll('[data-key], [data-zoom]').forEach((btn) => {
+        btn.addEventListener('pointerdown', onDown);
+        btn.addEventListener('pointerup', onUp);
+        btn.addEventListener('pointercancel', onUp);
+        btn.addEventListener('lostpointercapture', onUp);
+        btn.addEventListener('contextmenu', onContext);
+      });
+      return () => {
+        pad.querySelectorAll('[data-key], [data-zoom]').forEach((btn) => {
+          btn.removeEventListener('pointerdown', onDown);
+          btn.removeEventListener('pointerup', onUp);
+          btn.removeEventListener('pointercancel', onUp);
+          btn.removeEventListener('lostpointercapture', onUp);
+          btn.removeEventListener('contextmenu', onContext);
+        });
+        stopZoomRepeat();
+        held.forEach((rec) => {
+          if (rec.zoom) rec.btn?.classList.remove('is-active');
+          else setKey(rec.code, false, rec.btn);
+        });
+        held.clear();
+      };
+    }
+
+    const unbindPad = bindPad();
+    const onWinResize = () => {
+      resize();
+      syncPad();
+    };
+
     canvas.addEventListener('click', requestLook);
     canvas.addEventListener('pointerdown', onPointerDownLook);
     canvas.addEventListener('pointermove', onPointerMoveLook);
@@ -1596,13 +1704,17 @@
     document.addEventListener('mousemove', onMouseMove);
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
-    window.addEventListener('resize', resize);
+    window.addEventListener('resize', onWinResize);
 
     el.addEventListener('notespro:monitor-fullscreen', () => {
-      requestAnimationFrame(resize);
+      requestAnimationFrame(() => {
+        resize();
+        syncPad();
+      });
     });
 
     resize();
+    syncPad();
     raf = requestAnimationFrame(tick);
     syncDemoButton();
     if (options.demo) {
@@ -1632,7 +1744,8 @@
         document.removeEventListener('mousemove', onMouseMove);
         window.removeEventListener('keydown', onKeyDown);
         window.removeEventListener('keyup', onKeyUp);
-        window.removeEventListener('resize', resize);
+        window.removeEventListener('resize', onWinResize);
+        unbindPad();
         frames.forEach((f) => {
           if (f.video) {
             f.video.pause();

@@ -1686,9 +1686,9 @@ With your own photos / videos:
 | `fullscreen` | Edge-to-edge layout (default on) |
 | `col` / `bkcol` | Theme colors |
 
-**Walk controls:** click the view to capture the mouse (also unlocks video sound) · **W A S D** / arrows move · **Shift** sprint · mouse **wheel** zoom closer / wider · **Space** open the media you're looking at · **Esc** release mouse · **Demo tour** starts / stops the auto-walk · **Thumbnails** toggles a strip.
+**Walk controls:** click the view to capture the mouse (also unlocks video sound) · **W A S D** / arrows move · **Shift** sprint · mouse **wheel** or **+ / −** zoom closer / wider · **Space** open the media you're looking at · **Esc** release mouse · **Demo tour** starts / stops the auto-walk · **Thumbnails** toggles a strip.
 
-On **mobile**, **Enter gallery** is hidden (the first tap enters the hall). **Demo tour** stays visible so you can start or stop the guided walk. On a `demo` gallery the tour also starts on load; the first tap unlocks sound. After that, tap a wall photo to step a little closer (again to go closer still), and drag to look around (that takes over from the tour).
+On **mobile**, **Enter gallery** is hidden (the first tap enters the hall). Use the on-screen **W A S D** buttons to walk, **+ / −** to zoom, and drag to look around. **Demo tour** stays visible so you can start or stop the guided walk. On a `demo` gallery the tour also starts on load; the first tap unlocks sound. After that, tap a wall photo to step a little closer (again to go closer still), and drag to look around (that takes over from the tour).
 
 Videos play on the wall when the file has a picture track. If there is no video (audio-only file, or a YouTube clip you are not facing closely enough), **sound still plays**. Stand in front of a YouTube frame to see the video overlay; glance away and you hear the song only. **Only one clip has audio at a time.** Browsers may keep sound muted until you click **Enter gallery** or **Demo tour** (or tap the gallery on a phone). **Space** opens the media in the lightbox.
 

@@ -85,7 +85,7 @@ def build_gallery_markdown(workspace, user):
         '',
         'Walk-in corridor of NotesPro screenshots. **Demo tour** starts on load — tap it to stop or start again. In **Edit**, hover the gallery and press **Ctrl+V** to paste a photo.',
         '',
-        '```gallery{title=NotesPro;mode=walk;demo;col=info}',
+        '```gallery{title=NotesPro;front=Welcome;back=NotesPro;mode=walk;demo;col=info}',
     ]
     for name, label in GALLERY_SHOTS:
         url = urls.get(name)
@@ -374,7 +374,7 @@ plt.show()
 # Gallery
 Hover and press **Ctrl+V** to add a photo. **Demo tour** auto-walks the hall.
 
-```gallery{title=Demo walk;mode=walk;demo;col=info}
+```gallery{title=Demo walk;front=Welcome;back=Demo walk;mode=walk;demo;col=info}
 ![Mountain lake](https://picsum.photos/id/1015/960/720)
 ![Flower video](https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4)
 ![Forest path](https://picsum.photos/id/1018/960/720)
