@@ -11635,9 +11635,12 @@ body.mobile-layout .sokoban-tips__controls--mobile {
 }
 
 .gallery-caption {
-  font-size: 0.8rem;
-  color: var(--gallery-meta);
-  padding: 0 2px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--gallery-title);
+  text-align: center;
+  line-height: 1.25;
+  padding: 2px 4px 0;
 }
 
 .gallery-thumb--add {

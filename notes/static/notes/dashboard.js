@@ -13668,7 +13668,7 @@ function formatTextWithMarkup(rawText) {
           title: 'Insert walk-in photo gallery demo',
           action: (editor) => insertFenceBlock(
             editor,
-            'gallery{title=Demo walk;mode=walk;demo;col=info}',
+            'gallery{title=Demo walk;front=Welcome;back=Demo walk;mode=walk;demo;col=info}',
             samplePhotoFenceBody('gallery'),
           ),
         },

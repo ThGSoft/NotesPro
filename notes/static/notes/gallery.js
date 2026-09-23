@@ -26,6 +26,136 @@
       .replace(/"/g, '&quot;');
   }
 
+  function photoDisplayTitle(photo, index) {
+    const raw = String(photo?.label || '').trim();
+    if (raw) return raw;
+    if (photo?.kind === 'youtube' || extractYoutubeId(photo?.src)) return 'YouTube';
+    if (photo?.kind === 'video' || isVideoSrc(photo?.src)) return `Video ${index + 1}`;
+    if (photo?.kind === 'audio' || isAudioSrc(photo?.src)) return `Audio ${index + 1}`;
+    return `Photo ${index + 1}`;
+  }
+
+  function absoluteMediaUrl(src) {
+    const href = resolveMediaHref(src);
+    try {
+      return new URL(href, window.location.href).href;
+    } catch (_) {
+      return href;
+    }
+  }
+
+  function jsonForScript(value) {
+    return JSON.stringify(value).replace(/</g, '\\u003c');
+  }
+
+  function drawTitlePlaqueCanvas(text) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 768;
+    canvas.height = 128;
+    const g = canvas.getContext('2d');
+    if (!g) return canvas;
+    g.fillStyle = '#1c1814';
+    g.fillRect(0, 0, 768, 128);
+    g.strokeStyle = '#c9a227';
+    g.lineWidth = 5;
+    g.strokeRect(6, 6, 756, 116);
+    g.fillStyle = '#f4ead6';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    let label = String(text || '').trim() || 'Photo';
+    let size = 42;
+    g.font = `600 ${size}px "Segoe UI", system-ui, sans-serif`;
+    while (size > 22 && g.measureText(label).width > 700) {
+      size -= 2;
+      g.font = `600 ${size}px "Segoe UI", system-ui, sans-serif`;
+    }
+    if (g.measureText(label).width > 700) {
+      while (label.length > 4 && g.measureText(`${label}…`).width > 700) label = label.slice(0, -1);
+      label += '…';
+    }
+    g.fillText(label, 384, 66);
+    return canvas;
+  }
+
+  function makeTitlePlaqueMesh(THREE, text, width) {
+    const tex = new THREE.CanvasTexture(drawTitlePlaqueCanvas(text));
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const pw = Math.max(0.7, (width || 1.4) * 0.92);
+    const ph = 0.2;
+    const mesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(pw, ph),
+      new THREE.MeshBasicMaterial({ map: tex, transparent: true }),
+    );
+    mesh.position.set(0, -(1.4 / 2) - 0.16 - ph / 2, 0.05);
+    return mesh;
+  }
+
+  function layoutTitlePlaque(plaque, width, height) {
+    if (!plaque) return;
+    const pw = Math.max(0.7, width * 0.92);
+    const ph = 0.2;
+    plaque.geometry.dispose();
+    plaque.geometry = new THREE.PlaneGeometry(pw, ph);
+    plaque.position.set(0, -(height / 2) - 0.16 - ph / 2, 0.05);
+  }
+
+  function drawEndWallTitleCanvas(text) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 2048;
+    canvas.height = 768;
+    const g = canvas.getContext('2d');
+    if (!g) return canvas;
+    g.fillStyle = '#1c1814';
+    g.fillRect(0, 0, 2048, 768);
+    g.strokeStyle = '#c9a227';
+    g.lineWidth = 24;
+    g.strokeRect(20, 20, 2008, 728);
+    g.strokeStyle = '#f4ead6';
+    g.lineWidth = 6;
+    g.strokeRect(48, 48, 1952, 672);
+    g.fillStyle = '#f4ead6';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    let label = String(text || '').trim() || 'Gallery';
+    let size = 240;
+    g.font = `700 ${size}px Georgia, "Times New Roman", serif`;
+    while (size > 64 && g.measureText(label).width > 1860) {
+      size -= 6;
+      g.font = `700 ${size}px Georgia, "Times New Roman", serif`;
+    }
+    if (g.measureText(label).width > 1860) {
+      while (label.length > 4 && g.measureText(`${label}…`).width > 1860) label = label.slice(0, -1);
+      label += '…';
+    }
+    g.fillText(label, 1024, 384);
+    return canvas;
+  }
+
+  function photoWallZ(index, spacing) {
+    return 2.5 + Math.floor(index / 2) * spacing + (index % 2) * (spacing * 0.35);
+  }
+
+  function hallLengthForPhotos(count, spacing) {
+    const lastZ = photoWallZ(Math.max(0, count - 1), spacing);
+    // Frames sit in the YZ plane (width along the hall). Cap the corridor
+    // just past the last picture so there is room to view the end-wall title.
+    return lastZ + 1.05 + 1.4;
+  }
+
+  function makeHallTitleMesh(THREE, text, hallHalfW, wallH, z, rotY) {
+    const tex = new THREE.CanvasTexture(drawEndWallTitleCanvas(text));
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const w = Math.min(4.35, hallHalfW * 2 - 0.3);
+    const h = w * (768 / 2048);
+    const mesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(w, h),
+      new THREE.MeshBasicMaterial({ map: tex }),
+    );
+    mesh.position.set(0, wallH * 0.58, z);
+    mesh.rotation.y = rotY || 0;
+    return mesh;
+  }
+
   function parseFenceAttrs(attrs) {
     const config = {};
     String(attrs || '').split(';').forEach(pair => {
@@ -301,12 +431,24 @@
     return raw === '' || raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
   }
 
+  function resolveNamedTitle(cfg, keys, fallback) {
+    for (const key of keys) {
+      if (!Object.prototype.hasOwnProperty.call(cfg, key)) continue;
+      return String(cfg[key] ?? '').trim();
+    }
+    return fallback;
+  }
+
   function buildSpec(source, cfg) {
     const title = String(cfg.title || 'Gallery').trim() || 'Gallery';
+    const frontTitle = resolveNamedTitle(cfg, ['front', 'fronttitle', 'titlefront'], title);
+    const backTitle = resolveNamedTitle(cfg, ['back', 'backtitle', 'titleback'], title);
     const photos = parsePhotos(source);
     const demo = resolveDemo(cfg);
     return {
       title,
+      frontTitle,
+      backTitle,
       cols: resolveCols(cfg),
       mode: resolveMode(cfg),
       demo,
@@ -334,7 +476,7 @@
     const ytId = photo.youtubeId || extractYoutubeId(photo.src);
     const kind = ytId ? 'youtube' : (photo.kind === 'video' || photo.kind === 'audio' ? photo.kind : 'image');
     const src = escapeHtml(kind === 'youtube' ? youtubeThumbSrc(ytId) : resolveMediaHref(photo.src));
-    const label = escapeHtml(photo.label || (kind === 'youtube' ? 'YouTube' : kind === 'video' ? `Video ${index + 1}` : kind === 'audio' ? `Audio ${index + 1}` : `Photo ${index + 1}`));
+    const label = escapeHtml(photoDisplayTitle(photo, index));
     let media;
     if (kind === 'video') {
       media = `<video src="${src}" muted playsinline loop preload="metadata" draggable="false"></video>`
@@ -353,7 +495,7 @@
       `<span class="gallery-frame">`,
       media,
       `</span>`,
-      photo.label ? `<span class="gallery-caption">${label}</span>` : '',
+      `<span class="gallery-caption">${label}</span>`,
       `</button>`,
     ].join('');
   }
@@ -379,16 +521,17 @@
       `<canvas class="gallery-walk-canvas"></canvas>`,
       `<div class="gallery-walk-css3d" aria-hidden="true"><div class="gallery-walk-css3d-cam"></div></div>`,
       `<div class="gallery-walk-overlay">`,
-      `<p class="gallery-walk-hint gallery-walk-hint--desktop">Click to look &amp; unlock sound · <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> walk · wheel zoom · <kbd>Space</kbd> open · framed pictures on the walls</p>`,
+      `<p class="gallery-walk-hint gallery-walk-hint--desktop">Click a picture to open · click empty space to look · <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> walk · wheel zoom · <kbd>Space</kbd> open</p>`,
       `<p class="gallery-walk-hint gallery-walk-hint--mobile">${spec.demo
-        ? 'Tap Demo tour — or tap the hall to enter'
-        : 'Tap a photo to step closer · drag to look'}</p>`,
+        ? 'Tap Demo tour — or tap a picture to open'
+        : 'Tap a picture to open · drag to look'}</p>`,
       `<div class="gallery-walk-caption" aria-live="polite"></div>`,
       `</div>`,
       `</div>`,
       `<div class="gallery-walk-toolbar">`,
       `<button type="button" class="btn btn-sm btn-outline-light" data-action="walk-focus">Enter gallery</button>`,
       `<button type="button" class="btn btn-sm btn-outline-light" data-action="walk-demo" aria-pressed="false">Demo tour</button>`,
+      `<button type="button" class="btn btn-sm btn-outline-light" data-action="export-html" title="Download a ZIP with HTML tour and images (no WASD)">HTML tour</button>`,
       editable
         ? `<button type="button" class="btn btn-sm btn-outline-secondary" data-action="add-photo">Add photo</button>`
         : '',
@@ -540,7 +683,6 @@
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x1a1a1e);
-    scene.fog = new THREE.Fog(0x1a1a1e, 8, 42);
 
     const camera = new THREE.PerspectiveCamera(FOV_DEFAULT, 1, 0.1, 80);
     camera.position.set(0, 1.6, 0.5);
@@ -555,11 +697,12 @@
     scene.add(key);
 
     const spacing = 3.4;
-    const hallLen = Math.max(10, photos.length * spacing + 6);
+    const hallLen = hallLengthForPhotos(photos.length, spacing);
     const hallHalfW = 2.4;
     const wallH = 3.2;
     const WALL_PAD = 0.88;
     const LOOK_FOV = 50;
+    scene.fog = new THREE.Fog(0x1a1a1e, hallLen * 0.55, hallLen + 8);
 
     const floorMat = new THREE.MeshStandardMaterial({ color: 0x3a342c, roughness: 0.85, metalness: 0.05 });
     const wallMat = new THREE.MeshStandardMaterial({ color: 0xe8e2d6, roughness: 0.92 });
@@ -585,9 +728,19 @@
     rightWall.position.set(hallHalfW, wallH / 2, hallLen / 2);
     scene.add(rightWall);
 
+    const startWall = new THREE.Mesh(new THREE.PlaneGeometry(hallHalfW * 2, wallH), wallMat);
+    startWall.position.set(0, wallH / 2, 0);
+    scene.add(startWall);
+
     const endWall = new THREE.Mesh(new THREE.PlaneGeometry(hallHalfW * 2, wallH), wallMat);
+    endWall.rotation.y = Math.PI;
     endWall.position.set(0, wallH / 2, hallLen);
     scene.add(endWall);
+    const fallbackTitle = String(options.title || 'Gallery').trim() || 'Gallery';
+    const frontTitle = String(options.frontTitle ?? fallbackTitle).trim();
+    const backTitle = String(options.backTitle ?? fallbackTitle).trim();
+    if (frontTitle) scene.add(makeHallTitleMesh(THREE, frontTitle, hallHalfW, wallH, 0.05, 0));
+    if (backTitle) scene.add(makeHallTitleMesh(THREE, backTitle, hallHalfW, wallH, hallLen - 0.05, Math.PI));
 
     const loader = new THREE.TextureLoader();
     loader.setCrossOrigin('anonymous');
@@ -607,6 +760,7 @@
         entry.ytObj.position.z += 0.03;
         entry.ytObj.scale.set(w / YT_CSS_W, h / YT_CSS_H, 1);
       }
+      if (entry?.plaque) layoutTitlePlaque(entry.plaque, w, h);
     }
 
     function tryPlayVideo(video) {
@@ -809,7 +963,7 @@
 
     photos.forEach((photo, i) => {
       const side = i % 2 === 0 ? -1 : 1;
-      const z = 2.5 + Math.floor(i / 2) * spacing + (i % 2) * (spacing * 0.35);
+      const z = photoWallZ(i, spacing);
       const ytId = photo.youtubeId || extractYoutubeId(photo.src);
       const kind = ytId ? 'youtube'
         : (photo.kind === 'audio' || isAudioSrc(photo.src) ? 'audio'
@@ -834,7 +988,11 @@
       const entry = {
         mesh, frameGroup, frameParts, frameDepth, photo, z, index: i, side, kind,
         video: null, texture: null, youtubeId: ytId, iframe: null, ytObj: null, ytEl: null,
+        plaque: null,
       };
+      const plaque = makeTitlePlaqueMesh(THREE, photoDisplayTitle(photo, i), 1.4);
+      frameGroup.add(plaque);
+      entry.plaque = plaque;
 
       if (kind === 'video' || kind === 'audio') {
         mountFileMedia(entry, url, kind === 'audio');
@@ -961,7 +1119,10 @@
     }
 
     function buildTourWaypoints() {
-      const pts = [{ x: 0, z: 0.7, yaw: 0, pitch: 0, hold: 0.45, fov: FOV_DEFAULT, travel: 1.0 }];
+      const pts = [
+        { x: 0, z: 0.7, yaw: Math.PI, pitch: 0, hold: 2.2, fov: 78, travel: 0.7 },
+        { x: 0, z: 0.7, yaw: 0, pitch: 0, hold: 1.6, fov: FOV_DEFAULT, travel: 1.0 },
+      ];
       frames.forEach((f) => {
         const fill = (f.kind === 'video' || f.kind === 'youtube' || f.kind === 'audio') ? 0.82 : 0.72;
         const close = distToFitFrame(f, LOOK_FOV, fill);
@@ -1101,8 +1262,7 @@
           captionEl.textContent = '';
           return;
         }
-        const base = frame.photo.label
-          || (frame.kind === 'youtube' ? 'YouTube' : frame.kind === 'video' ? 'Video' : frame.kind === 'audio' ? 'Audio' : 'Photo');
+        const base = photoDisplayTitle(frame.photo, frame.index);
         if (frame.kind === 'youtube') {
           captionEl.textContent = frame._videoVisible ? `${base} · video` : `${base} · sound`;
         } else if (frame.kind === 'video' || frame.kind === 'audio') {
@@ -1113,8 +1273,7 @@
       }
     }
 
-    function openNearestPhoto() {
-      const frame = nearestFrame();
+    function openFramePhoto(frame) {
       if (!frame) return;
       stopTour();
       if (document.pointerLockElement === canvas) document.exitPointerLock();
@@ -1122,6 +1281,10 @@
         onOpen: () => setLightboxMute(true),
         onClose: () => setLightboxMute(false),
       });
+    }
+
+    function openNearestPhoto() {
+      openFramePhoto(nearestFrame());
     }
 
     function lerpAngle(a, b, t) {
@@ -1313,6 +1476,8 @@
       }
       if (e.code === 'Space') {
         e.preventDefault();
+        const lbOpen = document.getElementById('notespro-gallery-lightbox');
+        if (lbOpen && !lbOpen.hidden) return;
         if (!e.repeat) openNearestPhoto();
       }
       if (e.code === 'Escape' && document.pointerLockElement === canvas) {
@@ -1357,7 +1522,7 @@
       if (startDemo && options.demo && !tour?.active) startTour();
       entered = true;
       if (isGalleryMobile() && mobileHintEl) {
-        mobileHintEl.textContent = 'Tap a photo to step closer · drag to look';
+        mobileHintEl.textContent = 'Tap a picture to open · drag to look';
       }
     }
 
@@ -1403,9 +1568,12 @@
       const sx = dragLook.sx;
       const sy = dragLook.sy;
       dragLook = null;
-      if (!wasTap || !isGalleryMobile() || !entered) return;
+      if (!wasTap) return;
       const frame = frameAtClient(sx, sy);
-      if (frame) stepCloserToFrame(frame);
+      if (frame) {
+        ignoreNextLookClick = true;
+        openFramePhoto(frame);
+      }
     }
     function onPointerCancelLook(e) {
       if (!dragLook || e.pointerId !== dragLook.id) return;
@@ -1685,7 +1853,12 @@
           setStatus(el, 'Three.js not loaded — walk mode unavailable.');
           return;
         }
-        walk = createWalkGallery(el, spec.photos, { demo: !!spec.demo });
+        walk = createWalkGallery(el, spec.photos, {
+          demo: !!spec.demo,
+          title: spec.title,
+          frontTitle: spec.frontTitle,
+          backTitle: spec.backTitle,
+        });
       };
       whenThreeReady(startWalk, startWalk);
       const disconnectObs = new MutationObserver(() => {
@@ -1707,6 +1880,10 @@
       if (action === 'walk-demo') {
         walk?.unlockAudio?.();
         walk?.toggleTour();
+        return;
+      }
+      if (action === 'export-html') {
+        void downloadStandaloneTour(spec, el);
         return;
       }
       if (action === 'toggle-grid') {
@@ -1800,6 +1977,770 @@
         if (files.length) return handlePasteFiles(files);
       });
     });
+  }
+
+  function slugifyTitle(title) {
+    return String(title || 'gallery').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'gallery';
+  }
+
+  function downloadTextFile(filename, text, mime) {
+    const blob = new Blob([text], { type: mime || 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  }
+
+  function standaloneTourModuleSource() {
+    return [
+      '(function (THREE) {',
+      '  const spec = JSON.parse(document.getElementById("tour-data").textContent);',
+      '  const photos = spec.photos || [];',
+      '  const canvas = document.getElementById("tour-canvas");',
+      '  const demoBtn = document.getElementById("tour-toggle");',
+      '  const captionEl = document.getElementById("tour-caption");',
+      '  if (!THREE || !canvas || !photos.length) {',
+      '    if (captionEl) captionEl.textContent = "Could not load Three.js.";',
+      '    return;',
+      '  }',
+      '  photos.forEach(function (p) {',
+      '    if (p.texSrc) return;',
+      '    if (p.dataUrl) {',
+      '      try {',
+      '        const parts = String(p.dataUrl).split(",");',
+      '        const mime = (/data:([^;]+)/.exec(parts[0]) || [])[1] || "image/png";',
+      '        const bin = atob(parts[1] || "");',
+      '        const bytes = new Uint8Array(bin.length);',
+      '        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);',
+      '        p.texSrc = URL.createObjectURL(new Blob([bytes], { type: mime }));',
+      '      } catch (err) { p.texSrc = p.dataUrl; }',
+      '    } else {',
+      '      p.texSrc = p.src;',
+      '    }',
+      '  });',
+      '  const YAW_LOOK = Math.PI;',
+      '  const FOV_DEFAULT = 70;',
+      '  const LOOK_FOV = 50;',
+      '  const WALL_PAD = 0.88;',
+      '  const spacing = 3.4;',
+      '  const hallHalfW = 2.4;',
+      '  const wallH = 3.2;',
+      '  function photoZ(i) { return 2.5 + Math.floor(i / 2) * spacing + (i % 2) * (spacing * 0.35); }',
+      '  const hallLen = photoZ(Math.max(0, photos.length - 1)) + 1.05 + 1.4;',
+      '  const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });',
+      '  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));',
+      '  renderer.outputColorSpace = THREE.SRGBColorSpace;',
+      '  const scene = new THREE.Scene();',
+      '  scene.background = new THREE.Color(0x1a1a1e);',
+      '  scene.fog = new THREE.Fog(0x1a1a1e, hallLen * 0.55, hallLen + 8);',
+      '  const camera = new THREE.PerspectiveCamera(FOV_DEFAULT, 1, 0.1, 80);',
+      '  camera.position.set(0, 1.6, 0.5);',
+      '  scene.add(new THREE.AmbientLight(0xffffff, 0.55));',
+      '  const key = new THREE.DirectionalLight(0xfff4e6, 0.85);',
+      '  key.position.set(2, 6, 4);',
+      '  scene.add(key);',
+      '  const floorMat = new THREE.MeshStandardMaterial({ color: 0x3a342c, roughness: 0.85, metalness: 0.05 });',
+      '  const wallMat = new THREE.MeshStandardMaterial({ color: 0xe8e2d6, roughness: 0.92 });',
+      '  const ceilMat = new THREE.MeshStandardMaterial({ color: 0xd8d2c4, roughness: 1 });',
+      '  const floor = new THREE.Mesh(new THREE.PlaneGeometry(hallHalfW * 2, hallLen), floorMat);',
+      '  floor.rotation.x = -Math.PI / 2;',
+      '  floor.position.set(0, 0, hallLen / 2);',
+      '  scene.add(floor);',
+      '  const ceil = new THREE.Mesh(new THREE.PlaneGeometry(hallHalfW * 2, hallLen), ceilMat);',
+      '  ceil.rotation.x = Math.PI / 2;',
+      '  ceil.position.set(0, wallH, hallLen / 2);',
+      '  scene.add(ceil);',
+      '  const leftWall = new THREE.Mesh(new THREE.PlaneGeometry(hallLen, wallH), wallMat);',
+      '  leftWall.rotation.y = Math.PI / 2;',
+      '  leftWall.position.set(-hallHalfW, wallH / 2, hallLen / 2);',
+      '  scene.add(leftWall);',
+      '  const rightWall = new THREE.Mesh(new THREE.PlaneGeometry(hallLen, wallH), wallMat);',
+      '  rightWall.rotation.y = -Math.PI / 2;',
+      '  rightWall.position.set(hallHalfW, wallH / 2, hallLen / 2);',
+      '  scene.add(rightWall);',
+      '  const startWall = new THREE.Mesh(new THREE.PlaneGeometry(hallHalfW * 2, wallH), wallMat);',
+      '  startWall.position.set(0, wallH / 2, 0);',
+      '  scene.add(startWall);',
+      '  const endWall = new THREE.Mesh(new THREE.PlaneGeometry(hallHalfW * 2, wallH), wallMat);',
+      '  endWall.rotation.y = Math.PI;',
+      '  endWall.position.set(0, wallH / 2, hallLen);',
+      '  scene.add(endWall);',
+      '  (function addHallTitles() {',
+      '    const fallback = String(spec.title || "Gallery").trim() || "Gallery";',
+      '    const frontTitle = String(spec.frontTitle == null ? fallback : spec.frontTitle).trim();',
+      '    const backTitle = String(spec.backTitle == null ? fallback : spec.backTitle).trim();',
+      '    function makeTitle(text, z, rotY) {',
+      '      if (!text) return;',
+      '      const c = document.createElement("canvas");',
+      '      c.width = 2048; c.height = 768;',
+      '      const g = c.getContext("2d");',
+      '      g.fillStyle = "#1c1814"; g.fillRect(0, 0, 2048, 768);',
+      '      g.strokeStyle = "#c9a227"; g.lineWidth = 24; g.strokeRect(20, 20, 2008, 728);',
+      '      g.strokeStyle = "#f4ead6"; g.lineWidth = 6; g.strokeRect(48, 48, 1952, 672);',
+      '      g.fillStyle = "#f4ead6"; g.textAlign = "center"; g.textBaseline = "middle";',
+      '      let label = text; let size = 240;',
+      '      g.font = "700 " + size + "px Georgia, Times New Roman, serif";',
+      '      while (size > 64 && g.measureText(label).width > 1860) { size -= 6; g.font = "700 " + size + "px Georgia, Times New Roman, serif"; }',
+      '      if (g.measureText(label).width > 1860) { while (label.length > 4 && g.measureText(label + "…").width > 1860) label = label.slice(0, -1); label += "…"; }',
+      '      g.fillText(label, 1024, 384);',
+      '      const tex = new THREE.CanvasTexture(c);',
+      '      tex.colorSpace = THREE.SRGBColorSpace;',
+      '      const w = Math.min(4.35, hallHalfW * 2 - 0.3);',
+      '      const h = w * (768 / 2048);',
+      '      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex }));',
+      '      mesh.position.set(0, wallH * 0.58, z);',
+      '      mesh.rotation.y = rotY;',
+      '      scene.add(mesh);',
+      '    }',
+      '    makeTitle(frontTitle, 0.05, 0);',
+      '    makeTitle(backTitle, hallLen - 0.05, Math.PI);',
+      '  })();',
+      '  function makePlaque(text, width) {',
+      '    const c = document.createElement("canvas");',
+      '    c.width = 768; c.height = 128;',
+      '    const g = c.getContext("2d");',
+      '    g.fillStyle = "#1c1814"; g.fillRect(0, 0, 768, 128);',
+      '    g.strokeStyle = "#c9a227"; g.lineWidth = 5; g.strokeRect(6, 6, 756, 116);',
+      '    g.fillStyle = "#f4ead6"; g.textAlign = "center"; g.textBaseline = "middle";',
+      '    let label = String(text || "Photo");',
+      '    let size = 42;',
+      '    g.font = "600 " + size + "px Segoe UI, system-ui, sans-serif";',
+      '    while (size > 22 && g.measureText(label).width > 700) { size -= 2; g.font = "600 " + size + "px Segoe UI, system-ui, sans-serif"; }',
+      '    if (g.measureText(label).width > 700) { while (label.length > 4 && g.measureText(label + "…").width > 700) label = label.slice(0, -1); label += "…"; }',
+      '    g.fillText(label, 384, 66);',
+      '    const tex = new THREE.CanvasTexture(c);',
+      '    tex.colorSpace = THREE.SRGBColorSpace;',
+      '    const pw = Math.max(0.7, width * 0.92);',
+      '    const ph = 0.2;',
+      '    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(pw, ph), new THREE.MeshBasicMaterial({ map: tex, transparent: true }));',
+      '    mesh.position.set(0, -(1.35 / 2) - 0.16 - ph / 2, 0.05);',
+      '    return mesh;',
+      '  }',
+      '  function layoutPlaque(plaque, w, h) {',
+      '    if (!plaque) return;',
+      '    const pw = Math.max(0.7, w * 0.92); const ph = 0.2;',
+      '    plaque.geometry.dispose();',
+      '    plaque.geometry = new THREE.PlaneGeometry(pw, ph);',
+      '    plaque.position.set(0, -(h / 2) - 0.16 - ph / 2, 0.05);',
+      '  }',
+      '  function makeFrame(w, h) {',
+      '    const depth = 0.14;',
+      '    const group = new THREE.Group();',
+      '    const wood = new THREE.MeshStandardMaterial({ color: 0x4a3728, roughness: 0.58, metalness: 0.05 });',
+      '    const gold = new THREE.MeshStandardMaterial({ color: 0xc9a227, roughness: 0.34, metalness: 0.58 });',
+      '    const matBoard = new THREE.MeshStandardMaterial({ color: 0xf7f3ea, roughness: 0.98 });',
+      '    const outer = new THREE.Mesh(new THREE.BoxGeometry(w + 0.24, h + 0.24, depth), wood);',
+      '    const lip = new THREE.Mesh(new THREE.BoxGeometry(w + 0.14, h + 0.14, depth * 0.55), gold);',
+      '    const mat = new THREE.Mesh(new THREE.BoxGeometry(w + 0.05, h + 0.05, depth * 0.22), matBoard);',
+      '    outer.position.z = -depth / 2; lip.position.z = -depth * 0.28; mat.position.z = -depth * 0.14;',
+      '    group.add(outer, lip, mat);',
+      '    return { group: group, outer: outer, lip: lip, mat: mat, depth: depth };',
+      '  }',
+      '  function resizeFrame(fr, w, h) {',
+      '    fr.outer.geometry.dispose(); fr.outer.geometry = new THREE.BoxGeometry(w + 0.24, h + 0.24, fr.depth);',
+      '    fr.lip.geometry.dispose(); fr.lip.geometry = new THREE.BoxGeometry(w + 0.14, h + 0.14, fr.depth * 0.55);',
+      '    fr.mat.geometry.dispose(); fr.mat.geometry = new THREE.BoxGeometry(w + 0.05, h + 0.05, fr.depth * 0.22);',
+      '  }',
+      '  function loadTex(url, onOk, onErr) {',
+      '    const img = new Image();',
+      '    if (/^https?:/i.test(url)) img.crossOrigin = "anonymous";',
+      '    img.onload = function () {',
+      '      const t = new THREE.Texture(img);',
+      '      t.colorSpace = THREE.SRGBColorSpace;',
+      '      t.needsUpdate = true;',
+      '      onOk(t);',
+      '    };',
+      '    img.onerror = function () { if (onErr) onErr(); };',
+      '    img.src = url;',
+      '  }',
+      '  const frames = [];',
+      '  photos.forEach(function (photo, i) {',
+      '    const side = i % 2 === 0 ? -1 : 1;',
+      '    const z = photoZ(i);',
+      '    const kind = photo.kind || "image";',
+      '    const fr = makeFrame(1.4, 1.4);',
+      '    fr.group.position.set(side * (hallHalfW - 0.04), 1.55, z);',
+      '    fr.group.rotation.y = side > 0 ? -Math.PI / 2 : Math.PI / 2;',
+      '    scene.add(fr.group);',
+      '    const mat = new THREE.MeshBasicMaterial({ color: 0x222222, side: THREE.FrontSide });',
+      '    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 1.4), mat);',
+      '    mesh.position.z = 0.04;',
+      '    fr.group.add(mesh);',
+      '    const plaque = makePlaque(photo.label || ("Photo " + (i + 1)), 1.4);',
+      '    fr.group.add(plaque);',
+      '    const entry = { mesh: mesh, group: fr.group, kind: kind, z: z, photo: photo, plaque: plaque, index: i };',
+      '    function fit(aspect) {',
+      '      const h = 1.35;',
+      '      const w = Math.min(2.1, h * Math.max(0.2, aspect || 1));',
+      '      mesh.geometry.dispose();',
+      '      mesh.geometry = new THREE.PlaneGeometry(w, h);',
+      '      resizeFrame(fr, w, h);',
+      '      layoutPlaque(plaque, w, h);',
+      '    }',
+      '    if (kind === "video") {',
+      '      const el = document.createElement("video");',
+      '      el.src = photo.texSrc || photo.src;',
+      '      if (/^https?:/i.test(el.src)) el.crossOrigin = "anonymous";',
+      '      el.loop = true; el.muted = true; el.playsInline = true;',
+      '      el.addEventListener("loadedmetadata", function () {',
+      '        if (el.videoWidth && el.videoHeight) fit(el.videoWidth / el.videoHeight);',
+      '      });',
+      '      const tex = new THREE.VideoTexture(el);',
+      '      tex.colorSpace = THREE.SRGBColorSpace;',
+      '      mat.map = tex; mat.color.set(0xffffff); mat.needsUpdate = true;',
+      '      entry.video = el;',
+      '      el.play && el.play().catch(function () {});',
+      '    } else {',
+      '      loadTex(photo.texSrc || photo.dataUrl || photo.src, function (t) {',
+      '        t.colorSpace = THREE.SRGBColorSpace;',
+      '        mat.map = t; mat.color.set(0xffffff); mat.needsUpdate = true;',
+      '        const img = t.image;',
+      '        const aspect = kind === "youtube" ? 16 / 9 : (img && img.width && img.height ? img.width / img.height : 1);',
+      '        fit(aspect);',
+      '      }, function () { if (kind === "youtube") fit(16 / 9); });',
+      '    }',
+      '    frames.push(entry);',
+      '  });',
+      '  let yaw = 0, pitch = 0, fov = FOV_DEFAULT, tour = null, last = performance.now();',
+      '  function setFov(v) { fov = v; camera.fov = v; camera.updateProjectionMatrix(); }',
+      '  function clampHall(x, z) {',
+      '    return { x: Math.max(-hallHalfW + WALL_PAD, Math.min(hallHalfW - WALL_PAD, x)), z: Math.max(0.45, Math.min(hallLen - 0.5, z)) };',
+      '  }',
+      '  function poseInFrontOf(frame, dist) {',
+      '    const origin = new THREE.Vector3();',
+      '    frame.mesh.getWorldPosition(origin);',
+      '    const inward = new THREE.Vector3();',
+      '    frame.mesh.getWorldDirection(inward);',
+      '    inward.y = 0;',
+      '    if (inward.lengthSq() < 1e-6) inward.set(-Math.sign(origin.x || 1), 0, 0); else inward.normalize();',
+      '    if (origin.x * inward.x > 0.01) inward.negate();',
+      '    const pos = origin.clone().addScaledVector(inward, Math.max(WALL_PAD + 0.15, dist));',
+      '    const clamped = clampHall(pos.x, origin.z);',
+      '    const lookYaw = Math.atan2(origin.x - clamped.x, origin.z - clamped.z);',
+      '    return { x: clamped.x, z: clamped.z, yaw: lookYaw };',
+      '  }',
+      '  function distToFit(frame, fovDeg, fill) {',
+      '    const geom = frame.mesh.geometry && frame.mesh.geometry.parameters;',
+      '    const w = Math.max(0.7, (geom && geom.width) || 1.4);',
+      '    const h = Math.max(0.7, (geom && geom.height) || 1.4);',
+      '    const aspect = Math.max(0.5, camera.aspect || 1.6);',
+      '    const vFov = THREE.MathUtils.degToRad(fovDeg);',
+      '    const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);',
+      '    const dist = Math.max(h / (fill * 2 * Math.tan(vFov / 2)), w / (fill * 2 * Math.tan(hFov / 2)));',
+      '    const maxDist = Math.max(WALL_PAD + 0.2, hallHalfW - 0.35);',
+      '    return Math.max(WALL_PAD + 0.25, Math.min(maxDist, dist));',
+      '  }',
+      '  function buildWaypoints() {',
+      '    const pts = [',
+      '      { x: 0, z: 0.7, yaw: Math.PI, pitch: 0, hold: 2.2, fov: 78, travel: 0.7 },',
+      '      { x: 0, z: 0.7, yaw: 0, pitch: 0, hold: 1.6, fov: FOV_DEFAULT, travel: 1.0 },',
+      '    ];',
+      '    frames.forEach(function (f) {',
+      '      const fill = (f.kind === "video" || f.kind === "youtube" || f.kind === "audio") ? 0.82 : 0.72;',
+      '      const front = poseInFrontOf(f, distToFit(f, LOOK_FOV, fill));',
+      '      const dwell = (f.kind === "video" || f.kind === "youtube" || f.kind === "audio") ? 5.2 : 2.8;',
+      '      pts.push({ x: 0, z: front.z, yaw: front.yaw * 0.22, pitch: 0, hold: 0.12, fov: 58, travel: 0.95 });',
+      '      pts.push({ x: front.x, z: front.z, yaw: front.yaw, pitch: 0, hold: dwell, fov: LOOK_FOV, travel: 1.25 });',
+      '      pts.push({ x: 0, z: front.z, yaw: 0, pitch: 0, hold: 0.14, fov: FOV_DEFAULT, travel: 0.95 });',
+      '    });',
+      '    pts.push({ x: 0, z: Math.max(1, hallLen - 1.2), yaw: 0, pitch: 0, hold: 0.8, fov: 78, travel: 1.5 });',
+      '    pts.push({ x: 0, z: Math.max(1, hallLen - 1.2), yaw: Math.PI, pitch: 0, hold: 0.35, fov: FOV_DEFAULT, travel: 0.7 });',
+      '    pts.push({ x: 0, z: 0.7, yaw: Math.PI, pitch: 0, hold: 0.35, fov: FOV_DEFAULT, travel: 2.2 });',
+      '    pts.push({ x: 0, z: 0.7, yaw: 0, pitch: 0, hold: 0.45, fov: FOV_DEFAULT, travel: 0.7 });',
+      '    return pts;',
+      '  }',
+      '  function easeInOut(t) { return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; }',
+      '  function lerpAngle(a, b, t) {',
+      '    let d = ((b - a + Math.PI) % (Math.PI * 2)) - Math.PI;',
+      '    if (d < -Math.PI) d += Math.PI * 2;',
+      '    return a + d * t;',
+      '  }',
+      '  function syncBtn() {',
+      '    if (!demoBtn) return;',
+      '    const on = !!(tour && tour.active);',
+      '    demoBtn.textContent = on ? "Stop tour" : "Demo tour";',
+      '    demoBtn.setAttribute("aria-pressed", on ? "true" : "false");',
+      '  }',
+      '  function stopTour() { if (tour) tour.active = false; tour = null; syncBtn(); }',
+      '  function startTour() {',
+      '    const waypoints = buildWaypoints();',
+      '    tour = { active: true, waypoints: waypoints, index: 0, phase: "travel", t: 0, from: { x: camera.position.x, z: camera.position.z, yaw: yaw, pitch: pitch, fov: fov } };',
+      '    syncBtn();',
+      '  }',
+      '  function advanceTour(dt) {',
+      '    if (!tour || !tour.active) return;',
+      '    const wp = tour.waypoints[tour.index];',
+      '    if (!wp) { stopTour(); return; }',
+      '    if (tour.phase === "travel") {',
+      '      tour.t += dt;',
+      '      const dur = Math.max(0.35, wp.travel || 1.2);',
+      '      const u = easeInOut(Math.min(1, tour.t / dur));',
+      '      camera.position.x = tour.from.x + (wp.x - tour.from.x) * u;',
+      '      camera.position.z = tour.from.z + (wp.z - tour.from.z) * u;',
+      '      yaw = lerpAngle(tour.from.yaw, wp.yaw, u);',
+      '      pitch = tour.from.pitch + (wp.pitch - tour.from.pitch) * u;',
+      '      setFov(tour.from.fov + (wp.fov - tour.from.fov) * u);',
+      '      if (u >= 1) { tour.phase = "hold"; tour.t = 0; camera.position.x = wp.x; camera.position.z = wp.z; yaw = wp.yaw; pitch = wp.pitch; setFov(wp.fov); }',
+      '      return;',
+      '    }',
+      '    tour.t += dt;',
+      '    if (tour.t < (wp.hold || 0.2)) return;',
+      '    tour.index += 1;',
+      '    if (tour.index >= tour.waypoints.length) tour.index = 0;',
+      '    tour.phase = "travel";',
+      '    tour.t = 0;',
+      '    tour.from = { x: camera.position.x, z: camera.position.z, yaw: yaw, pitch: pitch, fov: fov };',
+      '  }',
+      '  function frameAtClient(clientX, clientY) {',
+      '    const rect = canvas.getBoundingClientRect();',
+      '    if (rect.width < 1 || rect.height < 1) return null;',
+      '    const ndcX = ((clientX - rect.left) / rect.width) * 2 - 1;',
+      '    const ndcY = -((clientY - rect.top) / rect.height) * 2 + 1;',
+      '    const objects = [];',
+      '    frames.forEach(function (f) { if (f.mesh) objects.push(f.mesh); if (f.group) objects.push(f.group); });',
+      '    if (!objects.length) return null;',
+      '    const raycaster = new THREE.Raycaster();',
+      '    raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera);',
+      '    const hits = raycaster.intersectObjects(objects, true);',
+      '    if (!hits.length) return null;',
+      '    let obj = hits[0].object;',
+      '    while (obj) {',
+      '      const found = frames.find(function (f) { return f.mesh === obj || f.group === obj; });',
+      '      if (found) return found;',
+      '      obj = obj.parent;',
+      '    }',
+      '    return null;',
+      '  }',
+      '  const lb = document.getElementById("tour-lightbox");',
+      '  const lbImg = document.getElementById("tour-lightbox-img");',
+      '  const lbVid = document.getElementById("tour-lightbox-video");',
+      '  const lbCap = document.getElementById("tour-lightbox-cap");',
+      '  function closeLightbox() {',
+      '    if (!lb) return;',
+      '    lb.classList.remove("open");',
+      '    lb.hidden = true;',
+      '    if (lbVid) { lbVid.pause(); lbVid.removeAttribute("src"); lbVid.load(); }',
+      '  }',
+      '  function openFramePhoto(frame) {',
+      '    if (!frame || !lb) return;',
+      '    stopTour();',
+      '    const photo = frame.photo || {};',
+      '    const isVid = (frame.kind === "video") || (photo.kind === "video");',
+      '    const mediaSrc = photo.texSrc || photo.dataUrl || photo.src;',
+      '    if (lbImg) { lbImg.hidden = !!isVid; if (!isVid) { lbImg.src = mediaSrc; lbImg.alt = photo.label || ""; } }',
+      '    if (lbVid) {',
+      '      lbVid.hidden = !isVid;',
+      '      if (isVid) { lbVid.src = mediaSrc; lbVid.play && lbVid.play().catch(function () {}); }',
+      '    }',
+      '    if (lbCap) lbCap.textContent = photo.label || "";',
+      '    lb.hidden = false;',
+      '    lb.classList.add("open");',
+      '  }',
+      '  function nearestFrame() {',
+      '    let best = null, bestD = 1e9;',
+      '    frames.forEach(function (f) {',
+      '      const o = new THREE.Vector3(); f.mesh.getWorldPosition(o);',
+      '      const d = camera.position.distanceTo(o);',
+      '      if (d < bestD) { bestD = d; best = f; }',
+      '    });',
+      '    return best && bestD < 4.2 ? best : null;',
+      '  }',
+      '  function nearestCaption() {',
+      '    if (!captionEl) return;',
+      '    let best = null, bestD = 1e9;',
+      '    frames.forEach(function (f) {',
+      '      const o = new THREE.Vector3(); f.mesh.getWorldPosition(o);',
+      '      const d = camera.position.distanceTo(o);',
+      '      if (d < bestD) { bestD = d; best = f; }',
+      '    });',
+      '    captionEl.textContent = best && bestD < 4.2 ? (best.photo.label || "") : "";',
+      '  }',
+      '  function resize() {',
+      '    const w = Math.max(1, canvas.clientWidth || window.innerWidth);',
+      '    const h = Math.max(1, canvas.clientHeight || window.innerHeight);',
+      '    renderer.setSize(w, h, false);',
+      '    camera.aspect = w / h;',
+      '    camera.updateProjectionMatrix();',
+      '  }',
+      '  function tick(now) {',
+      '    const dt = Math.min(0.05, (now - last) / 1000);',
+      '    last = now;',
+      '    advanceTour(dt);',
+      '    camera.rotation.order = "YXZ";',
+      '    camera.rotation.y = yaw + YAW_LOOK;',
+      '    camera.rotation.x = pitch;',
+      '    nearestCaption();',
+      '    renderer.render(scene, camera);',
+      '    requestAnimationFrame(tick);',
+      '  }',
+      '  demoBtn && demoBtn.addEventListener("click", function () {',
+      '    frames.forEach(function (f) { if (f.video && f.video.play) f.video.play().catch(function () {}); });',
+      '    if (tour && tour.active) stopTour(); else startTour();',
+      '  });',
+      '  let tap = null;',
+      '  canvas.addEventListener("pointerdown", function (e) {',
+      '    if (e.button && e.button !== 0) return;',
+      '    tap = { x: e.clientX, y: e.clientY, dist: 0 };',
+      '  });',
+      '  canvas.addEventListener("pointermove", function (e) {',
+      '    if (!tap) return;',
+      '    tap.dist += Math.hypot(e.clientX - tap.x, e.clientY - tap.y);',
+      '    tap.x = e.clientX; tap.y = e.clientY;',
+      '  });',
+      '  canvas.addEventListener("pointerup", function (e) {',
+      '    if (!tap) return;',
+      '    const wasTap = tap.dist < 16;',
+      '    const x = e.clientX, y = e.clientY;',
+      '    tap = null;',
+      '    if (!wasTap) return;',
+      '    const frame = frameAtClient(x, y);',
+      '    if (frame) openFramePhoto(frame);',
+      '  });',
+      '  lb && lb.addEventListener("click", function (e) {',
+      '    if (e.target === lb || (e.target && e.target.id === "tour-lightbox-close")) closeLightbox();',
+      '  });',
+      '  window.addEventListener("keydown", function (e) {',
+      '    if (e.code === "Escape" && lb && lb.classList.contains("open")) { e.preventDefault(); closeLightbox(); return; }',
+      '    if (e.code === "Space") { e.preventDefault(); if (!e.repeat) openFramePhoto(nearestFrame()); }',
+      '  });',
+      '  window.addEventListener("resize", resize);',
+      '  resize();',
+      '  requestAnimationFrame(tick);',
+      '  requestAnimationFrame(startTour);',
+      '})',
+    ].join('\n');
+  }
+
+  function tourPhotoKind(photo) {
+    if (photo?.kind === 'youtube' || extractYoutubeId(photo?.src)) return 'youtube';
+    if (photo?.kind === 'video' || isVideoSrc(photo?.src)) return 'video';
+    if (photo?.kind === 'audio' || isAudioSrc(photo?.src)) return 'audio';
+    return 'image';
+  }
+
+  function tourLocalRef(path) {
+    const raw = String(path || '').replace(/\\/g, '/');
+    if (!raw || /^([a-z]+:)?\/\//i.test(raw) || /^data:/i.test(raw) || raw.startsWith('./')) return raw;
+    return `./${raw.replace(/^\//, '')}`;
+  }
+
+  function bytesToBase64(bytes) {
+    const buf = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []);
+    const parts = [];
+    const size = 0x8000;
+    for (let i = 0; i < buf.length; i += size) {
+      parts.push(String.fromCharCode.apply(null, buf.subarray(i, Math.min(i + size, buf.length))));
+    }
+    return btoa(parts.join(''));
+  }
+
+  function mimeFromExt(ext, fallback) {
+    const e = String(ext || '').toLowerCase();
+    if (e === 'png') return 'image/png';
+    if (e === 'jpg' || e === 'jpeg') return 'image/jpeg';
+    if (e === 'webp') return 'image/webp';
+    if (e === 'gif') return 'image/gif';
+    if (e === 'mp4') return 'video/mp4';
+    if (e === 'webm') return 'video/webm';
+    const type = String(fallback || '').split(';')[0].trim();
+    return type || 'image/jpeg';
+  }
+
+  function bytesToDataUrl(buf, mime) {
+    return `data:${mimeFromExt('', mime)};base64,${bytesToBase64(buf)}`;
+  }
+
+  async function imageBytesToTexDataUrl(buf, mime) {
+    const blob = new Blob([buf], { type: mimeFromExt('', mime) });
+    const url = URL.createObjectURL(blob);
+    try {
+      const img = await new Promise((resolve, reject) => {
+        const el = new Image();
+        el.onload = () => resolve(el);
+        el.onerror = () => reject(new Error('tex image'));
+        el.src = url;
+      });
+      const maxEdge = 1600;
+      const scale = Math.min(1, maxEdge / Math.max(img.width, img.height, 1));
+      const w = Math.max(1, Math.round(img.width * scale));
+      const h = Math.max(1, Math.round(img.height * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('canvas');
+      ctx.drawImage(img, 0, 0, w, h);
+      return canvas.toDataURL('image/jpeg', 0.82);
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  function buildStandaloneTourHtml(spec, photos, options = {}) {
+    const list = (photos || (spec.photos || []).map((p, i) => ({
+      src: absoluteMediaUrl(p.src),
+      label: photoDisplayTitle(p, i),
+      kind: tourPhotoKind(p),
+      youtubeId: p.youtubeId || extractYoutubeId(p.src) || '',
+      dataUrl: p.dataUrl || '',
+    }))).map((p) => ({
+      ...p,
+      src: tourLocalRef(p.src),
+    }));
+    const title = escapeHtml(spec.title || 'Gallery');
+    const fallbackTitle = spec.title || 'Gallery';
+    const payload = jsonForScript({
+      title: fallbackTitle,
+      frontTitle: spec.frontTitle != null ? spec.frontTitle : fallbackTitle,
+      backTitle: spec.backTitle != null ? spec.backTitle : fallbackTitle,
+      photos: list,
+    });
+    const threeB64 = options.threeB64 || '';
+    const cdnThree = 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.min.js';
+    const boot = [
+      '(async function () {',
+      '  const captionEl = document.getElementById("tour-caption");',
+      '  let THREE;',
+      '  try {',
+      threeB64
+        ? [
+          `    const b64 = ${JSON.stringify(threeB64)};`,
+          '    const bin = atob(b64);',
+          '    const bytes = new Uint8Array(bin.length);',
+          '    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);',
+          '    THREE = await import(URL.createObjectURL(new Blob([bytes], { type: "text/javascript" })));',
+        ].join('\n')
+        : `    THREE = await import(${JSON.stringify(cdnThree)});`,
+      '  } catch (err) {',
+      `    try { THREE = await import(${JSON.stringify(cdnThree)}); }`,
+      '    catch (err2) { if (captionEl) captionEl.textContent = "Could not load Three.js."; return; }',
+      '  }',
+      `  (${standaloneTourModuleSource()})(THREE);`,
+      '})();',
+    ].join('\n');
+    return [
+      '<!doctype html>',
+      '<html lang="en">',
+      '<head>',
+      '<meta charset="utf-8">',
+      '<meta name="viewport" content="width=device-width, initial-scale=1">',
+      `<title>${title} — Demo tour</title>`,
+      '<style>',
+      'html,body{margin:0;height:100%;background:#12121a;color:#e2e8f0;font:14px/1.4 system-ui,sans-serif;overflow:hidden}',
+      '.bar{position:fixed;left:0;right:0;top:0;z-index:2;display:flex;align-items:center;gap:12px;padding:10px 14px;background:linear-gradient(180deg,rgba(15,23,42,.88),rgba(15,23,42,0));}',
+      '.bar h1{margin:0;font-size:16px;font-weight:650}',
+      '.bar .hint{opacity:.75;font-size:12px}',
+      '.bar button{margin-left:auto;border:1px solid #64748b;background:#1e293b;color:#f8fafc;border-radius:999px;padding:6px 14px;cursor:pointer}',
+      '#tour-canvas{position:absolute;inset:0;width:100%;height:100%;display:block}',
+      '#tour-caption{position:fixed;left:14px;bottom:14px;z-index:2;font-weight:650;text-shadow:0 1px 8px #000}',
+      '#tour-lightbox{display:none;position:fixed;inset:0;z-index:10;align-items:center;justify-content:center;background:rgba(7,10,18,.92);padding:24px}',
+      '#tour-lightbox.open{display:flex}',
+      '#tour-lightbox img,#tour-lightbox video{max-width:min(96vw,1400px);max-height:86vh;object-fit:contain;border-radius:8px;box-shadow:0 12px 40px #000}',
+      '#tour-lightbox-close{position:absolute;top:12px;right:14px;border:0;background:#1e293b;color:#fff;width:40px;height:40px;border-radius:999px;font-size:24px;cursor:pointer}',
+      '#tour-lightbox-cap{position:absolute;left:16px;bottom:14px;font-weight:650;text-shadow:0 1px 8px #000}',
+      '</style>',
+      '</head>',
+      '<body>',
+      `<div class="bar"><h1>${title}</h1><span class="hint">Click a picture to open · Demo tour · unzip and open index.html</span><button type="button" id="tour-toggle" aria-pressed="true">Stop tour</button></div>`,
+      '<canvas id="tour-canvas"></canvas>',
+      '<div id="tour-caption"></div>',
+      '<div id="tour-lightbox" hidden><button type="button" id="tour-lightbox-close" aria-label="Close">×</button><img id="tour-lightbox-img" alt=""><video id="tour-lightbox-video" controls playsinline hidden></video><div id="tour-lightbox-cap"></div></div>',
+      `<script type="application/json" id="tour-data">${payload}</script>`,
+      '<script type="module">',
+      boot,
+      '</script>',
+      '</body>',
+      '</html>',
+    ].join('\n');
+  }
+
+  function crc32Bytes(bytes) {
+    let table = crc32Bytes._t;
+    if (!table) {
+      table = new Uint32Array(256);
+      for (let i = 0; i < 256; i += 1) {
+        let c = i;
+        for (let k = 0; k < 8; k += 1) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+        table[i] = c >>> 0;
+      }
+      crc32Bytes._t = table;
+    }
+    let crc = 0xFFFFFFFF;
+    for (let i = 0; i < bytes.length; i += 1) crc = table[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
+    return (crc ^ 0xFFFFFFFF) >>> 0;
+  }
+
+  function zipU16(n) {
+    return new Uint8Array([n & 255, (n >>> 8) & 255]);
+  }
+
+  function zipU32(n) {
+    return new Uint8Array([n & 255, (n >>> 8) & 255, (n >>> 16) & 255, (n >>> 24) & 255]);
+  }
+
+  function concatBytes(parts) {
+    const len = parts.reduce((sum, part) => sum + part.length, 0);
+    const out = new Uint8Array(len);
+    let offset = 0;
+    parts.forEach((part) => {
+      out.set(part, offset);
+      offset += part.length;
+    });
+    return out;
+  }
+
+  function zipStoreFiles(files) {
+    const encoder = new TextEncoder();
+    const locals = [];
+    const centrals = [];
+    let offset = 0;
+    files.forEach((file) => {
+      const name = encoder.encode(String(file.name || 'file').replace(/\\/g, '/'));
+      const data = file.data instanceof Uint8Array ? file.data : new Uint8Array(file.data || []);
+      const crc = crc32Bytes(data);
+      const local = concatBytes([
+        zipU32(0x04034b50), zipU16(20), zipU16(0), zipU16(0),
+        zipU16(0), zipU16(0), zipU32(crc), zipU32(data.length), zipU32(data.length),
+        zipU16(name.length), zipU16(0), name, data,
+      ]);
+      const central = concatBytes([
+        zipU32(0x02014b50), zipU16(20), zipU16(20), zipU16(0), zipU16(0),
+        zipU16(0), zipU16(0), zipU32(crc), zipU32(data.length), zipU32(data.length),
+        zipU16(name.length), zipU16(0), zipU16(0), zipU16(0), zipU16(0),
+        zipU32(0), zipU32(offset), name,
+      ]);
+      locals.push(local);
+      centrals.push(central);
+      offset += local.length;
+    });
+    const centralBuf = concatBytes(centrals);
+    const eocd = concatBytes([
+      zipU32(0x06054b50), zipU16(0), zipU16(0),
+      zipU16(files.length), zipU16(files.length),
+      zipU32(centralBuf.length), zipU32(offset), zipU16(0),
+    ]);
+    return concatBytes([...locals, centralBuf, eocd]);
+  }
+
+  function extFromMedia(url, kind, mime) {
+    const path = String(url || '').split('?')[0];
+    const match = path.match(/\.([a-z0-9]{2,5})$/i);
+    if (match) return match[1].toLowerCase();
+    const type = String(mime || '').toLowerCase();
+    if (type.includes('png')) return 'png';
+    if (type.includes('webp')) return 'webp';
+    if (type.includes('gif')) return 'gif';
+    if (type.includes('jpeg')) return 'jpg';
+    if (type.includes('mp4')) return 'mp4';
+    if (type.includes('webm')) return 'webm';
+    if (type.includes('mpeg') || type.includes('mp3')) return 'mp3';
+    if (kind === 'video') return 'mp4';
+    if (kind === 'audio') return 'mp3';
+    return 'jpg';
+  }
+
+  async function fetchMediaBytes(url) {
+    const res = await fetch(url, { credentials: 'same-origin' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const buf = new Uint8Array(await res.arrayBuffer());
+    const type = res.headers.get('content-type') || '';
+    return { buf, type };
+  }
+
+  async function packTourPhotos(spec, onProgress) {
+    const used = new Set();
+    const zipFiles = [];
+    const photos = [];
+    const list = spec.photos || [];
+    for (let i = 0; i < list.length; i += 1) {
+      const p = list[i];
+      const kind = tourPhotoKind(p);
+      const label = photoDisplayTitle(p, i);
+      const ytId = p.youtubeId || extractYoutubeId(p.src) || '';
+      const remote = kind === 'youtube' && ytId ? youtubeThumbSrc(ytId) : absoluteMediaUrl(p.src);
+      onProgress?.(i + 1, list.length);
+      let packed = {
+        src: remote,
+        label,
+        kind,
+        youtubeId: ytId,
+      };
+      if (remote && !/^data:/i.test(remote)) {
+        try {
+          const { buf, type } = await fetchMediaBytes(remote);
+          const ext = extFromMedia(remote, kind === 'youtube' ? 'image' : kind, type);
+          const base = `${String(i + 1).padStart(2, '0')}-${slugifyTitle(label) || `photo-${i + 1}`}`;
+          let name = `${base}.${ext}`;
+          let n = 2;
+          while (used.has(name)) {
+            name = `${base}-${n}.${ext}`;
+            n += 1;
+          }
+          used.add(name);
+          zipFiles.push({ name: `images/${name}`, data: buf });
+          const mime = mimeFromExt(ext, type);
+          let dataUrl = '';
+          if (kind !== 'video' && kind !== 'audio') {
+            try {
+              dataUrl = await imageBytesToTexDataUrl(buf, mime);
+            } catch (_) { /* file:// textures need dataUrl; HTTP still uses ./images */ }
+          }
+          packed = {
+            src: `./images/${name}`,
+            dataUrl,
+            label,
+            kind: kind === 'youtube' ? 'image' : kind,
+            youtubeId: kind === 'youtube' ? '' : ytId,
+          };
+        } catch (_) { /* keep remote URL */ }
+      }
+      photos.push(packed);
+    }
+    return { photos, zipFiles };
+  }
+
+  async function downloadStandaloneTour(spec, el) {
+    if (el?.dataset?.galleryZipping === '1') return;
+    if (el) el.dataset.galleryZipping = '1';
+    const total = (spec.photos || []).length;
+    setStatus(el, total ? `Packing images… 0/${total}` : 'Packing ZIP…');
+    try {
+      const packed = await packTourPhotos(spec, (n, max) => {
+        setStatus(el, `Packing images… ${n}/${max}`);
+      });
+      setStatus(el, 'Packing Three.js…');
+      const zipFiles = [...packed.zipFiles];
+      let threeB64 = '';
+      try {
+        const three = await fetchMediaBytes('https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.min.js');
+        threeB64 = bytesToBase64(three.buf);
+      } catch (_) { /* CDN module fallback in HTML */ }
+      const html = buildStandaloneTourHtml(spec, packed.photos, { threeB64 });
+      const htmlBytes = new TextEncoder().encode(html);
+      const zip = zipStoreFiles([
+        { name: 'index.html', data: htmlBytes },
+        ...zipFiles,
+      ]);
+      const blob = new Blob([zip], { type: 'application/zip' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${slugifyTitle(spec.title)}-demotour.zip`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+      const imgCount = packed.zipFiles.length;
+      setStatus(el, `Downloaded ZIP · ${imgCount} image${imgCount === 1 ? '' : 's'} + HTML.`);
+    } catch (err) {
+      setStatus(el, err?.message ? `ZIP failed: ${err.message}` : 'Could not build ZIP.');
+    } finally {
+      if (el) delete el.dataset.galleryZipping;
+    }
   }
 
   function hydrate(root) {

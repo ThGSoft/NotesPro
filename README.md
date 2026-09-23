@@ -1643,7 +1643,7 @@ Embed a **walk-in photo gallery** with a fenced `gallery` block. In **Edit**, ho
 Empty gallery — demo tour and sample walls load by default (`demo=0` skips the tour). Paste your own photos to replace them:
 
 ````markdown
-```gallery{title=My photos;mode=walk;col=info}
+```gallery{title=My photos;front=Welcome;back=My photos;mode=walk;col=info}
 ```
 ````
 
@@ -1679,7 +1679,9 @@ With your own photos / videos:
 |--------|-------------|
 | `mode` | `walk` (default) first-person corridor, or `grid` thumbnail wall |
 | `demo` | Auto-start **Demo tour** and use sample walls when the body is empty (default on; `demo=0` to walk without a tour) |
-| `title` | Block heading |
+| `title` | Block heading (also the default for both wall plaques) |
+| `front` | Entrance-wall plaque (`fronttitle` / `titlefront` also work). Omit to use `title`; empty hides it |
+| `back` | Far-wall plaque (`backtitle` / `titleback` also work). Omit to use `title`; empty hides it |
 | `cols` | Thumbnail columns when `mode=grid` (1–6) |
 | `fullscreen` | Edge-to-edge layout (default on) |
 | `col` / `bkcol` | Theme colors |
