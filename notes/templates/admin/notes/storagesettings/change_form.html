@@ -1,0 +1,165 @@
+{% extends "admin/change_form.html" %}
+
+{% block after_field_sets %}
+  {{ block.super }}
+  {% if storage_report %}
+  <fieldset class="module aligned">
+    <h2>Usage</h2>
+    <div class="form-row">
+      <div>
+        <p>
+          <strong>MEDIA_ROOT:</strong> <code>{{ storage_report.media_root }}</code><br>
+          Disk used: <strong>{{ storage_report.total_disk_label }}</strong>
+          ({{ storage_report.total_files }} file{{ storage_report.total_files|pluralize }})
+          · Site quota: {{ storage_report.global_quota_label }}
+          {% if storage_report.global_percent != None %}
+            ({{ storage_report.global_percent|floatformat:0 }}%)
+            {% if storage_report.global_over %}<strong style="color:#ba2121;"> over quota</strong>{% endif %}
+          {% endif %}
+          · Max upload: {{ storage_report.max_upload_label }}
+          · Default workspace quota: {{ storage_report.workspace_quota_label }}
+          · Default user quota: {{ storage_report.user_quota_label }}
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>Folder</th>
+              <th>Files</th>
+              <th>Size</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for name, tree in storage_report.trees.items %}
+            <tr>
+              <td><code>{{ name }}/</code></td>
+              <td>{{ tree.files }}</td>
+              <td>{{ tree.label }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </fieldset>
+
+  <fieldset class="module aligned">
+    <h2>Workspaces</h2>
+    <div class="form-row">
+      <div>
+        {% if storage_report.workspaces %}
+        <table>
+          <thead>
+            <tr>
+              <th>Workspace</th>
+              <th>Owner</th>
+              <th>Uploads</th>
+              <th>Pastes</th>
+              <th>Used</th>
+              <th>Quota</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in storage_report.workspaces %}
+            <tr{% if row.over %} style="background:#f8d7da;"{% endif %}>
+              <td>
+                <a href="{% url 'admin:notes_workspace_change' row.id %}">{{ row.name }}</a>
+                {% if row.deleted %} <em>(deleted)</em>{% endif %}
+              </td>
+              <td>{{ row.owner }}</td>
+              <td>{{ row.uploads }}</td>
+              <td>{{ row.pastes }}</td>
+              <td>{{ row.used_label }}{% if row.percent != None %} ({{ row.percent|floatformat:0 }}%){% endif %}</td>
+              <td>{{ row.quota_label }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p>No workspaces yet.</p>
+        {% endif %}
+      </div>
+    </div>
+  </fieldset>
+
+  <fieldset class="module aligned">
+    <h2>Users</h2>
+    <div class="form-row">
+      <div>
+        {% if storage_report.users %}
+        <table>
+          <thead>
+            <tr>
+              <th>User</th>
+              <th>Uploads</th>
+              <th>Pastes</th>
+              <th>Mail</th>
+              <th>Used</th>
+              <th>Quota</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in storage_report.users %}
+            <tr{% if row.over %} style="background:#f8d7da;"{% endif %}>
+              <td>
+                {% if row.settings_id %}
+                <a href="{% url 'admin:notes_usersettings_change' row.settings_id %}">{{ row.username }}</a>
+                {% else %}
+                {{ row.username }}
+                {% endif %}
+              </td>
+              <td>{{ row.uploads }}</td>
+              <td>{{ row.pastes }}</td>
+              <td>{{ row.mail }}</td>
+              <td>{{ row.used_label }}{% if row.percent != None %} ({{ row.percent|floatformat:0 }}%){% endif %}</td>
+              <td>{{ row.quota_label }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p>No users yet.</p>
+        {% endif %}
+      </div>
+    </div>
+  </fieldset>
+
+  <fieldset class="module aligned">
+    <h2>Purge unreferenced media</h2>
+    <div class="form-row">
+      <div>
+        <p>
+          Referenced in notes/chat/snippets: <strong>{{ storage_report.preview_referenced }}</strong> path{{ storage_report.preview_referenced|pluralize }}.
+          Unreferenced records: <strong>{{ storage_report.preview_count }}</strong>.
+          Disk orphans: <strong>{{ storage_report.preview_orphan_count }}</strong>.
+          Reclaim about <strong>{{ storage_report.preview_bytes_label }}</strong>.
+        </p>
+        {% if storage_report.preview_rows %}
+        <p>Unreferenced database files:</p>
+        <ul>
+          {% for row in storage_report.preview_rows %}
+          <li>{{ row.kind }} #{{ row.pk }} — <code>{{ row.relpath }}</code> ({{ row.size_label }})</li>
+          {% endfor %}
+        </ul>
+        {% if storage_report.preview_rows_truncated %}<p>…and more</p>{% endif %}
+        {% endif %}
+        {% if storage_report.preview_orphans %}
+        <p>Disk-only orphans:</p>
+        <ul>
+          {% for row in storage_report.preview_orphans %}
+          <li><code>{{ row.relpath }}</code> ({{ row.size_label }})</li>
+          {% endfor %}
+        </ul>
+        {% if storage_report.preview_orphans_truncated %}<p>…and more</p>{% endif %}
+        {% endif %}
+        <p>
+          <input type="submit" name="_purge" value="Purge unreferenced files"
+                 onclick="return confirm('Permanently delete unreferenced upload and paste records (and their files)?');">
+          <input type="submit" name="_purge_orphans" value="Purge unreferenced + disk orphans"
+                 onclick="return confirm('Permanently delete unreferenced records and disk-only orphan files?');">
+        </p>
+        <p class="help">Also available as <code>python manage.py purge_unreferenced_media</code>.</p>
+      </div>
+    </div>
+  </fieldset>
+  {% endif %}
+{% endblock %}

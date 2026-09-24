@@ -31,7 +31,7 @@ from .models import (
     WorkspaceMailMessage,
     WorkspaceMailRecipient,
 )
-from .storage import (
+from .media_quota import (
     apply_purge,
     build_storage_report,
     delete_stored_file,

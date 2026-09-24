@@ -25,7 +25,7 @@ from django.utils.text import slugify
 from .workspace_io import export_workspace_archive, import_workspace_archive
 from .version import CREDITS, VERSION
 from .game_scores import serialize_workspace_highscores
-from .storage import StorageQuotaExceeded, assert_can_store
+from .media_quota import StorageQuotaExceeded, assert_can_store
 
 APP_LANGUAGE_CHOICES = (
     ('browser', 'Browser default'),

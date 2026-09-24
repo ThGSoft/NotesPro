@@ -1,7 +1,7 @@
 from django.core.management.base import BaseCommand
 
 from notes.models import Workspace
-from notes.storage import apply_purge, format_bytes, plan_unreferenced_media
+from ...media_quota import apply_purge, format_bytes, plan_unreferenced_media
 
 
 class Command(BaseCommand):
