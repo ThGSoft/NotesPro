@@ -25,6 +25,7 @@ from django.utils.text import slugify
 from .workspace_io import export_workspace_archive, import_workspace_archive
 from .version import CREDITS, VERSION
 from .game_scores import serialize_workspace_highscores
+from .storage import StorageQuotaExceeded, assert_can_store
 
 APP_LANGUAGE_CHOICES = (
     ('browser', 'Browser default'),
@@ -1152,9 +1153,12 @@ def upload_file(request):
                     'url':absolute_url,
                 }
             })
-    else:    
-        print("upload_file:upload_file")
-        item = UploadedFile.objects.create(
+    try:
+        assert_can_store(workspace, len(file_content), user=request.user)
+    except StorageQuotaExceeded as exc:
+        return JsonResponse({'success': False, 'error': str(exc)}, status=413)
+    print("upload_file:upload_file")
+    item = UploadedFile.objects.create(
             user=request.user,
             workspace=workspace, 
             file=uploaded, 
@@ -1162,7 +1166,7 @@ def upload_file(request):
             md5_hash=file_hash,
 
         )
-        return JsonResponse(
+    return JsonResponse(
             {
             'success': True, 
             'url': request.build_absolute_uri(item.file.url), 
@@ -1313,32 +1317,32 @@ def upload_pasted_image(request):
                     'url':absolute_url,
                 }
                 })
-        else:
-            # Falls kein Duplikat: Neu speichern
-            item = PastedFile.objects.create(
-                user=request.user,
-                workspace=workspace, 
-                original_name= str(pasted_image.name),
-                file=pasted_image,
-                md5_hash=file_hash,
-            )
-            
-            print("file created")
-            # dest_path = os.path.join(settings.MEDIA_ROOT, f"{file_path.stem}_{item.file.name}{file_path.suffix}")
-            absolute_url = request.build_absolute_uri(item.file.url)   
-            dest_path = urllib.parse.urlparse(absolute_url).path.lstrip('/')
-            print(f"DEBUG: Absolute URL ist: {absolute_url}")
-            print(f"DEBUG: Media URL ist: {dest_path}")
-            return JsonResponse({
-                'success': True, 
-                'url': absolute_url, 
-                'file': {
-                    # 'id': item.id, 
-                    'original_name': item.file.name,
-                    'mediaName': dest_path,
-                    'url':absolute_url
-                    }
-                })
+        try:
+            assert_can_store(workspace, len(file_content), user=request.user)
+        except StorageQuotaExceeded as exc:
+            return JsonResponse({'success': False, 'error': str(exc)}, status=413)
+        pasted_image.seek(0)
+        item = PastedFile.objects.create(
+            user=request.user,
+            workspace=workspace,
+            original_name=str(pasted_image.name),
+            file=pasted_image,
+            md5_hash=file_hash,
+        )
+        print("file created")
+        absolute_url = request.build_absolute_uri(item.file.url)
+        dest_path = urllib.parse.urlparse(absolute_url).path.lstrip('/')
+        print(f"DEBUG: Absolute URL ist: {absolute_url}")
+        print(f"DEBUG: Media URL ist: {dest_path}")
+        return JsonResponse({
+            'success': True,
+            'url': absolute_url,
+            'file': {
+                'original_name': item.file.name,
+                'mediaName': dest_path,
+                'url': absolute_url,
+            },
+        })
     except Exception as e:
         # Das wird in deinem Terminal ausgegeben (da wo runserver läuft)
         print("--- UPLOAD FEHLER START ---")

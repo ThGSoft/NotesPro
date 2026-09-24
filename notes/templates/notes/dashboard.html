@@ -422,6 +422,7 @@
         workspacePages: appWorkspacePages,
         gameHighscores: appGameHighscores,
         isStaff: {% if user.is_staff %}true{% else %}false{% endif %},
+        isSuperuser: {% if user.is_superuser %}true{% else %}false{% endif %},
         isGroupAdmin: {% if is_group_admin %}true{% else %}false{% endif %},
         canWrite: {% if can_write_workspace %}true{% else %}false{% endif %},
         localFileOpenEnabled: {{ local_file_open_enabled|yesno:"true,false" }},
@@ -1057,7 +1058,7 @@
       <div class="modal-body">
         <div class="app-settings-links mb-3">
           {% if user.is_staff %}
-          <a id="admin-link" href="{% url 'admin:index' %}" class="btn btn-sm btn-outline-light d-none" title="Django Admin">Admin</a>
+          <a id="admin-link" href="{% url 'admin:index' %}" class="btn btn-sm btn-outline-light" title="Django Admin">Admin</a>
           {% endif %}
           <a id="app-settings-2fa-link" href="{% url 'setup_2fa' %}" class="btn btn-sm btn-outline-light" title="Two-factor authentication">2FA</a>
         </div>

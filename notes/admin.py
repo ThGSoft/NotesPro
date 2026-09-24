@@ -4,11 +4,11 @@ from django.contrib.admin.widgets import FilteredSelectMultiple
 from django.contrib.auth import get_user_model
 from django.contrib.auth.admin import GroupAdmin as BaseGroupAdmin
 from django.contrib.auth.models import Group
+from django.core.exceptions import PermissionDenied
 from django.http import HttpResponse
 from django.shortcuts import redirect
 from django.template.response import TemplateResponse
 from django.urls import path, reverse
-
 from django.utils.html import format_html
 
 from .models import (
@@ -17,6 +17,8 @@ from .models import (
     IpVisitLog,
     Page,
     PageTag,
+    PastedFile,
+    StorageSettings,
     Tag,
     UploadedFile,
     UserSettings,
@@ -29,6 +31,14 @@ from .models import (
     WorkspaceMailMessage,
     WorkspaceMailRecipient,
 )
+from .storage import (
+    apply_purge,
+    build_storage_report,
+    delete_stored_file,
+    format_bytes,
+    plan_unreferenced_media,
+    stored_file_bytes,
+)
 from .workspace_io import (
     export_workspace_zip,
     import_workspace,
@@ -37,6 +47,23 @@ from .workspace_io import (
 
 
 admin.site.unregister(Group)
+
+
+class SuperuserOnlyMixin:
+    def has_module_permission(self, request):
+        return bool(request.user.is_superuser)
+
+    def has_view_permission(self, request, obj=None):
+        return bool(request.user.is_superuser)
+
+    def has_add_permission(self, request):
+        return bool(request.user.is_superuser)
+
+    def has_change_permission(self, request, obj=None):
+        return bool(request.user.is_superuser)
+
+    def has_delete_permission(self, request, obj=None):
+        return bool(request.user.is_superuser)
 
 
 class GroupAdminForm(forms.ModelForm):
@@ -92,7 +119,7 @@ class GroupAdmin(BaseGroupAdmin):
 
 @admin.register(Workspace)
 class WorkspaceAdmin(admin.ModelAdmin):
-    list_display = ('name', 'slug', 'owner', 'deleted', 'created_at')
+    list_display = ('name', 'slug', 'owner', 'storage_quota_mb', 'deleted', 'created_at')
     list_filter = ('deleted', 'owner', 'groups')
     search_fields = ('name', 'slug', 'owner__username')
     filter_horizontal = ('groups',)
@@ -157,10 +184,97 @@ class WorkspaceAdmin(admin.ModelAdmin):
         return TemplateResponse(request, 'admin/notes/workspace/import_form.html', context)
 
 
+class MediaFileAdmin(admin.ModelAdmin):
+    list_display = ('id', 'original_name', 'workspace', 'user', 'file_size', 'created_at', 'file')
+    list_filter = ('workspace', 'created_at')
+    search_fields = ('original_name', 'file', 'md5_hash', 'user__username', 'workspace__name')
+    readonly_fields = ('md5_hash', 'created_at', 'file_size')
+    date_hierarchy = 'created_at'
+
+    @admin.display(description='Size')
+    def file_size(self, obj):
+        return format_bytes(stored_file_bytes(obj.file))
+
+    def delete_model(self, request, obj):
+        delete_stored_file(obj.file)
+        super().delete_model(request, obj)
+
+    def delete_queryset(self, request, queryset):
+        for obj in queryset:
+            delete_stored_file(obj.file)
+            obj.delete()
+
+
+@admin.register(UploadedFile)
+class UploadedFileAdmin(MediaFileAdmin):
+    pass
+
+
+@admin.register(PastedFile)
+class PastedFileAdmin(MediaFileAdmin):
+    pass
+
+
+@admin.register(StorageSettings)
+class StorageSettingsAdmin(SuperuserOnlyMixin, admin.ModelAdmin):
+    fieldsets = (
+        ('Quotas', {
+            'description': (
+                '0 means unlimited. Per-workspace overrides live on each Workspace; '
+                'per-user overrides live on User settings '
+                '(empty inherit, 0 unlimited, or an explicit megabyte cap).'
+            ),
+            'fields': ('max_upload_mb', 'workspace_quota_mb', 'user_quota_mb', 'global_quota_mb'),
+        }),
+    )
+    change_form_template = 'admin/notes/storagesettings/change_form.html'
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def changelist_view(self, request, extra_context=None):
+        if not request.user.is_superuser:
+            raise PermissionDenied
+        obj = StorageSettings.load()
+        return redirect(reverse('admin:notes_storagesettings_change', args=[obj.pk]))
+
+    def changeform_view(self, request, object_id=None, form_url='', extra_context=None):
+        if not request.user.is_superuser:
+            raise PermissionDenied
+        extra_context = extra_context or {}
+        if request.method == 'POST' and (
+            '_purge' in request.POST or '_purge_orphans' in request.POST
+        ):
+            disk_orphans = '_purge_orphans' in request.POST
+            plan = plan_unreferenced_media(disk_orphans=disk_orphans)
+            n_records = len(plan['records'])
+            n_orphans = len(plan['disk_orphans'])
+            if n_records == 0 and n_orphans == 0:
+                self.message_user(request, 'No unreferenced media files found.', level=messages.INFO)
+            else:
+                result = apply_purge(plan)
+                extra = (
+                    f' and {result["deleted_orphans"]} disk orphan(s)'
+                    if disk_orphans else ''
+                )
+                self.message_user(
+                    request,
+                    f'Purged {result["deleted_rows"]} file record(s){extra} '
+                    f'({format_bytes(result["deleted_bytes"])}).',
+                    level=messages.SUCCESS,
+                )
+            obj = StorageSettings.load()
+            return redirect(reverse('admin:notes_storagesettings_change', args=[obj.pk]))
+        extra_context['storage_report'] = build_storage_report()
+        return super().changeform_view(request, object_id, form_url, extra_context)
+
+
 admin.site.register(Page)
 admin.site.register(Tag)
 admin.site.register(PageTag)
-admin.site.register(UploadedFile)
 admin.site.register(WorkspaceInvite)
 admin.site.register(WorkspaceMailMessage)
 admin.site.register(WorkspaceMailRecipient)
@@ -192,13 +306,17 @@ class GameHighScoreAdmin(admin.ModelAdmin):
 @admin.register(UserSettings)
 class UserSettingsAdmin(admin.ModelAdmin):
     list_display = (
-        'user', 'last_workspace_id', 'theme',
+        'user', 'storage_quota_mb', 'last_workspace_id', 'theme',
         'sidebar_width', 'left_panel_expanded', 'right_panel_width', 'right_panel_expanded',
         'totp_enabled', 'mobile', 'mobile_verified',
     )
     search_fields = ('user__username', 'mobile')
     fieldsets = (
         (None, {'fields': ('user', 'theme', 'show_toolbar', 'font_size')}),
+        ('Storage', {
+            'description': 'Empty inherits the site default from Storage control. 0 = unlimited.',
+            'fields': ('storage_quota_mb',),
+        }),
         ('Layout', {
             'fields': (
                 'last_workspace_id', 'last_page_id', 'workspace_pages',

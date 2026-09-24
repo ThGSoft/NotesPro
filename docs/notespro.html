@@ -519,12 +519,112 @@
     }
     .legal-card p:last-child { margin-bottom: 0; }
 
+    .sw-shop {
+      display: grid;
+      grid-template-columns: minmax(0, 1.1fr) minmax(16rem, 0.9fr);
+      gap: 1.25rem;
+      align-items: stretch;
+    }
+    .sw-card {
+      background: linear-gradient(180deg, #fffdf5 0%, var(--paper) 100%);
+      border: 3px solid #1a1a1a;
+      box-shadow: 5px 8px 0 rgba(0,0,0,0.14);
+      padding: 1.25rem 1.3rem 1.4rem;
+      transform: rotate(-0.8deg);
+    }
+    .sw-card h3 {
+      font-family: var(--font-display);
+      font-size: 1.35rem;
+      margin: 0 0 0.25rem;
+    }
+    .sw-price {
+      font-weight: 800;
+      font-size: 1.15rem;
+      margin: 0 0 0.7rem;
+    }
+    .sw-card p { margin: 0 0 0.85rem; color: var(--muted); font-weight: 600; }
+    .sw-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+    .pay-paypal { background: #003087; color: #fff; border-color: #001c50; }
+    .pay-paypal:hover { background: #0043b8; color: #fff; }
+    .pay-visa { background: #1a1f71; color: #fff; border-color: #0f134a; }
+    .pay-visa:hover { background: #2a328c; color: #fff; }
+    .pay-master { background: linear-gradient(90deg, #eb001b, #f79e1b); color: #fff; border-color: #7a0d12; }
+    .pay-master:hover { filter: brightness(1.06); color: #fff; }
+    .sw-info {
+      background: var(--paper);
+      border: 2px solid #1a1a1a;
+      box-shadow: 3px 4px 0 rgba(0,0,0,0.12);
+      padding: 1.1rem 1.15rem 1.25rem;
+      transform: rotate(0.7deg);
+    }
+    .sw-info h3 {
+      font-family: var(--font-display);
+      font-size: 1.1rem;
+      margin: 0 0 0.5rem;
+    }
+    .sw-info p { margin: 0 0 0.65rem; color: var(--muted); font-weight: 600; font-size: 0.95rem; }
+    .sw-info p:last-child { margin-bottom: 0; }
+    @media (max-width: 720px) {
+      .sw-shop { grid-template-columns: 1fr; }
+      .sw-card, .sw-info { transform: none; }
+    }
+
+    .cl-landing {
+      background: #f4f4f4;
+      border: 3px solid #1a1a1a;
+      box-shadow: 4px 6px 0 rgba(0,0,0,0.12);
+      padding: 1.1rem 1.2rem 1.35rem;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+    .cl-landing-brand {
+      font-size: 1.5rem;
+      margin: 0 0 0.2rem;
+      letter-spacing: -0.03em;
+    }
+    .cl-landing-brand strong { color: #5c2d91; }
+    .cl-landing-city {
+      font-weight: 700;
+      margin: 0 0 0.35rem;
+    }
+    .cl-landing-meta {
+      margin: 0 0 1rem;
+      font-size: 0.88rem;
+      color: #555;
+    }
+    .cl-landing-cats {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 0.85rem 1.4rem;
+    }
+    .cl-landing-cats h3 {
+      margin: 0 0 0.3rem;
+      font-size: 0.95rem;
+      color: #00e;
+      font-family: Arial, Helvetica, sans-serif;
+      font-weight: 700;
+    }
+    .cl-landing-cats ul {
+      margin: 0;
+      padding: 0 0 0 1.05rem;
+      color: #444;
+      font-size: 0.88rem;
+      font-weight: 600;
+    }
+    .cl-landing-cats li { margin: 0 0 0.15rem; }
+
     @media (max-width: 640px) {
       .nav a[href="#advantages"] { display: none; }
       .sticky { transform: rotate(-1deg); }
       .gallery-item img { height: 120px; }
     }
   </style>
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4146485207173586"
+     crossorigin="anonymous">
+  </script>  
 </head>
 <body>
   <div class="shell">
@@ -536,6 +636,8 @@
       <div style="display:flex;gap:0.55rem;">
         <a class="btn btn-ghost" href="#gallery">Gallery</a>
         <a class="btn btn-ghost" href="#advantages">Advantages</a>
+        <a class="btn btn-ghost" href="#shop">Shop</a>
+        <a class="btn btn-ghost" href="#noteslist">NotesList</a>
         <a class="btn btn-ghost" href="#privacy">Privacy</a>
         <a class="btn btn-ghost" href="https://github.com/ThGSoft/NotesPro">Source</a>
         <a class="btn btn-primary" href="https://thgsoft.online/DjangoNotesPro/">Open NotesPro</a>
@@ -681,7 +783,7 @@
         <article class="feature">
           <span class="label">Sheets &amp; charts</span>
           <h3>Embedded spreadsheets</h3>
-          <p>Tab-separated sheet blocks with formulas, linked D3 charts, and images in cells — docs that calculate.</p>
+          <p>Tab-separated sheet blocks with formulas, inline markdown in cells, linked D3 charts, and images in cells — docs that calculate.</p>
         </article>
         <article class="feature">
           <span class="label">Planning</span>
@@ -705,8 +807,13 @@
         </article>
         <article class="feature">
           <span class="label">Shop</span>
-          <h3>E-shop</h3>
-          <p>Product catalog with images and descriptions. Checkout by mail, PayPal, or Mastercard, and the order is posted in group chat.</p>
+          <h3>SW Shop &amp; e-shop</h3>
+          <p>Software downloads plus a product catalog. Pay with PayPal, Visa, or Mastercard. Additional info sits on the shop. Card numbers are never stored.</p>
+        </article>
+        <article class="feature">
+          <span class="label">Ads</span>
+          <h3>NotesList</h3>
+          <p>Local ads in markdown: categories, search, posting view, Reply to all group members, Add item by mail, and Edit for page owners.</p>
         </article>
         <article class="feature">
           <span class="label">Calcs</span>
@@ -786,6 +893,89 @@
       </div>
     </section>
 
+    <section id="shop" aria-labelledby="shop-title">
+      <div class="section-head">
+        <h2 id="shop-title">SW Shop</h2>
+        <p>Download the source, or pay for a single-site license with PayPal, Visa, or Mastercard.</p>
+      </div>
+      <div class="sw-shop">
+        <article class="sw-card">
+          <span class="label">NotesPro</span>
+          <h3>Collaborative notes</h3>
+          <p class="sw-price">Source free · License 49 EUR</p>
+          <p>Markdown workspaces, Keep notes, menus, games, and team chat. Download the zip, or check out a license in the live app.</p>
+          <div class="sw-actions">
+            <a class="btn btn-primary" href="https://github.com/ThGSoft/NotesPro/archive/refs/heads/main.zip">Download</a>
+            <a class="btn pay-paypal" href="https://thgsoft.online/DjangoNotesPro/">Pay with PayPal</a>
+            <a class="btn pay-visa" href="#shop-info">Visa</a>
+            <a class="btn pay-master" href="#shop-info">Mastercard</a>
+          </div>
+        </article>
+        <aside class="sw-info" id="shop-info">
+          <h3>Additional info</h3>
+          <p>Download is the GitHub source zip. Run it locally with Python and Django, or open the hosted app.</p>
+          <p>PayPal, Visa, and Mastercard checkout live in NotesPro <strong>Settings</strong> and the <strong>SW Shop</strong> block. This page does not collect card numbers.</p>
+          <p>In the app, Checkout asks how to pay. Visa and Mastercard ask for your Konto and transfer to the shop Konto in Settings. PayPal opens the merchant checkout from your shop settings.</p>
+        </aside>
+      </div>
+    </section>
+
+    <section id="noteslist" aria-labelledby="noteslist-title">
+      <div class="section-head">
+        <h2 id="noteslist-title">NotesList</h2>
+        <p>A local ads board inside a markdown fence — search, categories, Reply to all group members, Add item by mail, and Edit for page owners.</p>
+      </div>
+      <div class="cl-landing">
+        <p class="cl-landing-brand"><strong>notespro</strong> NotesList</p>
+        <p class="cl-landing-city">Main</p>
+        <p class="cl-landing-meta">community · services · housing · for sale · jobs · gigs</p>
+        <div class="cl-landing-cats">
+          <div>
+            <h3>community</h3>
+            <ul>
+              <li>Neighborhood picnic</li>
+              <li>Lost cat</li>
+            </ul>
+          </div>
+          <div>
+            <h3>services</h3>
+            <ul>
+              <li>Bike tune-up</li>
+              <li>Tutoring</li>
+            </ul>
+          </div>
+          <div>
+            <h3>housing</h3>
+            <ul>
+              <li>Studio loft</li>
+              <li>Room share</li>
+            </ul>
+          </div>
+          <div>
+            <h3>for sale</h3>
+            <ul>
+              <li>Desk lamp</li>
+              <li>Road bike</li>
+            </ul>
+          </div>
+          <div>
+            <h3>jobs</h3>
+            <ul>
+              <li>Barista</li>
+              <li>Page editor</li>
+            </ul>
+          </div>
+          <div>
+            <h3>gigs</h3>
+            <ul>
+              <li>Moving help</li>
+              <li>Photo walk</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <div class="band" id="open">
       <div class="band-inner">
         <h2>Open NotesPro</h2>
@@ -819,7 +1009,9 @@
         NotesPro
       </a>
       <span>
-        <a href="#privacy">Privacy</a>
+        <a href="#shop">Shop</a>
+        · <a href="#noteslist">NotesList</a>
+        · <a href="#privacy">Privacy</a>
         · <a href="https://github.com/ThGSoft/NotesPro">Source on GitHub</a>
         · <a href="https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2F%2Fthgsoft.online%2FDjangoNotesPro%2F">LinkedIn</a>
         · <a href="https://www.youtube.com/upload">YouTube</a>

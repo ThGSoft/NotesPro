@@ -19205,7 +19205,7 @@ function formatTextWithMarkup(rawText) {
   function syncWorkspaceOwnerControls(selectedOption) {
     const isOwner = selectedOption?.dataset?.ownerId
       && String(selectedOption.dataset.ownerId) === String(currentUserId);
-    ['ws-rename-btn', 'ws-delete-btn', 'admin-link'].forEach(id => {
+    ['ws-rename-btn', 'ws-delete-btn'].forEach(id => {
       document.getElementById(id)?.classList.toggle('d-none', !isOwner);
     });
   }

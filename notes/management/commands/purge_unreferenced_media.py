@@ -1,11 +1,7 @@
-from pathlib import Path
-
-from django.conf import settings
 from django.core.management.base import BaseCommand
-from django.db import transaction
 
-from notes.media_refs import collect_all_referenced_media_paths
-from notes.models import PastedFile, UploadedFile, Workspace
+from notes.models import Workspace
+from notes.storage import apply_purge, format_bytes, plan_unreferenced_media
 
 
 class Command(BaseCommand):
@@ -55,44 +51,13 @@ class Command(BaseCommand):
                 self.stderr.write(self.style.ERROR(f'Workspace {workspace_id} not found.'))
                 return
 
-        referenced = collect_all_referenced_media_paths(
+        plan = plan_unreferenced_media(
             workspace=workspace,
             include_deleted=include_deleted,
+            disk_orphans=disk_orphans,
         )
-
-        upload_qs = UploadedFile.objects.select_related('workspace')
-        paste_qs = PastedFile.objects.select_related('workspace')
-        if workspace is not None:
-            upload_qs = upload_qs.filter(workspace=workspace)
-            paste_qs = paste_qs.filter(workspace=workspace)
-
-        to_delete = []
-        for obj in list(upload_qs) + list(paste_qs):
-            relpath = (obj.file.name or '').replace('\\', '/')
-            if not relpath:
-                to_delete.append((obj, relpath, 'empty path'))
-                continue
-            if relpath not in referenced:
-                to_delete.append((obj, relpath, 'unreferenced'))
-
-        disk_only = []
-        if disk_orphans:
-            db_paths = {
-                (obj.file.name or '').replace('\\', '/')
-                for obj in list(upload_qs) + list(paste_qs)
-                if obj.file and obj.file.name
-            }
-            media_root = Path(settings.MEDIA_ROOT)
-            for prefix in ('uploads', 'pasted_images'):
-                root = media_root / prefix
-                if not root.is_dir():
-                    continue
-                for path in root.rglob('*'):
-                    if not path.is_file():
-                        continue
-                    relpath = path.relative_to(media_root).as_posix()
-                    if relpath not in db_paths and relpath not in referenced:
-                        disk_only.append(relpath)
+        to_delete = plan['records']
+        disk_only = plan['disk_orphans']
 
         if not to_delete and not disk_only:
             self.stdout.write('No unreferenced media files found.')
@@ -100,20 +65,21 @@ class Command(BaseCommand):
 
         scope = f'workspace {workspace.pk} ({workspace.name})' if workspace else 'all workspaces'
         self.stdout.write(f'Scope: {scope}')
-        self.stdout.write(f'Referenced media paths in content: {len(referenced)}')
+        self.stdout.write(f'Referenced media paths in content: {plan["referenced_count"]}')
 
         if to_delete:
             self.stdout.write(f'\nDatabase file records to delete: {len(to_delete)}')
-            for obj, relpath, reason in to_delete[:50]:
-                kind = obj.__class__.__name__
-                self.stdout.write(f'  [{kind} #{obj.pk}] {relpath} ({reason})')
+            for row in to_delete[:50]:
+                self.stdout.write(
+                    f'  [{row["kind"]} #{row["pk"]}] {row["relpath"]} ({row["reason"]})'
+                )
             if len(to_delete) > 50:
                 self.stdout.write(f'  ... and {len(to_delete) - 50} more')
 
         if disk_only:
             self.stdout.write(f'\nDisk-only orphan files to delete: {len(disk_only)}')
-            for relpath in disk_only[:50]:
-                self.stdout.write(f'  {relpath}')
+            for row in disk_only[:50]:
+                self.stdout.write(f'  {row["relpath"]}')
             if len(disk_only) > 50:
                 self.stdout.write(f'  ... and {len(disk_only) - 50} more')
 
@@ -127,23 +93,9 @@ class Command(BaseCommand):
                 self.stdout.write('Aborted.')
                 return
 
-        deleted_rows = 0
-        deleted_disk = 0
-        with transaction.atomic():
-            for obj, relpath, _reason in to_delete:
-                label = f'{obj.__class__.__name__} #{obj.pk}: {relpath}'
-                obj.delete()
-                deleted_rows += 1
-                self.stdout.write(self.style.SUCCESS(f'Deleted {label}'))
-
-        for relpath in disk_only:
-            path = Path(settings.MEDIA_ROOT) / relpath
-            if path.is_file():
-                path.unlink()
-                deleted_disk += 1
-                self.stdout.write(self.style.SUCCESS(f'Removed disk orphan {relpath}'))
-
+        result = apply_purge(plan)
         self.stdout.write(self.style.SUCCESS(
-            f'Purge complete. Deleted {deleted_rows} database record(s)'
-            f'{f" and {deleted_disk} disk orphan(s)" if disk_orphans else ""}.',
+            f'Purge complete. Deleted {result["deleted_rows"]} database record(s)'
+            f'{f" and {result["deleted_orphans"]} disk orphan(s)" if disk_orphans else ""}'
+            f' ({format_bytes(result["deleted_bytes"])}).',
         ))

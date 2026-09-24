@@ -1948,5 +1948,6 @@ The server fetches and caches the feed asynchronously (like MagpieRSS, non-block
 - Markdown images support optional size and alignment: `![alt](/media/uploads/photo.png){width=50%}` or `{width=120px; align=center}`. Pasted screenshots default to `{width=100%}`.
 - Markdown images and attachments use `/api/uploads/`; preview and chat images open in a new browser tab when clicked.
 - File manager lists uploads for the current workspace.
+- Superusers manage media quotas, usage, and unreferenced-file purge under Django admin **NOTES → Storage control**. Per-workspace overrides are on each Workspace; per-user overrides are on **User settings** (`storage_quota_mb`: empty inherit, `0` unlimited).
 - Workspace export/import and soft-delete are available via the API and admin tools.
 - Layout (sidebar width, panel sizes, last page per workspace) is persisted in **User settings**.

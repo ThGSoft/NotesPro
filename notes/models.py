@@ -40,6 +40,11 @@ class Workspace(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     deleted = models.BooleanField(default=False, db_index=True)
     groups = models.ManyToManyField('auth.Group', blank=True, related_name='workspaces')
+    storage_quota_mb = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text='Override the site default quota for this workspace. Leave empty to inherit. 0 = unlimited.',
+    )
 
     members = models.ManyToManyField(
         User,
@@ -60,6 +65,11 @@ class Workspace(models.Model):
 
     def __str__(self):
         return self.name
+
+    def effective_storage_quota_mb(self):
+        if self.storage_quota_mb is not None:
+            return int(self.storage_quota_mb)
+        return StorageSettings.load().workspace_quota_mb
     
 class WorkspaceMembership(models.Model):
     ROLE_CHOICES = [
@@ -568,8 +578,19 @@ class UserSettings(models.Model):
     # Flexible Daten als JSON (z.B. für jsTree-Zustände)
     extra_configs = models.JSONField(default=dict, blank=True)
 
+    storage_quota_mb = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text='Override the site default quota for this user. Leave empty to inherit. 0 = unlimited.',
+    )
+
     def __str__(self):
         return f"Settings for {self.user.username}"
+
+    def effective_storage_quota_mb(self):
+        if self.storage_quota_mb is not None:
+            return int(self.storage_quota_mb)
+        return StorageSettings.load().user_quota_mb
 
 
 class GameHighScore(models.Model):
@@ -647,6 +668,46 @@ class IpVisitLog(models.Model):
     def geo_label(self):
         parts = [p for p in (self.city, self.region, self.country) if p]
         return ', '.join(parts) or '—'
+
+
+class StorageSettings(models.Model):
+    """Singleton quotas for uploaded and pasted media. Superuser-managed in admin."""
+
+    max_upload_mb = models.PositiveIntegerField(
+        default=25,
+        help_text='Maximum size of a single upload or pasted image. 0 = unlimited.',
+    )
+    workspace_quota_mb = models.PositiveIntegerField(
+        default=0,
+        help_text='Default storage quota per workspace. 0 = unlimited. Individual workspaces can override this.',
+    )
+    user_quota_mb = models.PositiveIntegerField(
+        default=0,
+        help_text='Default storage quota per user (uploads and pastes they created, plus incoming mail). 0 = unlimited. Individual users can override this in User settings.',
+    )
+    global_quota_mb = models.PositiveIntegerField(
+        default=0,
+        help_text='Total media storage quota for the site (uploads, pasted images, incoming mail). 0 = unlimited.',
+    )
+
+    class Meta:
+        verbose_name = 'Storage control'
+        verbose_name_plural = 'Storage control'
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        return
+
+    def __str__(self):
+        return 'Storage control'
+
+    @classmethod
+    def load(cls):
+        obj, _created = cls.objects.get_or_create(pk=1)
+        return obj
 
 
 @receiver(post_save, sender=settings.AUTH_USER_MODEL)
