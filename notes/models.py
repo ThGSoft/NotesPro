@@ -569,6 +569,11 @@ class UserSettings(models.Model):
     totp_secret = EncryptedTextField(blank=True, default='')
     totp_enabled = models.BooleanField(default=False)
 
+    stay_informed = models.BooleanField(
+        default=False,
+        help_text='Email product updates and news. Opt-in from registration or Settings.',
+    )
+
     # Mobile registration / SMS activation
     mobile = models.CharField(max_length=32, blank=True, default='', db_index=True)
     mobile_verified = models.BooleanField(default=False)

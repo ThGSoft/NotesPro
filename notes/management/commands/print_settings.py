@@ -114,6 +114,8 @@ class Command(BaseCommand):
                 'ALLOW_OFFLINE',
                 'REGISTER_MAIL',
                 'REGISTER_MOBILE',
+                'GOOGLE_DRIVE_API_KEY',
+                'GOOGLE_API_KEY',
                 'DB_ENCRYPTION_KEY',
                 'DATABASES',
                 'ROOT_URLCONF',

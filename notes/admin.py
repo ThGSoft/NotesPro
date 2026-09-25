@@ -306,13 +306,18 @@ class GameHighScoreAdmin(admin.ModelAdmin):
 @admin.register(UserSettings)
 class UserSettingsAdmin(admin.ModelAdmin):
     list_display = (
-        'user', 'storage_quota_mb', 'last_workspace_id', 'theme',
+        'user', 'storage_quota_mb', 'stay_informed', 'last_workspace_id', 'theme',
         'sidebar_width', 'left_panel_expanded', 'right_panel_width', 'right_panel_expanded',
         'totp_enabled', 'mobile', 'mobile_verified',
     )
+    list_filter = ('stay_informed', 'totp_enabled', 'mobile_verified')
     search_fields = ('user__username', 'mobile')
     fieldsets = (
         (None, {'fields': ('user', 'theme', 'show_toolbar', 'font_size')}),
+        ('Notifications', {
+            'description': 'Stay informed is also offered on registration and in the in-app Settings.',
+            'fields': ('stay_informed',),
+        }),
         ('Storage', {
             'description': 'Empty inherits the site default from Storage control. 0 = unlimited.',
             'fields': ('storage_quota_mb',),

@@ -4,7 +4,7 @@ from django.contrib import messages
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
 from django.db import models, transaction
-from django.http import HttpResponseBadRequest, HttpResponse, JsonResponse
+from django.http import HttpResponseBadRequest, HttpResponse, JsonResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.conf import settings as django_settings
 from django.contrib.staticfiles import finders
@@ -1248,6 +1248,8 @@ def updateUserSettings(request, workspace_id):
                     settings.right_panel_width = max(240, min(640, int(w)))
             if 'right_panel_expanded' in data:
                 settings.right_panel_expanded = bool(data['right_panel_expanded'])
+            if 'stay_informed' in data:
+                settings.stay_informed = bool(data['stay_informed'])
             if 'font_size' in data:
                 try:
                     settings.font_size = max(11, min(24, int(data['font_size'])))
@@ -1468,3 +1470,57 @@ async def rss_fetch(request):
     except Exception as exc:  # noqa: BLE001 — surface fetch failures cleanly
         return JsonResponse({'error': f'Feed error: {exc}'}, status=502)
     return JsonResponse(data)
+
+
+@login_required
+@require_GET
+def gdrive_resolve(request):
+    """List a public Google Drive file or folder for the jukebox."""
+    from urllib.error import HTTPError, URLError
+
+    from .gdrive import resolve_drive
+
+    raw = (request.GET.get('url') or request.GET.get('id') or '').strip()
+    if not raw:
+        return JsonResponse({'error': 'url required'}, status=400)
+    try:
+        data = resolve_drive(raw)
+    except ValueError as exc:
+        return JsonResponse({'error': str(exc)}, status=400)
+    except (HTTPError, URLError, OSError) as exc:
+        return JsonResponse({'error': f'Google Drive error: {exc}'}, status=502)
+    return JsonResponse(data)
+
+
+@login_required
+@require_GET
+def gdrive_audio(request, file_id):
+    """Stream a shared Google Drive audio file (Anyone with the link)."""
+    from urllib.error import HTTPError, URLError
+
+    from .gdrive import stream_drive_file
+
+    try:
+        stream = stream_drive_file(file_id, range_header=request.META.get('HTTP_RANGE'))
+    except ValueError as exc:
+        return JsonResponse({'error': str(exc)}, status=400)
+    except HTTPError as exc:
+        status = 404 if exc.code in (404, 410) else 502
+        return JsonResponse({'error': f'Google Drive HTTP {exc.code}'}, status=status)
+    except (URLError, OSError) as exc:
+        return JsonResponse({'error': f'Google Drive fetch failed: {exc}'}, status=502)
+
+    response = StreamingHttpResponse(
+        stream.body,
+        content_type=stream.content_type or 'audio/mpeg',
+        status=stream.status or 200,
+    )
+    if stream.content_length:
+        response['Content-Length'] = stream.content_length
+    if stream.content_range:
+        response['Content-Range'] = stream.content_range
+    if stream.accept_ranges:
+        response['Accept-Ranges'] = stream.accept_ranges
+    response['Content-Disposition'] = 'inline'
+    response['Cache-Control'] = 'private, max-age=86400'
+    return response

@@ -137,7 +137,7 @@ When **Offline mode** is on (Settings, default on; disable globally with `allowO
 
 - Pages and the folder tree you open are cached on this device.
 - If the network drops, you can keep reading and editing those pages. Status shows **Saved offline — will sync**.
-- Coming back online flushes queued saves. An **Offline** badge appears in the top bar while you are disconnected or waiting to sync.
+- Coming back online flushes queued saves. An **Offline** badge appears in the top bar while you are disconnected or waiting to sync. Dropping offline also shows a warning bar and toast (even if Offline mode is off, so you know saves will not go through).
 - A service worker caches the dashboard shell and static files so a refresh can still open the last loaded app (you must have visited while online first). Chat, mail, and new pages still need the server.
 
 After upgrading from an older version, run migrations and optionally:
@@ -216,6 +216,8 @@ Set `registerMail` and `registerMobile` in `.env` (aliases: `REGISTER_MAIL`, `RE
 | both `false` | Username and password only — the account is active immediately |
 
 New accounts with mobile on use international format, e.g. `+41 79 123 45 67`. After **Create account**, enter the code on **/activate/**. Existing demo logins are unchanged.
+
+Registration and **Settings** include an optional **Stay informed** checkbox (off by default) to receive product updates by email.
 
 Without Twilio credentials, SMS codes **print in the runserver terminal**. Email codes use the same backend as invites (console / file / SMTP). For real SMS:
 
@@ -1170,6 +1172,37 @@ Notes:
 - Allow the microphone when the browser asks. `http://127.0.0.1` and HTTPS are supported; other origins may block `getUserMedia`.
 - Maximum recording length is 10 minutes.
 - Safari may save `audio/mp4` instead of WebM; playback and transcription still work in that browser.
+
+### Jukebox (MP3 playlist)
+
+Embed a diner-cabinet playlist player with a fenced `jukebox` block (`juke-box` and `playlist` work too). The neon cabinet photo is the background; Livia-style orange mode buttons and two-column blue song buttons sit in a glass overlay. Native audio controls sit above the playlist. Mode buttons match the Livia player: **Play Continuous Album**, **Play Random Album**, **Play Continuous All**, **Play Random All**, **Previous** / **Next**, album `<select>`, and **Play Random**. Toolbar **music** note inserts `title=Livia's Jukebox`.
+
+In **Edit**, click **Add tracks or folders**, **choose a folder**, or drop **MP3 files or a music folder** (also M4A, WAV, OGG, FLAC) onto the box. Loose files go into the album currently selected (default `Uploads`). A folder keeps its structure as albums the same way Drive does (`Jazz`, nested `Jazz / Bebop`). Uploads go to `media/uploads/` like other files. Paste a Google Drive **file or folder** share link and click **Add Drive** (or drop the URL on the player). Share Drive items as **Anyone with the link**. Volume is remembered in `localStorage` (`jukeboxVolume`).
+
+Toolbar: **music** note inserts an empty jukebox. Group tracks with `# Album` headings. Track lines are markdown links or `Title | Artist | path`.
+
+````markdown
+```jukebox{title=Livia's Jukebox;drive=https://drive.google.com/drive/folders/FOLDER_ID}
+# Uploads
+[Local demo](media/uploads/demo.mp3)
+[Drive single](https://drive.google.com/file/d/FILE_ID/view)
+```
+````
+
+| Option | Description |
+|--------|-------------|
+| `title` | Heading on the cabinet (default `Livia's Jukebox`) |
+| `cover` | Optional extra art URL, or put `![Cover](…)` on the first body line |
+| `drive` | Google Drive folder URL or id. Nested folders become albums. |
+| `col` / `color` | Theme `info` / `success` / … or any CSS color |
+| `bkcol` | Optional extra background color |
+
+Notes:
+- Drop several files or a folder at once to append a playlist. Nested folders become albums.
+- **×** on a song button removes that track (Edit / write access). Drive folder imports are saved as `# Album` headings.
+- ← / → skip tracks when the jukebox is focused.
+- Playback goes through `/api/drive/audio/<id>/` (signed-in). Optional `GOOGLE_DRIVE_API_KEY` lists public folders more reliably; without it NotesPro parses Drive’s embedded folder view.
+- Files must be shared so **anyone with the link** can view. Large files can hit Google’s virus-scan interstitial; the proxy retries with the confirm token.
 
 ### Sudoku
 

@@ -329,6 +329,12 @@ Record in the browser, then Whisper tiny transcribes locally (first run download
 ```voice{lang=auto;title=Voice note;col=info}
 ```
 
+# Jukebox
+Drop MP3 files or a music folder onto the player (Edit), or use **Add tracks or folders**. Nested folders become albums. Paste a Google Drive file or folder link (**Add Drive**) — share as *Anyone with the link*. Group songs with `# Album` headings.
+
+```jukebox{title=Livia's Jukebox}
+```
+
 # Sheet & chart
 ```sheet
 `id=quarterly
@@ -825,7 +831,7 @@ class Command(BaseCommand):
                     '# Welcome\n\n'
                     'Edit in markdown, preview when you are done.\n\n'
                     'See **README** in this folder for the full project guide and screenshots.\n\n'
-                    'Open **Blocks** for interactive gantt, calendar, mindmap, kanban, sheets, charts, calcs, Python, voice notes, gallery, and panel examples.\n\n'
+                    'Open **Blocks** for interactive gantt, calendar, mindmap, kanban, sheets, charts, calcs, Python, voice notes, jukebox, gallery, and panel examples.\n\n'
                     'Open **SW Shop** for software downloads and PayPal / Visa / Mastercard checkout.\n\n'
                     'Open **NotesList** for a local ads board — search, categories, Reply by mail, and Edit if you own the page.\n\n'
                     'Open **Calendar** for day, week, month, and year views — hover a day and press **Ctrl+V** to paste a photo.\n\n'

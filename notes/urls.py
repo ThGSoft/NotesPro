@@ -72,6 +72,8 @@ urlpatterns = [
 
     path('api/uploads/', views.upload_file, name='api_upload'),
     path('api/rss/', views.rss_fetch, name='api_rss_fetch'),
+    path('api/drive/resolve/', views.gdrive_resolve, name='api_drive_resolve'),
+    path('api/drive/audio/<str:file_id>/', views.gdrive_audio, name='api_drive_audio'),
     path('api/local-files/open/', views.open_local_file, name='api_open_local_file'),
     path('api/pages/<int:pk>/', views.page_detail, name='api_page_detail'),
     path('api/pages/create/', views.page_create, name='api_page_create'),

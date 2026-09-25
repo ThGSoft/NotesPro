@@ -220,6 +220,7 @@
   const OFFLINE_DB_VERSION = 1;
   let offlinePendingCount = 0;
   let offlineFlushBusy = false;
+  let browserOfflineKnown = typeof navigator !== 'undefined' && navigator.onLine === false;
 
   function isOfflineModeAllowed() {
     return window.APP_BOOT?.allowOffline !== false;
@@ -233,7 +234,30 @@
   }
 
   function isBrowserOffline() {
-    return typeof navigator !== 'undefined' && navigator.onLine === false;
+    return browserOfflineKnown;
+  }
+
+  function offlineWarningMessage() {
+    if (isOfflineModeEnabled()) {
+      return offlinePendingCount
+        ? `You're offline. ${offlinePendingCount} change${offlinePendingCount === 1 ? '' : 's'} will sync when you're back.`
+        : "You're offline. Opened pages stay available; edits will sync when you're back.";
+    }
+    return "You're offline. Changes will not be saved until you reconnect.";
+  }
+
+  function setOfflineBannerVisible(visible, message) {
+    const banner = document.getElementById('offline-warning');
+    if (!banner) return;
+    if (!visible) {
+      banner.hidden = true;
+      banner.classList.add('d-none');
+      banner.textContent = '';
+      return;
+    }
+    banner.hidden = false;
+    banner.classList.remove('d-none');
+    banner.textContent = message || offlineWarningMessage();
   }
 
   function offlineDbRequest(req) {
@@ -379,21 +403,23 @@
 
   function syncOfflineBadge() {
     const badge = document.getElementById('offline-badge');
-    if (!badge) return;
     const allowed = isOfflineModeEnabled();
     const offline = isBrowserOffline();
     const pending = offlinePendingCount > 0;
-    if (!allowed || (!offline && !pending)) {
-      badge.hidden = true;
-      badge.classList.add('d-none');
-      return;
+    if (badge) {
+      if (!offline && !(allowed && pending)) {
+        badge.hidden = true;
+        badge.classList.add('d-none');
+      } else {
+        badge.hidden = false;
+        badge.classList.remove('d-none');
+        badge.classList.toggle('is-syncing', !offline && pending);
+        badge.textContent = offline
+          ? (pending ? `Offline · ${offlinePendingCount}` : 'Offline')
+          : `Syncing ${offlinePendingCount}`;
+      }
     }
-    badge.hidden = false;
-    badge.classList.remove('d-none');
-    badge.classList.toggle('is-syncing', !offline && pending);
-    badge.textContent = offline
-      ? (pending ? `Offline · ${offlinePendingCount}` : 'Offline')
-      : `Syncing ${offlinePendingCount}`;
+    setOfflineBannerVisible(offline);
   }
 
   function serviceWorkerUrl() {
@@ -476,10 +502,23 @@
   function initOfflineMode() {
     refreshOfflinePendingCount();
     window.addEventListener('online', () => {
+      browserOfflineKnown = false;
       syncOfflineBadge();
+      if (isOfflineModeEnabled() && offlinePendingCount) {
+        showToast('Back online — syncing saved changes…', 'success', 2500);
+      } else {
+        showToast('Back online.', 'success', 2000);
+      }
+      setStatus('Online');
       flushOfflineQueue();
     });
-    window.addEventListener('offline', syncOfflineBadge);
+    window.addEventListener('offline', () => {
+      browserOfflineKnown = true;
+      syncOfflineBadge();
+      const message = offlineWarningMessage();
+      showToast(message, 'warning', 5000);
+      setStatus(isOfflineModeEnabled() ? 'Offline — edits will sync' : 'Offline — not saving');
+    });
     window.addEventListener('beforeunload', (event) => {
       if (!offlinePendingCount) return;
       event.preventDefault();
@@ -492,6 +531,9 @@
       unregisterOfflineServiceWorker();
     }
     syncOfflineBadge();
+    if (isBrowserOffline()) {
+      setStatus(isOfflineModeEnabled() ? 'Offline — edits will sync' : 'Offline — not saving');
+    }
   }
 
   function slugifyHeading(text) {
@@ -2404,7 +2446,7 @@
   }
 
   function isPreviewRichBlock(el) {
-    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .form-widget, .mindmap-block, .md-news, .md-python, .voice-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .page-tags');
+    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .form-widget, .mindmap-block, .md-news, .md-python, .voice-block, .jukebox-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .page-tags');
   }
 
   function getPreviewBlockSourceLine(node) {
@@ -3782,6 +3824,97 @@
     });
   }
 
+  const JUKEBOX_BLOCK_RE = /```(?:jukebox|juke-box|playlist)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function updateJukeboxInMarkdown(markdown, jukeboxIndex, payload) {
+    const engine = window.NotesProJukebox;
+    if (!engine) return markdown;
+    let idx = 0;
+    const re = /```(?:jukebox|juke-box|playlist)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+    return String(markdown || '').replace(re, (match, fenceAttrs, content = '') => {
+      const thisIndex = idx;
+      idx += 1;
+      if (thisIndex !== jukeboxIndex) return match;
+      const cfg = engine.parseFenceAttrs(fenceAttrs || '');
+      const parsed = engine.parseBody(content);
+      const tracks = payload.tracks !== undefined ? payload.tracks : parsed.tracks;
+      const cover = payload.cover !== undefined ? payload.cover : (cfg.cover || parsed.cover);
+      if (cover) cfg.cover = cover;
+      else delete cfg.cover;
+      if (payload.drive !== undefined) {
+        if (payload.drive) cfg.drive = payload.drive;
+        else delete cfg.drive;
+      }
+      const attrs = engine.buildFenceAttrsString(cfg);
+      const body = engine.formatBody({ cover, tracks });
+      const fenceOpen = attrs ? `jukebox{${attrs}}` : 'jukebox';
+      return `\`\`\`${fenceOpen}\n${body}\`\`\``;
+    });
+  }
+
+  function parseJukeboxBlocks(text, options = {}) {
+    let jukeboxIndex = 0;
+    JUKEBOX_BLOCK_RE.lastIndex = 0;
+    const engine = window.NotesProJukebox;
+    return String(text || '').replace(JUKEBOX_BLOCK_RE, (_, fenceAttrs, content) => {
+      const idx = jukeboxIndex++;
+      const html = engine?.renderBlock
+        ? engine.renderBlock(content || '', fenceAttrs || '', {
+          jukeboxIndex: idx,
+          editable: !!options.speisekarteEditable || !!options.sheetEditable,
+          resolveAudioHref: resolveMediaHref,
+        })
+        : '<div class="jukebox-block jukebox-block--error">Jukebox engine not loaded.</div>';
+      return wrapRichPreviewBlock(html);
+    });
+  }
+
+  function hydrateJukeboxBlocks(root) {
+    const engine = window.NotesProJukebox;
+    if (!engine) return;
+    (root || document).querySelectorAll('.jukebox-block').forEach((el) => {
+      const jukeboxIndex = parseInt(el.dataset.jukeboxIndex, 10);
+      const canEdit = userCanEdit && Number.isFinite(jukeboxIndex) && easyMDE;
+      engine.hydrateBlock(el, {
+        resolveAudioHref: (src) => {
+          const fileId = engine.driveFileId?.(src);
+          if (fileId) return apiUrl(`api/drive/audio/${encodeURIComponent(fileId)}/`);
+          return resolveMediaHref(src);
+        },
+        onDriveList: async (url) => api(`api/drive/resolve/?url=${encodeURIComponent(url)}`),
+        onUploadAudio: canEdit
+          ? async (file) => {
+            syncWorkspaceIdFromDom();
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('workspace', workspaceId);
+            const data = await api('api/uploads/', 'POST', formData, true);
+            if (data.success === false) {
+              throw new Error(data.error || 'Audio upload failed.');
+            }
+            return mediaMarkdownPath(data.url || data.path || data.file?.url || data.file?.mediaName);
+          }
+          : null,
+        onPersist: canEdit
+          ? (payload) => {
+            const oldMarkdown = easyMDE.value();
+            const updated = updateJukeboxInMarkdown(oldMarkdown, jukeboxIndex, payload || {});
+            if (updated === oldMarkdown) return;
+            suppressPreviewRefresh += 1;
+            try {
+              easyMDE.value(updated);
+              scheduleSave();
+            } finally {
+              setTimeout(() => {
+                suppressPreviewRefresh = Math.max(0, suppressPreviewRefresh - 1);
+              }, 50);
+            }
+          }
+          : null,
+      });
+    });
+  }
+
   const CALENDAR_BLOCK_RE = /```(?:calendar|calender)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
   const CALENDAR_MODES = ['day', 'week', 'month', 'year'];
 
@@ -3935,10 +4068,15 @@
     const offlineMode = isOfflineModeAllowed()
       ? !!document.getElementById('app-settings-offline')?.checked
       : false;
+    const stayInformed = !!document.getElementById('app-settings-stay-informed')?.checked;
     if (!window.APP_BOOT) window.APP_BOOT = {};
     if (!window.APP_BOOT.extraConfigs) window.APP_BOOT.extraConfigs = {};
     window.APP_BOOT.extraConfigs.offline_mode = offlineMode;
-    const ok = await updateUserSettings({ extra_configs: { language: lang, shop, offline_mode: offlineMode } });
+    window.APP_BOOT.stayInformed = stayInformed;
+    const ok = await updateUserSettings({
+      extra_configs: { language: lang, shop, offline_mode: offlineMode },
+      stay_informed: stayInformed,
+    });
     if (ok) {
       setStatus('Settings saved');
       if (offlineMode) registerOfflineServiceWorker();
@@ -3953,6 +4091,8 @@
     const sel = document.getElementById('app-settings-language');
     if (sel) sel.value = getStoredAppLanguage();
     fillShopSettingsForm();
+    const stayBox = document.getElementById('app-settings-stay-informed');
+    if (stayBox) stayBox.checked = !!window.APP_BOOT?.stayInformed;
     const offlineWrap = document.getElementById('app-settings-offline-wrap');
     const offlineBox = document.getElementById('app-settings-offline');
     if (offlineWrap) offlineWrap.classList.toggle('d-none', !isOfflineModeAllowed());
@@ -11342,7 +11482,7 @@ function formatTextWithMarkup(rawText) {
     if (!root) return;
     root.querySelectorAll('pre').forEach(pre => {
       if (pre.closest('.md-code-block')) return;
-      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .form-widget, .mindmap-block, .md-news, .md-python, .voice-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block')) {
+      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .form-widget, .mindmap-block, .md-news, .md-python, .voice-block, .jukebox-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block')) {
         return;
       }
       const wrap = document.createElement('div');
@@ -11881,6 +12021,11 @@ function formatTextWithMarkup(rawText) {
       const label = cfg.title || 'Voice note';
       return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
     });
+    md = md.replace(/```(?:jukebox|juke-box|playlist)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const cfg = window.NotesProJukebox?.parseFenceAttrs?.(fenceAttrs) || {};
+      const label = cfg.title || 'Jukebox';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
     return md;
   }
 
@@ -11954,6 +12099,7 @@ function formatTextWithMarkup(rawText) {
       md = parseLabyrinthBlocks(md, options);
       md = parsePythonBlocks(md);
       md = parseVoiceBlocks(md);
+      md = parseJukeboxBlocks(md, options);
     } else {
       md = replaceRichBlocksWithPlaceholders(md);
     }
@@ -12358,6 +12504,7 @@ function formatTextWithMarkup(rawText) {
     hydrateNewsBlocks(preview);
     hydratePythonBlocks(preview);
     hydrateVoiceBlocks(preview);
+    hydrateJukeboxBlocks(preview);
     hydrateSudokuBlocks(preview);
     hydratePuzzleBlocks(preview);
     hydratePinballBlocks(preview);
@@ -12668,7 +12815,7 @@ function formatTextWithMarkup(rawText) {
     const right = document.getElementById('right-panel');
     if (!shell || !right) return;
 
-    if (right.classList.contains('collapsed')) {
+    if (isMobileLayout() || right.classList.contains('collapsed')) {
       const w = parseInt(getComputedStyle(shell).getPropertyValue('--right-width'), 10);
       if (!Number.isNaN(w) && w > 0) {
         right.dataset.rightPanelWidth = String(w);
@@ -12736,7 +12883,8 @@ function formatTextWithMarkup(rawText) {
       left.classList.toggle('collapsed', boot.leftPanelExpanded === false);
     }
     if (right) {
-      right.classList.toggle('collapsed', boot.rightPanelExpanded === false);
+      if (isMobileLayout()) right.classList.add('collapsed');
+      else right.classList.toggle('collapsed', boot.rightPanelExpanded === false);
     }
     applyEditorSplitFromSettings();
     syncAppShellLayout();
@@ -12830,6 +12978,8 @@ function formatTextWithMarkup(rawText) {
       closeFloatingToc();
       closeMobileTopbarMenu();
     }
+    syncRightPanelBackdrop();
+    if (mobile !== wasMobile) syncAppShellLayout();
     if (mobile !== wasMobile && isEditing) switchMode('markdown');
     if (mobile !== wasMobile && userCanEdit && !isEditing) renderPreview();
     syncMobileContentMenu();
@@ -12862,6 +13012,7 @@ function formatTextWithMarkup(rawText) {
     const backdrop = document.getElementById('mobile-topbar-menu-backdrop');
     if (!menu || !toggle) return;
     closeFloatingToc();
+    closeRightPanelOverlay();
     const open = !menu.classList.contains('active');
     menu.classList.toggle('active', open);
     backdrop?.classList.toggle('d-none', !open);
@@ -12875,6 +13026,7 @@ function formatTextWithMarkup(rawText) {
     const backdrop = document.getElementById('mobile-toc-backdrop');
     if (!toc) return;
     closeMobileTopbarMenu();
+    closeRightPanelOverlay();
     buildFloatingToc();
     const open = !toc.classList.contains('active');
     toc.classList.toggle('active', open);
@@ -13386,14 +13538,37 @@ function formatTextWithMarkup(rawText) {
     window.addEventListener('blur', endDrag);
   }
 
+  function syncRightPanelBackdrop() {
+    const panel = document.getElementById('right-panel');
+    const backdrop = document.getElementById('right-panel-backdrop');
+    const show = isMobileLayout() && panel && !panel.classList.contains('collapsed');
+    backdrop?.classList.toggle('d-none', !show);
+  }
+
+  function closeRightPanelOverlay() {
+    if (!isMobileLayout()) return;
+    const panel = document.getElementById('right-panel');
+    if (!panel || panel.classList.contains('collapsed')) return;
+    panel.classList.add('collapsed');
+    syncRightPanelBackdrop();
+    syncAppShellLayout();
+  }
+
   function toggleRightPanel() {
     const panel = document.getElementById('right-panel');
     if (!panel) return;
-
-    panel.classList.toggle('collapsed');
+    if (isMobileLayout()) {
+      closeMobileTopbarMenu();
+      closeFloatingToc();
+    }
+    const expand = panel.classList.contains('collapsed');
+    panel.classList.toggle('collapsed', !expand);
+    syncRightPanelBackdrop();
     syncAppShellLayout();
-    updateUserSettings({ right_panel_expanded: !panel.classList.contains('collapsed') });
-    requestAnimationFrame(() => refreshCommPanelAfterToggle());
+    if (!isMobileLayout()) {
+      updateUserSettings({ right_panel_expanded: expand });
+    }
+    if (expand) requestAnimationFrame(() => refreshCommPanelAfterToggle());
   }
 
   function refreshCommPanelLayout() {
@@ -18032,6 +18207,14 @@ function formatTextWithMarkup(rawText) {
           className: 'fa fa-microphone',
           title: 'Insert voice note (record + Whisper transcript)',
         },
+        {
+          name: 'insert-jukebox',
+          action: (editor) => {
+            insertFenceBlock(editor, "jukebox{title=Livia's Jukebox}", '');
+          },
+          className: 'fa fa-music',
+          title: 'Insert jukebox (MP3 / folders / Google Drive)',
+        },
         ...(window.APP_BOOT?.allowPhotos !== false ? [buildPhotosToolbarDropdown()] : []),
         ...(window.APP_BOOT?.allowGames !== false ? [buildGamesToolbarDropdown()] : []),
         {
@@ -19008,7 +19191,7 @@ function formatTextWithMarkup(rawText) {
     if (suppressPreviewRefresh) return;
     const active = document.activeElement;
     if (active?.classList?.contains('sheet-cell-editable')) return;
-    if (active?.closest?.('.voice-block, .checklist-block, .form-widget')) return;
+    if (active?.closest?.('.voice-block, .jukebox-block, .checklist-block, .form-widget')) return;
     capturePreviewScrollPosition();
     clearTimeout(previewRefreshTimer);
     previewRefreshTimer = setTimeout(() => {
@@ -20787,6 +20970,8 @@ function formatTextWithMarkup(rawText) {
   document.getElementById('mobile-topbar-menu')?.addEventListener('click', event => {
     if (event.target.closest('a, button')) closeMobileTopbarMenu();
   });
+  document.getElementById('right-panel-backdrop')?.addEventListener('click', closeRightPanelOverlay);
+  document.getElementById('right-panel-close')?.addEventListener('click', closeRightPanelOverlay);
   window.addEventListener('resize', () => {
     // Mobile browser chrome show/hide fires resize often — debounce mode switches.
     clearTimeout(window.__notesproResizeTimer);
@@ -20805,6 +20990,9 @@ function formatTextWithMarkup(rawText) {
     }
     if (event.key === 'Escape' && document.getElementById('mobile-topbar-menu')?.classList.contains('active')) {
       closeMobileTopbarMenu();
+    }
+    if (event.key === 'Escape' && isMobileLayout()) {
+      closeRightPanelOverlay();
     }
   });
 
@@ -20861,7 +21049,7 @@ function formatTextWithMarkup(rawText) {
     if (tryPasteOntoHoveredShopCard(event)) return;
     if (tryPasteIntoEditorPhotoFence(event)) return;
     const pasteFiles = clipboardImageFiles(event.clipboardData || event.originalEvent?.clipboardData);
-    if (event.target.closest?.('.puzzle-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .voice-block, .calendar-block, #calendar-note-modal')) return;
+    if (event.target.closest?.('.puzzle-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .voice-block, .jukebox-block, .calendar-block, #calendar-note-modal')) return;
     const items = (event.clipboardData || event.originalEvent.clipboardData).items;
     for (let index in items) {
       const item = items[index];

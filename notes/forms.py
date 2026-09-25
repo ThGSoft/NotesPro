@@ -27,7 +27,15 @@ class RegisterForm(UserCreationForm):
         model = User
         fields = ('username', 'email', 'password1', 'password2')
 
-    field_order = ['username', 'email', 'mobile', 'password1', 'password2']
+    stay_informed = forms.BooleanField(
+        required=False,
+        initial=False,
+        label='Stay informed',
+        help_text='Email me product updates and news. You can turn this off in Settings.',
+        widget=forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+    )
+
+    field_order = ['username', 'email', 'mobile', 'password1', 'password2', 'stay_informed']
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -54,6 +62,8 @@ class RegisterForm(UserCreationForm):
 
         if not self.register_mobile:
             self.fields.pop('mobile', None)
+
+        self.fields['stay_informed'].label_suffix = ''
 
     def clean_email(self):
         email = (self.cleaned_data.get('email') or '').strip()
@@ -92,5 +102,6 @@ class RegisterForm(UserCreationForm):
             settings_obj, _ = UserSettings.objects.get_or_create(user=user)
             settings_obj.mobile = mobile
             settings_obj.mobile_verified = False
-            settings_obj.save(update_fields=['mobile', 'mobile_verified'])
+            settings_obj.stay_informed = bool(self.cleaned_data.get('stay_informed'))
+            settings_obj.save(update_fields=['mobile', 'mobile_verified', 'stay_informed'])
         return user
