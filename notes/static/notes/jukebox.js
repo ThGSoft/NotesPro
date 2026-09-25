@@ -19,8 +19,8 @@
   const DEFAULT_ALBUM = 'Uploads';
   const DEFAULT_TITLE = "Livia's Jukebox";
   const VOLUME_KEY = 'jukeboxVolume';
-  const PREFETCH_AHEAD = 8;
-  const PREFETCH_KEEP = 24;
+  const PREFETCH_AHEAD = 12;
+  const PREFETCH_KEEP = 32;
   const DRIVE_ID_RE = /^[A-Za-z0-9_-]{16,128}$/;
   const DRIVE_FILE_PATH_RE = /\/file\/d\/([A-Za-z0-9_-]+)/i;
   const DRIVE_FOLDER_PATH_RE = /\/drive\/(?:u\/\d+\/)?folders\/([A-Za-z0-9_-]+)/i;
@@ -456,13 +456,17 @@
     }
 
     function rememberPrefetch(href) {
-      if (!href || prefetchOrder.includes(href)) return;
+      if (!href) return;
+      const existing = prefetchOrder.indexOf(href);
+      if (existing >= 0) prefetchOrder.splice(existing, 1);
       prefetchOrder.push(href);
+      const playingHref = resolvedSrc(playQueue[Math.max(0, currentIndex - 1)]);
       while (prefetchOrder.length > PREFETCH_KEEP) {
-        const old = prefetchOrder.shift();
+        const old = prefetchOrder.find((item) => item !== href && item !== playingHref);
         if (!old) break;
+        prefetchOrder.splice(prefetchOrder.indexOf(old), 1);
         const blobUrl = prefetchBlobs.get(old);
-        if (blobUrl) {
+        if (blobUrl && audio?.src !== blobUrl) {
           URL.revokeObjectURL(blobUrl);
           prefetchBlobs.delete(old);
         }
@@ -472,7 +476,7 @@
     function prefetchTrack(song) {
       const href = resolvedSrc(song);
       if (!href || prefetchBlobs.has(href) || prefetchInflight.has(href)) return;
-      const request = fetch(href, { credentials: 'same-origin', cache: 'force-cache' })
+      const request = fetch(href, { credentials: 'same-origin', cache: 'default' })
         .then((res) => {
           if (!res.ok) throw new Error(String(res.status));
           return res.blob();
@@ -480,7 +484,7 @@
         .then((blob) => {
           if (!blob || !blob.size) return;
           const prev = prefetchBlobs.get(href);
-          if (prev) URL.revokeObjectURL(prev);
+          if (prev && audio?.src !== prev) URL.revokeObjectURL(prev);
           prefetchBlobs.set(href, URL.createObjectURL(blob));
           rememberPrefetch(href);
         })
@@ -497,9 +501,32 @@
       }
     }
 
-    function playSrc(song) {
+    function playAt(index) {
+      if (!audio || index < 0 || index >= playQueue.length) return false;
+      const song = playQueue[index];
+      if (!song?.src) return false;
+      currentIndex = index + 1;
+      updateSongLabel(song);
+      clearPressed();
+      const button = buttonList[index];
+      if (button) button.classList.add('pressed');
       const href = resolvedSrc(song);
-      return prefetchBlobs.get(href) || href;
+      const pending = prefetchInflight.get(href);
+      prefetchUpcoming();
+      const start = (url) => {
+        if (!url || playQueue[Math.max(0, currentIndex - 1)] !== song) return;
+        audio.src = url;
+        audio.load();
+        audio.play().catch(() => setStatus(el, 'Could not play this track.'));
+      };
+      if (prefetchBlobs.has(href)) {
+        start(prefetchBlobs.get(href));
+      } else if (pending) {
+        pending.then(() => start(prefetchBlobs.get(href) || href));
+      } else {
+        start(href);
+      }
+      return true;
     }
 
     function allTracks() {
@@ -554,22 +581,6 @@
       if (randomBtn) {
         randomBtn.textContent = act === 'play-random' && autoPlay ? 'Stop Auto-Play Random' : 'Play Random';
       }
-    }
-
-    function playAt(index) {
-      if (!audio || index < 0 || index >= playQueue.length) return false;
-      const song = playQueue[index];
-      if (!song?.src) return false;
-      currentIndex = index + 1;
-      updateSongLabel(song);
-      clearPressed();
-      const button = buttonList[index];
-      if (button) button.classList.add('pressed');
-      audio.src = playSrc(song);
-      audio.load();
-      audio.play().catch(() => setStatus(el, 'Could not play this track.'));
-      prefetchUpcoming();
-      return true;
     }
 
     function playNextSong() {
