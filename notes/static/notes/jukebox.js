@@ -21,6 +21,7 @@
   const VOLUME_KEY = 'jukeboxVolume';
   const PREFETCH_AHEAD = 12;
   const PREFETCH_KEEP = 32;
+  const RANDOM_CLIP_SEC = 60;
   const DRIVE_ID_RE = /^[A-Za-z0-9_-]{16,128}$/;
   const DRIVE_FILE_PATH_RE = /\/file\/d\/([A-Za-z0-9_-]+)/i;
   const DRIVE_FOLDER_PATH_RE = /\/drive\/(?:u\/\d+\/)?folders\/([A-Za-z0-9_-]+)/i;
@@ -36,6 +37,7 @@
     ContinuousAll: 2,
     RandomAlbum: 3,
     RandomAll: 4,
+    RandomClip: 5,
   };
 
   function escapeHtml(text) {
@@ -398,7 +400,7 @@
       `<div class="jukebox-control-row jukebox-control-row--nav">`,
       `<button type="button" class="jukebox-mode-btn" data-act="prev">Previous</button>`,
       `<button type="button" class="jukebox-mode-btn" data-act="next">Next</button>`,
-      `<button type="button" class="jukebox-mode-btn" data-act="play-random">Play Random</button>`,
+      `<button type="button" class="jukebox-mode-btn" data-act="play-random">60 s Play Random</button>`,
       `</div></div>`,
       `<div class="jukebox-cabinet">`,
       `<h1 class="jukebox-title">${escapeHtml(title)}</h1>`,
@@ -410,14 +412,148 @@
     ].join('');
   }
 
+  const radio = {
+    audio: null,
+    dock: null,
+    slot: null,
+    label: null,
+    toggleBtn: null,
+    session: null,
+    hosts: new Map(),
+    bound: false,
+  };
+
+  function radioEnsure() {
+    if (radio.audio) return radio;
+    const audio = document.createElement('audio');
+    audio.className = 'jukebox-audio';
+    audio.setAttribute('controls', '');
+    audio.setAttribute('preload', 'auto');
+    audio.setAttribute('playsinline', '');
+    const dock = document.createElement('div');
+    dock.className = 'jukebox-dock';
+    dock.hidden = true;
+    dock.innerHTML = [
+      '<button type="button" class="jukebox-mode-btn" data-dock="prev">Previous</button>',
+      '<button type="button" class="jukebox-mode-btn" data-dock="toggle">Pause</button>',
+      '<button type="button" class="jukebox-mode-btn" data-dock="next">Next</button>',
+      '<div class="jukebox-dock-copy">',
+      '<div class="jukebox-dock-label">No song playing</div>',
+      '<div class="jukebox-dock-player"></div>',
+      '</div>',
+      '<button type="button" class="jukebox-mode-btn jukebox-dock-stop" data-dock="stop" aria-label="Stop">Stop</button>',
+    ].join('');
+    const slot = dock.querySelector('.jukebox-dock-player');
+    slot.appendChild(audio);
+    document.body.appendChild(dock);
+    radio.audio = audio;
+    radio.dock = dock;
+    radio.slot = slot;
+    radio.label = dock.querySelector('.jukebox-dock-label');
+    radio.toggleBtn = dock.querySelector('[data-dock="toggle"]');
+    dock.addEventListener('click', (event) => {
+      const act = event.target.closest('[data-dock]')?.dataset.dock;
+      if (!act) return;
+      event.preventDefault();
+      if (act === 'prev') radio.session?.playPreviousSong?.();
+      else if (act === 'next') radio.session?.playNextSong?.();
+      else if (act === 'toggle') {
+        if (audio.paused) audio.play().catch(() => {});
+        else audio.pause();
+      } else if (act === 'stop') radio.session?.stopBackground?.();
+    });
+    return radio;
+  }
+
+  function radioBindAudioOnce() {
+    radioEnsure();
+    if (radio.bound) return;
+    radio.bound = true;
+    const audio = radio.audio;
+    audio.addEventListener('ended', () => radio.session?.onEnded?.());
+    audio.addEventListener('playing', () => radio.session?.onPlaying?.());
+    audio.addEventListener('timeupdate', () => radio.session?.onTimeupdate?.());
+    audio.addEventListener('play', () => {
+      radio.session?.onPlay?.();
+      radioSyncDock();
+    });
+    audio.addEventListener('pause', () => {
+      radio.session?.onPause?.();
+      radioSyncDock();
+    });
+    audio.addEventListener('volumechange', () => {
+      try {
+        localStorage.setItem(VOLUME_KEY, String(audio.volume));
+      } catch (_) { /* ignore quota */ }
+    });
+    try {
+      const savedVolume = localStorage.getItem(VOLUME_KEY);
+      if (savedVolume !== null) audio.volume = parseFloat(savedVolume);
+    } catch (_) { /* ignore */ }
+  }
+
+  function radioIsActive() {
+    const audio = radio.audio;
+    if (!audio) return false;
+    if (!audio.paused && audio.src) return true;
+    return !!(radio.session && radio.session.autoPlay);
+  }
+
+  function radioSyncDock() {
+    if (!radio.dock || !radio.audio) return;
+    const inPage = !!(radio.audio.closest && radio.audio.closest('.jukebox-block')?.isConnected);
+    const show = radioIsActive() && !inPage;
+    radio.dock.hidden = !show;
+    document.body.classList.toggle('has-jukebox-dock', show);
+    if (radio.toggleBtn) radio.toggleBtn.textContent = radio.audio.paused ? 'Play' : 'Pause';
+  }
+
+  function radioPark() {
+    if (!radio.audio) return;
+    if (radio.slot && radio.audio.parentNode !== radio.slot) {
+      radio.slot.appendChild(radio.audio);
+    }
+    radioSyncDock();
+  }
+
+  function radioAdopt(playerWrap, sessionKey) {
+    radioEnsure();
+    const live = radio.session;
+    const same = !!(live && live.sessionKey === sessionKey);
+    const active = radioIsActive();
+    if (active && !same) {
+      const pageAudio = playerWrap?.querySelector('audio.jukebox-audio');
+      if (pageAudio && pageAudio !== radio.audio) pageAudio.hidden = true;
+      radioSyncDock();
+      return radio.audio;
+    }
+    const placeholder = playerWrap?.querySelector('audio.jukebox-audio');
+    if (placeholder && placeholder !== radio.audio) placeholder.replaceWith(radio.audio);
+    else if (playerWrap && !playerWrap.contains(radio.audio)) playerWrap.appendChild(radio.audio);
+    radio.audio.hidden = false;
+    radio.audio.className = 'jukebox-audio';
+    radioSyncDock();
+    return radio.audio;
+  }
+
   function setStatus(el, text) {
     const status = el.querySelector('.jukebox-status');
     if (status) status.textContent = text || '';
   }
 
-  function hydrateBlock(el, options = {}) {
-    if (!el || el.dataset.jukeboxHydrated === '1') return;
-    el.dataset.jukeboxHydrated = '1';
+  function hydrateBlock(rootEl, incoming = {}) {
+    if (!rootEl) return;
+    radioEnsure();
+    radioBindAudioOnce();
+    let options = incoming;
+    const sessionKey = String(options.sessionKey || rootEl.dataset.jukeboxIndex || '0');
+    if (radio.hosts.has(sessionKey)) {
+      radio.hosts.get(sessionKey).adopt(rootEl, options);
+      return;
+    }
+    if (rootEl.dataset.jukeboxHydrated === '1') return;
+    rootEl.dataset.jukeboxHydrated = '1';
+    let el = rootEl;
     let spec;
     try {
       spec = JSON.parse(el.dataset.jukeboxSpec || '{}');
@@ -428,23 +564,37 @@
     let cover = String(spec.cover || '').trim();
     let driveFolder = String(spec.drive || '').trim();
     let driveTracks = [];
-    const audio = el.querySelector('.jukebox-audio');
-    const playlist = el.querySelector('.jukebox-playlist');
-    const albumSelect = el.querySelector('.jukebox-album-select');
-    const songLabel = el.querySelector('.jukebox-song-label');
-    const fileInput = el.querySelector('.jukebox-file');
-    const folderInput = el.querySelector('.jukebox-folder');
-    const randomBtn = el.querySelector('[data-act="play-random"]');
-    const driveInput = el.querySelector('.jukebox-drive-url');
-    const resolve = typeof options.resolveAudioHref === 'function'
+    let playlist;
+    let albumSelect;
+    let songLabel;
+    let fileInput;
+    let folderInput;
+    let randomBtn;
+    let driveInput;
+    let audio = radioAdopt(el.querySelector('.jukebox-player'), sessionKey);
+    let resolve = typeof options.resolveAudioHref === 'function'
       ? options.resolveAudioHref
       : (src) => src;
+
+    function bindDom() {
+      playlist = el.querySelector('.jukebox-playlist');
+      albumSelect = el.querySelector('.jukebox-album-select');
+      songLabel = el.querySelector('.jukebox-song-label');
+      fileInput = el.querySelector('.jukebox-file');
+      folderInput = el.querySelector('.jukebox-folder');
+      randomBtn = el.querySelector('[data-act="play-random"]');
+      driveInput = el.querySelector('.jukebox-drive-url');
+    }
+    bindDom();
+    const host = { sessionKey };
 
     let playQueue = [];
     let buttonList = [];
     let currentIndex = 0;
     let autoPlay = false;
     let playingMode = PlayMode.None;
+    let clipSkipping = false;
+    let lastModeAct = '';
     const editable = typeof options.onUploadAudio === 'function';
     const prefetchBlobs = new Map();
     const prefetchInflight = new Map();
@@ -496,6 +646,20 @@
     }
 
     function prefetchUpcoming() {
+      if (playingMode === PlayMode.RandomClip) {
+        const playing = currentIndex - 1;
+        const seen = new Set(playing >= 0 ? [playing] : []);
+        let tries = 0;
+        const want = Math.min(PREFETCH_AHEAD, playQueue.length);
+        while (seen.size < want && tries < PREFETCH_AHEAD * 4) {
+          tries += 1;
+          const index = Math.floor(Math.random() * playQueue.length);
+          if (seen.has(index)) continue;
+          seen.add(index);
+          prefetchTrack(playQueue[index]);
+        }
+        return;
+      }
       for (let i = 0; i < PREFETCH_AHEAD; i += 1) {
         prefetchTrack(playQueue[currentIndex + i]);
       }
@@ -505,6 +669,8 @@
       if (!audio || index < 0 || index >= playQueue.length) return false;
       const song = playQueue[index];
       if (!song?.src) return false;
+      radio.session = host;
+      clipSkipping = true;
       currentIndex = index + 1;
       updateSongLabel(song);
       clearPressed();
@@ -559,13 +725,13 @@
     }
 
     function updateSongLabel(song) {
-      if (!songLabel) return;
-      if (!song) {
-        songLabel.textContent = 'No song playing';
-        return;
+      let text = 'No song playing';
+      if (song) {
+        const artist = String(song.artist || '').trim();
+        text = artist ? `${song.title} — ${artist}` : String(song.title || 'Track');
       }
-      const artist = String(song.artist || '').trim();
-      songLabel.textContent = artist ? `${song.title} — ${artist}` : String(song.title || 'Track');
+      if (songLabel) songLabel.textContent = text;
+      if (radio.label) radio.label.textContent = text;
     }
 
     function clearPressed() {
@@ -573,20 +739,21 @@
     }
 
     function setModePressed(act) {
+      lastModeAct = act || '';
       el.querySelectorAll('.jukebox-mode-btn').forEach((button) => {
         const isMode = ['continuous-album', 'random-album', 'continuous-all', 'random-all', 'play-random'].includes(button.dataset.act);
         if (!isMode) return;
         button.classList.toggle('pressed', button.dataset.act === act);
       });
       if (randomBtn) {
-        randomBtn.textContent = act === 'play-random' && autoPlay ? 'Stop Auto-Play Random' : 'Play Random';
+        randomBtn.textContent = act === 'play-random' && autoPlay ? 'Stop 60 s Play Random' : '60 s Play Random';
       }
     }
 
     function playNextSong() {
       if (currentIndex >= playQueue.length) {
         autoPlay = false;
-        if (randomBtn && playingMode === PlayMode.None) randomBtn.textContent = 'Play Random';
+        if (randomBtn && playingMode === PlayMode.RandomClip) randomBtn.textContent = '60 s Play Random';
         return;
       }
       playAt(currentIndex);
@@ -601,7 +768,14 @@
 
     function playRandomSong() {
       if (!playQueue.length) return;
-      playAt(Math.floor(Math.random() * playQueue.length));
+      if (playQueue.length === 1) {
+        playAt(0);
+        return;
+      }
+      const playing = currentIndex - 1;
+      let next = Math.floor(Math.random() * playQueue.length);
+      if (next === playing) next = (next + 1) % playQueue.length;
+      playAt(next);
     }
 
     function buildButtons(songs) {
@@ -733,6 +907,7 @@
         setStatus(el, 'Add an MP3 or Google Drive link first.');
         return;
       }
+      radio.session = host;
       autoPlay = true;
       playingMode = mode;
       currentIndex = 0;
@@ -742,7 +917,7 @@
       playNextSong();
     }
 
-    el.addEventListener('click', (event) => {
+    function onBlockClick(event) {
       const actEl = event.target.closest('[data-act]');
       const act = actEl?.dataset.act;
       if (!act) return;
@@ -792,17 +967,19 @@
           return;
         }
         autoPlay = !autoPlay;
-        playingMode = PlayMode.None;
+        playingMode = autoPlay ? PlayMode.RandomClip : PlayMode.None;
+        clipSkipping = true;
+        if (autoPlay) radio.session = host;
         setModePressed(autoPlay ? 'play-random' : '');
         if (autoPlay) playRandomSong();
       }
-    });
+    }
 
-    albumSelect?.addEventListener('change', () => {
+    function onAlbumChange() {
       loadPlaylist(albumSelect.value);
-    });
+    }
 
-    el.addEventListener('keydown', (event) => {
+    function onBlockKeydown(event) {
       if (event.target.closest('input, textarea, button, select, audio')) return;
       if (event.key === 'ArrowRight') {
         event.preventDefault();
@@ -811,27 +988,24 @@
         event.preventDefault();
         playPreviousSong();
       }
-    });
+    }
 
-    audio?.addEventListener('ended', () => {
-      if (autoPlay) playNextSong();
-    });
-    audio?.addEventListener('play', () => {
-      el.classList.add('jukebox-block--playing');
-      setStatus(el, '');
-    });
-    audio?.addEventListener('pause', () => {
-      el.classList.remove('jukebox-block--playing');
-    });
-    audio?.addEventListener('volumechange', () => {
-      try {
-        localStorage.setItem(VOLUME_KEY, String(audio.volume));
-      } catch (_) { /* ignore quota */ }
-    });
-    try {
-      const savedVolume = localStorage.getItem(VOLUME_KEY);
-      if (savedVolume !== null && audio) audio.volume = parseFloat(savedVolume);
-    } catch (_) { /* ignore */ }
+    function onFileChange(event) {
+      addFiles(event.target.files);
+      event.target.value = '';
+    }
+
+    function onFolderChange(event) {
+      addFiles(event.target.files);
+      event.target.value = '';
+    }
+
+    function onDriveKeydown(event) {
+      if (event.key !== 'Enter') return;
+      event.preventDefault();
+      addDriveLink(driveInput.value);
+      driveInput.value = '';
+    }
 
     async function addFiles(fileList) {
       const files = Array.from(fileList || []).filter(isAudioFile);
@@ -897,16 +1071,8 @@
       await addFiles(dataTransfer.files);
     }
 
-    fileInput?.addEventListener('change', (event) => {
-      addFiles(event.target.files);
-      event.target.value = '';
-    });
-    folderInput?.addEventListener('change', (event) => {
-      addFiles(event.target.files);
-      event.target.value = '';
-    });
-
-    if (typeof options.onUploadAudio === 'function') {
+    function bindDrop() {
+      if (typeof options.onUploadAudio !== 'function') return;
       const drop = el.querySelector('[data-act="drop"]') || el;
       ['dragenter', 'dragover'].forEach((name) => {
         drop.addEventListener(name, (event) => {
@@ -931,13 +1097,99 @@
       });
     }
 
-    driveInput?.addEventListener('keydown', (event) => {
-      if (event.key !== 'Enter') return;
-      event.preventDefault();
-      addDriveLink(driveInput.value);
-      driveInput.value = '';
-    });
+    function bindUi() {
+      el.addEventListener('click', onBlockClick);
+      el.addEventListener('keydown', onBlockKeydown);
+      albumSelect?.addEventListener('change', onAlbumChange);
+      fileInput?.addEventListener('change', onFileChange);
+      folderInput?.addEventListener('change', onFolderChange);
+      driveInput?.addEventListener('keydown', onDriveKeydown);
+      bindDrop();
+    }
 
+    function stopBackground() {
+      autoPlay = false;
+      clipSkipping = true;
+      playingMode = PlayMode.None;
+      lastModeAct = '';
+      if (audio) audio.pause();
+      setModePressed('');
+      el.classList.remove('jukebox-block--playing');
+      if (radio.session === host) radio.session = null;
+      radioSyncDock();
+    }
+
+    function adopt(newEl, nextOptions) {
+      if (!newEl) return;
+      options = nextOptions || options;
+      resolve = typeof options.resolveAudioHref === 'function'
+        ? options.resolveAudioHref
+        : (src) => src;
+      el = newEl;
+      el.dataset.jukeboxHydrated = '1';
+      bindDom();
+      audio = radioAdopt(el.querySelector('.jukebox-player'), sessionKey);
+      bindUi();
+      if (cover) {
+        el.style.setProperty('--jukebox-photo', cssBackgroundUrl(resolve(cover)));
+      }
+      refreshAlbumSelect();
+      const savedQueue = playQueue.slice();
+      const savedIndex = currentIndex;
+      if (savedQueue.length) {
+        buildButtons(savedQueue);
+        currentIndex = savedIndex;
+        const playing = savedQueue[Math.max(0, savedIndex - 1)];
+        if (playing) {
+          updateSongLabel(playing);
+          clearPressed();
+          const button = buttonList[Math.max(0, savedIndex - 1)];
+          if (button) button.classList.add('pressed');
+        }
+      } else {
+        loadPlaylist(selectedAlbumName());
+      }
+      if (lastModeAct) setModePressed(lastModeAct);
+      if (audio && !audio.paused) el.classList.add('jukebox-block--playing');
+      if (!radio.session || radio.session.sessionKey === sessionKey || !radioIsActive()) {
+        radio.session = host;
+      }
+      radioSyncDock();
+    }
+
+    Object.assign(host, {
+      adopt,
+      playNextSong,
+      playPreviousSong,
+      stopBackground,
+      onEnded() {
+        if (!autoPlay) return;
+        if (playingMode === PlayMode.RandomClip) playRandomSong();
+        else playNextSong();
+      },
+      onPlaying() {
+        if (playingMode === PlayMode.RandomClip) clipSkipping = false;
+      },
+      onTimeupdate() {
+        if (playingMode !== PlayMode.RandomClip || !autoPlay || clipSkipping) return;
+        if ((audio.currentTime || 0) < RANDOM_CLIP_SEC) return;
+        clipSkipping = true;
+        playRandomSong();
+      },
+      onPlay() {
+        el.classList.add('jukebox-block--playing');
+        setStatus(el, '');
+      },
+      onPause() {
+        el.classList.remove('jukebox-block--playing');
+      },
+    });
+    Object.defineProperty(host, 'autoPlay', {
+      get() { return autoPlay; },
+    });
+    radio.hosts.set(sessionKey, host);
+
+    bindUi();
     if (cover) {
       el.style.setProperty('--jukebox-photo', cssBackgroundUrl(resolve(cover)));
     }
@@ -955,6 +1207,7 @@
     formatBody,
     renderBlock,
     hydrateBlock,
+    parkPlayback: radioPark,
     isAudioFile,
     titleFromFilename,
     driveFileId,

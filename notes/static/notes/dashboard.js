@@ -3876,6 +3876,7 @@
       const jukeboxIndex = parseInt(el.dataset.jukeboxIndex, 10);
       const canEdit = userCanEdit && Number.isFinite(jukeboxIndex) && easyMDE;
       engine.hydrateBlock(el, {
+        sessionKey: `${workspaceId || ''}:${currentPageId || currentPage?.id || ''}:${Number.isFinite(jukeboxIndex) ? jukeboxIndex : 0}`,
         resolveAudioHref: (src) => {
           const fileId = engine.driveFileId?.(src);
           if (fileId) return apiUrl(`api/drive/audio/${encodeURIComponent(fileId)}/`);
@@ -12495,6 +12496,7 @@ function formatTextWithMarkup(rawText) {
     html += renderArchivedCalendarsSection(currentPage?.archive, {
       sheetEditable: isPreviewInteractionEnabled(),
     });
+    window.NotesProJukebox?.parkPlayback?.();
     preview.innerHTML = html;
     applyPreviewImageStyles(preview);
     enhanceMarkdownCodeBlocks(preview);

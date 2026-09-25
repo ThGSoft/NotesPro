@@ -1175,7 +1175,7 @@ Notes:
 
 ### Jukebox (MP3 playlist)
 
-Embed a diner-cabinet playlist player with a fenced `jukebox` block (`juke-box` and `playlist` work too). The neon cabinet photo is the background; Livia-style orange mode buttons and two-column blue song buttons sit in a glass overlay. Native audio controls sit above the playlist. Mode buttons match the Livia player: **Play Continuous Album**, **Play Random Album**, **Play Continuous All**, **Play Random All**, **Previous** / **Next**, album `<select>`, and **Play Random**. Toolbar **music** note inserts `title=Livia's Jukebox`.
+Embed a diner-cabinet playlist player with a fenced `jukebox` block (`juke-box` and `playlist` work too). The neon cabinet photo is the background; Livia-style orange mode buttons and two-column blue song buttons sit in a glass overlay. Native audio controls sit above the playlist. Mode buttons match the Livia player: **Play Continuous Album**, **Play Random Album**, **Play Continuous All**, **Play Random All**, **Previous** / **Next**, album `<select>`, and **60 s Play Random** (plays a random track for a minute, then skips to another). Toolbar **music** note inserts `title=Livia's Jukebox`.
 
 In **Edit**, click **Add tracks or folders**, **choose a folder**, or drop **MP3 files or a music folder** (also M4A, WAV, OGG, FLAC) onto the box. Loose files go into the album currently selected (default `Uploads`). A folder keeps its structure as albums the same way Drive does (`Jazz`, nested `Jazz / Bebop`). Uploads go to `media/uploads/` like other files. Paste a Google Drive **file or folder** share link and click **Add Drive** (or drop the URL on the player). Share Drive items as **Anyone with the link**. Volume is remembered in `localStorage` (`jukeboxVolume`).
 
@@ -1201,6 +1201,7 @@ Notes:
 - Drop several files or a folder at once to append a playlist. Nested folders become albums.
 - **×** on a song button removes that track (Edit / write access). Drive folder imports are saved as `# Album` headings.
 - ← / → skip tracks when the jukebox is focused.
+- Playback keeps going when you open another note. A bottom bar has Previous, Pause/Play, Next, and Stop until you return to that jukebox.
 - Playback goes through `/api/drive/audio/<id>/` (signed-in). Optional `GOOGLE_DRIVE_API_KEY` lists public folders more reliably; without it NotesPro parses Drive’s embedded folder view.
 - Files must be shared so **anyone with the link** can view. Large files can hit Google’s virus-scan interstitial; the proxy retries with the confirm token.
 

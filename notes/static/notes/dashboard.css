@@ -2725,6 +2725,59 @@ a.md-news-channel:hover {
 
 .jukebox-status { min-height: 1.2em; margin-top: 4px; }
 
+.jukebox-dock {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1070;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px));
+  background: #1a1014;
+  border-top: 2px solid #ff5733;
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.jukebox-dock[hidden] {
+  display: none;
+}
+
+.jukebox-dock .jukebox-mode-btn {
+  flex: 0 0 auto;
+}
+
+.jukebox-dock-copy {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+
+.jukebox-dock-label {
+  color: #ffffff;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 4px;
+}
+
+.jukebox-dock-player .jukebox-audio {
+  width: 100%;
+  max-width: none;
+}
+
+body.has-jukebox-dock {
+  padding-bottom: 92px;
+}
+
+@media (max-width: 600px) {
+  body.has-jukebox-dock.mobile-layout .mobile-page-fabs {
+    bottom: 88px;
+  }
+}
+
 @media (max-width: 600px) {
   .jukebox-block {
     min-height: 0;
