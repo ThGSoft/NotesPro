@@ -571,6 +571,12 @@
       const tag = normalizeTagName(m[1]);
       if (tag) set.add(tag);
     });
+    extractBraceTags(markdown).forEach(tag => set.add(tag));
+    return [...set];
+  }
+
+  function extractBraceTags(markdown) {
+    const set = new Set();
     const braceMatches = [...String(markdown || '').matchAll(/\{tag:\s*([^}]+)\}/gi)];
     braceMatches.forEach(m => {
       const tag = normalizeTagName(m[1]);
@@ -579,12 +585,26 @@
     return [...set];
   }
 
+  function extractHeadingTags(markdown) {
+    const set = new Set();
+    const headingMatches = [...String(markdown || '').matchAll(/^\s*#{1,6}\s+(.+?)\s*$/gmi)];
+    headingMatches.forEach(m => {
+      const tag = normalizeTagName(m[1]);
+      if (tag) set.add(tag);
+    });
+    return set;
+  }
+
+  function currentPageMarkdownSource() {
+    return easyMDE ? easyMDE.value() : (currentPage?.markdown_content || '');
+  }
+
   function stripInlineTagMarkers(md) {
     return String(md || '').replace(/\{tag:\s*[^}]+\}/gi, '');
   }
 
   function buildTagsHtml(tags) {
-    if (!tags.length) return '';
+    if (!pageTagsEnabled() || !tags.length) return '';
     return `<div class="md-tags">${tags.map(tag => `<span class="md-tag">${escapeHtml(formatTagMarker(tag))}</span>`).join('')}</div>`;
   }
 
@@ -4121,9 +4141,104 @@
     btn.classList.toggle('d-none', !show);
   }
 
+  let pageSettingsTags = [];
+
+  function collectPageSettingsTags() {
+    const fromMd = extractTags(currentPageMarkdownSource());
+    const fromApi = Array.isArray(currentPage?.tags)
+      ? currentPage.tags.map(normalizeTagName).filter(Boolean)
+      : [];
+    return [...new Set([...fromMd, ...fromApi])].sort();
+  }
+
+  function pageSettingsTagsChanged(source, desiredTags) {
+    const desired = [...new Set(desiredTags.map(normalizeTagName).filter(Boolean))];
+    const currentAll = extractTags(source);
+    const currentBrace = extractBraceTags(source);
+    const desiredSet = new Set(desired);
+    if (desired.some(tag => !currentAll.includes(tag))) return true;
+    if (currentBrace.some(tag => !desiredSet.has(tag))) return true;
+    return false;
+  }
+
+  function markdownWithPageSettingsTags(source, desiredTags) {
+    const desired = [...new Set(desiredTags.map(normalizeTagName).filter(Boolean))];
+    const desiredSet = new Set(desired);
+    let raw = String(source || '');
+    extractBraceTags(raw).forEach(tag => {
+      if (!desiredSet.has(tag)) {
+        raw = raw.replace(new RegExp(`\\{tag:\\s*${escapeRegex(tag)}\\s*\\}`, 'gi'), '');
+      }
+    });
+    raw = raw.replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').replace(/^\n+/, '').trimEnd();
+    const present = new Set(extractTags(raw));
+    desired.forEach(tag => {
+      if (!present.has(tag)) {
+        raw = raw ? `${raw}\n\n${formatTagMarker(tag)}` : formatTagMarker(tag);
+        present.add(tag);
+      }
+    });
+    if (raw && !raw.endsWith('\n')) raw += '\n';
+    return raw;
+  }
+
+  function renderPageSettingsTags() {
+    const list = document.getElementById('page-settings-tags');
+    const empty = document.getElementById('page-settings-tags-empty');
+    if (!list) return;
+    const headingTags = extractHeadingTags(currentPageMarkdownSource());
+    const braceTags = new Set(extractBraceTags(currentPageMarkdownSource()));
+    list.replaceChildren();
+    pageSettingsTags.forEach(tag => {
+      const chip = document.createElement('span');
+      chip.className = 'page-settings-tag';
+      const label = document.createElement('span');
+      label.textContent = formatTagMarker(tag);
+      chip.appendChild(label);
+      const isDraftOnly = !braceTags.has(tag) && !headingTags.has(tag);
+      const removable = braceTags.has(tag) || isDraftOnly;
+      if (removable) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'page-settings-tag-remove';
+        btn.setAttribute('aria-label', `Remove tag ${tag}`);
+        btn.textContent = '×';
+        btn.addEventListener('click', () => removePageSettingsTag(tag));
+        chip.appendChild(btn);
+      } else {
+        chip.classList.add('page-settings-tag--heading');
+        chip.title = 'From a heading on this page';
+      }
+      list.appendChild(chip);
+    });
+    if (empty) empty.classList.toggle('d-none', pageSettingsTags.length > 0);
+  }
+
+  function addPageSettingsTag(raw) {
+    const tag = normalizeTagName(raw);
+    if (!tag) return;
+    if (!pageSettingsTags.includes(tag)) {
+      pageSettingsTags = [...pageSettingsTags, tag].sort();
+      renderPageSettingsTags();
+    }
+    const input = document.getElementById('page-settings-tag-input');
+    if (input) input.value = '';
+  }
+
+  function removePageSettingsTag(tag) {
+    pageSettingsTags = pageSettingsTags.filter(name => name !== tag);
+    renderPageSettingsTags();
+  }
+
   function fillPageSettingsForm() {
     const box = document.getElementById('page-settings-contents');
     if (box) box.checked = pageContentsEnabled();
+    const tagsBox = document.getElementById('page-settings-tags-visible');
+    if (tagsBox) tagsBox.checked = pageTagsEnabled();
+    pageSettingsTags = collectPageSettingsTags();
+    const input = document.getElementById('page-settings-tag-input');
+    if (input) input.value = '';
+    renderPageSettingsTags();
   }
 
   function openPageSettingsModal() {
@@ -4143,15 +4258,31 @@
   async function savePageSettings() {
     if (!userCanEdit || !currentPageId || !currentPage || currentPage.is_folder) return false;
     const contents = !!document.getElementById('page-settings-contents')?.checked;
-    const settings = { ...(currentPage.settings || {}), contents };
+    const tags = !!document.getElementById('page-settings-tags-visible')?.checked;
+    const settings = { ...(currentPage.settings || {}), contents, tags };
+    const originalMd = currentPageMarkdownSource();
+    const tagsChanged = pageSettingsTagsChanged(originalMd, pageSettingsTags);
+    const nextMarkdown = tagsChanged
+      ? markdownWithPageSettingsTags(originalMd, pageSettingsTags)
+      : originalMd;
+    const payload = { settings };
+    if (tagsChanged) payload.markdown_content = nextMarkdown;
     try {
-      currentPage = await api(`api/pages/${currentPageId}/update/`, 'POST', { settings });
+      if (tagsChanged) {
+        if (easyMDE) easyMDE.value(nextMarkdown);
+        if (currentPage) currentPage.markdown_content = nextMarkdown;
+      }
+      currentPage = await api(`api/pages/${currentPageId}/update/`, 'POST', payload);
       closePageSettingsModal();
       setStatus('Page settings saved');
       if (typeof renderPreview === 'function') renderPreview();
       syncMobileContentMenu();
       return true;
     } catch (err) {
+      if (tagsChanged) {
+        if (easyMDE) easyMDE.value(originalMd);
+        if (currentPage) currentPage.markdown_content = originalMd;
+      }
       showToast(err.message || 'Could not save page settings.', 'danger');
       return false;
     }
@@ -4164,6 +4295,14 @@
     });
     document.getElementById('page-settings-save')?.addEventListener('click', () => {
       void savePageSettings();
+    });
+    document.getElementById('page-settings-tag-add')?.addEventListener('click', () => {
+      addPageSettingsTag(document.getElementById('page-settings-tag-input')?.value);
+    });
+    document.getElementById('page-settings-tag-input')?.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      addPageSettingsTag(e.target.value);
     });
   }
 
@@ -12436,7 +12575,15 @@ function formatTextWithMarkup(rawText) {
   }
 
   function pageContentsEnabled() {
-    const value = currentPage?.settings?.contents;
+    return pageSettingEnabled('contents');
+  }
+
+  function pageTagsEnabled() {
+    return pageSettingEnabled('tags');
+  }
+
+  function pageSettingEnabled(key) {
+    const value = currentPage?.settings?.[key];
     if (value === undefined || value === null) return true;
     if (typeof value === 'string') return !['0', 'false', 'no', 'off'].includes(value.trim().toLowerCase());
     return Boolean(value);
@@ -19296,6 +19443,20 @@ function formatTextWithMarkup(rawText) {
     }
   }
 
+  async function restorePage(pageId, title) {
+    const result = await api(`api/pages/${pageId}/restore/`, 'POST', {});
+    const restoredId = result.id || pageId;
+    await loadTree(restoredId);
+    if (result.is_folder) {
+      const tree = $('#tree').jstree(true);
+      tree?.open_node(String(restoredId));
+      selectedTreeNodeId = String(restoredId);
+    } else {
+      await loadPage(restoredId);
+    }
+    showToast(`"${result.title || title}" restored.`, 'success');
+  }
+
   async function deletePage(id) {
     syncWorkspaceIdFromDom();
     const targetId = resolveDeleteTargetId(id);
@@ -19303,7 +19464,11 @@ function formatTextWithMarkup(rawText) {
       showToast('Select a page or folder in the tree first.', 'warning');
       return;
     }
-    if (!confirm('Delete this item?')) return;
+    const tree = $('#tree').jstree(true);
+    const node = tree?.get_node(String(targetId));
+    const title = (node?.text || 'Item').trim();
+    const kind = node && isTreeFolder(node) ? 'folder' : 'page';
+    if (!confirm(`Delete this ${kind}?`)) return;
 
     try {
       await api(`api/pages/${targetId}/delete/`, 'POST', {});
@@ -19329,6 +19494,9 @@ function formatTextWithMarkup(rawText) {
     await loadTree();
     await updateUserSettings();
     setStatus('Deleted');
+    showUndoToast(`${kind === 'folder' ? 'Folder' : 'Page'} "${title}" deleted.`, async () => {
+      await restorePage(targetId, title);
+    });
   }
 
   async function loadFiles() {
@@ -20261,7 +20429,6 @@ function formatTextWithMarkup(rawText) {
         e.preventDefault();
         const name = prompt('Enter new workspace name:');
         if (!name || !name.trim()) {
-            renameBox.classList.add('d-none');
             return;
         }
         try {
@@ -20276,65 +20443,80 @@ function formatTextWithMarkup(rawText) {
             const newOption = document.createElement('option');
             newOption.value = String(result.id);
             newOption.textContent = result.name || name.trim();
+            newOption.dataset.name = result.name || name.trim();
             if (currentUserId) newOption.dataset.ownerId = String(currentUserId);
             select.appendChild(newOption);
             sortWorkspaceSelect();
             select.value = String(result.id);
             workspaceId = result.id;
             select.dispatchEvent(new Event('change'));
-            renameBox.classList.add('d-none');
         } catch (err) {
             showToast(err.message || 'Could not create workspace.', 'danger');
         }
     });
 
-    const renameBox = document.getElementById('ws-rename-box');
-    document.getElementById('ws-rename-btn').addEventListener('click',async () => {
-      const workspaceSelect = document.getElementById('workspace-select');
-      const selectedOption = workspaceSelect.options[workspaceSelect.selectedIndex];
-      if (!selectedOption) return;
-      
-      const renameInput = document.getElementById('ws-rename-input');
-      renameInput.value = selectedOption.text;
-      renameBox.classList.remove('d-none');
-    });
-    const cancelBtn = document.getElementById('ws-cancel-btn');
-    // const workspaceModal = document.getElementById('workspace-modal'); // Dein Modal-Container
+    const renameModalEl = document.getElementById('ws-rename-modal');
+    const renameInput = document.getElementById('ws-rename-input');
 
-    if (cancelBtn) {
-        cancelBtn.addEventListener('click', () => {
-            renameBox.classList.add('d-none');
-            // Option A: Wenn du ein Bootstrap-Modal nutzt
-            // const modalInstance = bootstrap.Modal.getInstance(workspaceModal);
-            // if (modalInstance) modalInstance.hide();
-
-            // Option B: Reines Vanilla JS (Klasse zum Verstecken entfernen/hinzufügen)
-            // workspaceModal.classList.add('hidden');
-            
-            // Option C: Eventuell das Formular zurücksetzen
-            // const wsForm = document.getElementById('workspace-form');
-            // if (wsForm) wsForm.reset();
-            
-            console.log("Workspace-Aktion wurde abgebrochen.");
-        });
+    function workspaceOptionName(option) {
+      return String(option?.dataset?.name || option?.textContent || '').trim();
     }
-        // UPDATE: Save New Name
-    document.getElementById('ws-save-btn').addEventListener('click', async () => {
-        const workspaceSelect = document.getElementById('workspace-select');
-        const renameInput = document.getElementById('ws-rename-input');
-        const renameBox = document.getElementById('ws-rename-box');
-        const workspaceId = workspaceSelect.value;
-        const newName = renameInput.value.trim();
-        if (newName && workspaceId) {
-            api(`api/workspaces/${workspaceId}/update/`,'POST', { name: newName });
-            workspaceSelect.options[workspaceSelect.selectedIndex].text = newName;
-            sortWorkspaceSelect();
-            workspaceSelect.value = workspaceId;
-            renameInput.value = '';
-            renameBox.classList.add('d-none'); 
+
+    function openWorkspaceRenameModal() {
+      const workspaceSelect = document.getElementById('workspace-select');
+      const selectedOption = workspaceSelect?.options[workspaceSelect.selectedIndex];
+      if (!selectedOption || !renameInput) return;
+      renameInput.value = workspaceOptionName(selectedOption);
+      openDashboardModal(renameModalEl);
+      setTimeout(() => {
+        renameInput.focus();
+        renameInput.select();
+      }, 150);
+    }
+
+    async function saveWorkspaceRename() {
+      const workspaceSelect = document.getElementById('workspace-select');
+      const selectedOption = workspaceSelect?.options[workspaceSelect.selectedIndex];
+      const wsId = workspaceSelect?.value;
+      const newName = (renameInput?.value || '').trim();
+      if (!wsId || !selectedOption) {
+        bootstrap.Modal.getInstance(renameModalEl)?.hide();
+        return;
+      }
+      if (!newName) {
+        showToast('Enter a workspace name.', 'warning');
+        renameInput?.focus();
+        return;
+      }
+      try {
+        await api(`api/workspaces/${wsId}/update/`, 'POST', { name: newName });
+        selectedOption.dataset.name = newName;
+        const ownerId = selectedOption.dataset.ownerId;
+        if (ownerId && String(ownerId) !== String(currentUserId) && selectedOption.textContent.includes(':')) {
+          const prefix = selectedOption.textContent.split(':')[0];
+          selectedOption.textContent = `${prefix}: ${newName}`;
         } else {
-            renameBox.classList.add('d-none');
-        } 
+          selectedOption.textContent = newName;
+        }
+        sortWorkspaceSelect();
+        workspaceSelect.value = wsId;
+        bootstrap.Modal.getInstance(renameModalEl)?.hide();
+      } catch (err) {
+        showToast(err.message || 'Could not rename workspace.', 'danger');
+      }
+    }
+
+    document.getElementById('ws-rename-btn')?.addEventListener('click', () => {
+      openWorkspaceRenameModal();
+    });
+    document.getElementById('ws-save-btn')?.addEventListener('click', () => {
+      saveWorkspaceRename();
+    });
+    renameInput?.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        saveWorkspaceRename();
+      }
     });
 
     async function restoreWorkspace(select, wsId, wsName) {
@@ -20342,6 +20524,7 @@ function formatTextWithMarkup(rawText) {
       const option = document.createElement('option');
       option.value = String(result.id || wsId);
       option.textContent = result.name || wsName;
+      option.dataset.name = result.name || wsName;
       if (currentUserId) option.dataset.ownerId = String(currentUserId);
       select.appendChild(option);
       sortWorkspaceSelect();
@@ -20353,7 +20536,6 @@ function formatTextWithMarkup(rawText) {
 
     async function handleDelete(select, selectedOption, wsId) {
       if (!confirm(`Are you sure you want to delete "${selectedOption.text}"?`)) {
-        renameBox.classList.add('d-none');
         return;
       }
       const wsName = selectedOption.text;

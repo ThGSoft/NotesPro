@@ -1,6 +1,13 @@
-"""NotesPro application version and third-party credits."""
+"""NotesPro application version, license, and third-party credits."""
 
 VERSION = '1.0.0'
+
+LICENSE = (
+    'Copyright © 2026 ThGSoft. All rights reserved.',
+    'The source code is published so you can inspect it and run NotesPro locally for evaluation.',
+    'A purchased single-site license grants the right to run NotesPro on one production website.',
+    'Third-party libraries listed under Credits keep their own licenses.',
+)
 
 CREDITS = (
     {

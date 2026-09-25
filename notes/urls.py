@@ -79,6 +79,7 @@ urlpatterns = [
     path('api/pages/create/', views.page_create, name='api_page_create'),
     path('api/pages/<int:pk>/update/', views.page_update, name='api_page_update'),
     path('api/pages/<int:pk>/delete/', views.page_delete, name='api_page_delete'),
+    path('api/pages/<int:pk>/restore/', views.page_restore, name='api_page_restore'),
     path('api/pages/reorder/', views.page_reorder, name='api_page_reorder'),
     path('api/pages/<int:pk>/move/', views.page_move_workspace, name='api_page_move'),
     path('api/upload_pasted_image/', views.upload_pasted_image, name='upload_pasted_image'),

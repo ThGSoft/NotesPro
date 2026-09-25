@@ -1758,6 +1758,47 @@ body.editing #preview-content:focus {
   color: #93c5fd;
 }
 
+.page-settings-tags-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 1.5rem;
+}
+
+.page-settings-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(37, 99, 235, 0.22);
+  color: #93c5fd;
+  border: 1px solid rgba(147, 197, 253, 0.28);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.page-settings-tag--heading {
+  background: rgba(148, 163, 184, 0.16);
+  color: #cbd5e1;
+  border-color: rgba(148, 163, 184, 0.28);
+}
+
+.page-settings-tag-remove {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  font-size: 14px;
+  opacity: 0.8;
+}
+
+.page-settings-tag-remove:hover {
+  opacity: 1;
+}
+
 .dashboard-modal .snippets-list,
 .dashboard-modal .panel-type-buttons {
   color: var(--text);
@@ -2402,16 +2443,17 @@ a.md-news-channel:hover {
   color: #ffffff;
   display: flex;
   justify-content: center;
-  align-items: stretch;
+  align-items: flex-start;
   width: 100%;
   max-width: none;
   box-sizing: border-box;
   min-height: min(78vh, 820px);
+  height: auto;
   margin: 16px 0;
   padding: 18px 16px 16px;
   border: 0;
   border-radius: 16px;
-  overflow: hidden;
+  overflow: visible;
   outline: none;
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
   background-color: #120b16;
@@ -2425,6 +2467,7 @@ a.md-news-channel:hover {
   content: '';
   position: absolute;
   inset: 0;
+  border-radius: inherit;
   backdrop-filter: blur(5px);
   background: rgba(0, 0, 0, 0.18);
   pointer-events: none;
@@ -2446,31 +2489,117 @@ a.md-news-channel:hover {
   margin: 0;
   display: flex;
   flex-direction: column;
+  flex: 0 0 auto;
   gap: 16px;
+  min-height: 0;
+}
+
+.jukebox-top,
+.jukebox-drop,
+.jukebox-status {
+  flex-shrink: 0;
+}
+
+.jukebox-top {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
+.jukebox-top-meters {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(200px, 1fr);
+  gap: 12px;
+  align-items: stretch;
+  width: 100%;
+}
+
+.jukebox-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(220px, 0.85fr);
+  gap: 16px;
+  align-items: stretch;
+  width: 100%;
+  min-height: min(52vh, 520px);
+}
+
+.jukebox-panel {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.jukebox-panel--buttons {
+  justify-content: flex-start;
+  padding: 16px;
+  border-radius: 12px;
+  background-color: rgba(0, 0, 0, 0.2);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
 }
 
 .jukebox-controls {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  align-items: center;
-  margin: 0 0 4px;
+  align-items: stretch;
+  margin: 0;
+  width: 100%;
+  flex: 1 1 auto;
 }
 
 .jukebox-control-row {
   display: flex;
   flex-direction: row;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   gap: 10px;
   align-items: stretch;
   justify-content: stretch;
   width: 100%;
 }
 
+.jukebox-control-row--modes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
 .jukebox-control-row--modes .jukebox-mode-btn,
-.jukebox-control-row--nav .jukebox-mode-btn {
+.jukebox-control-row--nav > .jukebox-mode-btn {
   flex: 1 1 0;
   min-width: 0;
+  width: 100%;
+}
+
+.jukebox-clip-group {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+  width: 100%;
+  min-width: 0;
+}
+
+.jukebox-clip-group .jukebox-mode-btn {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.jukebox-volume-label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+  font-size: 0.9rem;
+  color: #ffffff;
+  white-space: nowrap;
+}
+
+.jukebox-volume {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  height: 28px;
+  accent-color: #ff5733;
 }
 
 .jukebox-player-wrap {
@@ -2530,7 +2659,7 @@ a.md-news-channel:hover {
   width: 100%;
   min-width: 0;
   justify-content: flex-start;
-  white-space: nowrap;
+  flex-wrap: wrap;
 }
 
 .jukebox-block .jukebox-album-select {
@@ -2543,18 +2672,22 @@ a.md-news-channel:hover {
 
 .jukebox-cabinet {
   width: 100%;
-  margin: 0 auto;
-  padding: 20px;
+  margin: 0;
+  padding: 16px;
   border-radius: 12px;
   background-color: rgba(0, 0, 0, 0.2);
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
   color: #ffffff;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .preview-layout .jukebox-block .jukebox-title,
 .editor-preview .jukebox-block .jukebox-title,
 .jukebox-block .jukebox-title {
-  margin: 0 0 16px;
+  margin: 0;
   padding: 0;
   font-size: 1.6rem;
   font-weight: 700;
@@ -2571,13 +2704,15 @@ a.md-news-channel:hover {
   margin: 0;
   border: 2px solid #ccc;
   border-radius: 8px;
-  overflow-y: scroll;
+  overflow-y: auto;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr));
   gap: 10px;
   padding: 10px;
-  min-height: 120px;
-  height: 400px;
+  min-height: 280px;
+  max-height: min(52vh, 560px);
+  height: auto;
+  flex: 1 1 auto;
   box-sizing: border-box;
 }
 
@@ -2778,23 +2913,33 @@ body.has-jukebox-dock {
   }
 }
 
+@media (max-width: 900px) {
+  .jukebox-top-meters {
+    grid-template-columns: 1fr;
+  }
+
+  .jukebox-body {
+    grid-template-columns: 1fr;
+    min-height: 0;
+  }
+
+  .jukebox-playlist {
+    min-height: 240px;
+    max-height: 360px;
+  }
+}
+
 @media (max-width: 600px) {
   .jukebox-block {
     min-height: 0;
     padding: 12px 8px;
   }
 
-  .jukebox-controls {
-    align-items: stretch;
+  .jukebox-control-row--modes {
+    grid-template-columns: 1fr;
   }
 
-  .jukebox-control-row--modes,
-  .jukebox-control-row--nav {
-    flex-wrap: wrap;
-  }
-
-  .jukebox-control-row--modes .jukebox-mode-btn,
-  .jukebox-control-row--nav .jukebox-mode-btn {
+  .jukebox-control-row--nav > .jukebox-mode-btn {
     flex: 1 1 calc(50% - 10px);
     width: auto;
   }
@@ -2802,18 +2947,17 @@ body.has-jukebox-dock {
   .jukebox-album-label {
     flex: 1 1 auto;
     width: 100%;
+    flex-wrap: wrap;
   }
 
   .jukebox-playlist {
     grid-template-columns: 1fr;
+    height: auto;
+    max-height: 280px;
   }
 
   .jukebox-block .jukebox-title {
     font-size: 1.5rem;
-  }
-
-  .jukebox-playlist {
-    height: 280px;
   }
 }
 
@@ -3418,6 +3562,19 @@ body.mobile-layout .sheet-structure-menu-btn {
 
 .app-settings-about-credits-summary:hover {
   color: var(--text, #e2e8f0);
+}
+
+.app-settings-about-license {
+  margin-bottom: 8px;
+}
+
+.app-settings-license-text {
+  margin: 8px 0 0;
+  color: var(--text, #e2e8f0);
+}
+
+.app-settings-license-text p {
+  margin: 0 0 8px;
 }
 
 .app-settings-credits-list {

@@ -64,7 +64,7 @@
         <div class="workspace-row">
           <select id="workspace-select" class="form-select form-select-sm">
             {% for ws in workspaces %}
-            <option value="{{ ws.id }}" data-owner-id="{{ ws.owner_id }}" {% if ws.id == current_workspace.id %}selected{% endif %}>{% if ws.owner == user %}{{ ws.name }}{% else %}{{ ws.owner.username }}: {{ ws.name }}{% endif %}</option>
+            <option value="{{ ws.id }}" data-owner-id="{{ ws.owner_id }}" data-name="{{ ws.name }}" {% if ws.id == current_workspace.id %}selected{% endif %}>{% if ws.owner == user %}{{ ws.name }}{% else %}{{ ws.owner.username }}: {{ ws.name }}{% endif %}</option>
             {% endfor %}
           </select>
           <!-- <button id="new-workspace" class="btn btn-sm btn-primary">+</button> -->
@@ -72,12 +72,6 @@
             <button id="ws-add-btn" class="btn btn btn-sm btn-primary" title="Add Workspace">+</button>
             <button id="ws-rename-btn" class="btn btn btn-sm btn-outline-secondary" title="Rename Workspace">✏️</button>
             <button id="ws-delete-btn" class="btn btn btn-sm btn-outline-danger" title="Delete Workspace">🗑️</button>
-          </div>
-          <!-- Inline Rename Input (Hidden by default) -->
-          <div id="ws-rename-box" class="d-none d-flex gap-1">
-            <input type="text" id="ws-rename-input" class="form-control form-control-sm" placeholder="New name">
-            <button id="ws-save-btn" class="btn btn-sm btn-success">Save</button>
-            <button id="ws-cancel-btn" class="btn btn-sm btn-light">X</button>
           </div>
         </div>
     
@@ -1046,6 +1040,21 @@
           <label class="form-check-label" for="page-settings-contents">Contents</label>
         </div>
         <p class="small dashboard-modal-hint mt-2 mb-0">Show the Contents table of contents on this page.</p>
+        <div class="form-check mt-3">
+          <input class="form-check-input" type="checkbox" id="page-settings-tags-visible" checked>
+          <label class="form-check-label" for="page-settings-tags-visible">Tags</label>
+        </div>
+        <p class="small dashboard-modal-hint mt-2 mb-0">Show the tag bar on this page.</p>
+        <div class="page-settings-tags-section mt-3 pt-3 border-top border-secondary-subtle">
+          <div class="small fw-semibold mb-2">Tags</div>
+          <div id="page-settings-tags" class="page-settings-tags-list"></div>
+          <p class="small dashboard-modal-hint mb-2 d-none" id="page-settings-tags-empty">No tags on this page yet.</p>
+          <div class="d-flex gap-2 mt-2">
+            <input id="page-settings-tag-input" class="form-control form-control-sm" type="text" maxlength="64" autocomplete="off" placeholder="Add a tag">
+            <button type="button" class="btn btn-sm btn-outline-light" id="page-settings-tag-add">Add</button>
+          </div>
+          <p class="small dashboard-modal-hint mt-2 mb-0">Tags come from <code>{tag: name}</code> in the page. Add inserts a marker; remove deletes that marker. Headings that match a tag stay on the page.</p>
+        </div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-sm btn-outline-light" data-bs-dismiss="modal">Cancel</button>
@@ -1144,6 +1153,14 @@
             <strong>NotesPro</strong> <span class="text-muted">v{{ app_version }}</span>
           </p>
           <p class="small dashboard-modal-hint mb-2">Collaborative notes with markdown, sheets, charts, and interactive preview blocks.</p>
+          <details class="app-settings-about-credits app-settings-about-license">
+            <summary class="small app-settings-about-credits-summary">License</summary>
+            <div class="app-settings-license-text small">
+              {% for para in app_license %}
+              <p{% if forloop.last %} class="mb-0"{% endif %}>{{ para }}</p>
+              {% endfor %}
+            </div>
+          </details>
           <details class="app-settings-about-credits">
             <summary class="small app-settings-about-credits-summary">Credits &amp; third-party software</summary>
             <ul class="app-settings-credits-list small mb-0">
@@ -1159,6 +1176,25 @@
       <div class="modal-footer">
         <button type="button" class="btn btn-sm btn-outline-light" data-bs-dismiss="modal">Cancel</button>
         <button type="button" class="btn btn-sm btn-primary" id="app-settings-save">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade dashboard-modal-root" id="ws-rename-modal" tabindex="-1" aria-labelledby="ws-rename-modal-title" aria-hidden="true" data-bs-theme="dark">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content dashboard-modal">
+      <div class="modal-header">
+        <h5 class="modal-title" id="ws-rename-modal-title">Rename workspace</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <label class="form-label small fw-semibold" for="ws-rename-input">Name</label>
+        <input type="text" id="ws-rename-input" class="form-control" placeholder="Workspace name" autocomplete="off">
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-sm btn-outline-light" data-bs-dismiss="modal" id="ws-cancel-btn">Cancel</button>
+        <button type="button" class="btn btn-sm btn-primary" id="ws-save-btn">Save</button>
       </div>
     </div>
   </div>

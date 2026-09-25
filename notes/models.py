@@ -426,14 +426,18 @@ class Page(models.Model):
 
     def normalized_settings(self):
         raw = self.settings if isinstance(self.settings, dict) else {}
-        contents = raw.get('contents', True)
-        if isinstance(contents, str):
-            contents = contents.strip().lower() in ('1', 'true', 'yes', 'on')
-        elif contents is None:
-            contents = True
-        else:
-            contents = bool(contents)
-        return {'contents': contents}
+        return {
+            'contents': self._setting_bool(raw.get('contents'), True),
+            'tags': self._setting_bool(raw.get('tags'), True),
+        }
+
+    @staticmethod
+    def _setting_bool(value, default=True):
+        if value is None:
+            return default
+        if isinstance(value, str):
+            return value.strip().lower() in ('1', 'true', 'yes', 'on')
+        return bool(value)
 
     def save(self, *args, **kwargs):
         if not self.slug:

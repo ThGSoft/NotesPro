@@ -44,6 +44,7 @@ from .workspace_io import (
     import_workspace,
     parse_import_upload,
 )
+from .views import _restore_page, _restore_workspace, _soft_delete_page, _soft_delete_workspace
 
 
 admin.site.unregister(Group)
@@ -123,7 +124,7 @@ class WorkspaceAdmin(admin.ModelAdmin):
     list_filter = ('deleted', 'owner', 'groups')
     search_fields = ('name', 'slug', 'owner__username')
     filter_horizontal = ('groups',)
-    actions = ['export_workspace_action']
+    actions = ['export_workspace_action', 'restore_workspaces_action']
     change_list_template = 'admin/notes/workspace/change_list.html'
 
     def get_urls(self):
@@ -151,6 +152,33 @@ class WorkspaceAdmin(admin.ModelAdmin):
         response = HttpResponse(content, content_type='application/zip')
         response['Content-Disposition'] = f'attachment; filename="{ws.slug}.zip"'
         return response
+
+    @admin.action(description='Restore selected workspaces')
+    def restore_workspaces_action(self, request, queryset):
+        count = 0
+        for ws in queryset.filter(deleted=True):
+            _restore_workspace(ws)
+            count += 1
+        if count:
+            self.message_user(request, f'Restored {count} workspace(s).', level=messages.SUCCESS)
+        else:
+            self.message_user(request, 'No deleted workspaces were selected.', level=messages.WARNING)
+
+    def delete_model(self, request, obj):
+        _soft_delete_workspace(obj)
+
+    def delete_queryset(self, request, queryset):
+        for obj in queryset.filter(deleted=False):
+            _soft_delete_workspace(obj)
+
+    def save_model(self, request, obj, form, change):
+        restoring = change and 'deleted' in form.changed_data and not obj.deleted
+        deleting = change and 'deleted' in form.changed_data and obj.deleted
+        super().save_model(request, obj, form, change)
+        if restoring:
+            _restore_workspace(obj)
+        elif deleting:
+            _soft_delete_workspace(obj)
 
     def import_workspace_view(self, request):
         User = get_user_model()
@@ -272,7 +300,6 @@ class StorageSettingsAdmin(SuperuserOnlyMixin, admin.ModelAdmin):
         return super().changeform_view(request, object_id, form_url, extra_context)
 
 
-admin.site.register(Page)
 admin.site.register(Tag)
 admin.site.register(PageTag)
 admin.site.register(WorkspaceInvite)
@@ -282,6 +309,46 @@ admin.site.register(WorkspaceChatMessage)
 admin.site.register(UserDirectMessageKey)
 admin.site.register(DirectConversation)
 admin.site.register(DirectMessage)
+
+
+@admin.register(Page)
+class PageAdmin(admin.ModelAdmin):
+    list_display = ('title', 'workspace', 'parent', 'is_folder', 'deleted', 'updated_at')
+    list_filter = ('deleted', 'is_folder', 'workspace')
+    search_fields = ('title', 'slug', 'workspace__name', 'workspace__owner__username')
+    actions = ['restore_pages_action']
+    change_list_template = 'admin/notes/page/change_list.html'
+
+    @admin.action(description='Restore selected pages')
+    def restore_pages_action(self, request, queryset):
+        count = 0
+        for page in queryset.filter(deleted=True):
+            _restore_page(page)
+            count += 1
+        if count:
+            self.message_user(request, f'Restored {count} page(s).', level=messages.SUCCESS)
+        else:
+            self.message_user(
+                request,
+                'No deleted pages were selected. Filter by deleted and try again.',
+                level=messages.WARNING,
+            )
+
+    def delete_model(self, request, obj):
+        _soft_delete_page(obj)
+
+    def delete_queryset(self, request, queryset):
+        for obj in queryset.filter(deleted=False):
+            _soft_delete_page(obj)
+
+    def save_model(self, request, obj, form, change):
+        restoring = change and 'deleted' in form.changed_data and not obj.deleted
+        deleting = change and 'deleted' in form.changed_data and obj.deleted
+        super().save_model(request, obj, form, change)
+        if restoring:
+            _restore_page(obj)
+        elif deleting:
+            _soft_delete_page(obj)
 
 
 @admin.register(IncomingMail)

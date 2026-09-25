@@ -355,7 +355,7 @@ def collect_folder_tracks(folder_id: str, album: str = '', depth: int = 0) -> li
         if not is_audio_name(name, mime):
             continue
         tracks.append({
-            'title': title_from_filename(name),
+            'title': f'{current_album.split(" / ")[-1]} / {name}' if current_album else name,
             'src': canonical_file_url(item['id']),
             'album': current_album,
         })

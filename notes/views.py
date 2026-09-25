@@ -3,7 +3,7 @@ from channels.layers import get_channel_layer
 from django.contrib import messages
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
-from django.db import models, transaction
+from django.db import IntegrityError, models, transaction
 from django.http import HttpResponseBadRequest, HttpResponse, JsonResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.conf import settings as django_settings
@@ -23,7 +23,7 @@ from django.contrib.auth.models import User
 from django.db.models import Q
 from django.utils.text import slugify
 from .workspace_io import export_workspace_archive, import_workspace_archive
-from .version import CREDITS, VERSION
+from .version import CREDITS, LICENSE, VERSION
 from .game_scores import serialize_workspace_highscores
 from .media_quota import StorageQuotaExceeded, assert_can_store
 
@@ -147,18 +147,20 @@ def _workspace_qs(user):
     ).distinct()
 
 
-def _page_qs(user):
+def _page_qs(user, include_deleted=False):
     """
     Gibt alle Seiten aus Workspaces zurück, auf die der User Zugriff hat
     (entweder als Besitzer oder als eingeladenes Mitglied).
     """
-    return Page.objects.filter(
+    qs = Page.objects.filter(
         Q(workspace__owner=user) |
         Q(workspace__workspacemembership__user=user) |
         Q(workspace__groups__in=user.groups.all()),
-        deleted=False,
         workspace__deleted=False,
-    ).distinct()
+    )
+    if not include_deleted:
+        qs = qs.filter(deleted=False)
+    return qs.distinct()
 
 
 def _active_pages(workspace):
@@ -201,17 +203,32 @@ def _soft_delete_page(page):
     Page.objects.filter(id__in=descendant_ids).update(deleted=True)
 
 
-def _page_subtree_ids(root):
+def _page_subtree_ids(root, include_deleted=False):
     ids = []
     stack = [root.id]
     while stack:
         pid = stack.pop()
         ids.append(pid)
-        stack.extend(
-            Page.objects.filter(parent_id=pid, workspace_id=root.workspace_id, deleted=False)
-            .values_list('id', flat=True)
-        )
+        children = Page.objects.filter(parent_id=pid, workspace_id=root.workspace_id)
+        if not include_deleted:
+            children = children.filter(deleted=False)
+        stack.extend(children.values_list('id', flat=True))
     return ids
+
+
+def _restore_page(page):
+    ids = set(_page_subtree_ids(page, include_deleted=True))
+    ancestor = page.parent
+    while ancestor is not None and ancestor.deleted:
+        ids.add(ancestor.id)
+        ancestor = ancestor.parent
+    for restored in Page.objects.filter(id__in=ids).order_by('id'):
+        restored.deleted = False
+        try:
+            restored.save(update_fields=['deleted'])
+        except IntegrityError:
+            restored.slug = ''
+            restored.save()
 
 
 def _user_has_write_access(user, workspace):
@@ -540,6 +557,7 @@ def dashboard(request):
         'is_group_admin': request.user.groups.filter(name='Group Admin').exists(),
         'app_version': VERSION,
         'app_credits': CREDITS,
+        'app_license': LICENSE,
         'game_highscores': serialize_workspace_highscores(current_workspace, request.user),
     })
 
@@ -978,6 +996,8 @@ def page_update(request, pk):
         merged = page.normalized_settings()
         if 'contents' in incoming:
             merged['contents'] = bool(incoming.get('contents'))
+        if 'tags' in incoming:
+            merged['tags'] = bool(incoming.get('tags'))
         page.settings = merged
     page.slug = ''
     page.save()
@@ -987,6 +1007,8 @@ def page_update(request, pk):
 
 @login_required
 def page_delete(request, pk):
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST required'}, status=405)
     page = get_object_or_404(_page_qs(request.user), pk=pk)
     if not _user_has_write_access(request.user, page.workspace):
         return JsonResponse(
@@ -994,7 +1016,32 @@ def page_delete(request, pk):
             status=403,
         )
     _soft_delete_page(page)
-    return JsonResponse({'success': True})
+    return JsonResponse({
+        'success': True,
+        'id': page.id,
+        'title': page.title,
+        'is_folder': page.is_folder,
+    })
+
+
+@login_required
+def page_restore(request, pk):
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST required'}, status=405)
+    page = get_object_or_404(
+        _page_qs(request.user, include_deleted=True), pk=pk, deleted=True,
+    )
+    if not _user_has_write_access(request.user, page.workspace):
+        return JsonResponse(
+            {'status': 'error', 'message': 'You do not have write access to this workspace.'},
+            status=403,
+        )
+    _restore_page(page)
+    page.refresh_from_db()
+    payload = _page_to_dict(page)
+    payload['success'] = True
+    payload['status'] = 'success'
+    return JsonResponse(payload)
 
 @login_required
 def page_reorder(request):

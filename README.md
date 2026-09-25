@@ -1175,7 +1175,7 @@ Notes:
 
 ### Jukebox (MP3 playlist)
 
-Embed a diner-cabinet playlist player with a fenced `jukebox` block (`juke-box` and `playlist` work too). The neon cabinet photo is the background; Livia-style orange mode buttons and two-column blue song buttons sit in a glass overlay. Native audio controls sit above the playlist. Mode buttons match the Livia player: **Play Continuous Album**, **Play Random Album**, **Play Continuous All**, **Play Random All**, **Previous** / **Next**, album `<select>`, and **60 s Play Random** (plays a random track for a minute, then skips to another). Toolbar **music** note inserts `title=Livia's Jukebox`.
+Embed a diner-cabinet playlist player with a fenced `jukebox` block (`juke-box` and `playlist` work too). The neon cabinet photo is the background; Livia-style orange mode buttons and two-column blue song buttons sit in a glass overlay. Native audio controls sit above a full-width **Volume** slider and the playlist. Mode buttons match the Livia player: **Play Continuous Album**, **Play Random Album**, **Play Continuous All**, **Play Random All**, **Previous** / **Next**, album `<select>`, and a full-width **30 s** / **60 s** / **90 s** play-length row (plays a random track for that many seconds, then skips to another). The playlist scrolls to keep the playing song in view. Toolbar **music** note inserts `title=Livia's Jukebox`.
 
 In **Edit**, click **Add tracks or folders**, **choose a folder**, or drop **MP3 files or a music folder** (also M4A, WAV, OGG, FLAC) onto the box. Loose files go into the album currently selected (default `Uploads`). A folder keeps its structure as albums the same way Drive does (`Jazz`, nested `Jazz / Bebop`). Uploads go to `media/uploads/` like other files. Paste a Google Drive **file or folder** share link and click **Add Drive** (or drop the URL on the player). Share Drive items as **Anyone with the link**. Volume is remembered in `localStorage` (`jukeboxVolume`).
 
@@ -1983,5 +1983,6 @@ The server fetches and caches the feed asynchronously (like MagpieRSS, non-block
 - Markdown images and attachments use `/api/uploads/`; preview and chat images open in a new browser tab when clicked.
 - File manager lists uploads for the current workspace.
 - Superusers manage media quotas, usage, and unreferenced-file purge under Django admin **NOTES → Storage control**. Per-workspace overrides are on each Workspace; per-user overrides are on **User settings** (`storage_quota_mb`: empty inherit, `0` unlimited).
-- Workspace export/import and soft-delete are available via the API and admin tools.
+- Workspace export/import and soft-delete are available via the API and admin tools. Deleted pages and folders can be restored from the dashboard **Undo** toast (like workspaces) or from Django admin (**Restore selected pages**).
 - Layout (sidebar width, panel sizes, last page per workspace) is persisted in **User settings**.
+- Settings → About shows the NotesPro **License** and third-party credits.
