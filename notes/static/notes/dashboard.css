@@ -2437,6 +2437,8 @@ a.md-news-channel:hover {
   --jukebox-song-hover: #21a1f1;
   --jukebox-song-pressed: #09588d;
   --jukebox-mode-pressed: #21a1f1;
+  --jukebox-album: #f5c542;
+  --jukebox-album-text: #1a1208;
   --jukebox-photo: url('jukebox.png');
   position: relative;
   font-family: Arial, sans-serif;
@@ -2490,62 +2492,77 @@ a.md-news-channel:hover {
   display: flex;
   flex-direction: column;
   flex: 0 0 auto;
-  gap: 16px;
+  gap: 12px;
   min-height: 0;
 }
 
-.jukebox-top,
+.jukebox-title,
+.jukebox-song-label,
+.jukebox-player,
+.jukebox-volume-label,
+.jukebox-control-row--album,
+.jukebox-control-row--nav,
 .jukebox-drop,
 .jukebox-status {
   flex-shrink: 0;
 }
 
-.jukebox-top {
+.jukebox-settings-btn {
+  position: absolute;
+  top: 10px;
+  right: 52px;
+  z-index: 30;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  min-width: 36px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.72);
+  color: #e2e8f0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+}
+
+.jukebox-settings-btn:hover,
+.jukebox-block--settings .jukebox-settings-btn {
+  background: rgba(30, 41, 59, 0.92);
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.jukebox-settings {
+  position: absolute;
+  top: 52px;
+  right: 10px;
+  left: 10px;
+  z-index: 28;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  width: 100%;
-}
-
-.jukebox-top-meters {
-  display: grid;
-  grid-template-columns: minmax(160px, 1fr) minmax(200px, 1fr);
-  gap: 12px;
-  align-items: stretch;
-  width: 100%;
-}
-
-.jukebox-body {
-  display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(220px, 0.85fr);
-  gap: 16px;
-  align-items: stretch;
-  width: 100%;
-  min-height: min(52vh, 520px);
-}
-
-.jukebox-panel {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.jukebox-panel--buttons {
-  justify-content: flex-start;
-  padding: 16px;
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
   border-radius: 12px;
-  background-color: rgba(0, 0, 0, 0.2);
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+  background: rgba(12, 8, 16, 0.94);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(10px);
 }
 
-.jukebox-controls {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  align-items: stretch;
+.jukebox-settings[hidden] {
+  display: none;
+}
+
+.jukebox-settings-title {
   margin: 0;
-  width: 100%;
-  flex: 1 1 auto;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #ffd0c4;
 }
 
 .jukebox-control-row {
@@ -2568,6 +2585,11 @@ a.md-news-channel:hover {
   flex: 1 1 0;
   min-width: 0;
   width: 100%;
+}
+
+.jukebox-control-row--nav {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
 }
 
 .jukebox-clip-group {
@@ -2602,18 +2624,15 @@ a.md-news-channel:hover {
   accent-color: #ff5733;
 }
 
-.jukebox-player-wrap {
-  width: 100%;
-  text-align: center;
-}
+.jukebox-player { text-align: center; }
 
 .jukebox-song-label {
-  margin-bottom: 10px;
+  margin: 0;
   font-size: 1.2em;
   color: #ffffff;
+  text-align: center;
+  min-height: 1.3em;
 }
-
-.jukebox-player { margin-bottom: 12px; text-align: center; }
 
 .jukebox-audio {
   display: block;
@@ -2624,8 +2643,7 @@ a.md-news-channel:hover {
   min-height: 40px;
 }
 
-.jukebox-mode-btn,
-.jukebox-block .jukebox-album-select {
+.jukebox-mode-btn {
   padding: 10px 15px;
   font-size: 0.9rem;
   border: none;
@@ -2667,7 +2685,20 @@ a.md-news-channel:hover {
   min-width: 0;
   width: 100%;
   max-width: none;
-  border: 1px solid #ccc;
+  min-height: 40px;
+  padding: 10px 15px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 5px;
+  background-color: var(--jukebox-album);
+  color: var(--jukebox-album-text);
+  cursor: pointer;
+}
+
+.jukebox-block .jukebox-album-select:focus {
+  outline: 2px solid #fff;
+  outline-offset: 1px;
 }
 
 .jukebox-cabinet {
@@ -2688,7 +2719,7 @@ a.md-news-channel:hover {
 .editor-preview .jukebox-block .jukebox-title,
 .jukebox-block .jukebox-title {
   margin: 0;
-  padding: 0;
+  padding: 0 150px 0 12px;
   font-size: 1.6rem;
   font-weight: 700;
   letter-spacing: 0.02em;
@@ -2907,6 +2938,10 @@ body.has-jukebox-dock {
   padding-bottom: 92px;
 }
 
+body.jukebox-standalone.has-jukebox-dock {
+  padding-bottom: 0;
+}
+
 @media (max-width: 600px) {
   body.has-jukebox-dock.mobile-layout .mobile-page-fabs {
     bottom: 88px;
@@ -2914,15 +2949,6 @@ body.has-jukebox-dock {
 }
 
 @media (max-width: 900px) {
-  .jukebox-top-meters {
-    grid-template-columns: 1fr;
-  }
-
-  .jukebox-body {
-    grid-template-columns: 1fr;
-    min-height: 0;
-  }
-
   .jukebox-playlist {
     min-height: 240px;
     max-height: 360px;
@@ -2939,9 +2965,26 @@ body.has-jukebox-dock {
     grid-template-columns: 1fr;
   }
 
-  .jukebox-control-row--nav > .jukebox-mode-btn {
-    flex: 1 1 calc(50% - 10px);
-    width: auto;
+  .jukebox-control-row--nav {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+
+  .jukebox-settings-btn {
+    right: 50px;
+    width: 36px;
+    padding: 0;
+    font-size: 0;
+  }
+
+  .jukebox-settings-btn::before {
+    content: '⚙';
+    font-size: 16px;
+    line-height: 1;
+  }
+
+  .jukebox-block .jukebox-title {
+    padding-right: 96px;
+    font-size: 1.5rem;
   }
 
   .jukebox-album-label {
@@ -2955,10 +2998,134 @@ body.has-jukebox-dock {
     height: auto;
     max-height: 280px;
   }
+}
 
-  .jukebox-block .jukebox-title {
-    font-size: 1.5rem;
-  }
+.jukebox-block--fullscreen,
+.jukebox-block:fullscreen,
+.jukebox-block:-webkit-full-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: stretch;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 16px;
+  border-radius: 0;
+  box-sizing: border-box;
+}
+
+.jukebox-block--fullscreen {
+  min-height: min(90vh, 960px);
+}
+
+.jukebox-block:fullscreen,
+.jukebox-block:-webkit-full-screen {
+  height: 100%;
+  min-height: 100%;
+  overflow: hidden;
+}
+
+.jukebox-block--fullscreen .jukebox-chrome,
+.jukebox-block:fullscreen .jukebox-chrome,
+.jukebox-block:-webkit-full-screen .jukebox-chrome {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+}
+
+.jukebox-block--fullscreen .jukebox-cabinet,
+.jukebox-block:fullscreen .jukebox-cabinet,
+.jukebox-block:-webkit-full-screen .jukebox-cabinet {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.jukebox-block--fullscreen .jukebox-playlist,
+.jukebox-block:fullscreen .jukebox-playlist,
+.jukebox-block:-webkit-full-screen .jukebox-playlist {
+  max-height: none;
+  height: 100%;
+}
+
+.jukebox-block:fullscreen .game-fullscreen-btn__icon--enter,
+.jukebox-block:-webkit-full-screen .game-fullscreen-btn__icon--enter {
+  display: none;
+}
+
+.jukebox-block:fullscreen .game-fullscreen-btn__icon--exit,
+.jukebox-block:-webkit-full-screen .game-fullscreen-btn__icon--exit {
+  display: inline;
+}
+
+.jukebox-control-row--nav .jukebox-standalone-btn {
+  flex: 1 1 0;
+}
+
+body.jukebox-standalone {
+  overflow: hidden;
+}
+
+body.jukebox-standalone .topbar,
+body.jukebox-standalone .sidebar,
+body.jukebox-standalone #left-panel,
+body.jukebox-standalone #left-splitter,
+body.jukebox-standalone .right-panel,
+body.jukebox-standalone #right-panel,
+body.jukebox-standalone #right-splitter,
+body.jukebox-standalone #floating-toc,
+body.jukebox-standalone .mobile-page-fabs,
+body.jukebox-standalone .jukebox-dock {
+  display: none !important;
+}
+
+body.jukebox-standalone .app-shell {
+  grid-template-columns: minmax(0, 1fr) !important;
+  grid-template-rows: minmax(0, 1fr);
+}
+
+body.jukebox-standalone .main-pane {
+  grid-column: 1 / -1 !important;
+  grid-row: 1 / -1 !important;
+  padding: 0;
+  margin: 0;
+  height: 100%;
+  min-height: 0;
+}
+
+body.jukebox-standalone .editor-wrap {
+  padding: 0;
+  height: 100%;
+}
+
+body.jukebox-standalone .editor-wrap,
+body.jukebox-standalone #preview-wrap,
+body.jukebox-standalone .preview-layout,
+body.jukebox-standalone .preview-content {
+  height: 100%;
+  min-height: 0;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border-radius: 0;
+}
+
+body.jukebox-standalone .preview-content {
+  display: flex;
+  flex-direction: column;
+}
+
+body.jukebox-standalone .preview-content > .jukebox-block {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  margin: 0;
+  border-radius: 0;
+}
+
+body.jukebox-standalone.has-jukebox-dock {
+  padding-bottom: 0;
 }
 
 .panel-type-buttons {
@@ -12090,6 +12257,19 @@ body.mobile-layout .sokoban-tips__controls--mobile {
 .editor-wrap--preview-only .preview-content > .breakout-block--fullscreen:only-child,
 .editor-wrap--preview-only .preview-content > .snake-block--fullscreen:only-child,
 .editor-wrap--preview-only .preview-content > .marbleblast-block--fullscreen:only-child {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+}
+
+.editor-wrap--preview-only .preview-content:has(> .jukebox-block--fullscreen:only-child) {
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.editor-wrap--preview-only .preview-content > .jukebox-block--fullscreen:only-child {
   flex: 1;
   min-height: 0;
   height: 100%;

@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Livia's Jukebox — Play Google Drive music in NotesPro</title>
+  <meta name="description" content="NotesPro jukebox: paste a Google Drive folder, keep album folders, and play MP3s in the page. No ads.">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Livia's Jukebox — Google Drive playlists in NotesPro">
+  <meta property="og:description" content="Paste a Google Drive folder link. Nested folders become albums. Music keeps playing when you change notes.">
+  <meta property="og:url" content="https://thgsoft.online/DjangoNotesPro/">
+  <meta property="og:image" content="https://raw.githubusercontent.com/ThGSoft/NotesPro/main/docs/screenshots/jukebox.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Livia's Jukebox">
+  <meta name="twitter:description" content="Play Google Drive folders as albums inside NotesPro. No ads.">
+  <meta name="twitter:image" content="https://raw.githubusercontent.com/ThGSoft/NotesPro/main/docs/screenshots/jukebox.png">
+  <link rel="icon" href="favicon.ico" type="image/x-icon">
+  <link rel="shortcut icon" href="favicon.ico" type="image/x-icon">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --neon: #ff5733;
+      --neon-2: #65acf7;
+      --glow: #21a1f1;
+      --ink: #f8fafc;
+      --muted: #cbd5e1;
+      --panel: rgba(18, 11, 22, 0.78);
+      --line: rgba(255, 255, 255, 0.18);
+      --font-display: "Archivo Black", Impact, sans-serif;
+      --font-body: "Source Sans 3", "Segoe UI", sans-serif;
+      --app-url: https://thgsoft.online/DjangoNotesPro/;
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: var(--font-body);
+      font-size: 1.05rem;
+      line-height: 1.55;
+      color: var(--ink);
+      min-height: 100vh;
+      background:
+        linear-gradient(180deg, rgba(8, 4, 12, 0.55), rgba(8, 4, 12, 0.82)),
+        url("screenshots/jukebox.png") center / cover no-repeat fixed,
+        #120b16;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: #ffd0c4; text-underline-offset: 3px; }
+    a:hover { color: #fff; }
+
+    .shell { min-height: 100vh; }
+    .nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 1rem clamp(1.25rem, 4vw, 3rem);
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.55rem;
+      font-family: var(--font-display);
+      color: var(--ink);
+      text-decoration: none;
+      letter-spacing: -0.02em;
+    }
+    .brand-mark { width: 36px; height: 36px; object-fit: contain; }
+    .nav-actions { display: flex; flex-wrap: wrap; gap: 0.55rem; }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.7rem 1.25rem;
+      border-radius: 5px;
+      font-family: var(--font-body);
+      font-weight: 700;
+      font-size: 0.95rem;
+      text-decoration: none;
+      border: 0;
+      color: #fff;
+      background: var(--neon);
+      box-shadow: 0 8px 18px rgba(0, 0, 0, 0.28);
+    }
+    .btn:hover { background: #e84118; color: #fff; }
+    .btn-ghost {
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid var(--line);
+    }
+    .btn-ghost:hover { background: rgba(0, 0, 0, 0.5); }
+
+    .hero {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: clamp(1rem, 4vh, 2.5rem) clamp(1.25rem, 4vw, 3rem) 2rem;
+    }
+    .cabinet {
+      background: var(--panel);
+      border: 2px solid rgba(255, 87, 51, 0.55);
+      border-radius: 16px;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+      padding: clamp(1.6rem, 4vw, 2.6rem);
+      backdrop-filter: blur(8px);
+    }
+    .kicker {
+      display: inline-block;
+      color: var(--neon-2);
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-size: 0.75rem;
+      margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-family: var(--font-display);
+      font-size: clamp(2rem, 6vw, 3.4rem);
+      line-height: 0.95;
+      margin: 0 0 0.85rem;
+      letter-spacing: -0.03em;
+    }
+    .tagline {
+      margin: 0 0 1.4rem;
+      max-width: 38rem;
+      color: var(--muted);
+      font-weight: 600;
+      font-size: clamp(1.05rem, 2.2vw, 1.2rem);
+    }
+    .hero-cta { display: flex; flex-wrap: wrap; gap: 0.7rem; }
+
+    .section {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 clamp(1.25rem, 4vw, 3rem) 2.4rem;
+    }
+    .section-head { max-width: 40rem; margin-bottom: 1.25rem; }
+    .section-head h2 {
+      font-family: var(--font-display);
+      font-size: clamp(1.5rem, 3.5vw, 2rem);
+      margin: 0 0 0.4rem;
+    }
+    .section-head p { margin: 0; color: var(--muted); font-weight: 600; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 1rem;
+    }
+    .card {
+      background: rgba(18, 11, 22, 0.72);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 1.1rem 1.15rem 1.25rem;
+    }
+    .card.drive {
+      border-color: rgba(101, 172, 247, 0.55);
+      box-shadow: 0 0 0 1px rgba(101, 172, 247, 0.2);
+    }
+    .label {
+      display: inline-block;
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--neon);
+      margin-bottom: 0.35rem;
+    }
+    .card.drive .label { color: var(--neon-2); }
+    .card h3 {
+      font-family: var(--font-display);
+      font-size: 1.1rem;
+      margin: 0 0 0.4rem;
+    }
+    .card p { margin: 0; color: var(--muted); font-size: 0.95rem; }
+
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1rem;
+      counter-reset: step;
+    }
+    .step {
+      background: rgba(18, 11, 22, 0.72);
+      border: 1px solid rgba(101, 172, 247, 0.35);
+      border-radius: 12px;
+      padding: 1.15rem 1.2rem 1.3rem;
+    }
+    .step h3 { margin: 0 0 0.4rem; font-size: 1.05rem; }
+    .step p { margin: 0; color: var(--muted); }
+    .step::before {
+      counter-increment: step;
+      content: "Step " counter(step);
+      display: block;
+      color: var(--neon-2);
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      font-size: 0.72rem;
+      margin-bottom: 0.35rem;
+    }
+    code {
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+      font-size: 0.88em;
+      color: #93c5fd;
+    }
+    .shot {
+      margin: 1.25rem 0 0;
+      border-radius: 16px;
+      overflow: hidden;
+      border: 2px solid rgba(255, 87, 51, 0.45);
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+    }
+    .shot img { display: block; width: 100%; height: auto; }
+
+    footer {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 1.5rem clamp(1.25rem, 4vw, 3rem) 2.5rem;
+      color: var(--muted);
+      font-size: 0.9rem;
+      font-weight: 600;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      justify-content: space-between;
+    }
+    .legal {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 clamp(1.25rem, 4vw, 3rem) 1.5rem;
+    }
+    .legal-card {
+      background: rgba(18, 11, 22, 0.72);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 1.15rem 1.25rem;
+    }
+    .legal-card h2 { font-family: var(--font-display); font-size: 1.1rem; margin: 0 0 0.5rem; }
+    .legal-card p { margin: 0 0 0.65rem; color: var(--muted); font-size: 0.92rem; }
+    .legal-card p:last-child { margin-bottom: 0; }
+    @media (max-width: 720px) {
+      .nav { flex-direction: column; align-items: flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <nav class="nav" aria-label="Primary">
+      <a class="brand" href="notespro.html">
+        <img class="brand-mark" src="favicon.ico" width="36" height="36" alt="">
+        NotesPro
+      </a>
+      <div class="nav-actions">
+        <a class="btn btn-ghost" href="notespro.html">NotesPro home</a>
+        <a class="btn btn-ghost" href="#drive">Google Drive</a>
+        <a class="btn btn-ghost" href="https://github.com/ThGSoft/NotesPro">Source</a>
+        <a class="btn" href="https://thgsoft.online/DjangoNotesPro/">Open NotesPro</a>
+      </div>
+    </nav>
+
+    <header class="hero" id="top">
+      <div class="cabinet">
+        <span class="kicker">NotesPro · no ads</span>
+        <h1>Livia's Jukebox</h1>
+        <p class="tagline">Paste a Google Drive folder and play it as albums in the page. Nested folders stay nested. Music keeps going when you open another note.</p>
+        <div class="hero-cta">
+          <a class="btn" href="https://thgsoft.online/DjangoNotesPro/">Play in NotesPro →</a>
+          <a class="btn btn-ghost" href="#drive">How Google Drive works</a>
+        </div>
+      </div>
+    </header>
+
+    <section class="section" id="drive" aria-labelledby="drive-title">
+      <div class="section-head">
+        <h2 id="drive-title">Google Drive is the library</h2>
+        <p>Share a Drive folder once. NotesPro lists the audio, keeps the folder tree as albums, and plays through your signed-in account. This page has no ads.</p>
+      </div>
+      <div class="steps">
+        <article class="step">
+          <h3>Share the folder</h3>
+          <p>In Google Drive, share the music folder as <strong>Anyone with the link</strong> can view. Nested album folders work the same way.</p>
+        </article>
+        <article class="step">
+          <h3>Paste the link</h3>
+          <p>In Edit, drop the Drive URL on the jukebox or paste it and click <strong>Add Drive</strong>. A file link adds one track; a folder link imports the tree.</p>
+        </article>
+        <article class="step">
+          <h3>Pick an album</h3>
+          <p>Folder names become albums (<code>Jazz</code>, <code>Jazz / Bebop</code>). Song titles show the folder the file sits in, plus the filename.</p>
+        </article>
+      </div>
+      <figure class="shot">
+        <img src="screenshots/jukebox.png" width="1024" height="1024" alt="Neon diner jukebox cabinet used as the NotesPro player background">
+      </figure>
+    </section>
+
+    <section class="section" aria-labelledby="play-title">
+      <div class="section-head">
+        <h2 id="play-title">Play it like a diner cabinet</h2>
+        <p>Google Drive first. Local MP3s if you want them. No advertising on this promo page or in the player.</p>
+      </div>
+      <div class="grid">
+        <article class="card drive">
+          <span class="label">Google Drive</span>
+          <h3>Folders stay albums</h3>
+          <p>A shared Drive folder is the catalog. Child folders keep their names, so the album list matches the library you already keep on Drive.</p>
+        </article>
+        <article class="card drive">
+          <span class="label">Google Drive</span>
+          <h3>Signed-in playback</h3>
+          <p>Audio streams through NotesPro while you are logged in. Share the items so anyone with the link can view; no extra music store, no ads.</p>
+        </article>
+        <article class="card">
+          <span class="label">Albums</span>
+          <h3>Continuous or random</h3>
+          <p>Play one album or everything: continuous or shuffled. Previous and Next sit beside the album picker.</p>
+        </article>
+        <article class="card">
+          <span class="label">Clips</span>
+          <h3>30 s · 60 s · 90 s</h3>
+          <p>Random-length buttons skip to another track after that many seconds — useful when you are sampling a Drive folder.</p>
+        </article>
+        <article class="card">
+          <span class="label">Display</span>
+          <h3>Standalone & fullscreen</h3>
+          <p>A note that is only a jukebox fills the preview. Use ⛶ for the whole monitor, or Standalone to hide the NotesPro sidebar and play like a dedicated player.</p>
+        </article>
+        <article class="card">
+          <span class="label">Background</span>
+          <h3>Keeps playing</h3>
+          <p>Change notes and the song continues. A bottom bar has Previous, Pause, Next, and Stop until you return to the jukebox.</p>
+        </article>
+        <article class="card">
+          <span class="label">Local too</span>
+          <h3>Drop files or folders</h3>
+          <p>MP3, M4A, WAV, OGG, FLAC. A dropped folder keeps structure as albums, same idea as Drive. Titles use folder and filename.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="legal" id="privacy" aria-labelledby="privacy-title">
+      <div class="legal-card">
+        <h2 id="privacy-title">No ads</h2>
+        <p>This jukebox page does not load advertising scripts and does not show ads. It does not collect payment card numbers.</p>
+        <p>Google Drive is your music storage. NotesPro only lists and plays files you share with a link. Open the live app to sign in; this page does not create an account by itself.</p>
+        <p>Product: <a href="notespro.html">NotesPro</a> · Live app: <a href="https://thgsoft.online/DjangoNotesPro/">thgsoft.online/DjangoNotesPro</a> · Source: <a href="https://github.com/ThGSoft/NotesPro">github.com/ThGSoft/NotesPro</a></p>
+      </div>
+    </section>
+
+    <footer>
+      <a class="brand" href="notespro.html">
+        <img class="brand-mark" src="favicon.ico" width="28" height="28" alt="">
+        NotesPro
+      </a>
+      <span>Livia's Jukebox · Google Drive albums · no ads · ThGSoft</span>
+    </footer>
+  </div>
+</body>
+</html>

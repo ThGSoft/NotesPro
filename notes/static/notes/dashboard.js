@@ -80,6 +80,17 @@
   let editorPreviewResizeObserver = null;
   let tocSpyScrollHandler = null;
   let isEditing = false;
+  let jukeboxStandaloneView = (() => {
+    try {
+      const q = new URLSearchParams(location.search);
+      const v = (q.get('jukebox') || '').trim().toLowerCase();
+      if (v === '1' || v === 'true' || v === 'yes' || v === 'full') return true;
+      return (q.get('view') || '').trim().toLowerCase() === 'jukebox';
+    } catch (_) {
+      return false;
+    }
+  })();
+  if (jukeboxStandaloneView) document.body?.classList.add('jukebox-standalone');
   let userCanEdit = Boolean(
     window.APP_BOOT?.canWrite || window.APP_BOOT?.isStaff || window.APP_BOOT?.isGroupAdmin
   );
@@ -3883,6 +3894,7 @@
           jukeboxIndex: idx,
           editable: !!options.speisekarteEditable || !!options.sheetEditable,
           resolveAudioHref: resolveMediaHref,
+          standalone: isJukeboxStandaloneView(),
         })
         : '<div class="jukebox-block jukebox-block--error">Jukebox engine not loaded.</div>';
       return wrapRichPreviewBlock(html);
@@ -4334,6 +4346,49 @@
     };
   }
 
+  function isJukeboxStandaloneView() {
+    return !!jukeboxStandaloneView;
+  }
+
+  function syncJukeboxStandaloneButtons() {
+    const on = isJukeboxStandaloneView();
+    document.querySelectorAll('.jukebox-standalone-btn').forEach((btn) => {
+      btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      btn.title = on ? 'Show NotesPro chrome' : 'Hide NotesPro chrome';
+      btn.textContent = on ? 'Exit standalone' : 'Standalone';
+    });
+    document.querySelectorAll('.jukebox-block').forEach((el) => {
+      if (on || el.dataset.jukeboxFullscreen === '1') {
+        el.classList.add('jukebox-block--fullscreen');
+      } else {
+        el.classList.remove('jukebox-block--fullscreen');
+      }
+    });
+  }
+
+  function applyJukeboxStandaloneChrome() {
+    document.body.classList.toggle('jukebox-standalone', isJukeboxStandaloneView());
+    syncJukeboxStandaloneButtons();
+  }
+
+  function setJukeboxStandaloneView(on) {
+    jukeboxStandaloneView = !!on;
+    applyJukeboxStandaloneChrome();
+    try {
+      const url = new URL(location.href);
+      if (jukeboxStandaloneView) {
+        url.searchParams.set('jukebox', '1');
+      } else {
+        url.searchParams.delete('jukebox');
+        if ((url.searchParams.get('view') || '').trim().toLowerCase() === 'jukebox') {
+          url.searchParams.delete('view');
+        }
+      }
+      history.replaceState(currentNavState(), '', `${url.pathname}${url.search}${url.hash}`);
+    } catch (_) { /* ignore */ }
+    if (jukeboxStandaloneView && isEditing) setEditing(false);
+  }
+
   function navStateEqual(a, b) {
     if (!a || !b) return false;
     return String(a.ws || '') === String(b.ws || '')
@@ -4346,6 +4401,8 @@
     else url.searchParams.delete('ws');
     if (state.page) url.searchParams.set('page', String(state.page));
     else url.searchParams.delete('page');
+    if (isJukeboxStandaloneView()) url.searchParams.set('jukebox', '1');
+    else url.searchParams.delete('jukebox');
     return `${url.pathname}${url.search}${url.hash}`;
   }
 
@@ -4385,6 +4442,11 @@
       }
       const page = parseInt(pageRaw, 10);
       if (Number.isFinite(page) && page > 0) currentPageId = page;
+      const jukeboxRaw = (url.searchParams.get('jukebox') || '').trim().toLowerCase();
+      jukeboxStandaloneView = jukeboxRaw === '1' || jukeboxRaw === 'true' || jukeboxRaw === 'yes'
+        || jukeboxRaw === 'full'
+        || (url.searchParams.get('view') || '').trim().toLowerCase() === 'jukebox';
+      applyJukeboxStandaloneChrome();
     } catch (_) { /* ignore */ }
   }
 
@@ -12852,6 +12914,9 @@ function formatTextWithMarkup(rawText) {
   }
 
   function setEditing(editing) {
+    if (editing && isJukeboxStandaloneView()) {
+      setJukeboxStandaloneView(false);
+    }
     if (editing && !userCanEdit) editing = false;
     isEditing = editing;
     if (!editing) clearSheetBandSelection();
@@ -18359,10 +18424,10 @@ function formatTextWithMarkup(rawText) {
         {
           name: 'insert-jukebox',
           action: (editor) => {
-            insertFenceBlock(editor, "jukebox{title=Livia's Jukebox}", '');
+            insertFenceBlock(editor, "jukebox{title=Livia's Jukebox;fullscreen}", '');
           },
           className: 'fa fa-music',
-          title: 'Insert jukebox (MP3 / folders / Google Drive)',
+          title: 'Insert jukebox (MP3 / folders / Google Drive / fullscreen)',
         },
         ...(window.APP_BOOT?.allowPhotos !== false ? [buildPhotosToolbarDropdown()] : []),
         ...(window.APP_BOOT?.allowGames !== false ? [buildGamesToolbarDropdown()] : []),
@@ -21072,6 +21137,9 @@ function formatTextWithMarkup(rawText) {
     document.getElementById('edit-toggle')?.addEventListener('click', () => {
       setEditing(!isEditing);
     });
+    document.addEventListener('notespro:jukebox-standalone-toggle', () => {
+      setJukeboxStandaloneView(!isJukeboxStandaloneView());
+    });
     document.getElementById('mobile-edit-toggle')?.addEventListener('click', () => {
       if (!userCanEdit) return;
       closeFloatingToc();
@@ -21128,6 +21196,7 @@ function formatTextWithMarkup(rawText) {
   applyLayoutFromSettings();
   syncMobileLayoutClass();
   setEditing(false);
+  applyJukeboxStandaloneChrome();
   initLeftSplitter();
   initEditorSplitter();
   initRightSplitter();

@@ -4,10 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>NotesPro — Collaborative notes with markdown, chat &amp; workspaces</title>
-  <meta name="description" content="NotesPro: workspaces, rich markdown, Keep notes, click-to-order menus, games, 3D photo galleries, Kanban Gantt with cost tracking, and team chat.">
+  <meta name="description" content="NotesPro: workspaces, rich markdown, Keep notes, jukebox playlists, click-to-order menus, games, 3D photo galleries, Kanban Gantt with cost tracking, and team chat.">
   <meta property="og:type" content="website">
   <meta property="og:title" content="NotesPro — collaborative notes with markdown, chat &amp; workspaces">
-  <meta property="og:description" content="Workspaces, rich markdown, Keep notes, project boards, click-to-order menus, and team chat — pinned in one place.">
+  <meta property="og:description" content="Workspaces, rich markdown, Keep notes, jukebox, project boards, click-to-order menus, and team chat — pinned in one place.">
   <meta property="og:url" content="https://thgsoft.online/DjangoNotesPro/">
   <meta property="og:image" content="https://raw.githubusercontent.com/ThGSoft/NotesPro/main/docs/screenshots/dashboard-full.png">
   <meta name="twitter:card" content="summary_large_image">
@@ -634,6 +634,7 @@
         NotesPro
       </a>
       <div style="display:flex;gap:0.55rem;">
+        <a class="btn btn-ghost" href="jukebox.html">Jukebox</a>
         <a class="btn btn-ghost" href="#gallery">Gallery</a>
         <a class="btn btn-ghost" href="#advantages">Advantages</a>
         <a class="btn btn-ghost" href="#shop">Shop</a>
@@ -650,7 +651,7 @@
           <img src="favicon.ico" width="56" height="56" alt="NotesPro sticky note icon">
           <p class="wordmark">Notes<span class="line2">Pro</span></p>
         </div>
-        <p class="tagline">Workspaces, rich markdown, Keep notes, project boards, click-to-order menus, and team chat — pinned in one place.</p>
+        <p class="tagline">Workspaces, rich markdown, Keep notes, jukebox playlists, project boards, click-to-order menus, and team chat — pinned in one place.</p>
         <div class="hero-cta">
           <a class="btn btn-primary" href="https://thgsoft.online/DjangoNotesPro/">Go to NotesPro →</a>
           <a class="btn btn-ghost" href="https://github.com/ThGSoft/NotesPro">Get source on GitHub</a>
@@ -761,7 +762,7 @@
     <section id="advantages" aria-labelledby="advantages-title">
       <div class="section-head">
         <h2 id="advantages-title">All advantages</h2>
-        <p>Everything NotesPro brings to your team — writing, planning, menus, games, files, messaging, and two-factor login.</p>
+        <p>Everything NotesPro brings to your team — writing, planning, menus, music, games, files, messaging, and two-factor login.</p>
       </div>
 
       <div class="grid">
@@ -773,12 +774,17 @@
         <article class="feature">
           <span class="label">Structure</span>
           <h3>Folders &amp; page tree</h3>
-          <p>jsTree navigation with search, drag-and-drop reorder, inline rename, and last-page memory per workspace.</p>
+          <p>jsTree navigation with search, drag-and-drop reorder, inline rename, last-page memory, and restore after a soft delete.</p>
         </article>
         <article class="feature">
           <span class="label">Writing</span>
           <h3>Markdown + live preview</h3>
           <p>EasyMDE with split edit/preview, synced scrolling, floating TOC, find/replace, snippets, indent, colors, and font size.</p>
+        </article>
+        <article class="feature">
+          <span class="label">Page</span>
+          <h3>Contents &amp; tags</h3>
+          <p>Page settings can show or hide the table of contents and the tag bar. Add or remove <code>{tag: name}</code> markers from the same dialog.</p>
         </article>
         <article class="feature">
           <span class="label">Sheets &amp; charts</span>
@@ -831,6 +837,11 @@
           <p>Record in the browser and transcribe locally with open-source Whisper — no cloud speech API.</p>
         </article>
         <article class="feature">
+          <span class="label">Jukebox</span>
+          <h3><a href="jukebox.html">MP3 cabinet player</a></h3>
+          <p>Play albums in a diner jukebox: drop folders, add Google Drive, keep playing in the background, and skip random 30 / 60 / 90 second clips. Titles show folder and filename.</p>
+        </article>
+        <article class="feature">
           <span class="label">News</span>
           <h3>RSS feeds</h3>
           <p>Embed live news feeds in a page — Magpie-style cards from BBC and other RSS sources.</p>
@@ -878,7 +889,12 @@
         <article class="feature">
           <span class="label">Tags</span>
           <h3>Indexed tags</h3>
-          <p>Brace tags like <code>{tag: WLAN}</code> with search and live updates across the workspace.</p>
+          <p>Brace tags like <code>{tag: WLAN}</code> with workspace search. Page settings lists them and can hide the tag bar without deleting the markers.</p>
+        </article>
+        <article class="feature">
+          <span class="label">Issues</span>
+          <h3>Workspace tracker</h3>
+          <p>Numbered issues in the sidebar with status, priority, assignee, labels, and an optional related page.</p>
         </article>
         <article class="feature">
           <span class="label">Layout</span>
@@ -903,7 +919,7 @@
           <span class="label">NotesPro</span>
           <h3>Collaborative notes</h3>
           <p class="sw-price">Source free · License 49 EUR</p>
-          <p>Markdown workspaces, Keep notes, menus, games, and team chat. Download the zip, or check out a license in the live app.</p>
+          <p>Markdown workspaces, Keep notes, menus, jukebox, games, and team chat. Download the zip, or check out a license in the live app.</p>
           <div class="sw-actions">
             <a class="btn btn-primary" href="https://github.com/ThGSoft/NotesPro/archive/refs/heads/main.zip">Download</a>
             <a class="btn pay-paypal" href="https://thgsoft.online/DjangoNotesPro/">Pay with PayPal</a>
@@ -1009,13 +1025,14 @@
         NotesPro
       </a>
       <span>
-        <a href="#shop">Shop</a>
+        <a href="jukebox.html">Jukebox</a>
+        · <a href="#shop">Shop</a>
         · <a href="#noteslist">NotesList</a>
         · <a href="#privacy">Privacy</a>
         · <a href="https://github.com/ThGSoft/NotesPro">Source on GitHub</a>
         · <a href="https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2F%2Fthgsoft.online%2FDjangoNotesPro%2F">LinkedIn</a>
         · <a href="https://www.youtube.com/upload">YouTube</a>
-        · sticky notes · markdown · menus · team chat
+        · sticky notes · markdown · menus · jukebox · team chat
         · ThGSoft
       </span>
     </footer>

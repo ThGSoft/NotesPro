@@ -1175,14 +1175,14 @@ Notes:
 
 ### Jukebox (MP3 playlist)
 
-Embed a diner-cabinet playlist player with a fenced `jukebox` block (`juke-box` and `playlist` work too). The neon cabinet photo is the background; Livia-style orange mode buttons and two-column blue song buttons sit in a glass overlay. Native audio controls sit above a full-width **Volume** slider and the playlist. Mode buttons match the Livia player: **Play Continuous Album**, **Play Random Album**, **Play Continuous All**, **Play Random All**, **Previous** / **Next**, album `<select>`, and a full-width **30 s** / **60 s** / **90 s** play-length row (plays a random track for that many seconds, then skips to another). The playlist scrolls to keep the playing song in view. Toolbar **music** note inserts `title=Livia's Jukebox`.
+Embed a diner-cabinet playlist player with a fenced `jukebox` block (`juke-box` and `playlist` work too). The neon cabinet photo is the background; Livia-style orange mode buttons and two-column blue song buttons sit in a glass overlay. Native audio controls sit above a full-width **Volume** slider and the playlist. Mode buttons match the Livia player: **Play Continuous Album**, **Play Random Album**, **Play Continuous All**, **Play Random All**, **Previous** / **Next**, album `<select>`, and a full-width **30 s** / **60 s** / **90 s** play-length row (plays a random track for that many seconds, then skips to another). The playlist scrolls to keep the playing song in view. Toolbar **music** note inserts `title=Livia's Jukebox;fullscreen`. Fullscreen is on by default so a note that is only a jukebox fills the preview; use the **⛶** button for monitor fullscreen, **Standalone** (or `?jukebox=1` on the dashboard URL) to hide NotesPro chrome.
 
 In **Edit**, click **Add tracks or folders**, **choose a folder**, or drop **MP3 files or a music folder** (also M4A, WAV, OGG, FLAC) onto the box. Loose files go into the album currently selected (default `Uploads`). A folder keeps its structure as albums the same way Drive does (`Jazz`, nested `Jazz / Bebop`). Uploads go to `media/uploads/` like other files. Paste a Google Drive **file or folder** share link and click **Add Drive** (or drop the URL on the player). Share Drive items as **Anyone with the link**. Volume is remembered in `localStorage` (`jukeboxVolume`).
 
 Toolbar: **music** note inserts an empty jukebox. Group tracks with `# Album` headings. Track lines are markdown links or `Title | Artist | path`.
 
 ````markdown
-```jukebox{title=Livia's Jukebox;drive=https://drive.google.com/drive/folders/FOLDER_ID}
+```jukebox{title=Livia's Jukebox;fullscreen;drive=https://drive.google.com/drive/folders/FOLDER_ID}
 # Uploads
 [Local demo](media/uploads/demo.mp3)
 [Drive single](https://drive.google.com/file/d/FILE_ID/view)
@@ -1192,6 +1192,7 @@ Toolbar: **music** note inserts an empty jukebox. Group tracks with `# Album` he
 | Option | Description |
 |--------|-------------|
 | `title` | Heading on the cabinet (default `Livia's Jukebox`) |
+| `fullscreen` | Fill the preview when the page is just a jukebox (default on; use `fullscreen=0` for a compact card). **⛶** is monitor fullscreen. |
 | `cover` | Optional extra art URL, or put `![Cover](…)` on the first body line |
 | `drive` | Google Drive folder URL or id. Nested folders become albums. |
 | `col` / `color` | Theme `info` / `success` / … or any CSS color |
@@ -1204,6 +1205,7 @@ Notes:
 - Playback keeps going when you open another note. A bottom bar has Previous, Pause/Play, Next, and Stop until you return to that jukebox.
 - Playback goes through `/api/drive/audio/<id>/` (signed-in). Optional `GOOGLE_DRIVE_API_KEY` lists public folders more reliably; without it NotesPro parses Drive’s embedded folder view.
 - Files must be shared so **anyone with the link** can view. Large files can hit Google’s virus-scan interstitial; the proxy retries with the confirm token.
+- **Standalone** hides the sidebar and top bar. Bookmark the page with `?jukebox=1` (workspace and page query still apply) for a dedicated player window.
 
 ### Sudoku
 

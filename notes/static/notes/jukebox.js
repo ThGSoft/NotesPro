@@ -75,7 +75,32 @@
     if (bkcol) parts.push(`bkcol=${bkcol}`);
     if (cover) parts.push(`cover=${cover}`);
     if (drive) parts.push(`drive=${drive}`);
+    if (Object.prototype.hasOwnProperty.call(cfg, 'fullscreen')
+      || Object.prototype.hasOwnProperty.call(cfg, 'full')
+      || Object.prototype.hasOwnProperty.call(cfg, 'standalone')) {
+      const raw = String(cfg.fullscreen ?? cfg.full ?? cfg.standalone ?? '').trim().toLowerCase();
+      if (raw === '0' || raw === 'false' || raw === 'no' || raw === 'compact') {
+        parts.push('fullscreen=0');
+      } else {
+        parts.push('fullscreen');
+      }
+    }
     return parts.join(';');
+  }
+
+  function resolveFullscreen(cfg, options = {}) {
+    if (options.standalone) return true;
+    const raw = String(cfg.fullscreen ?? cfg.full ?? cfg.standalone ?? '1').trim().toLowerCase();
+    if (raw === '0' || raw === 'false' || raw === 'no' || raw === 'compact') return false;
+    return true;
+  }
+
+  function renderFullscreenButton() {
+    return window.NotesProGameFullscreen?.renderButton?.() || '';
+  }
+
+  function bindFullscreenButton(root) {
+    window.NotesProGameFullscreen?.bind?.(root);
   }
 
   function resolveStyle(cfg) {
@@ -421,12 +446,15 @@
     const title = String(cfg.title || DEFAULT_TITLE).trim() || DEFAULT_TITLE;
     const jukeboxIndex = Number.isFinite(options.jukeboxIndex) ? options.jukeboxIndex : 0;
     const editable = !!options.editable;
+    const fullscreen = resolveFullscreen(cfg, options);
+    const standaloneOn = !!options.standalone;
     const resolve = typeof options.resolveAudioHref === 'function'
       ? options.resolveAudioHref
       : (src) => src;
     const themeClass = style.theme ? ` jukebox-block--${style.theme}` : '';
     const customClass = (style.colorCss || style.bgCss) ? ' jukebox-block--custom' : '';
     const editClass = editable ? ' jukebox-block--editable' : '';
+    const fullClass = fullscreen ? ' jukebox-block--fullscreen' : '';
     const styleVars = [];
     if (style.colorCss) styleVars.push(`--jukebox-accent:${style.colorCss}`);
     if (style.bgCss) styleVars.push(`--jukebox-bg:${style.bgCss}`);
@@ -447,36 +475,39 @@
       ].join('')
       : '';
     return [
-      `<div class="jukebox-block${themeClass}${customClass}${editClass}"${styleAttr}`,
-      ` data-jukebox-index="${jukeboxIndex}" data-jukebox-spec="${escapeHtml(JSON.stringify({ cover, tracks: parsed.tracks, title, drive }))}" tabindex="0">`,
+      `<div class="jukebox-block${themeClass}${customClass}${editClass}${fullClass}"${styleAttr}`,
+      ` data-jukebox-index="${jukeboxIndex}" data-jukebox-fullscreen="${fullscreen ? '1' : '0'}"`,
+      ` data-jukebox-spec="${escapeHtml(JSON.stringify({ cover, tracks: parsed.tracks, title, drive }))}" tabindex="0">`,
+      renderFullscreenButton(),
+      `<button type="button" class="jukebox-settings-btn" data-act="settings" aria-expanded="false" aria-haspopup="true" title="Playback settings">Settings</button>`,
       `<div class="jukebox-chrome">`,
-      `<div class="jukebox-top">`,
       `<div class="jukebox-title">${escapeHtml(title)}</div>`,
-      `<div class="jukebox-player-wrap">`,
       `<div class="jukebox-song-label">No song playing</div>`,
       `<div class="jukebox-player">`,
       `<audio class="jukebox-audio" controls preload="auto"></audio>`,
-      `</div></div>`,
-      `<div class="jukebox-top-meters">`,
+      `</div>`,
       `<label class="jukebox-volume-label">Volume`,
       `<input class="jukebox-volume" type="range" min="0" max="1" step="0.01" value="1" aria-label="Volume">`,
       `</label>`,
+      `<div class="jukebox-control-row jukebox-control-row--album">`,
+      `<label class="jukebox-album-label">Album`,
+      `<select class="jukebox-album-select" aria-label="Select album"></select>`,
+      `</label>`,
+      `</div>`,
+      `<div class="jukebox-control-row jukebox-control-row--nav">`,
+      `<button type="button" class="jukebox-mode-btn" data-act="prev">Prev</button>`,
+      `<button type="button" class="jukebox-mode-btn" data-act="next">Next</button>`,
+      `<button type="button" class="jukebox-mode-btn jukebox-standalone-btn" data-act="standalone" aria-pressed="${standaloneOn ? 'true' : 'false'}" title="${standaloneOn ? 'Show NotesPro chrome' : 'Hide NotesPro chrome'}">${standaloneOn ? 'Exit standalone' : 'Standalone'}</button>`,
+      `</div>`,
+      `<div class="jukebox-cabinet">`,
+      `<div class="jukebox-playlist" aria-label="Songs"></div>`,
+      `</div>`,
+      `<div class="jukebox-settings" hidden>`,
+      `<div class="jukebox-settings-title">Playback</div>`,
       `<div class="jukebox-clip-group" role="group" aria-label="Random length">`,
       `<button type="button" class="jukebox-mode-btn" data-act="play-random-30" data-clip="30" title="Play random 30 second clips">30 s</button>`,
       `<button type="button" class="jukebox-mode-btn" data-act="play-random-60" data-clip="60" title="Play random 60 second clips">60 s</button>`,
       `<button type="button" class="jukebox-mode-btn" data-act="play-random-90" data-clip="90" title="Play random 90 second clips">90 s</button>`,
-      `</div></div></div>`,
-      `<div class="jukebox-body">`,
-      `<div class="jukebox-panel jukebox-panel--songs">`,
-      `<div class="jukebox-cabinet">`,
-      `<div class="jukebox-playlist"></div>`,
-      `</div></div>`,
-      `<div class="jukebox-panel jukebox-panel--buttons">`,
-      `<div class="jukebox-controls">`,
-      `<div class="jukebox-control-row jukebox-control-row--album">`,
-      `<label class="jukebox-album-label">Select Album:`,
-      `<select class="jukebox-album-select" aria-label="Select album"></select>`,
-      `</label>`,
       `</div>`,
       `<div class="jukebox-control-row jukebox-control-row--modes">`,
       `<button type="button" class="jukebox-mode-btn" data-act="continuous-album">Play Continuous Album</button>`,
@@ -484,12 +515,9 @@
       `<button type="button" class="jukebox-mode-btn" data-act="continuous-all">Play Continuous All</button>`,
       `<button type="button" class="jukebox-mode-btn" data-act="random-all">Play Random All</button>`,
       `</div>`,
-      `<div class="jukebox-control-row jukebox-control-row--nav">`,
-      `<button type="button" class="jukebox-mode-btn" data-act="prev">Previous</button>`,
-      `<button type="button" class="jukebox-mode-btn" data-act="next">Next</button>`,
-      `</div></div></div></div>`,
       uploadHtml,
       `<p class="jukebox-status" aria-live="polite"></p>`,
+      `</div>`,
       `</div></div>`,
     ].join('');
   }
@@ -901,6 +929,7 @@
         button.textContent = displayTrackTitle(song);
         button.title = song.artist ? `${button.textContent} — ${song.artist}` : button.textContent;
         button.addEventListener('click', () => {
+          closeSettings();
           playAt(index);
         });
         cell.appendChild(button);
@@ -1022,10 +1051,36 @@
       playNextSong();
     }
 
+    function closeSettings() {
+      el.classList.remove('jukebox-block--settings');
+      const btn = el.querySelector('.jukebox-settings-btn');
+      if (btn) btn.setAttribute('aria-expanded', 'false');
+      const panel = el.querySelector('.jukebox-settings');
+      if (panel) panel.hidden = true;
+    }
+
+    function toggleSettings() {
+      const panel = el.querySelector('.jukebox-settings');
+      const btn = el.querySelector('.jukebox-settings-btn');
+      const open = !el.classList.contains('jukebox-block--settings');
+      el.classList.toggle('jukebox-block--settings', open);
+      if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      if (panel) panel.hidden = !open;
+    }
+
     function onBlockClick(event) {
       const actEl = event.target.closest('[data-act]');
       const act = actEl?.dataset.act;
+      if (act === 'settings') {
+        toggleSettings();
+        return;
+      }
+      if (act !== 'drop' && !event.target.closest('.jukebox-settings')) closeSettings();
       if (!act) return;
+      if (act === 'standalone') {
+        document.dispatchEvent(new CustomEvent('notespro:jukebox-standalone-toggle'));
+        return;
+      }
       if (act === 'add') {
         fileInput?.click();
         return;
@@ -1095,6 +1150,11 @@
     }
 
     function onBlockKeydown(event) {
+      if (event.key === 'Escape' && el.classList.contains('jukebox-block--settings')) {
+        event.preventDefault();
+        closeSettings();
+        return;
+      }
       if (event.target.closest('input, textarea, button, select, audio')) return;
       if (event.key === 'ArrowRight') {
         event.preventDefault();
@@ -1196,7 +1256,7 @@
 
     function bindDrop() {
       if (typeof options.onUploadAudio !== 'function') return;
-      const drop = el.querySelector('[data-act="drop"]') || el;
+      const drop = el;
       ['dragenter', 'dragover'].forEach((name) => {
         drop.addEventListener(name, (event) => {
           const types = [...event.dataTransfer?.types || []];
@@ -1242,6 +1302,7 @@
       driveInput?.addEventListener('keydown', onDriveKeydown);
       bindVolume();
       bindDrop();
+      bindFullscreenButton(el);
     }
 
     function stopBackground() {
