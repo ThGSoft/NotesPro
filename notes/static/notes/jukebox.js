@@ -244,14 +244,65 @@
     return text;
   }
 
+  function normalizeSongName(text) {
+    return String(text || '')
+      .replace(AUDIO_EXT_RE, '')
+      .replace(/[_]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+  }
+
+  function escapeRegExp(text) {
+    return String(text || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  function folderNameParts(folder) {
+    return String(folder || '')
+      .split(/\s*\/\s*/)
+      .map((part) => part.trim())
+      .filter((part) => part.length >= 2);
+  }
+
+  function stripFolderFromSongName(folder, song) {
+    const raw = String(song || '').trim();
+    if (!raw) return '';
+    const extMatch = raw.match(AUDIO_EXT_RE);
+    const ext = extMatch ? extMatch[0] : '';
+    let text = ext ? raw.slice(0, -ext.length) : raw;
+    const parts = folderNameParts(folder).sort((a, b) => b.length - a.length);
+    parts.forEach((part) => {
+      const escaped = escapeRegExp(part);
+      const prefix = new RegExp(`^${escaped}(?:\\s*[-_–—:/]+\\s*|\\s+)`, 'i');
+      if (prefix.test(text)) {
+        text = text.replace(prefix, '').trim();
+        return;
+      }
+      const suffix = new RegExp(`(?:\\s*[-_–—:/]+\\s*|\\s+)${escaped}$`, 'i');
+      if (suffix.test(text)) text = text.replace(suffix, '').trim();
+    });
+    text = text.replace(/^[-_–—:/]+\s*/, '').replace(/\s*[-_–—:/]+$/, '').trim();
+    if (!text) return raw;
+    return ext ? `${text}${ext}` : text;
+  }
+
+  function folderAndSongLabel(folder, song) {
+    const file = String(song || '').trim() || 'Track';
+    const parent = String(folder || '').trim();
+    const cleaned = parent ? (stripFolderFromSongName(parent, file) || file) : file;
+    if (parent && normalizeSongName(parent) !== normalizeSongName(cleaned)) {
+      return `${parent} / ${cleaned}`;
+    }
+    return cleaned;
+  }
+
   function displayTrackTitle(track) {
     const src = track?.src;
     const file = filenameFromSrc(src, basenameFromTitle(track?.title)) || 'Track';
     const folder = folderFromSrc(src)
       || folderFromTitle(track?.title)
       || (driveFileId(src) ? lastAlbumFolder(track?.album) : '');
-    if (folder && folder !== file) return `${folder} / ${file}`;
-    return file;
+    return folderAndSongLabel(folder, file);
   }
 
   function unwrapSrc(raw) {
@@ -497,7 +548,9 @@
       `<div class="jukebox-control-row jukebox-control-row--nav">`,
       `<button type="button" class="jukebox-mode-btn" data-act="prev">Prev</button>`,
       `<button type="button" class="jukebox-mode-btn" data-act="next">Next</button>`,
-      `<button type="button" class="jukebox-mode-btn jukebox-standalone-btn" data-act="standalone" aria-pressed="${standaloneOn ? 'true' : 'false'}" title="${standaloneOn ? 'Show NotesPro chrome' : 'Hide NotesPro chrome'}">${standaloneOn ? 'Exit standalone' : 'Standalone'}</button>`,
+      `<label class="jukebox-search-label">`,
+      `<input class="jukebox-search" type="search" placeholder="Search songs, albums, artists" autocomplete="off" spellcheck="false" aria-label="Search songs">`,
+      `</label>`,
       `</div>`,
       `<div class="jukebox-cabinet">`,
       `<div class="jukebox-playlist" aria-label="Songs"></div>`,
@@ -515,6 +568,7 @@
       `<button type="button" class="jukebox-mode-btn" data-act="continuous-all">Play Continuous All</button>`,
       `<button type="button" class="jukebox-mode-btn" data-act="random-all">Play Random All</button>`,
       `</div>`,
+      `<button type="button" class="jukebox-mode-btn jukebox-standalone-btn" data-act="standalone" aria-pressed="${standaloneOn ? 'true' : 'false'}" title="${standaloneOn ? 'Show NotesPro chrome' : 'Hide NotesPro chrome'}">${standaloneOn ? 'Exit standalone' : 'Standalone'}</button>`,
       uploadHtml,
       `<p class="jukebox-status" aria-live="polite"></p>`,
       `</div>`,
@@ -686,6 +740,7 @@
     let driveTracks = [];
     let playlist;
     let albumSelect;
+    let searchInput;
     let songLabel;
     let fileInput;
     let folderInput;
@@ -698,6 +753,7 @@
     function bindDom() {
       playlist = el.querySelector('.jukebox-playlist');
       albumSelect = el.querySelector('.jukebox-album-select');
+      searchInput = el.querySelector('.jukebox-search');
       songLabel = el.querySelector('.jukebox-song-label');
       fileInput = el.querySelector('.jukebox-file');
       folderInput = el.querySelector('.jukebox-folder');
@@ -707,6 +763,7 @@
     const host = { sessionKey };
 
     let playQueue = [];
+    let visibleSongs = [];
     let buttonList = [];
     let currentIndex = 0;
     let autoPlay = false;
@@ -792,9 +849,7 @@
       clipSkipping = true;
       currentIndex = index + 1;
       updateSongLabel(song);
-      clearPressed();
-      const button = buttonList[index];
-      if (button) button.classList.add('pressed');
+      markPlayingButtons(song);
       followPlayingSong();
       const href = resolvedSrc(song);
       const pending = prefetchInflight.get(href);
@@ -855,9 +910,68 @@
       if (radio.label) radio.label.textContent = text;
     }
 
+    function sameTrack(a, b) {
+      if (!a || !b) return false;
+      if (a === b) return true;
+      const left = String(a.src || '');
+      const right = String(b.src || '');
+      return !!(left && left === right);
+    }
+
+    function searchQuery() {
+      return String(searchInput?.value || '').trim().toLowerCase();
+    }
+
+    function trackMatchesSearch(song, query) {
+      const q = String(query || '').trim().toLowerCase();
+      if (!q) return true;
+      const hay = [
+        displayTrackTitle(song),
+        song?.title,
+        song?.artist,
+        song?.album,
+        filenameFromSrc(song?.src, ''),
+      ].join(' ').toLowerCase();
+      return q.split(/\s+/).filter(Boolean).every((term) => hay.includes(term));
+    }
+
+    function filteredSongs() {
+      const q = searchQuery();
+      const pool = q ? allTracks() : albumSongs(selectedAlbumName());
+      if (!q) return pool;
+      return pool.filter((song) => trackMatchesSearch(song, q));
+    }
+
+    function markPlayingButtons(song) {
+      const playing = song || playQueue[Math.max(0, currentIndex - 1)];
+      buttonList.forEach((button, index) => {
+        button.classList.toggle('pressed', sameTrack(visibleSongs[index], playing));
+      });
+    }
+
+    function playSong(song) {
+      if (!song) return;
+      let index = playQueue.findIndex((item) => sameTrack(item, song));
+      if (index < 0) {
+        const album = albumOf(song);
+        if (albumSelect && album) albumSelect.value = album;
+        playQueue = albumSongs(album);
+        index = playQueue.findIndex((item) => sameTrack(item, song));
+      }
+      if (index < 0) {
+        playQueue = allTracks();
+        index = playQueue.findIndex((item) => sameTrack(item, song));
+      }
+      if (index < 0) {
+        playQueue = [song];
+        index = 0;
+      }
+      playAt(index);
+    }
+
     function followPlayingSong() {
-      const playing = currentIndex - 1;
-      const button = buttonList[playing];
+      const playing = playQueue[Math.max(0, currentIndex - 1)];
+      const button = buttonList.find((_, index) => sameTrack(visibleSongs[index], playing));
       if (!button || !playlist) return;
       const cell = button.closest('.jukebox-song-cell') || button;
       const listRect = playlist.getBoundingClientRect();
@@ -913,14 +1027,21 @@
 
     function buildButtons(songs) {
       playQueue = songs.slice();
+      renderSongButtons(songs);
+    }
+
+    function renderSongButtons(songs) {
+      visibleSongs = songs.slice();
       buttonList = [];
       if (!playlist) return;
       playlist.innerHTML = '';
-      if (!playQueue.length) {
-        playlist.innerHTML = '<div class="jukebox-empty-row">No tracks yet.</div>';
+      if (!visibleSongs.length) {
+        playlist.innerHTML = searchQuery()
+          ? '<div class="jukebox-empty-row">No matching tracks.</div>'
+          : '<div class="jukebox-empty-row">No tracks yet.</div>';
         return;
       }
-      playQueue.forEach((song, index) => {
+      visibleSongs.forEach((song) => {
         const cell = document.createElement('div');
         cell.className = 'jukebox-song-cell';
         const button = document.createElement('button');
@@ -930,7 +1051,7 @@
         button.title = song.artist ? `${button.textContent} — ${song.artist}` : button.textContent;
         button.addEventListener('click', () => {
           closeSettings();
-          playAt(index);
+          playSong(song);
         });
         cell.appendChild(button);
         buttonList.push(button);
@@ -949,11 +1070,22 @@
         }
         playlist.appendChild(cell);
       });
+      markPlayingButtons();
+    }
+
+    function applySearchView() {
+      renderSongButtons(filteredSongs());
+    }
+
+    function onSearchInput() {
+      host.searchQuery = searchInput?.value || '';
+      applySearchView();
     }
 
     function loadPlaylist(albumName) {
       buildButtons(albumSongs(albumName || selectedAlbumName()));
       currentIndex = 0;
+      if (searchQuery()) applySearchView();
     }
 
     function requireAlbum() {
@@ -1075,7 +1207,9 @@
         toggleSettings();
         return;
       }
-      if (act !== 'drop' && !event.target.closest('.jukebox-settings')) closeSettings();
+      const inSettings = event.target.closest('.jukebox-settings');
+      const settingsControl = event.target.closest('.jukebox-settings button, .jukebox-settings .jukebox-mode-btn, .jukebox-settings .jukebox-add, .jukebox-settings .jukebox-folder-link');
+      if (settingsControl || (!inSettings && act !== 'drop')) closeSettings();
       if (!act) return;
       if (act === 'standalone') {
         document.dispatchEvent(new CustomEvent('notespro:jukebox-standalone-toggle'));
@@ -1205,7 +1339,7 @@
           const folder = parentFolderFromRelativePath(rel);
           const filename = file.name || titleFromFilename(rel);
           tracks.push({
-            title: folder ? `${folder} / ${filename}` : filename,
+            title: folderAndSongLabel(folder, filename),
             artist: '',
             src,
             album,
@@ -1297,6 +1431,8 @@
       el.addEventListener('click', onBlockClick);
       el.addEventListener('keydown', onBlockKeydown);
       albumSelect?.addEventListener('change', onAlbumChange);
+      searchInput?.addEventListener('input', onSearchInput);
+      searchInput?.addEventListener('search', onSearchInput);
       fileInput?.addEventListener('change', onFileChange);
       folderInput?.addEventListener('change', onFolderChange);
       driveInput?.addEventListener('keydown', onDriveKeydown);
@@ -1326,6 +1462,7 @@
       el = newEl;
       el.dataset.jukeboxHydrated = '1';
       bindDom();
+      if (searchInput && host.searchQuery) searchInput.value = host.searchQuery;
       audio = radioAdopt(el.querySelector('.jukebox-player'), sessionKey);
       bindUi();
       if (cover) {
@@ -1340,9 +1477,8 @@
         const playing = savedQueue[Math.max(0, savedIndex - 1)];
         if (playing) {
           updateSongLabel(playing);
-          clearPressed();
-          const button = buttonList[Math.max(0, savedIndex - 1)];
-          if (button) button.classList.add('pressed');
+          if (searchQuery()) applySearchView();
+          markPlayingButtons(playing);
           followPlayingSong();
         }
       } else {

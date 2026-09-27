@@ -2502,6 +2502,7 @@ a.md-news-channel:hover {
 .jukebox-volume-label,
 .jukebox-control-row--album,
 .jukebox-control-row--nav,
+.jukebox-search-label,
 .jukebox-drop,
 .jukebox-status {
   flex-shrink: 0;
@@ -2580,16 +2581,29 @@ a.md-news-channel:hover {
   grid-template-columns: 1fr 1fr;
 }
 
-.jukebox-control-row--modes .jukebox-mode-btn,
-.jukebox-control-row--nav > .jukebox-mode-btn {
+.jukebox-control-row--modes .jukebox-mode-btn {
   flex: 1 1 0;
   min-width: 0;
   width: 100%;
 }
 
 .jukebox-control-row--nav {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.jukebox-control-row--nav > .jukebox-mode-btn {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 72px;
+}
+
+.jukebox-control-row--nav .jukebox-search-label {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .jukebox-clip-group {
@@ -2713,6 +2727,40 @@ a.md-news-channel:hover {
   min-height: 0;
   display: flex;
   flex-direction: column;
+  gap: 10px;
+}
+
+.jukebox-search-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  font-size: 0.9rem;
+  color: #ffffff;
+  white-space: nowrap;
+}
+
+.jukebox-search {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.4);
+  color: #ffffff;
+  font-size: 0.95rem;
+}
+
+.jukebox-search::placeholder {
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.jukebox-search:focus {
+  outline: 2px solid #fff;
+  outline-offset: 1px;
 }
 
 .preview-layout .jukebox-block .jukebox-title,
@@ -2966,7 +3014,13 @@ body.jukebox-standalone.has-jukebox-dock {
   }
 
   .jukebox-control-row--nav {
-    grid-template-columns: 1fr 1fr 1fr;
+    flex-wrap: nowrap;
+  }
+
+  .jukebox-control-row--nav > .jukebox-mode-btn {
+    min-width: 0;
+    flex: 0 0 auto;
+    padding: 10px 12px;
   }
 
   .jukebox-settings-btn {
@@ -3058,8 +3112,8 @@ body.jukebox-standalone.has-jukebox-dock {
   display: inline;
 }
 
-.jukebox-control-row--nav .jukebox-standalone-btn {
-  flex: 1 1 0;
+.jukebox-settings .jukebox-standalone-btn {
+  width: 100%;
 }
 
 body.jukebox-standalone {
@@ -5166,6 +5220,43 @@ body.mobile-layout .sheet-structure-menu-btn {
   background: color-mix(in srgb, var(--checklist-row) 65%, transparent);
 }
 
+.checklist-drag {
+  order: -1;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.2rem;
+  color: var(--checklist-meta);
+  cursor: grab;
+  user-select: none;
+  font-size: 14px;
+  line-height: 1;
+  opacity: 0.7;
+}
+
+.checklist-drag:hover {
+  opacity: 1;
+  color: var(--checklist-title);
+}
+
+.checklist-drag:active,
+.checklist-item--dragging .checklist-drag {
+  cursor: grabbing;
+}
+
+.checklist-item--dragging {
+  opacity: 0.45;
+}
+
+.checklist-item--drop-before {
+  box-shadow: inset 0 2px 0 var(--checklist-accent);
+}
+
+.checklist-item--drop-after {
+  box-shadow: inset 0 -2px 0 var(--checklist-accent);
+}
+
 .checklist-check {
   order: 0;
   flex-shrink: 0;
@@ -5208,6 +5299,7 @@ body.mobile-layout .sheet-structure-menu-btn {
   color: var(--checklist-title);
 }
 
+.checklist-block--align-right .checklist-drag { order: -1; }
 .checklist-block--align-right .checklist-text { order: 0; }
 .checklist-block--align-right .checklist-check { order: 1; }
 .checklist-block--align-right .checklist-delete { order: 2; }
@@ -15512,6 +15604,48 @@ body.mobile-layout .labyrinth-toolbar [data-action="walk-demo"] {
   gap: 10px;
   margin-bottom: 6px;
   min-height: 24px;
+}
+
+.keep-cl-drag {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  color: #5f6368;
+  cursor: grab;
+  user-select: none;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.keep-cl-drag:hover {
+  color: #202124;
+}
+
+.keep-cl-drag:active,
+.keep-checklist-item--dragging .keep-cl-drag {
+  cursor: grabbing;
+}
+
+.keep-checklist-item--dragging {
+  opacity: 0.45;
+}
+
+.keep-checklist-item--drop-before {
+  box-shadow: inset 0 2px 0 #1a73e8;
+}
+
+.keep-checklist-item--drop-after {
+  box-shadow: inset 0 -2px 0 #1a73e8;
+}
+
+.keep-card--dark .keep-cl-drag {
+  color: #9aa0a6;
+}
+
+.keep-card--dark .keep-cl-drag:hover {
+  color: #e8eaed;
 }
 
 .keep-checklist-item input[type="checkbox"] {

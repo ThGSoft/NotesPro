@@ -93,6 +93,52 @@ def title_from_filename(name: str) -> str:
     return cleaned or 'Track'
 
 
+_FOLDER_EDGE_RE = re.compile(r'^[\s_\-–—:/]+|[\s_\-–—:/]+$')
+
+
+def strip_folder_from_song_name(folder: str, name: str) -> str:
+    raw = str(name or '').strip()
+    if not raw:
+        return ''
+    ext = ''
+    lower = raw.lower()
+    for audio_ext in sorted(AUDIO_EXTS, key=len, reverse=True):
+        if lower.endswith(audio_ext):
+            ext = raw[len(raw) - len(audio_ext):]
+            raw_body = raw[: -len(audio_ext)]
+            break
+    else:
+        raw_body = raw
+    text = raw_body
+    parts = [part.strip() for part in str(folder or '').split('/') if len(part.strip()) >= 2]
+    parts.sort(key=len, reverse=True)
+    for part in parts:
+        plen = len(part)
+        if plen >= len(text):
+            continue
+        if text[:plen].casefold() == part.casefold():
+            rest = text[plen:]
+            if rest and rest[0] in ' \t-_–—:/':
+                text = rest.lstrip(' \t-_–—:/').strip()
+                continue
+        if text[-plen:].casefold() == part.casefold():
+            rest = text[:-plen]
+            if rest and rest[-1] in ' \t-_–—:/':
+                text = rest.rstrip(' \t-_–—:/').strip()
+    text = _FOLDER_EDGE_RE.sub('', text).strip()
+    if not text:
+        return raw
+    return f'{text}{ext}' if ext else text
+
+
+def track_title_for_album(album: str, name: str) -> str:
+    folder = str(album or '').split(' / ')[-1].strip()
+    song = strip_folder_from_song_name(folder, name) or (name or '').strip()
+    if folder and folder.casefold() != re.sub(r'\.(mp3|m4a|aac|wav|flac|ogg|oga|opus)$', '', song, flags=re.I).casefold():
+        return f'{folder} / {song}'
+    return song or name
+
+
 def is_audio_name(name: str, mime: str = '') -> bool:
     mime_l = (mime or '').lower().split(';')[0].strip()
     if mime_l in AUDIO_MIMES or mime_l.startswith('audio/'):
@@ -355,7 +401,7 @@ def collect_folder_tracks(folder_id: str, album: str = '', depth: int = 0) -> li
         if not is_audio_name(name, mime):
             continue
         tracks.append({
-            'title': f'{current_album.split(" / ")[-1]} / {name}' if current_album else name,
+            'title': track_title_for_album(current_album, name),
             'src': canonical_file_url(item['id']),
             'album': current_album,
         })

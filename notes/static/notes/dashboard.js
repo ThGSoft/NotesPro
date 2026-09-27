@@ -6776,8 +6776,12 @@
     const del = editable
       ? '<button type="button" class="checklist-delete" title="Delete item" aria-label="Delete item">✕</button>'
       : '';
+    const handle = editable
+      ? '<span class="checklist-drag" draggable="true" title="Drag to reorder" aria-label="Drag to reorder">⠿</span>'
+      : '';
     return [
-      `<div class="checklist-item${checked ? ' is-checked' : ''}" data-item-id="${escapeHtml(item.id || '')}">`,
+      `<div class="checklist-item${checked ? ' is-checked' : ''}${editable ? ' checklist-item--draggable' : ''}" data-item-id="${escapeHtml(item.id || '')}">`,
+      handle,
       check,
       body,
       del,
@@ -16451,6 +16455,7 @@ function formatTextWithMarkup(rawText) {
   }
 
   let checklistSyncTimer = null;
+  let checklistDragState = null;
 
   function checklistItemsFromDom(block) {
     return [...block.querySelectorAll('.checklist-item')].map((row) => ({
@@ -16492,6 +16497,14 @@ function formatTextWithMarkup(rawText) {
 
   function newChecklistItemId() {
     return `i${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
+  }
+
+  function clearChecklistDropTargets(root) {
+    (root || document).querySelectorAll(
+      '.checklist-item--drop-before, .checklist-item--drop-after, .checklist-item--dragging',
+    ).forEach((el) => {
+      el.classList.remove('checklist-item--drop-before', 'checklist-item--drop-after', 'checklist-item--dragging');
+    });
   }
 
   function insertChecklistItemRow(block, afterRow = null, item = null) {
@@ -16570,7 +16583,8 @@ function formatTextWithMarkup(rawText) {
       }
 
       const item = e.target.closest('.checklist-item');
-      if (item && !e.target.closest('input, button, textarea')) {
+      if (item && !e.target.closest('input, button, textarea, .checklist-drag')) {
+        if (checklistDragState?.moved) return;
         const check = item.querySelector('.checklist-check');
         if (check && !check.disabled) {
           e.preventDefault();
@@ -16643,6 +16657,78 @@ function formatTextWithMarkup(rawText) {
       const block = title.closest('.checklist-block');
       if (block) applyChecklistDomToMarkdown(block);
     }, true);
+
+    preview.addEventListener('dragstart', (e) => {
+      if (!isChecklistEditEnabled()) return;
+      const handle = e.target.closest?.('.checklist-drag');
+      if (!handle || !preview.contains(handle)) return;
+      const row = handle.closest('.checklist-item');
+      const block = handle.closest('.checklist-block');
+      if (!row || !block) {
+        e.preventDefault();
+        return;
+      }
+      e.stopPropagation();
+      checklistDragState = { row, block, moved: false };
+      row.classList.add('checklist-item--dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', row.dataset.itemId || 'item');
+      try {
+        e.dataTransfer.setData('application/x-checklist-item', row.dataset.itemId || 'item');
+      } catch (_) { /* ignore */ }
+      startPreviewDragAutoScroll(e.clientX, e.clientY);
+    });
+
+    preview.addEventListener('dragend', (e) => {
+      const row = e.target.closest?.('.checklist-item');
+      row?.classList.remove('checklist-item--dragging');
+      clearChecklistDropTargets(preview);
+      stopPreviewDragAutoScroll();
+      setTimeout(() => { checklistDragState = null; }, 50);
+    });
+
+    preview.addEventListener('dragover', (e) => {
+      if (!checklistDragState || !isChecklistEditEnabled()) return;
+      updatePreviewDragAutoScroll(e.clientX, e.clientY);
+      const list = e.target.closest?.('.checklist-items');
+      const block = e.target.closest?.('.checklist-block');
+      if (!block || block !== checklistDragState.block || !preview.contains(block)) {
+        if (preview.contains(e.target)) e.preventDefault();
+        return;
+      }
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      clearChecklistDropTargets(block);
+      checklistDragState.row.classList.add('checklist-item--dragging');
+      const over = e.target.closest?.('.checklist-item');
+      if (over && over !== checklistDragState.row && block.contains(over)) {
+        const rect = over.getBoundingClientRect();
+        over.classList.add(e.clientY > rect.top + rect.height / 2
+          ? 'checklist-item--drop-after'
+          : 'checklist-item--drop-before');
+      } else if (list) {
+        list.classList.add('checklist-items--drop-target');
+      }
+    });
+
+    preview.addEventListener('drop', (e) => {
+      if (!checklistDragState || !isChecklistEditEnabled()) return;
+      const block = checklistDragState.block;
+      if (!block || !preview.contains(block)) return;
+      const list = block.querySelector('.checklist-items');
+      if (!list) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const row = checklistDragState.row;
+      const before = block.querySelector('.checklist-item--drop-before');
+      const after = block.querySelector('.checklist-item--drop-after');
+      clearChecklistDropTargets(block);
+      if (before && before !== row) before.before(row);
+      else if (after && after !== row) after.after(row);
+      else if (!list.contains(row)) list.appendChild(row);
+      checklistDragState.moved = true;
+      applyChecklistDomToMarkdown(block);
+    });
   }
 
   let formWidgetSyncTimer = null;
@@ -19650,6 +19736,91 @@ function formatTextWithMarkup(rawText) {
   const quickNotePendingPatch = new Map();
   let expandedKeepCardId = null;
   let keepDragState = null;
+  let keepClDragState = null;
+
+  function clearKeepClDropTargets(root) {
+    (root || document).querySelectorAll(
+      '.keep-checklist-item--drop-before, .keep-checklist-item--drop-after, .keep-checklist-item--dragging',
+    ).forEach((el) => {
+      el.classList.remove(
+        'keep-checklist-item--drop-before',
+        'keep-checklist-item--drop-after',
+        'keep-checklist-item--dragging',
+      );
+    });
+  }
+
+  function persistKeepChecklistOrder(list) {
+    const card = list?.closest('.keep-card');
+    const noteId = parseInt(card?.dataset.noteId, 10);
+    if (!Number.isFinite(noteId)) return;
+    scheduleQuickNoteSave(noteId, { checklist: noteChecklistFromDom(card) });
+  }
+
+  function startKeepClDrag(event, row, list) {
+    keepClDragState = { row, list, moved: false };
+    row.classList.add('keep-checklist-item--dragging');
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', row.dataset.itemId || 'item');
+  }
+
+  function handleKeepClDragOver(event) {
+    if (!keepClDragState) return false;
+    const list = keepClDragState.list;
+    if (!list.contains(event.target)) return false;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    clearKeepClDropTargets(list);
+    keepClDragState.row.classList.add('keep-checklist-item--dragging');
+    const over = event.target.closest('.keep-checklist-item');
+    if (over && over !== keepClDragState.row && list.contains(over)) {
+      const rect = over.getBoundingClientRect();
+      over.classList.add(event.clientY > rect.top + rect.height / 2
+        ? 'keep-checklist-item--drop-after'
+        : 'keep-checklist-item--drop-before');
+    }
+    return true;
+  }
+
+  function handleKeepClDrop(event) {
+    if (!keepClDragState) return false;
+    const { row, list } = keepClDragState;
+    if (!list.contains(event.target) && event.target !== list) return false;
+    event.preventDefault();
+    event.stopPropagation();
+    const before = list.querySelector('.keep-checklist-item--drop-before');
+    const after = list.querySelector('.keep-checklist-item--drop-after');
+    clearKeepClDropTargets(list);
+    if (before && before !== row) before.before(row);
+    else if (after && after !== row) after.after(row);
+    keepClDragState.moved = true;
+    persistKeepChecklistOrder(list);
+    return true;
+  }
+
+  function bindKeepChecklistItemDrag(root) {
+    if (!root || root.dataset.keepClDragBound === '1') return;
+    root.dataset.keepClDragBound = '1';
+    root.addEventListener('dragstart', (e) => {
+      if (!userCanEdit) return;
+      const handle = e.target.closest?.('.keep-cl-drag');
+      if (!handle || !root.contains(handle)) return;
+      const row = handle.closest('.keep-checklist-item');
+      const list = handle.closest('.keep-checklist');
+      if (!row || !list) {
+        e.preventDefault();
+        return;
+      }
+      startKeepClDrag(e, row, list);
+    });
+    root.addEventListener('dragend', () => {
+      keepClDragState?.row?.classList.remove('keep-checklist-item--dragging');
+      clearKeepClDropTargets(keepClDragState?.list);
+      setTimeout(() => { keepClDragState = null; }, 50);
+    });
+    root.addEventListener('dragover', (e) => { handleKeepClDragOver(e); });
+    root.addEventListener('drop', (e) => { handleKeepClDrop(e); });
+  }
 
   function keepCardClass(color) {
     const id = KEEP_COLORS.some(c => c.id === color) ? color : 'default';
@@ -19746,17 +19917,25 @@ function formatTextWithMarkup(rawText) {
     keepSearchTimer = setTimeout(loadQuickNotes, 250);
   }
 
+  function keepChecklistItemMarkup(item = {}, { editable = false } = {}) {
+    const checked = Boolean(item.checked);
+    const text = escapeHtml(item.text || '');
+    if (!editable) {
+      return `<div class="keep-checklist-item${checked ? ' is-checked' : ''}"><input type="checkbox" disabled ${checked ? 'checked' : ''}><span>${text}</span></div>`;
+    }
+    return [
+      `<div class="keep-checklist-item${checked ? ' is-checked' : ''}" data-item-id="${escapeHtml(item.id || '')}">`,
+      '<span class="keep-cl-drag" draggable="true" title="Drag to reorder" aria-label="Drag to reorder">⠿</span>',
+      `<input type="checkbox" class="keep-cl-check"${checked ? ' checked' : ''}>`,
+      `<input type="text" class="keep-cl-text" value="${text}" placeholder="List item">`,
+      '</div>',
+    ].join('');
+  }
+
   function renderKeepChecklistItems(items, { editable = false, noteId = null } = {}) {
     const list = Array.isArray(items) ? items : [];
     if (!list.length && !editable) return '';
-    const rows = list.map(item => {
-      const checked = Boolean(item.checked);
-      const text = escapeHtml(item.text || '');
-      if (!editable) {
-        return `<div class="keep-checklist-item${checked ? ' is-checked' : ''}"><input type="checkbox" disabled ${checked ? 'checked' : ''}><span>${text}</span></div>`;
-      }
-      return `<div class="keep-checklist-item${checked ? ' is-checked' : ''}" data-item-id="${escapeHtml(item.id)}"><input type="checkbox" class="keep-cl-check" ${checked ? 'checked' : ''}><input type="text" class="keep-cl-text" value="${text}" placeholder="List item"></div>`;
-    }).join('');
+    const rows = list.map((item) => keepChecklistItemMarkup(item, { editable })).join('');
     if (editable) {
       return `${rows}<button type="button" class="btn btn-link btn-sm keep-cl-add" data-note-id="${noteId || ''}">+ Add item</button>`;
     }
@@ -19769,6 +19948,18 @@ function formatTextWithMarkup(rawText) {
       text: row.querySelector('.keep-cl-text')?.value || '',
       checked: row.querySelector('.keep-cl-check')?.checked || false,
     })).filter(item => item.text.trim() || item.checked);
+  }
+
+  function appendKeepChecklistItem(list, beforeEl = null) {
+    if (!list) return null;
+    const wrap = document.createElement('div');
+    wrap.innerHTML = keepChecklistItemMarkup({ id: `c${Date.now()}` }, { editable: true });
+    const item = wrap.firstElementChild;
+    if (!item) return null;
+    if (beforeEl) list.insertBefore(item, beforeEl);
+    else list.appendChild(item);
+    item.querySelector('.keep-cl-text')?.focus();
+    return item;
   }
 
   function renderKeepMarkdown(body) {
@@ -20173,11 +20364,7 @@ function formatTextWithMarkup(rawText) {
 
   function bindComposerChecklistEvents(container) {
     container.querySelector('.keep-cl-add')?.addEventListener('click', () => {
-      const item = document.createElement('div');
-      item.className = 'keep-checklist-item';
-      item.dataset.itemId = `c${Date.now()}`;
-      item.innerHTML = '<input type="checkbox" class="keep-cl-check"><input type="text" class="keep-cl-text" placeholder="List item">';
-      container.insertBefore(item, container.querySelector('.keep-cl-add'));
+      appendKeepChecklistItem(container, container.querySelector('.keep-cl-add'));
     });
   }
 
@@ -20221,6 +20408,7 @@ function formatTextWithMarkup(rawText) {
     });
 
     document.getElementById('keep-composer-collapsed')?.addEventListener('click', expandKeepComposer);
+    bindKeepChecklistItemDrag(document.getElementById('keep-composer'));
     document.getElementById('keep-composer-close')?.addEventListener('click', collapseKeepComposer);
     document.getElementById('keep-composer-save')?.addEventListener('click', submitKeepComposer);
     document.getElementById('keep-composer-checklist-btn')?.addEventListener('click', () => {
@@ -20358,16 +20546,24 @@ function formatTextWithMarkup(rawText) {
       const card = e.target.closest('.keep-card');
       const checklist = card?.querySelector('.keep-checklist');
       if (!checklist) return;
-      const item = document.createElement('div');
-      item.className = 'keep-checklist-item';
-      item.dataset.itemId = `c${Date.now()}`;
-      item.innerHTML = '<input type="checkbox" class="keep-cl-check"><input type="text" class="keep-cl-text" placeholder="List item">';
-      checklist.insertBefore(item, e.target);
+      appendKeepChecklistItem(checklist, e.target);
     });
 
     const keepGrid = document.getElementById('keep-grid');
     keepGrid?.addEventListener('dragstart', e => {
-      if (!userCanEdit || keepSearchActive()) return;
+      if (!userCanEdit) return;
+      const itemHandle = e.target.closest?.('.keep-cl-drag');
+      if (itemHandle && keepGrid.contains(itemHandle)) {
+        const row = itemHandle.closest('.keep-checklist-item');
+        const list = itemHandle.closest('.keep-checklist');
+        if (!row || !list) {
+          e.preventDefault();
+          return;
+        }
+        startKeepClDrag(e, row, list);
+        return;
+      }
+      if (keepSearchActive()) return;
       const handle = e.target.closest?.('.keep-note-drag');
       if (!handle || !keepGrid.contains(handle)) return;
       const card = handle.closest('.keep-card');
@@ -20390,6 +20586,12 @@ function formatTextWithMarkup(rawText) {
     });
 
     keepGrid?.addEventListener('dragend', e => {
+      const item = e.target.closest?.('.keep-checklist-item');
+      item?.classList.remove('keep-checklist-item--dragging');
+      if (keepClDragState) {
+        clearKeepClDropTargets(keepClDragState.list);
+        setTimeout(() => { keepClDragState = null; }, 50);
+      }
       const handle = e.target.closest?.('.keep-note-drag');
       const card = handle?.closest('.keep-card') || e.target.closest?.('.keep-card');
       card?.classList.remove('keep-card--dragging');
@@ -20398,6 +20600,7 @@ function formatTextWithMarkup(rawText) {
     });
 
     keepGrid?.addEventListener('dragover', e => {
+      if (handleKeepClDragOver(e)) return;
       if (!keepDragState || !userCanEdit) return;
       const card = e.target.closest?.('.keep-card');
       if (!card || !keepGrid.contains(card)) return;
@@ -20412,12 +20615,19 @@ function formatTextWithMarkup(rawText) {
     });
 
     keepGrid?.addEventListener('dragleave', e => {
+      if (keepClDragState) {
+        const row = e.target.closest?.('.keep-checklist-item');
+        if (row && !row.contains(e.relatedTarget)) {
+          row.classList.remove('keep-checklist-item--drop-before', 'keep-checklist-item--drop-after');
+        }
+      }
       const card = e.target.closest?.('.keep-card');
       if (!card || card.contains(e.relatedTarget)) return;
       card.classList.remove('keep-card--drop-before', 'keep-card--drop-after');
     });
 
     keepGrid?.addEventListener('drop', async e => {
+      if (handleKeepClDrop(e)) return;
       if (!keepDragState || !userCanEdit) return;
       const card = e.target.closest?.('.keep-card');
       if (!card || !keepGrid.contains(card)) return;
