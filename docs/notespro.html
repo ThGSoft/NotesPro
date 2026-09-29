@@ -244,11 +244,45 @@
       box-shadow: 2px 3px 0 rgba(0,0,0,0.2);
       z-index: 2;
     }
-    .shot-frame img {
+    .shot-frame img,
+    .shot-frame iframe {
       display: block;
       width: 100%;
       height: auto;
       vertical-align: middle;
+      background: #0b1220;
+      border: 0;
+    }
+    .shot-frame iframe { aspect-ratio: 16 / 9; }
+    .promo-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 1rem;
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 clamp(1.25rem, 4vw, 3rem) 2rem;
+    }
+    .promo-card {
+      margin: 0;
+      background: var(--paper);
+      border: 2px solid #1a1a1a;
+      padding: 0.55rem 0.55rem 0.7rem;
+      box-shadow: 3px 5px 0 rgba(0,0,0,0.14);
+    }
+    .promo-card iframe {
+      display: block;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      height: auto;
+      background: #0b1220;
+      border: 1px solid #1a1a1a;
+    }
+    .promo-card figcaption {
+      margin-top: 0.45rem;
+      font-weight: 700;
+      font-size: 0.88rem;
+      text-align: center;
+      color: var(--note-ink);
     }
     .shot-caption {
       margin: 0.85rem 0 0;
@@ -634,7 +668,7 @@
         NotesPro
       </a>
       <div style="display:flex;gap:0.55rem;">
-        <a class="btn btn-ghost" href="jukebox.html">Jukebox</a>
+        <a class="btn btn-ghost" href="jukebox/">Jukebox</a>
         <a class="btn btn-ghost" href="#gallery">Gallery</a>
         <a class="btn btn-ghost" href="#advantages">Advantages</a>
         <a class="btn btn-ghost" href="#shop">Shop</a>
@@ -675,6 +709,28 @@
       </a>
       <figcaption class="shot-caption">Full dashboard — edit, preview, Keep, and chat in one view</figcaption>
     </figure>
+
+    <figure class="shot">
+      <div class="shot-frame">
+        <iframe src="https://www.youtube-nocookie.com/embed/Uu86ajw5l30?rel=0" title="NotesPro for everything" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen loading="lazy"></iframe>
+      </div>
+      <figcaption class="shot-caption"><a href="https://www.youtube.com/watch?v=Uu86ajw5l30">NotesPro for everything</a></figcaption>
+    </figure>
+
+    <div class="promo-grid">
+      <figure class="promo-card">
+        <iframe src="https://www.youtube-nocookie.com/embed/VXNI8VFps4k?rel=0" title="Photo Gallery with Own Images" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen loading="lazy"></iframe>
+        <figcaption><a href="https://www.youtube.com/watch?v=VXNI8VFps4k">Photo gallery</a></figcaption>
+      </figure>
+      <figure class="promo-card">
+        <iframe src="https://www.youtube-nocookie.com/embed/K-dRoKwrD6s?rel=0" title="Free Games with Highscore" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen loading="lazy"></iframe>
+        <figcaption><a href="https://www.youtube.com/watch?v=K-dRoKwrD6s">Games</a></figcaption>
+      </figure>
+      <figure class="promo-card">
+        <iframe src="https://www.youtube-nocookie.com/embed/x-7XBLUxtSI?rel=0" title="Free Shop NotesList" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen loading="lazy"></iframe>
+        <figcaption><a href="https://www.youtube.com/watch?v=x-7XBLUxtSI">Shop and NotesList</a></figcaption>
+      </figure>
+    </div>
 
     <section id="gallery" aria-labelledby="gallery-title">
       <div class="section-head">
@@ -838,7 +894,7 @@
         </article>
         <article class="feature">
           <span class="label">Jukebox</span>
-          <h3><a href="jukebox.html">MP3 cabinet player</a></h3>
+          <h3><a href="jukebox">MP3 cabinet player</a></h3>
           <p>Play albums in a diner jukebox: drop folders, add Google Drive, keep playing in the background, and skip random 30 / 60 / 90 second clips. Titles show folder and filename.</p>
         </article>
         <article class="feature">
@@ -1025,7 +1081,7 @@
         NotesPro
       </a>
       <span>
-        <a href="jukebox.html">Jukebox</a>
+        <a href="jukebox/">Jukebox</a>
         · <a href="#shop">Shop</a>
         · <a href="#noteslist">NotesList</a>
         · <a href="#privacy">Privacy</a>
