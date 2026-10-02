@@ -34,6 +34,27 @@
       .replace(/"/g, '&quot;');
   }
 
+  function driveFolderId(src) {
+    const raw = String(src || '');
+    const folder = raw.match(/\/folders\/([A-Za-z0-9_-]+)/i)
+      || raw.match(/embeddedfolderview\?id=([A-Za-z0-9_-]+)/i);
+    return folder ? folder[1] : '';
+  }
+
+  function driveFileId(src) {
+    if (driveFolderId(src)) return '';
+    const raw = String(src || '');
+    const file = raw.match(/\/file\/d\/([A-Za-z0-9_-]+)/i)
+      || raw.match(/[?&]id=([A-Za-z0-9_-]+)/i);
+    return file ? file[1] : '';
+  }
+
+  function isDriveLink(src) {
+    const raw = String(src || '').trim();
+    if (!/(?:drive|docs)\.google\.com/i.test(raw)) return false;
+    return !!(driveFolderId(raw) || driveFileId(raw));
+  }
+
   function parseFenceAttrs(attrs) {
     const config = {};
     String(attrs || '').split(/[;\s]+/).forEach(pair => {
@@ -196,11 +217,25 @@
     }
   }
 
+  function shufflePhotos(photos) {
+    const copy = (photos || []).slice();
+    for (let i = copy.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      const swap = copy[i];
+      copy[i] = copy[j];
+      copy[j] = swap;
+    }
+    return copy;
+  }
+
   function mazeSize(photoCount) {
-    if (photoCount <= 0) return { cols: 5, rows: 5 };
-    if (photoCount <= 4) return { cols: 6, rows: 5 };
-    if (photoCount <= 8) return { cols: 7, rows: 6 };
-    return { cols: 8, rows: 7 };
+    const n = photoCount | 0;
+    if (n <= 0) return { cols: 5, rows: 5 };
+    if (n <= 4) return { cols: 6, rows: 5 };
+    if (n <= 8) return { cols: 7, rows: 6 };
+    let side = 8;
+    while (side < 36 && (side * (side - 1) + side + (side - 1) + 1) < n) side += 1;
+    return { cols: side, rows: side - 1 };
   }
 
   function hashSeed(text) {
@@ -317,7 +352,7 @@
       title: String(cfg.title || 'Photo labyrinth').trim() || 'Photo labyrinth',
       demo,
       traces: resolveTraces(cfg),
-      photos: photos.length ? photos : (demo ? DEMO_PHOTOS.map((p) => ({ ...p })) : photos),
+      photos: shufflePhotos(photos.length ? photos : (demo ? DEMO_PHOTOS.map((p) => ({ ...p })) : photos)),
       draft: !photos.length,
     };
   }
@@ -394,7 +429,7 @@
       `<canvas class="labyrinth-canvas"></canvas>`,
       `<div class="labyrinth-overlay">`,
       `<p class="labyrinth-hint labyrinth-hint--desktop">${spec.draft
-        ? 'Paste photos (Ctrl+V) — they cover the maze walls · click to look · W A S D walk · find EXIT'
+        ? 'Paste photos or a Google Drive folder — they cover the maze walls · click to look · W A S D walk · find EXIT'
         : 'Click to look · <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> walk · timer starts when you enter · find EXIT'}</p>`,
       `<p class="labyrinth-hint labyrinth-hint--mobile">${spec.demo
         ? 'WASD pad walk · drag to look · Demo tour auto-walks · find EXIT'
@@ -423,7 +458,11 @@
       `<button type="button" class="btn btn-sm btn-outline-light" data-action="toggle-traces" aria-pressed="false">Traces</button>`,
       `<button type="button" class="btn btn-sm btn-outline-secondary" data-action="reset-maze">Reset</button>`,
       editable
-        ? `<button type="button" class="btn btn-sm btn-outline-secondary" data-action="add-photo">Add photo</button>`
+        ? [
+          `<button type="button" class="btn btn-sm btn-outline-secondary" data-action="add-photo">Add photo</button>`,
+          `<input class="labyrinth-drive-url" type="url" placeholder="Google Drive folder of photos" autocomplete="off">`,
+          `<button type="button" class="btn btn-sm btn-outline-secondary" data-action="drive-add">Use Drive</button>`,
+        ].join('')
         : '',
       `</div>`,
       `</div>`,
@@ -758,7 +797,8 @@
       wallEntries.push(entry);
 
       if (!photo) return;
-      const url = resolveMediaHref(photo.src);
+      const resolveHref = spec.resolveImageHref || resolveMediaHref;
+      const url = resolveHref(photo.src);
       if (entry.kind === 'video') {
         const video = document.createElement('video');
         video.src = url;
@@ -1564,6 +1604,10 @@
     bindFullscreenButton(el);
 
     let walk = null;
+    if (typeof options.resolveImageHref === 'function') {
+      spec.resolveImageHref = options.resolveImageHref;
+    }
+
     whenThreeReady(
       () => {
         if (!el.isConnected) return;
@@ -1603,9 +1647,62 @@
         return;
       }
       if (action === 'add-photo') {
-        setStatus(el, 'Paste an image (Ctrl+V) or drop a file onto the maze.');
+        setStatus(el, 'Paste an image (Ctrl+V), drop a file, or paste a Google Drive folder.');
         el.focus({ preventScroll: true });
       }
+      if (action === 'drive-add') {
+        const input = el.querySelector('.labyrinth-drive-url');
+        void addDriveLink(input?.value || '');
+      }
+    });
+
+    async function addDriveLink(raw) {
+      const text = String(raw || '').trim();
+      if (!text) {
+        setStatus(el, 'Paste a Google Drive folder of photos.');
+        return;
+      }
+      if (!isDriveLink(text)) {
+        setStatus(el, 'That is not a Google Drive file or folder link.');
+        return;
+      }
+      if (typeof options.onDriveList !== 'function') {
+        setStatus(el, 'Sign in to load Google Drive.');
+        return;
+      }
+      setStatus(el, 'Loading Google Drive photos…');
+      try {
+        const data = await options.onDriveList(text);
+        const incoming = Array.isArray(data?.photos) ? data.photos : [];
+        const photos = incoming
+          .map((item) => ({
+            src: item.src || '',
+            label: item.title || item.label || 'Photo',
+          }))
+          .filter((item) => item.src);
+        if (!photos.length) {
+          setStatus(el, 'No images in that Drive folder. Share it as “Anyone with the link”.');
+          return;
+        }
+        if (typeof options.onDrivePhotos === 'function') {
+          await options.onDrivePhotos({
+            drive: data.url || text,
+            photos,
+          });
+        }
+        const input = el.querySelector('.labyrinth-drive-url');
+        if (input) input.value = '';
+        setStatus(el, `${photos.length} Drive photo${photos.length === 1 ? '' : 's'} on the walls.`);
+      } catch (err) {
+        setStatus(el, err?.message || 'Google Drive listing failed.');
+      }
+    }
+
+    const driveInput = el.querySelector('.labyrinth-drive-url');
+    driveInput?.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      void addDriveLink(driveInput.value);
     });
 
     if (typeof options.onPasteImage !== 'function') return;
@@ -1630,10 +1727,20 @@
         .filter(item => item.kind === 'file' && item.type.startsWith('image/'))
         .map(item => item.getAsFile())
         .filter(Boolean);
-      if (!files.length) return;
+      if (files.length) {
+        e.preventDefault();
+        e.stopPropagation();
+        void handlePasteFiles(files);
+        return;
+      }
+      const text = String(e.clipboardData?.getData('text/plain') || '').trim();
+      const driveText = (text.match(/https?:\/\/\S+/i) || [text])[0].replace(/[),.;]+$/g, '');
+      if (!isDriveLink(driveText)) return;
       e.preventDefault();
       e.stopPropagation();
-      void handlePasteFiles(files);
+      const input = el.querySelector('.labyrinth-drive-url');
+      if (input) input.value = driveText;
+      void addDriveLink(driveText);
     });
 
     el.addEventListener('dragover', (e) => {
@@ -1658,6 +1765,8 @@
 
   return {
     parseFenceAttrs,
+    driveFileId,
+    driveFolderId,
     parsePhotos,
     formatGalleryBody,
     buildFenceAttrsString,

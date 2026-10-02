@@ -11,6 +11,16 @@ from . import views_games
 
 urlpatterns = [
     path('', views.dashboard, name='dashboard'),
+    path(
+        'p/<str:owner>/<slug:workspace_slug>/<slug:page_slug>/',
+        views.public_page,
+        name='public_page',
+    ),
+    path(
+        'api/public/<str:owner>/<slug:workspace_slug>/<slug:page_slug>/shop-order/',
+        views.public_shop_order,
+        name='public_shop_order',
+    ),
     path('sw.js', views.service_worker, name='service_worker'),
     path('favicon.ico', RedirectView.as_view(url=settings.STATIC_URL + 'images/favicon.ico')),
 
@@ -72,8 +82,10 @@ urlpatterns = [
 
     path('api/uploads/', views.upload_file, name='api_upload'),
     path('api/rss/', views.rss_fetch, name='api_rss_fetch'),
+    path('api/link-preview/', views.link_preview, name='api_link_preview'),
     path('api/drive/resolve/', views.gdrive_resolve, name='api_drive_resolve'),
     path('api/drive/audio/<str:file_id>/', views.gdrive_audio, name='api_drive_audio'),
+    path('api/drive/media/<str:file_id>/', views.gdrive_audio, name='api_drive_media'),
     path('api/local-files/open/', views.open_local_file, name='api_open_local_file'),
     path('api/pages/<int:pk>/', views.page_detail, name='api_page_detail'),
     path('api/pages/create/', views.page_create, name='api_page_create'),

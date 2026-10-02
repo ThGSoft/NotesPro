@@ -429,6 +429,7 @@ class Page(models.Model):
         return {
             'contents': self._setting_bool(raw.get('contents'), True),
             'tags': self._setting_bool(raw.get('tags'), True),
+            'public': self._setting_bool(raw.get('public'), False),
         }
 
     @staticmethod

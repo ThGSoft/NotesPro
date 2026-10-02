@@ -1570,6 +1570,36 @@ body.editing #preview-content:focus {
   max-width: 100%;
 }
 
+.preview-content img.md-image--inline,
+.preview-layout img.md-image--inline,
+.editor-preview-side img.md-image--inline,
+.EasyMDEContainer .editor-preview img.md-image--inline,
+.preview-content a.md-image-link--inline img,
+.preview-layout a.md-image-link--inline img,
+.editor-preview-side a.md-image-link--inline img,
+.EasyMDEContainer .editor-preview a.md-image-link--inline img {
+  display: inline-block;
+  width: 48px;
+  height: 48px;
+  max-width: 48px;
+  object-fit: cover;
+  vertical-align: middle;
+  margin: 0;
+  border-radius: 4px;
+}
+
+.preview-content a.md-image-link--inline,
+.preview-layout a.md-image-link--inline,
+.editor-preview-side a.md-image-link--inline,
+.EasyMDEContainer .editor-preview a.md-image-link--inline {
+  display: inline-block;
+  width: auto;
+  max-width: none;
+  line-height: 0;
+  vertical-align: middle;
+  margin: 0 8px 0 0;
+}
+
 .preview-content .md-image-wrap,
 .preview-layout .md-image-wrap,
 .editor-preview-side .md-image-wrap,
@@ -3180,6 +3210,35 @@ body.jukebox-standalone .preview-content > .jukebox-block {
 
 body.jukebox-standalone.has-jukebox-dock {
   padding-bottom: 0;
+}
+
+body.public-page .sidebar,
+body.public-page #left-panel,
+body.public-page #left-splitter,
+body.public-page .right-panel,
+body.public-page #right-panel,
+body.public-page #right-splitter,
+body.public-page #toggle-left,
+body.public-page #quick-notes-wrap,
+body.public-page .mobile-page-fabs {
+  display: none !important;
+}
+
+body.public-page .app-shell {
+  --sidebar-width: 0px;
+  --splitter-width: 0px;
+  --right-width: 0px;
+  --right-splitter-width: 0px;
+  grid-template-columns: minmax(0, 1fr) !important;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+body.public-page .main-pane,
+body.public-page:not(.editing) .main-pane,
+body.public-page .app-shell:has(.editor-wrap--preview-only) .main-pane,
+body.public-page .app-shell:has(.right-panel:not(.collapsed)) .main-pane {
+  grid-column: 1 !important;
+  grid-row: 2 !important;
 }
 
 .panel-type-buttons {
@@ -9371,6 +9430,12 @@ body.mobile-layout .sheet-structure-menu-btn {
   color: var(--muted);
 }
 
+.dropzone.active {
+  border-color: var(--accent);
+  background: rgba(37, 99, 235, 0.14);
+  color: var(--text);
+}
+
 .file-list {
   margin-top: 12px;
   max-height: 400px;
@@ -12729,6 +12794,32 @@ body.mobile-layout .sokoban-tips__controls--mobile {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  align-items: center;
+}
+
+.photo-drive-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.photo-drive-url {
+  flex: 1 1 180px;
+  min-width: 140px;
+  max-width: 320px;
+  min-height: 31px;
+  padding: 4px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.35);
+  color: #ffffff;
+  font: 400 0.8rem/1.2 Arial, sans-serif;
+}
+
+.photo-drive-url::placeholder {
+  color: rgba(255, 255, 255, 0.65);
 }
 
 .gallery-walk-toolbar .btn.active {
@@ -14697,6 +14788,24 @@ body.mobile-layout .labyrinth-pad {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  align-items: center;
+}
+
+.labyrinth-drive-url {
+  flex: 1 1 180px;
+  min-width: 140px;
+  max-width: 320px;
+  min-height: 31px;
+  padding: 4px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.35);
+  color: #ffffff;
+  font: 400 0.8rem/1.2 Arial, sans-serif;
+}
+
+.labyrinth-drive-url::placeholder {
+  color: rgba(255, 255, 255, 0.65);
 }
 
 .labyrinth-toolbar .btn.active {
@@ -15468,6 +15577,27 @@ body.mobile-layout .labyrinth-toolbar [data-action="walk-demo"] {
   border-radius: 6px;
   display: block;
   margin: 6px 0;
+}
+
+.keep-md img.md-image--inline,
+.keep-md a.md-image-link--inline img {
+  display: inline-block;
+  width: 48px;
+  height: 48px;
+  max-width: 48px;
+  object-fit: cover;
+  vertical-align: middle;
+  margin: 0;
+  border-radius: 4px;
+}
+
+.keep-md a.md-image-link--inline {
+  display: inline-block;
+  width: auto;
+  max-width: none;
+  line-height: 0;
+  vertical-align: middle;
+  margin: 0 8px 0 0;
 }
 
 .keep-md .md-image-wrap--full,

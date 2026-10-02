@@ -529,6 +529,8 @@ Writers and workspace owners start in edit mode; read-only members see preview o
 
 **Contents** (the heading table of contents) can be turned off per page: top bar **Page** → uncheck **Contents**.
 
+**Show without login** publishes that page at `/p/<username>/<workspace>/<page>/`. The switch is stored in page settings, outside NotesList and shop fences. Visitors can read the page, including those blocks. Shop checkout asks for PayPal, Visa, or Mastercard on the page — Settings is not on that view — and mails the payment to the shop. Replies and new NotesList items still require a sign-in.
+
 ### Find / replace
 
 Available in edit mode: toolbar icons or **Find** / **Replace** bar above the editor.
@@ -797,7 +799,7 @@ Interactive to-do list. Fence name: `checklist` (also `check-list` / `todolist`)
 | `col` | Theme: `info` / `success` / `warning` / `danger` / `note`, or a CSS color |
 | `title` | Optional title via fence `title=…`, body `# Title`, or `title: …` |
 
-Each item line is `- [ ] text` or `- [x] text` (plain lines count as unchecked). Click the **checkbox** to toggle. Use **Left** / **Right** to move checkboxes. **+ Add item** adds a row. **✕** deletes an item after a confirm prompt. All of that works in **Preview** or **Edit** when you can edit the page.
+Each item line is `- [ ] text` or `- [x] text` (plain lines count as unchecked). Click the **checkbox** to toggle. Drag **⠿** to reorder items. Use **Left** / **Right** to move checkboxes. **+ Add item** adds a row. **✕** deletes an item after a confirm prompt. All of that works in **Preview** or **Edit** when you can edit the page.
 
 Use the toolbar **checklist** button to insert a sample list.
 

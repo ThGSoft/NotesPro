@@ -869,30 +869,38 @@
     const extraInfo = extraInfoText
       ? `<details class="shop-extra-info"><summary>Additional info</summary><p>${escapeHtml(extraInfoText)}</p></details>`
       : '';
-    const payBadges = [
-      merchant.paypalEnabled ? '<span class="shop-pay-badge shop-pay-badge--paypal">PayPal</span>' : '',
-      merchant.visaEnabled ? '<span class="shop-pay-badge shop-pay-badge--visa">Visa</span>' : '',
-      merchant.mastercardEnabled ? '<span class="shop-pay-badge shop-pay-badge--mastercard">Mastercard</span>' : '',
-    ].filter(Boolean).join('');
-    const payBadgeHtml = payBadges
-      ? `<div class="shop-pay-badges" aria-label="Accepted payments">${payBadges}</div>`
-      : '';
-    const payMethods = [
+    const configuredMethods = [
       merchant.paypalEnabled ? ['paypal', 'PayPal'] : null,
       merchant.visaEnabled ? ['visa', 'Visa'] : null,
       merchant.mastercardEnabled ? ['mastercard', 'Mastercard'] : null,
     ].filter(Boolean);
+    const payMethods = configuredMethods.length
+      ? configuredMethods
+      : (options.askPayment ? [['paypal', 'PayPal'], ['visa', 'Visa'], ['mastercard', 'Mastercard']] : []);
+    const payBadges = payMethods.map(([value]) => {
+      if (value === 'paypal') return '<span class="shop-pay-badge shop-pay-badge--paypal">PayPal</span>';
+      if (value === 'visa') return '<span class="shop-pay-badge shop-pay-badge--visa">Visa</span>';
+      return '<span class="shop-pay-badge shop-pay-badge--mastercard">Mastercard</span>';
+    }).join('');
+    const payBadgeHtml = payBadges
+      ? `<div class="shop-pay-badges" aria-label="Accepted payments">${payBadges}</div>`
+      : '';
     const payButtons = payMethods
       .map(([value, label]) => `<button type="button" class="shop-pay-prompt-btn shop-pay-prompt-btn--${value}" data-shop-pay="${value}">${label}</button>`)
       .join('');
     const merchantKonto = sanitizeKonto(merchant.konto);
-    const kontoStepHtml = merchantKonto
+    const buyerKontoFields = [
+      `<label class="shop-note-field shop-pay-konto-field">Your Konto`,
+      `<input type="text" class="shop-note-input" data-shop-buyer-konto maxlength="42" placeholder="IBAN or account" autocomplete="off">`,
+      `</label>`,
+      `<button type="button" class="shop-pay-prompt-btn shop-pay-prompt-btn--transfer" data-shop-transfer>Transfer</button>`,
+    ].join('');
+    const kontoStepHtml = (merchantKonto || options.askPayment)
       ? [
-          `<p class="shop-pay-konto-to">Transfer to <strong data-shop-merchant-konto>${escapeHtml(merchantKonto)}</strong></p>`,
-          `<label class="shop-note-field shop-pay-konto-field">Your Konto`,
-          `<input type="text" class="shop-note-input" data-shop-buyer-konto maxlength="42" placeholder="IBAN or account" autocomplete="off">`,
-          `</label>`,
-          `<button type="button" class="shop-pay-prompt-btn shop-pay-prompt-btn--transfer" data-shop-transfer>Transfer</button>`,
+          merchantKonto
+            ? `<p class="shop-pay-konto-to">Transfer to <strong data-shop-merchant-konto>${escapeHtml(merchantKonto)}</strong></p>`
+            : '',
+          buyerKontoFields,
         ].join('')
       : `<p class="shop-pay-prompt-empty">Add a Konto in Settings to receive Visa and Mastercard transfers.</p>`;
     const payPromptHtml = [
@@ -940,7 +948,9 @@
       `<div class="shop-header">`,
       `<div class="shop-heading">`,
       `<div class="shop-title">${escapeHtml(spec.title)}</div>`,
-      `<div class="shop-meta">${spec.kind === 'sw' ? 'Download or add to cart · ' : 'Add to cart · '}checkout, then pay with PayPal, Visa, or Mastercard · Visa/Mastercard transfer to the Settings Konto · sent by ${escapeHtml(viaLabel)} to ${escapeHtml(toLabel)}</div>`,
+      `<div class="shop-meta">${options.askPayment
+        ? `${spec.kind === 'sw' ? 'Download or add to cart · ' : 'Add to cart · '}checkout, then choose PayPal, Visa, or Mastercard`
+        : `${spec.kind === 'sw' ? 'Download or add to cart · ' : 'Add to cart · '}checkout, then pay with PayPal, Visa, or Mastercard · Visa/Mastercard transfer to the Settings Konto · sent by ${escapeHtml(viaLabel)} to ${escapeHtml(toLabel)}`}</div>`,
       payBadgeHtml,
       `</div>`,
       settingsHtml,
@@ -1064,17 +1074,33 @@
       return Number.isFinite(idx) ? idx : 0;
     }
 
-    if (typeof hooks.onPasteImage === 'function') {
+    if (typeof hooks.onPasteImage === 'function' || typeof hooks.onPasteImageUrl === 'function' || typeof hooks.onPastePageUrl === 'function') {
       el.addEventListener('paste', (event) => {
         const items = [...(event.clipboardData?.items || [])];
         const files = items
           .filter((item) => item.kind === 'file' && String(item.type || '').startsWith('image/'))
           .map((item) => item.getAsFile())
           .filter(Boolean);
-        if (!files.length) return;
+        if (files.length && typeof hooks.onPasteImage === 'function') {
+          event.preventDefault();
+          event.stopPropagation();
+          void handlePasteFiles(files, itemIndexFromEvent(event));
+          return;
+        }
+        const urls = window.NotesProGallery?.clipboardImageUrls?.(event.clipboardData) || [];
+        if (urls.length && typeof hooks.onPasteImageUrl === 'function') {
+          event.preventDefault();
+          event.stopPropagation();
+          const itemIndex = itemIndexFromEvent(event);
+          urls.forEach((url) => hooks.onPasteImageUrl(url, itemIndex, spec, el));
+          return;
+        }
+        const pageUrls = window.NotesProGallery?.clipboardPageUrls?.(event.clipboardData) || [];
+        if (!pageUrls.length || typeof hooks.onPastePageUrl !== 'function') return;
         event.preventDefault();
         event.stopPropagation();
-        void handlePasteFiles(files, itemIndexFromEvent(event));
+        const itemIndex = itemIndexFromEvent(event);
+        pageUrls.forEach((url) => hooks.onPastePageUrl(url, itemIndex, spec, el));
       });
       el.addEventListener('dragover', (event) => {
         if (![...(event.dataTransfer?.types || [])].includes('Files')) return;

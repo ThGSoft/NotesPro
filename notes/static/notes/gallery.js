@@ -191,8 +191,39 @@
     return { theme, colorCss, bgCss };
   }
 
+  function driveFolderId(src) {
+    const raw = String(src || '');
+    const folder = raw.match(/\/folders\/([A-Za-z0-9_-]+)/i)
+      || raw.match(/embeddedfolderview\?id=([A-Za-z0-9_-]+)/i);
+    return folder ? folder[1] : '';
+  }
+
+  function driveFileId(src) {
+    if (driveFolderId(src)) return '';
+    const raw = String(src || '');
+    const file = raw.match(/\/file\/d\/([A-Za-z0-9_-]+)/i)
+      || raw.match(/[?&]id=([A-Za-z0-9_-]+)/i);
+    return file ? file[1] : '';
+  }
+
+  function isDriveLink(src) {
+    const raw = String(src || '').trim();
+    if (!/(?:drive|docs)\.google\.com/i.test(raw)) return false;
+    return !!(driveFolderId(raw) || driveFileId(raw));
+  }
+
+  function driveMediaHref(href) {
+    const id = driveFileId(href);
+    if (!id) return '';
+    const appBase = (typeof window !== 'undefined' && window.APP_BASE) ? String(window.APP_BASE).replace(/\/$/, '') : '';
+    const path = `api/drive/media/${encodeURIComponent(id)}/`;
+    return appBase ? `${appBase}/${path}` : `/${path}`;
+  }
+
   function resolveMediaHref(href) {
     if (!href) return '';
+    const drive = driveMediaHref(href);
+    if (drive) return drive;
     if (/^https?:\/\//i.test(href) || /^data:/i.test(href)) return href;
     const appBase = (typeof window !== 'undefined' && window.APP_BASE) ? String(window.APP_BASE).replace(/\/$/, '') : '';
     let path = String(href).replace(/\\/g, '/');
@@ -219,6 +250,170 @@
       /(?:youtube(?:-nocookie)?\.com\/(?:embed\/|shorts\/|live\/|watch\?(?:[^"'<\s]*?[?&])?v=)|youtu\.be\/)([A-Za-z0-9_-]{11})/i,
     );
     return match ? match[1] : '';
+  }
+
+  const IMAGE_URL_EXT_RE = /\.(?:png|jpe?g|gif|webp|avif|bmp|svg)(?:$|[?#])/i;
+  const IMAGE_URL_HOST_RE = /(?:^|\.)(?:picsum\.photos|images\.unsplash\.com|plus\.unsplash\.com|i\.imgur\.com|googleusercontent\.com|ggpht\.com|encrypted-tbn\d*\.gstatic\.com|pinimg\.com|twimg\.com|fbcdn\.net|cdninstagram\.com|res\.cloudinary\.com|upload\.wikimedia\.org|ibb\.co|i\.ibb\.co|postimg\.cc|i\.postimg\.cc|staticflickr\.com|live\.staticflickr\.com|media\.tenor\.com|media\.giphy\.com|i\.giphy\.com|i\.redd\.it|preview\.redd\.it|media\.discordapp\.net|cdn\.discordapp\.com)$/i;
+  const NESTED_IMAGE_PARAM_RE = /^(?:imgurl|mediaurl|media_url|imageurl|image_url|image|img|src)$/i;
+
+  function decodeMaybeUri(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    try {
+      return decodeURIComponent(raw);
+    } catch (_) {
+      return raw;
+    }
+  }
+
+  function unwrapImageUrl(raw) {
+    let url = String(raw || '').trim().replace(/^["'<>]+|["'<>]+$/g, '');
+    if (!url) return '';
+    for (let i = 0; i < 3; i += 1) {
+      let parsed;
+      try {
+        parsed = new URL(url);
+      } catch (_) {
+        break;
+      }
+      let nested = '';
+      parsed.searchParams.forEach((value, key) => {
+        if (nested || !NESTED_IMAGE_PARAM_RE.test(key)) return;
+        const decoded = decodeMaybeUri(value);
+        if (/^https?:\/\//i.test(decoded)) nested = decoded;
+      });
+      if (!nested) break;
+      url = nested;
+    }
+    return url;
+  }
+
+  function looksLikeImageUrl(raw) {
+    const url = unwrapImageUrl(raw);
+    if (!url || /\s/.test(url)) return false;
+    if (/^data:image\//i.test(url)) return true;
+    if (!/^https?:\/\//i.test(url)) return false;
+    if (extractYoutubeId(url)) return false;
+    if (IMAGE_URL_EXT_RE.test(url)) return true;
+    try {
+      const parsed = new URL(url);
+      const host = parsed.hostname.replace(/^www\./i, '');
+      if (IMAGE_URL_HOST_RE.test(host)) return true;
+      if (/[?&](?:format|fm|ext)=(?:png|jpe?g|gif|webp|avif|svg)\b/i.test(parsed.search)) return true;
+      if (/\/(?:original|hqdefault|mqdefault|sddefault|maxresdefault)\.jpg(?:$|[?#])/i.test(`${parsed.pathname}${parsed.search}`)) return true;
+    } catch (_) {
+      return false;
+    }
+    return false;
+  }
+
+  function imageLabelFromUrl(url) {
+    try {
+      const path = decodeURIComponent(new URL(url).pathname);
+      const base = path.split('/').filter(Boolean).pop() || 'image';
+      return base.replace(/\.[a-z0-9]+$/i, '') || 'image';
+    } catch (_) {
+      return 'image';
+    }
+  }
+
+  function extractHttpUrls(text) {
+    const matches = String(text || '').match(/https?:\/\/[^\s<>"']+/gi) || [];
+    return matches.map((item) => item.replace(/[),.;]+$/g, ''));
+  }
+
+  function extractImageUrlsFromHtml(html) {
+    const urls = [];
+    const source = String(html || '');
+    const imgRe = /<img\b[^>]*>/gi;
+    let tag;
+    while ((tag = imgRe.exec(source))) {
+      const src = tag[0].match(/\bsrc\s*=\s*["']([^"']+)["']/i)?.[1]
+        || (tag[0].match(/\bsrcset\s*=\s*["']([^"']+)["']/i)?.[1] || '').split(/[\s,]/).find(Boolean);
+      if (src && (/^https?:\/\//i.test(src) || /^data:image\//i.test(src)) && !extractYoutubeId(src)) {
+        urls.push(src.trim());
+      }
+    }
+    const hrefRe = /<a\b[^>]*\bhref\s*=\s*["']([^"']+)["'][^>]*>/gi;
+    let hrefTag;
+    while ((hrefTag = hrefRe.exec(source))) {
+      const href = unwrapImageUrl(hrefTag[1]);
+      if (href && looksLikeImageUrl(href)) urls.push(href);
+    }
+    const ogRe = /<meta\b[^>]*(?:property|name)\s*=\s*["']og:image["'][^>]*>/gi;
+    let ogTag;
+    while ((ogTag = ogRe.exec(source))) {
+      const content = ogTag[0].match(/\bcontent\s*=\s*["']([^"']+)["']/i)?.[1];
+      if (content && looksLikeImageUrl(content)) urls.push(content.trim());
+    }
+    const ogReFlip = /<meta\b[^>]*\bcontent\s*=\s*["']([^"']+)["'][^>]*(?:property|name)\s*=\s*["']og:image["'][^>]*>/gi;
+    let ogFlip;
+    while ((ogFlip = ogReFlip.exec(source))) {
+      if (ogFlip[1] && looksLikeImageUrl(ogFlip[1])) urls.push(ogFlip[1].trim());
+    }
+    return urls;
+  }
+
+  function clipboardImageUrls(clipboardData) {
+    if (!clipboardData) return [];
+    const html = clipboardData.getData?.('text/html') || '';
+    const text = clipboardData.getData?.('text/plain') || '';
+    const seen = new Set();
+    const out = [];
+    function add(url, fromImgTag) {
+      const clean = unwrapImageUrl(url);
+      if (!clean || seen.has(clean)) return;
+      if (!/^https?:\/\//i.test(clean) && !/^data:image\//i.test(clean)) return;
+      if (extractYoutubeId(clean)) return;
+      if (!fromImgTag && !looksLikeImageUrl(clean)) return;
+      seen.add(clean);
+      out.push(clean);
+    }
+    extractImageUrlsFromHtml(html).forEach((url) => add(url, true));
+    extractHttpUrls(text).forEach((url) => add(url, false));
+    extractHttpUrls(html).forEach((url) => add(url, false));
+    return out;
+  }
+
+  function pageUrlFromToken(raw) {
+    const url = unwrapImageUrl(String(raw || '').trim()).replace(/[),.;]+$/g, '');
+    if (!url || /\s/.test(url) || !/^https?:\/\//i.test(url)) return '';
+    if (extractYoutubeId(url) || looksLikeImageUrl(url)) return '';
+    return url;
+  }
+
+  function clipboardPageUrls(clipboardData) {
+    if (!clipboardData) return [];
+    const text = String(clipboardData.getData?.('text/plain') || '').trim().replace(/^["']+|["']+$/g, '');
+    if (text) {
+      const tokens = text.split(/\s+/).filter(Boolean);
+      if (tokens.length && tokens.length <= 3) {
+        const urls = [];
+        const ok = tokens.every((token) => {
+          const url = pageUrlFromToken(token);
+          if (!url) return false;
+          urls.push(url);
+          return true;
+        });
+        if (ok && urls.length) return urls;
+      }
+    }
+    const html = clipboardData.getData?.('text/html') || '';
+    const hrefs = [];
+    let label = '';
+    const re = /<a\b[^>]*\bhref\s*=\s*["'](https?:\/\/[^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+    let match;
+    while ((match = re.exec(html))) {
+      const href = pageUrlFromToken(match[1].replace(/&amp;/g, '&'));
+      if (!href || hrefs.includes(href)) continue;
+      hrefs.push(href);
+      label = match[2].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+      if (hrefs.length > 1) return [];
+    }
+    if (hrefs.length !== 1) return [];
+    const plain = text.replace(/\s+/g, ' ').trim();
+    if (!plain || plain === label || plain === hrefs[0]) return hrefs;
+    return [];
   }
 
   function youtubeEmbedSrc(id, extra = '') {
@@ -439,12 +634,24 @@
     return fallback;
   }
 
+  function shufflePhotos(photos) {
+    const copy = (photos || []).slice();
+    for (let i = copy.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      const swap = copy[i];
+      copy[i] = copy[j];
+      copy[j] = swap;
+    }
+    return copy;
+  }
+
   function buildSpec(source, cfg) {
     const title = String(cfg.title || 'Gallery').trim() || 'Gallery';
     const frontTitle = resolveNamedTitle(cfg, ['front', 'fronttitle', 'titlefront'], title);
     const backTitle = resolveNamedTitle(cfg, ['back', 'backtitle', 'titleback'], title);
     const photos = parsePhotos(source);
     const demo = resolveDemo(cfg);
+    const list = photos.length ? photos : (demo ? parsePhotos(DEMO_SOURCE) : photos);
     return {
       title,
       frontTitle,
@@ -452,7 +659,7 @@
       cols: resolveCols(cfg),
       mode: resolveMode(cfg),
       demo,
-      photos: photos.length ? photos : (demo ? parsePhotos(DEMO_SOURCE) : photos),
+      photos: shufflePhotos(list),
       draft: !photos.length,
     };
   }
@@ -461,6 +668,13 @@
     return `<div class="gallery-paste-zone" tabindex="0" role="button" aria-label="Paste photo">`
       + `<span class="gallery-paste-icon" aria-hidden="true">📷</span>`
       + `<span class="gallery-paste-label">${escapeHtml(label || 'Paste your photo here (Ctrl+V)')}</span>`
+      + `</div>`;
+  }
+
+  function driveFolderBar() {
+    return `<div class="photo-drive-bar">`
+      + `<input class="photo-drive-url" type="url" placeholder="Google Drive folder of photos" autocomplete="off">`
+      + `<button type="button" class="btn btn-sm btn-outline-secondary" data-action="drive-add">Use Drive</button>`
       + `</div>`;
   }
 
@@ -542,6 +756,8 @@
       `<button type="button" class="btn btn-sm btn-outline-light" data-action="export-html" title="Download a ZIP with HTML tour and images (no WASD)">HTML tour</button>`,
       editable
         ? `<button type="button" class="btn btn-sm btn-outline-secondary" data-action="add-photo">Add photo</button>`
+          + `<input class="photo-drive-url" type="url" placeholder="Google Drive folder of photos" autocomplete="off">`
+          + `<button type="button" class="btn btn-sm btn-outline-secondary" data-action="drive-add">Use Drive</button>`
         : '',
       `<button type="button" class="btn btn-sm btn-outline-secondary" data-action="toggle-grid">Thumbnails</button>`,
       `</div>`,
@@ -581,10 +797,11 @@
     const canWalk = spec.mode !== 'grid' && spec.photos.length;
     if (!spec.photos.length) {
       body = renderPasteZone(editable
-        ? 'Paste a photo (Ctrl+V) or add image / video / YouTube URLs in markdown'
-        : 'Add photos, videos, or YouTube embeds in markdown.');
+        ? 'Paste a photo (Ctrl+V) or a Google Drive folder'
+        : 'Add photos, videos, or YouTube embeds in markdown.')
+        + (editable ? driveFolderBar() : '');
     } else if (spec.mode === 'grid') {
-      body = renderGrid(spec, editable);
+      body = renderGrid(spec, editable) + (editable ? driveFolderBar() : '');
     } else {
       body = renderWalkShell(spec, editable);
     }
@@ -1958,6 +2175,50 @@
     el.dataset.galleryHydrated = '1';
     bindFullscreenButton(el);
 
+    async function addDriveLink(raw) {
+      const text = String(raw || '').trim();
+      if (!text) {
+        setStatus(el, 'Paste a Google Drive folder of photos.');
+        return;
+      }
+      if (!isDriveLink(text)) {
+        setStatus(el, 'That is not a Google Drive file or folder link.');
+        return;
+      }
+      if (typeof options.onDriveList !== 'function') {
+        setStatus(el, 'Sign in to load Google Drive.');
+        return;
+      }
+      setStatus(el, 'Loading Google Drive photos…');
+      try {
+        const data = await options.onDriveList(text);
+        const photos = (Array.isArray(data?.photos) ? data.photos : [])
+          .map((item) => ({
+            src: item.src || '',
+            label: item.title || item.label || 'Photo',
+          }))
+          .filter((item) => item.src);
+        if (!photos.length) {
+          setStatus(el, 'No images in that Drive folder. Share it as “Anyone with the link”.');
+          return;
+        }
+        if (typeof options.onDrivePhotos === 'function') {
+          await options.onDrivePhotos({ drive: data.url || text, photos });
+        }
+        const input = el.querySelector('.photo-drive-url');
+        if (input) input.value = '';
+        setStatus(el, `${photos.length} Drive photo${photos.length === 1 ? '' : 's'} added.`);
+      } catch (err) {
+        setStatus(el, err?.message || 'Google Drive listing failed.');
+      }
+    }
+
+    el.querySelector('.photo-drive-url')?.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      void addDriveLink(e.target.value);
+    });
+
     let walk = null;
     if (spec.mode === 'walk' && spec.photos?.length) {
       const startWalk = () => {
@@ -2005,8 +2266,13 @@
         return;
       }
       if (action === 'add-photo') {
-        setStatus(el, 'Paste an image, a YouTube link/iframe (Ctrl+V), or drop a file onto the gallery.');
+        setStatus(el, 'Paste an image, a YouTube link, a Google Drive folder, or drop a file onto the gallery.');
         el.focus({ preventScroll: true });
+        return;
+      }
+      if (action === 'drive-add') {
+        const input = el.querySelector('.photo-drive-url');
+        void addDriveLink(input?.value || '');
         return;
       }
       const thumb = e.target.closest('.gallery-thumb:not(.gallery-thumb--add)');
@@ -2021,7 +2287,10 @@
       if (pasteZone) pasteZone.focus();
     });
 
-    if (typeof options.onPasteImage !== 'function' && typeof options.onPasteYoutube !== 'function') return;
+    if (typeof options.onPasteImage !== 'function'
+      && typeof options.onPasteYoutube !== 'function'
+      && typeof options.onPasteImageUrl !== 'function'
+      && typeof options.onPastePageUrl !== 'function') return;
 
     async function handlePasteFiles(files) {
       const imageFiles = [...files].filter(f => f && String(f.type || '').startsWith('image/'));
@@ -2054,10 +2323,35 @@
         .filter(item => item.kind === 'file' && item.type.startsWith('image/'))
         .map(item => item.getAsFile())
         .filter(Boolean);
-      if (!files.length) return;
+      if (files.length) {
+        e.preventDefault();
+        e.stopPropagation();
+        void handlePasteFiles(files);
+        return;
+      }
+      const driveText = ((String(text || '').match(/https?:\/\/\S+/i) || [String(text || '').trim()])[0] || '').replace(/[),.;]+$/g, '');
+      if (isDriveLink(driveText)) {
+        e.preventDefault();
+        e.stopPropagation();
+        const input = el.querySelector('.photo-drive-url');
+        if (input) input.value = driveText;
+        void addDriveLink(driveText);
+        return;
+      }
+      const urls = clipboardImageUrls(e.clipboardData);
+      if (urls.length && typeof options.onPasteImageUrl === 'function') {
+        e.preventDefault();
+        e.stopPropagation();
+        setStatus(el, urls.length === 1 ? 'Added image URL.' : `Added ${urls.length} image URLs.`);
+        urls.forEach((url) => void options.onPasteImageUrl(url, spec));
+        return;
+      }
+      const pageUrls = clipboardPageUrls(e.clipboardData);
+      if (!pageUrls.length || typeof options.onPastePageUrl !== 'function') return;
       e.preventDefault();
       e.stopPropagation();
-      void handlePasteFiles(files);
+      setStatus(el, 'Fetching link image…');
+      pageUrls.forEach((url) => void options.onPastePageUrl(url, spec));
     });
 
     el.addEventListener('dragover', (e) => {
@@ -2873,5 +3167,10 @@
     openLightbox,
     closeLightbox,
     extractYoutubeId,
+    looksLikeImageUrl,
+    unwrapImageUrl,
+    imageLabelFromUrl,
+    clipboardImageUrls,
+    clipboardPageUrls,
   };
 }));

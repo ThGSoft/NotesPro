@@ -91,7 +91,8 @@
     }
   })();
   if (jukeboxStandaloneView) document.body?.classList.add('jukebox-standalone');
-  let userCanEdit = Boolean(
+  const publicView = Boolean(window.APP_BOOT?.publicView);
+  let userCanEdit = !publicView && Boolean(
     window.APP_BOOT?.canWrite || window.APP_BOOT?.isStaff || window.APP_BOOT?.isGroupAdmin
   );
   let rightPanelWasExpandedBeforePreview = null;
@@ -1074,21 +1075,25 @@
 
   function renderMarkdownImage(alt, src, attributes, options = {}) {
     const { width, align } = parseMarkdownImageAttrs(attributes);
-    const styles = ['height: auto'];
-    if (width) {
+    const isInlineThumb = align === 'left' && width && /px$/i.test(String(width));
+    const isFullWidth = Boolean(width && /^100%$/.test(String(width).trim()));
+    const styles = isInlineThumb
+      ? [`width: ${width}`, `height: ${width}`, 'max-width: none', 'object-fit: cover', 'display: inline-block', 'vertical-align: middle']
+      : ['height: auto'];
+    if (!isInlineThumb && width) {
       styles.unshift(`width: ${width}`);
       styles.push('max-width: 100%');
-    } else {
+    } else if (!isInlineThumb) {
       styles.unshift('max-width: 100%');
     }
-    const isFullWidth = Boolean(width && /^100%$/.test(String(width).trim()));
-    const imgClass = `md-image${isFullWidth ? ' md-image--full' : ''}`;
+    const imgClass = `md-image${isFullWidth ? ' md-image--full' : ''}${isInlineThumb ? ' md-image--inline' : ''}`;
     const resolvedSrc = resolveMediaHref(src);
     const img = `<img class="${imgClass}" src="${escapeHtml(resolvedSrc)}" alt="${escapeHtml(alt)}" style="${styles.join('; ')}"${width ? ` data-md-width="${width}"` : ''}>`;
     const tabHref = imageTabHref(src);
     const linkedImg = tabHref
-      ? `<a href="${String(tabHref).replace(/"/g, '&quot;')}" target="_blank" rel="noopener noreferrer" class="md-image-link${isFullWidth ? ' md-image-link--full' : ''}">${img}</a>`
+      ? `<a href="${String(tabHref).replace(/"/g, '&quot;')}" target="_blank" rel="noopener noreferrer" class="md-image-link${isFullWidth ? ' md-image-link--full' : ''}${isInlineThumb ? ' md-image-link--inline' : ''}">${img}</a>`
       : img;
+    if (isInlineThumb) return linkedImg;
     // In table cells use <span> (valid phrasing/flow in td after restore); avoid <figure>
     // so GFM pipe tables stay intact during tokenize → marked → restore.
     const wrapTag = options.tableCell ? 'span' : 'figure';
@@ -1149,6 +1154,27 @@
     root.querySelectorAll('img').forEach(img => {
       if (img.closest('.d3-chart-wrap')) return;
       img.classList.add('md-image-zoomable');
+      wrapImageWithTabLink(img);
+      if (img.classList.contains('md-image--inline')) {
+        const size = img.dataset.mdWidth || '48px';
+        img.style.width = size;
+        img.style.height = size;
+        img.style.maxWidth = size;
+        img.style.objectFit = 'cover';
+        img.style.display = 'inline-block';
+        img.style.verticalAlign = 'middle';
+        const link = img.closest('a.md-image-link');
+        if (link) {
+          link.classList.add('md-image-link--inline');
+          link.style.display = 'inline-block';
+          link.style.width = 'auto';
+          link.style.maxWidth = 'none';
+          link.style.verticalAlign = 'middle';
+          link.style.lineHeight = '0';
+          link.style.margin = '0 8px 0 0';
+        }
+        return;
+      }
       if (img.dataset.mdWidth) {
         img.style.width = img.dataset.mdWidth;
         img.style.maxWidth = '100%';
@@ -1171,7 +1197,6 @@
           }
         }
       }
-      wrapImageWithTabLink(img);
     });
   }
 
@@ -4242,11 +4267,33 @@
     renderPageSettingsTags();
   }
 
+  function absolutePublicUrl(path) {
+    const value = String(path || '').trim();
+    if (!value) return '';
+    if (/^https?:\/\//i.test(value)) return value;
+    return `${location.origin}${value.startsWith('/') ? '' : '/'}${value}`;
+  }
+
+  function syncPageSettingsPublicLink() {
+    const box = document.getElementById('page-settings-public');
+    const wrap = document.getElementById('page-settings-public-link');
+    const input = document.getElementById('page-settings-public-url');
+    const pending = document.getElementById('page-settings-public-pending');
+    const on = !!box?.checked;
+    const savedUrl = currentPage?.settings?.public ? (currentPage.public_url || '') : '';
+    if (wrap) wrap.classList.toggle('d-none', !(on && savedUrl));
+    if (input) input.value = savedUrl ? absolutePublicUrl(savedUrl) : '';
+    if (pending) pending.classList.toggle('d-none', !(on && !savedUrl));
+  }
+
   function fillPageSettingsForm() {
     const box = document.getElementById('page-settings-contents');
     if (box) box.checked = pageContentsEnabled();
     const tagsBox = document.getElementById('page-settings-tags-visible');
     if (tagsBox) tagsBox.checked = pageTagsEnabled();
+    const publicBox = document.getElementById('page-settings-public');
+    if (publicBox) publicBox.checked = currentPage?.settings?.public === true;
+    syncPageSettingsPublicLink();
     pageSettingsTags = collectPageSettingsTags();
     const input = document.getElementById('page-settings-tag-input');
     if (input) input.value = '';
@@ -4271,7 +4318,8 @@
     if (!userCanEdit || !currentPageId || !currentPage || currentPage.is_folder) return false;
     const contents = !!document.getElementById('page-settings-contents')?.checked;
     const tags = !!document.getElementById('page-settings-tags-visible')?.checked;
-    const settings = { ...(currentPage.settings || {}), contents, tags };
+    const isPublic = !!document.getElementById('page-settings-public')?.checked;
+    const settings = { ...(currentPage.settings || {}), contents, tags, public: isPublic };
     const originalMd = currentPageMarkdownSource();
     const tagsChanged = pageSettingsTagsChanged(originalMd, pageSettingsTags);
     const nextMarkdown = tagsChanged
@@ -4286,7 +4334,7 @@
       }
       currentPage = await api(`api/pages/${currentPageId}/update/`, 'POST', payload);
       closePageSettingsModal();
-      setStatus('Page settings saved');
+      setStatus(currentPage.public_url ? 'Public link ready in Page settings' : 'Page settings saved');
       if (typeof renderPreview === 'function') renderPreview();
       syncMobileContentMenu();
       return true;
@@ -4315,6 +4363,22 @@
       if (e.key !== 'Enter') return;
       e.preventDefault();
       addPageSettingsTag(e.target.value);
+    });
+    document.getElementById('page-settings-public')?.addEventListener('change', () => {
+      syncPageSettingsPublicLink();
+    });
+    document.getElementById('page-settings-public-copy')?.addEventListener('click', async () => {
+      const input = document.getElementById('page-settings-public-url');
+      const value = input?.value || '';
+      if (!value) return;
+      try {
+        await navigator.clipboard.writeText(value);
+        showToast('Public link copied.', 'success');
+      } catch (_) {
+        input?.focus();
+        input?.select();
+        showToast('Select the link and copy it.', 'warning');
+      }
     });
   }
 
@@ -9510,6 +9574,7 @@
             shopIndex: idx,
             kind: /^```(?:swshop|software)/i.test(full) ? 'sw' : '',
             editable: !!options.speisekarteEditable || !!options.sheetEditable,
+            askPayment: publicView,
             archiveMarkdown: options.archiveMarkdown ?? currentPage?.archive ?? '',
             merchant: getShopMerchantSettings(),
           })
@@ -9548,6 +9613,42 @@
     return `Shop order — ${spec?.title || 'Shop'}`;
   }
 
+  function guestMustSignIn(message) {
+    if (!publicView || currentUserId) return false;
+    showToast(message, 'warning', 6000);
+    return true;
+  }
+
+  async function sendPublicShopOrder({ spec, cart, payment, buyerKonto } = {}) {
+    const page = window.APP_BOOT?.publicPage || {};
+    const owner = encodeURIComponent(page.owner || '');
+    const workspaceSlug = encodeURIComponent(page.workspace_slug || '');
+    const pageSlug = encodeURIComponent(page.slug || '');
+    if (!owner || !workspaceSlug || !pageSlug) {
+      throw new Error('This shop link is missing a page address.');
+    }
+    return api(
+      `api/public/${owner}/${workspaceSlug}/${pageSlug}/shop-order/`,
+      'POST',
+      {
+        payment,
+        buyer_konto: buyerKonto || '',
+        note: cart?.note || '',
+        title: spec?.title || '',
+        currency: spec?.currency || '',
+        total: cart?.totalLabel || '',
+        send_to: spec?.sendTo || '',
+        bill_to: spec?.billTo || '',
+        to: spec?.to || [],
+        lines: (cart?.lines || []).map((line) => ({
+          name: line.name,
+          qty: line.qty,
+          price: line.lineTotalLabel || line.price || '',
+        })),
+      },
+    );
+  }
+
   async function sendShopCheckout({ spec, cart, btn, el, payment, buyerKonto, merchantKonto } = {}) {
     if (!cart?.lines?.length) {
       showToast('The cart is empty.', 'warning');
@@ -9559,14 +9660,14 @@
       showToast('Choose PayPal, Visa, or Mastercard.', 'warning');
       return false;
     }
-    if (pay === 'paypal' && !merchant.paypal) {
+    if (!publicView && pay === 'paypal' && !merchant.paypal) {
       showToast('Add a PayPal email or paypal.me name in Settings.', 'warning');
       return false;
     }
     const toKonto = sanitizeShopKonto(merchantKonto || merchant.konto);
     const fromKonto = String(buyerKonto || '').replace(/\s+/g, ' ').trim().slice(0, 42);
     if (window.NotesProShop?.isCardPayment?.(pay)) {
-      if (!toKonto) {
+      if (!publicView && !toKonto) {
         showToast('Add a Konto in Settings to receive transfers.', 'warning');
         return false;
       }
@@ -9584,8 +9685,33 @@
       btn.classList.add('is-sending');
     }
     try {
-      const at = new Date();
       const paymentLabel = window.NotesProShop?.paymentLabel?.(pay) || pay;
+      if (publicView) {
+        await sendPublicShopOrder({ spec, cart, payment: pay, buyerKonto: fromKonto });
+        if (pay === 'paypal') {
+          const url = window.NotesProShop?.paypalCheckoutUrl?.(merchant.paypal, {
+            amount: cart.total,
+            currency: spec?.currency,
+            title: spec?.title,
+          });
+          if (url) window.open(url, '_blank', 'noopener,noreferrer');
+        }
+        window.NotesProShop?.clearCart?.(el, spec);
+        showToast(
+          pay === 'paypal'
+            ? `Sent PayPal payment from ${spec?.title || 'Shop'}.`
+            : `Sent ${paymentLabel} payment from ${spec?.title || 'Shop'}.`,
+          'success',
+        );
+        capturePreviewScrollPosition();
+        try {
+          renderPreview();
+        } catch (previewErr) {
+          console.warn('preview refresh after shop checkout failed:', previewErr);
+        }
+        return true;
+      }
+      const at = new Date();
       const paymentNote = window.NotesProShop?.isCardPayment?.(pay) ? merchant.mastercard : '';
       const body = formatShopCheckoutMessage(spec, cart, {
         at,
@@ -9709,6 +9835,18 @@
           applyShopProductImage(el, itemIndex, mediaPath);
         }
         : null,
+      onPasteImageUrl: userCanEdit && easyMDE
+        ? (url, itemIndex, _spec, el) => {
+          applyShopProductImage(el, itemIndex, url);
+        }
+        : null,
+      onPastePageUrl: userCanEdit && easyMDE
+        ? (url, itemIndex, _spec, el) => {
+          void pasteResolvedPageImage(url, (image) => {
+            applyShopProductImage(el, itemIndex, image);
+          });
+        }
+        : null,
     });
   }
 
@@ -9782,6 +9920,7 @@
   }
 
   async function sendCraigslistReply({ spec, item, btn, to, text } = {}) {
+    if (guestMustSignIn('Sign in to reply.')) return false;
     const engine = window.NotesProCraigslist;
     if (!item?.title) return false;
     const bodyText = String(text || '').trim();
@@ -9821,6 +9960,7 @@
   }
 
   async function sendCraigslistAddItem({ spec, el, btn, to, category, title, price, location, description, until, text } = {}) {
+    if (guestMustSignIn('Sign in to add a listing.')) return false;
     const engine = window.NotesProCraigslist;
     const listingTitle = String(title || '').trim();
     const listingDesc = String(description || text || '').trim();
@@ -10150,6 +10290,13 @@
         const fence = attrs ? `gallery{${attrs}}` : 'gallery';
         return `\`\`\`${fence}\n${body}\n\`\`\``;
       }
+      if (update.photos) {
+        if (update.drive) cfg.drive = update.drive;
+        const attrs = engine.buildFenceAttrsString(cfg);
+        const body = engine.formatGalleryBody(update.photos);
+        const fence = attrs ? `gallery{${attrs}}` : 'gallery';
+        return `\`\`\`${fence}\n${body}\n\`\`\``;
+      }
       return match;
     });
   }
@@ -10190,6 +10337,34 @@
             schedulePreviewRefresh();
           }
           : null,
+        onPasteImageUrl: userCanEdit && Number.isFinite(galleryIndex) && easyMDE
+          ? async (url) => {
+            const oldMarkdown = easyMDE.value();
+            const updated = updateGalleryInMarkdown(oldMarkdown, galleryIndex, {
+              addImage: url,
+              label: imageLabelFromUrl(url),
+            });
+            if (updated === oldMarkdown) return;
+            easyMDE.value(updated);
+            scheduleSave();
+            schedulePreviewRefresh();
+          }
+          : null,
+        onPastePageUrl: userCanEdit && Number.isFinite(galleryIndex) && easyMDE
+          ? async (url) => {
+            await pasteResolvedPageImage(url, (image, label) => {
+              const oldMarkdown = easyMDE.value();
+              const updated = updateGalleryInMarkdown(oldMarkdown, galleryIndex, {
+                addImage: image,
+                label,
+              });
+              if (updated === oldMarkdown) return;
+              easyMDE.value(updated);
+              scheduleSave();
+              schedulePreviewRefresh();
+            });
+          }
+          : null,
         onPasteYoutube: userCanEdit && Number.isFinite(galleryIndex) && easyMDE
           ? async (youtubeId) => {
             const oldMarkdown = easyMDE.value();
@@ -10197,6 +10372,19 @@
               addYoutube: `https://www.youtube.com/embed/${youtubeId}`,
               label: 'YouTube',
             });
+            if (updated === oldMarkdown) return;
+            easyMDE.value(updated);
+            scheduleSave();
+            schedulePreviewRefresh();
+          }
+          : null,
+        onDriveList: userCanEdit
+          ? async (url) => api(`api/drive/resolve/?kind=image&url=${encodeURIComponent(url)}`)
+          : null,
+        onDrivePhotos: userCanEdit && Number.isFinite(galleryIndex) && easyMDE
+          ? async ({ drive, photos }) => {
+            const oldMarkdown = easyMDE.value();
+            const updated = updateGalleryInMarkdown(oldMarkdown, galleryIndex, { drive, photos });
             if (updated === oldMarkdown) return;
             easyMDE.value(updated);
             scheduleSave();
@@ -10265,6 +10453,13 @@
           label: update.label || 'YouTube',
           kind: 'youtube',
         });
+      }
+      if (update.photos) {
+        if (update.drive) cfg.drive = update.drive;
+        const attrs = engine.buildFenceAttrsString(cfg);
+        const body = engine.formatPhotoBody(update.photos);
+        const fence = attrs ? `${fenceName}{${attrs}}` : fenceName;
+        return `\`\`\`${fence}\n${body}\n\`\`\``;
       }
       if (!additions.length) return match;
       const nextPhotos = photos.concat(additions);
@@ -10346,6 +10541,34 @@
             schedulePreviewRefresh();
           }
           : null,
+        onPasteImageUrl: userCanEdit && Number.isFinite(blockIndex) && easyMDE
+          ? async (url) => {
+            const oldMarkdown = easyMDE.value();
+            const updated = updatePhotoFenceInMarkdown(oldMarkdown, kind, blockIndex, {
+              addImage: url,
+              label: imageLabelFromUrl(url),
+            });
+            if (updated === oldMarkdown) return;
+            easyMDE.value(updated);
+            scheduleSave();
+            schedulePreviewRefresh();
+          }
+          : null,
+        onPastePageUrl: userCanEdit && Number.isFinite(blockIndex) && easyMDE
+          ? async (url) => {
+            await pasteResolvedPageImage(url, (image, label) => {
+              const oldMarkdown = easyMDE.value();
+              const updated = updatePhotoFenceInMarkdown(oldMarkdown, kind, blockIndex, {
+                addImage: image,
+                label,
+              });
+              if (updated === oldMarkdown) return;
+              easyMDE.value(updated);
+              scheduleSave();
+              schedulePreviewRefresh();
+            });
+          }
+          : null,
         onPasteYoutube: userCanEdit && Number.isFinite(blockIndex) && easyMDE
           ? async (youtubeId) => {
             const oldMarkdown = easyMDE.value();
@@ -10353,6 +10576,19 @@
               addYoutube: `https://www.youtube.com/embed/${youtubeId}`,
               label: 'YouTube',
             });
+            if (updated === oldMarkdown) return;
+            easyMDE.value(updated);
+            scheduleSave();
+            schedulePreviewRefresh();
+          }
+          : null,
+        onDriveList: userCanEdit
+          ? async (url) => api(`api/drive/resolve/?kind=image&url=${encodeURIComponent(url)}`)
+          : null,
+        onDrivePhotos: userCanEdit && Number.isFinite(blockIndex) && easyMDE
+          ? async ({ drive, photos }) => {
+            const oldMarkdown = easyMDE.value();
+            const updated = updatePhotoFenceInMarkdown(oldMarkdown, kind, blockIndex, { drive, photos });
             if (updated === oldMarkdown) return;
             easyMDE.value(updated);
             scheduleSave();
@@ -10606,6 +10842,13 @@
         const fence = attrs ? `labyrinth{${attrs}}` : 'labyrinth';
         return `\`\`\`${fence}\n${body}\n\`\`\``;
       }
+      if (update.photos) {
+        if (update.drive) cfg.drive = update.drive;
+        const attrs = engine.buildFenceAttrsString(cfg);
+        const body = engine.formatGalleryBody(update.photos);
+        const fence = attrs ? `labyrinth{${attrs}}` : 'labyrinth';
+        return `\`\`\`${fence}\n${body}\n\`\`\``;
+      }
       return match;
     });
   }
@@ -10633,6 +10876,24 @@
     (root || document).querySelectorAll('.labyrinth-block[data-labyrinth-spec]').forEach(el => {
       const labyrinthIndex = parseInt(el.dataset.labyrinthIndex, 10);
       engine.hydrateBlock(el, {
+        resolveImageHref: (src) => {
+          const fileId = engine.driveFileId?.(src);
+          if (fileId) return apiUrl(`api/drive/media/${encodeURIComponent(fileId)}/`);
+          return resolveMediaHref(src);
+        },
+        onDriveList: userCanEdit
+          ? async (url) => api(`api/drive/resolve/?kind=image&url=${encodeURIComponent(url)}`)
+          : null,
+        onDrivePhotos: userCanEdit && Number.isFinite(labyrinthIndex) && easyMDE
+          ? async ({ drive, photos }) => {
+            const oldMarkdown = easyMDE.value();
+            const updated = updateLabyrinthInMarkdown(oldMarkdown, labyrinthIndex, { drive, photos });
+            if (updated === oldMarkdown) return;
+            easyMDE.value(updated);
+            scheduleSave();
+            schedulePreviewRefresh();
+          }
+          : null,
         onPasteImage: userCanEdit && Number.isFinite(labyrinthIndex) && easyMDE
           ? async (file) => {
             const mediaPath = await uploadPastedImageBlob(file, file.name || 'paste.png');
@@ -12660,7 +12921,7 @@ function formatTextWithMarkup(rawText) {
     if (!preview) return;
     hideSheetCellStructureToolbar();
     hideSheetStructureMenu();
-    const raw = easyMDE ? (easyMDE.value() || '') : '';
+    const raw = easyMDE ? (easyMDE.value() || '') : (currentPage?.markdown_content || '');
     const savedPreviewScrollTop = preservedPreviewScrollTop ?? preview.scrollTop;
     preservedPreviewScrollTop = null;
 
@@ -12711,6 +12972,7 @@ function formatTextWithMarkup(rawText) {
     });
     window.NotesProJukebox?.parkPlayback?.();
     preview.innerHTML = html;
+    enhanceBareImageLinks(preview);
     applyPreviewImageStyles(preview);
     enhanceMarkdownCodeBlocks(preview);
     preview.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(h => { h.id = slugifyHeading(h.textContent); });
@@ -14058,7 +14320,7 @@ function formatTextWithMarkup(rawText) {
           name: 'insert-gallery',
           text: 'Walk-in gallery',
           className: 'photos-menu-item photos-menu-item--gallery',
-          title: 'Insert walk-in photo gallery demo',
+          title: 'Insert walk-in photo gallery — paste photos or a Google Drive folder',
           action: (editor) => insertFenceBlock(
             editor,
             'gallery{title=Demo walk;front=Welcome;back=Demo walk;mode=walk;demo;col=info}',
@@ -14069,7 +14331,7 @@ function formatTextWithMarkup(rawText) {
           name: 'insert-carousel',
           text: 'Photo carousel',
           className: 'photos-menu-item photos-menu-item--carousel',
-          title: 'Insert 3D photo carousel',
+          title: 'Insert 3D photo carousel — paste photos or a Google Drive folder',
           action: (editor) => insertFenceBlock(
             editor,
             'carousel{title=Photo carousel;demo;col=info}',
@@ -14080,14 +14342,14 @@ function formatTextWithMarkup(rawText) {
           name: 'insert-photobook',
           text: 'Photo book',
           className: 'photos-menu-item photos-menu-item--book',
-          title: 'Insert photo book',
+          title: 'Insert photo book — paste photos or a Google Drive folder',
           action: (editor) => insertFenceBlock(editor, 'photobook{col=warning}', samplePhotoFenceBody('book')),
         },
         {
           name: 'insert-photocube',
           text: 'Photo cube',
           className: 'photos-menu-item photos-menu-item--cube',
-          title: 'Insert photo cube',
+          title: 'Insert photo cube — paste photos or a Google Drive folder',
           action: (editor) => insertFenceBlock(
             editor,
             'photocube{title=Photo cube;col=info}',
@@ -14098,7 +14360,7 @@ function formatTextWithMarkup(rawText) {
           name: 'insert-labyrinth',
           text: 'Photo labyrinth',
           className: 'photos-menu-item photos-menu-item--labyrinth',
-          title: 'Insert photo labyrinth',
+          title: 'Insert photo labyrinth — paste photos or a Google Drive folder',
           action: (editor) => insertFenceBlock(
             editor,
             'labyrinth{title=Photo labyrinth;demo;col=warning}',
@@ -15221,6 +15483,307 @@ function formatTextWithMarkup(rawText) {
     return [...(clipboardData?.files || [])].filter((file) => String(file.type || '').startsWith('image/'));
   }
 
+  function clipboardImageUrls(clipboardData) {
+    return window.NotesProGallery?.clipboardImageUrls?.(clipboardData) || [];
+  }
+
+  function looksLikeImageUrl(url) {
+    return Boolean(window.NotesProGallery?.looksLikeImageUrl?.(url));
+  }
+
+  function unwrapImageUrl(url) {
+    return window.NotesProGallery?.unwrapImageUrl?.(url) || String(url || '').trim();
+  }
+
+  function imageLabelFromUrl(url) {
+    const label = window.NotesProGallery?.imageLabelFromUrl?.(url);
+    return (label && String(label).trim()) || 'image';
+  }
+
+  function markdownImageSnippet(url, alt, icon) {
+    const href = unwrapImageUrl(url);
+    const name = String(alt || imageLabelFromUrl(href) || 'image').replace(/[\[\]]/g, '');
+    const width = icon ? '64px' : '100%';
+    return `![${name}](${href}){width=${width}}`;
+  }
+
+  function pastedPlainImageUrls(text) {
+    const trimmed = String(text || '').trim().replace(/^["']+|["']+$/g, '');
+    if (!trimmed) return [];
+    const tokens = trimmed.split(/\s+/).filter(Boolean);
+    if (!tokens.length) return [];
+    const urls = [];
+    for (const token of tokens) {
+      const md = token.match(/^!?\[([^\]]*)\]\((https?:\/\/[^)\s]+|data:image\/[^)\s]+)\)$/i);
+      const raw = md ? md[2] : token.replace(/[),.;]+$/g, '');
+      const url = unwrapImageUrl(raw);
+      if (!looksLikeImageUrl(url)) return [];
+      urls.push(url);
+    }
+    return urls;
+  }
+
+  function clipboardHtmlImageSrcs(clipboardData) {
+    const html = clipboardData?.getData?.('text/html') || '';
+    const urls = [];
+    const seen = new Set();
+    const imgRe = /<img\b[^>]*>/gi;
+    let tag;
+    while ((tag = imgRe.exec(html))) {
+      const src = tag[0].match(/\bsrc\s*=\s*["']([^"']+)["']/i)?.[1];
+      if (!src) continue;
+      const clean = unwrapImageUrl(src.replace(/&amp;/g, '&')).trim();
+      if (!/^https?:\/\//i.test(clean) && !/^data:image\//i.test(clean)) continue;
+      if (seen.has(clean)) continue;
+      seen.add(clean);
+      urls.push(clean);
+    }
+    return urls;
+  }
+
+  function pastedImageUrls(clipboardData, text) {
+    const fromText = pastedPlainImageUrls(text);
+    if (fromText.length) return fromText;
+    const htmlImages = clipboardHtmlImageSrcs(clipboardData);
+    if (!htmlImages.length) return [];
+    const plain = String(text || '').trim();
+    if (!plain) return htmlImages;
+    const tokens = plain.split(/\s+/).filter(Boolean);
+    const onlyUrls = tokens.length > 0 && tokens.length <= 3 && tokens.every((token) => /^https?:\/\//i.test(token.replace(/[),.;]+$/g, '')));
+    return onlyUrls ? htmlImages : [];
+  }
+
+  function clipboardPageUrls(clipboardData) {
+    return window.NotesProGallery?.clipboardPageUrls?.(clipboardData) || [];
+  }
+
+  function pastedLinkMarkdown(clipboardData, pageUrls) {
+    const text = String(clipboardData?.getData?.('text/plain') || '').trim().replace(/^["']+|["']+$/g, '');
+    if (pageUrls.length === 1) {
+      const url = pageUrls[0];
+      const plain = text.replace(/\s+/g, ' ').trim();
+      if (plain && plain !== url && !/^https?:\/\//i.test(plain)) {
+        return `[${plain.replace(/[\[\]]/g, '')}](${url})`;
+      }
+      return url;
+    }
+    return pageUrls.join('\n');
+  }
+
+  async function linkPreviewForUrl(url) {
+    const data = await api(`api/link-preview/?url=${encodeURIComponent(url)}`);
+    const image = String(data?.image || '').trim();
+    if (!/^https?:\/\//i.test(image)) return null;
+    return { image, title: String(data?.title || '').trim(), icon: !!data?.icon };
+  }
+
+  async function linkPreviewImages(pageUrls) {
+    const out = [];
+    for (const url of (pageUrls || []).slice(0, 3)) {
+      try {
+        const hit = await linkPreviewForUrl(url);
+        if (hit) out.push({ ...hit, pageUrl: url });
+      } catch (err) {
+        console.warn('link preview failed:', err);
+      }
+    }
+    return out;
+  }
+
+  async function pasteResolvedPageImage(url, apply) {
+    const hit = await linkPreviewForUrl(url);
+    if (!hit) {
+      showToast('No image found for that link.', 'warning');
+      return false;
+    }
+    await apply(hit.image, hit.title || imageLabelFromUrl(hit.image));
+    return true;
+  }
+
+  function linkThumbMarkdown(pageUrl, hit, label) {
+    const name = String(label || hit?.title || pageUrl).replace(/[\[\]]/g, '').trim() || pageUrl;
+    const href = unwrapImageUrl(hit.image);
+    return `![${name}](${href}){width=48px align=left} [${name}](${pageUrl})`;
+  }
+
+  function linkPreviewBlock(block, pageUrls, hits) {
+    const byUrl = new Map();
+    (hits || []).forEach((hit) => {
+      if (hit?.pageUrl && hit.image) byUrl.set(hit.pageUrl, hit);
+    });
+    return (pageUrls || []).map((url) => {
+      const hit = byUrl.get(url);
+      const escaped = String(url).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const linked = String(block || '').match(new RegExp(`\\[([^\\]]*)\\]\\(${escaped}\\)`));
+      const label = (linked?.[1] || hit?.title || url).replace(/[\[\]]/g, '');
+      if (!hit) return linked ? `[${label}](${url})` : url;
+      return linkThumbMarkdown(url, hit, label);
+    }).join('\n');
+  }
+
+  function pastePageLinksIntoEditor(clipboardData, pageUrls) {
+    if (!easyMDE || !pageUrls?.length) return false;
+    const cm = easyMDE.codemirror;
+    const doc = cm.getDoc();
+    const block = pastedLinkMarkdown(clipboardData, pageUrls);
+    const from = cm.somethingSelected() ? doc.getCursor('from') : doc.getCursor();
+    if (cm.somethingSelected()) cm.replaceSelection(block);
+    else doc.replaceRange(block, from);
+    const after = doc.posFromIndex(doc.indexFromPos(from) + block.length);
+    const mark = doc.setBookmark(after, { insertLeft: true });
+    cm.focus();
+    scheduleSave();
+    schedulePreviewRefresh();
+    void (async () => {
+      const hits = await linkPreviewImages(pageUrls);
+      const pos = mark.find();
+      mark.clear();
+      if (!hits.length || !pos || !easyMDE) {
+        if (!hits.length) showToast('No image found for that link.', 'warning');
+        return;
+      }
+      const endIndex = doc.indexFromPos(pos);
+      const startPos = doc.posFromIndex(Math.max(0, endIndex - block.length));
+      const replacement = linkPreviewBlock(block, pageUrls, hits);
+      if (doc.getRange(startPos, pos) === block) doc.replaceRange(replacement, startPos, pos);
+      else doc.replaceRange(`\n${replacement}\n`, pos);
+      scheduleSave();
+      schedulePreviewRefresh();
+    })();
+    return true;
+  }
+
+  function pastePageLinksIntoKeep(field, clipboardData, pageUrls) {
+    if (!field || !pageUrls?.length) return false;
+    const block = pastedLinkMarkdown(clipboardData, pageUrls);
+    const start = field.selectionStart ?? field.value.length;
+    const end = field.selectionEnd ?? start;
+    field.value = `${field.value.slice(0, start)}${block}${field.value.slice(end)}`;
+    const pos = start + block.length;
+    field.focus();
+    if (typeof field.setSelectionRange === 'function') field.setSelectionRange(pos, pos);
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+    void (async () => {
+      const hits = await linkPreviewImages(pageUrls);
+      if (!field.isConnected) return;
+      if (!hits.length) {
+        showToast('No image found for that link.', 'warning');
+        return;
+      }
+      const replacement = linkPreviewBlock(block, pageUrls, hits);
+      const idx = field.value.indexOf(block, start);
+      if (idx >= 0) {
+        field.value = `${field.value.slice(0, idx)}${replacement}${field.value.slice(idx + block.length)}`;
+      } else {
+        const insertAt = field.selectionStart ?? field.value.length;
+        field.value = `${field.value.slice(0, insertAt)}\n${replacement}\n${field.value.slice(insertAt)}`;
+      }
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+    })();
+    return true;
+  }
+
+  function isTypingPasteTarget(el) {
+    const node = el?.nodeType === 1 ? el : el?.parentElement;
+    if (!node?.closest) return false;
+    if (node.closest('.CodeMirror, .EasyMDEContainer')) return false;
+    return Boolean(node.closest('input, textarea, select, [contenteditable="true"]'));
+  }
+
+  function keepImagePasteField(el) {
+    const node = el?.nodeType === 1 ? el : el?.parentElement;
+    if (!node?.closest) return null;
+    return node.closest('#keep-composer-body, textarea.keep-note-body');
+  }
+
+  function insertTextareaImageUrls(el, urls) {
+    if (!el || !urls?.length) return false;
+    const start = el.selectionStart ?? el.value.length;
+    const end = el.selectionEnd ?? start;
+    const selected = String(el.value.slice(start, end) || '').trim();
+    const useAlt = selected && urls.length === 1 && !/^https?:\/\//i.test(selected) && !/^data:image\//i.test(selected);
+    const block = urls.map((url, i) => markdownImageSnippet(url, useAlt && i === 0 ? selected : '')).join('\n');
+    el.value = `${el.value.slice(0, start)}${block}${el.value.slice(end)}`;
+    el.focus();
+    const pos = start + block.length;
+    if (typeof el.setSelectionRange === 'function') el.setSelectionRange(pos, pos);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    return true;
+  }
+
+  function tryPasteImageUrlsIntoKeep(event) {
+    const field = keepImagePasteField(event.target);
+    if (!field || !userCanEdit) return false;
+    const data = event.clipboardData || event.originalEvent?.clipboardData;
+    const files = clipboardImageFiles(data);
+    if (files.length) {
+      event.preventDefault();
+      event.stopPropagation();
+      void (async () => {
+        for (const file of files) {
+          try {
+            const mediaPath = await uploadPastedImageBlob(file, file.name || 'paste.png');
+            insertTextareaImageUrls(field, [mediaPath]);
+          } catch (err) {
+            showToast(err.message || 'Image upload failed.', 'danger');
+          }
+        }
+      })();
+      return true;
+    }
+    const text = data?.getData?.('text/plain') || '';
+    const urls = pastedImageUrls(data, text);
+    if (urls.length) {
+      event.preventDefault();
+      event.stopPropagation();
+      return insertTextareaImageUrls(field, urls);
+    }
+    const pageUrls = clipboardPageUrls(data);
+    if (!pageUrls.length) return false;
+    event.preventDefault();
+    event.stopPropagation();
+    return pastePageLinksIntoKeep(field, data, pageUrls);
+  }
+
+  function insertMarkdownImageUrls(urls) {
+    if (!easyMDE || !urls?.length) return false;
+    const cm = easyMDE.codemirror;
+    if (!cm) return false;
+    const selected = String(cm.getSelection() || '').trim();
+    const useAlt = selected && urls.length === 1 && !/^https?:\/\//i.test(selected) && !/^data:image\//i.test(selected);
+    const block = urls.map((url, i) => markdownImageSnippet(url, useAlt && i === 0 ? selected : '')).join('\n');
+    if (cm.somethingSelected()) {
+      cm.replaceSelection(`${block}\n`);
+    } else {
+      const doc = cm.getDoc();
+      const cursor = doc.getCursor();
+      const line = doc.getLine(cursor.line) || '';
+      const needsLead = cursor.ch > 0 && String(line.slice(0, cursor.ch)).trim();
+      doc.replaceRange(`${needsLead ? '\n' : ''}${block}\n`, cursor);
+    }
+    cm.focus();
+    scheduleSave();
+    schedulePreviewRefresh();
+    return true;
+  }
+
+  function enhanceBareImageLinks(root) {
+    if (!root) return;
+    root.querySelectorAll('a[href]').forEach((a) => {
+      if (a.closest('pre, code, .gallery-block, .photoview-block, .jukebox-block, .shop-block')) return;
+      if (a.querySelector('img')) return;
+      const href = unwrapImageUrl(a.getAttribute('href') || '');
+      if (!looksLikeImageUrl(href)) return;
+      const text = (a.textContent || '').trim();
+      const hrefNoProto = href.replace(/^https?:\/\//i, '');
+      const textNoProto = text.replace(/^https?:\/\//i, '');
+      if (text && text !== href && textNoProto !== hrefNoProto && !/^https?:\/\//i.test(text)) return;
+      const wrap = document.createElement('span');
+      wrap.innerHTML = renderMarkdownImage(imageLabelFromUrl(href), href, 'width=100%');
+      a.replaceWith(...wrap.childNodes);
+    });
+  }
+
   function markCalendarPasteUnit(unit) {
     if (calendarPasteHoverUnit === unit) return;
     clearCalendarPasteUnit();
@@ -15243,12 +15806,28 @@ function formatTextWithMarkup(rawText) {
   }
 
   function tryPasteImagesOntoHoveredCalendarDay(event) {
-    const files = clipboardImageFiles(event.clipboardData || event.originalEvent?.clipboardData);
-    if (!files.length) return false;
+    const data = event.clipboardData || event.originalEvent?.clipboardData;
+    const files = clipboardImageFiles(data);
+    const urls = files.length ? [] : clipboardImageUrls(data);
+    const pageUrls = (!files.length && !urls.length) ? clipboardPageUrls(data) : [];
+    if (!files.length && !urls.length && !pageUrls.length) return false;
     if (isCalendarNoteModalOpen()) {
+      const inModal = event.target?.closest?.('#calendar-note-modal');
+      if (!inModal && !files.length) return false;
+      if (inModal && !files.length && isTypingPasteTarget(event.target)) return false;
       event.preventDefault();
       event.stopPropagation();
-      void addPastedImagesToCalendarNote(files);
+      if (pageUrls.length) {
+        void linkPreviewImages(pageUrls).then((hits) => {
+          if (!hits.length) {
+            showToast('No image found for that link.', 'warning');
+            return;
+          }
+          hits.forEach((hit) => addCalendarNoteImagePath(hit.image));
+        });
+      } else {
+        void addPastedImagesToCalendarNote(files, urls);
+      }
       return true;
     }
     if (!isPreviewInteractionEnabled()) return false;
@@ -15256,19 +15835,45 @@ function formatTextWithMarkup(rawText) {
     if (!unit) return false;
     event.preventDefault();
     event.stopPropagation();
-    void pasteImagesOntoCalendarUnit(unit, files);
+    if (pageUrls.length) {
+      void linkPreviewImages(pageUrls).then((hits) => {
+        if (!hits.length) {
+          showToast('No image found for that link.', 'warning');
+          return;
+        }
+        void pasteImagesOntoCalendarUnit(unit, [], hits.map((hit) => hit.image));
+      });
+    } else {
+      void pasteImagesOntoCalendarUnit(unit, files, urls);
+    }
     return true;
   }
 
-  const PHOTO_PASTE_BLOCK_SEL = '.gallery-block--editable, .photocube-block.photoview-block--editable, .photobook-block.photoview-block--editable';
+  const PHOTO_PASTE_BLOCK_SEL = '.gallery-block--editable, .photocube-block.photoview-block--editable, .photobook-block.photoview-block--editable, .carousel-block.photoview-block--editable, .labyrinth-block--editable';
   let photoPasteHoverBlock = null;
   let photoPastePointer = { x: 0, y: 0 };
+
+  function driveLinkFromText(raw) {
+    const text = String(raw || '').replace(/&amp;/g, '&');
+    const urls = text.match(/https?:\/\/[^\s<>"']+/gi) || [];
+    for (const token of urls) {
+      const url = token.replace(/[),.;]+$/g, '');
+      if (!/(?:drive|docs)\.google\.com/i.test(url)) continue;
+      if (/\/folders\/[A-Za-z0-9_-]+/i.test(url)
+        || /\/file\/d\/[A-Za-z0-9_-]+/i.test(url)
+        || /embeddedfolderview\?id=[A-Za-z0-9_-]+/i.test(url)
+        || /[?&]id=[A-Za-z0-9_-]+/i.test(url)) return url;
+    }
+    return '';
+  }
 
   function photoPasteKind(el) {
     if (!el) return null;
     if (el.classList.contains('gallery-block')) return 'gallery';
     if (el.classList.contains('photobook-block')) return 'photobook';
     if (el.classList.contains('photocube-block')) return 'photocube';
+    if (el.classList.contains('carousel-block')) return 'carousel';
+    if (el.classList.contains('labyrinth-block')) return 'labyrinth';
     return null;
   }
 
@@ -15276,6 +15881,8 @@ function formatTextWithMarkup(rawText) {
     if (kind === 'gallery') return parseInt(el.dataset.galleryIndex, 10);
     if (kind === 'photobook') return parseInt(el.dataset.photobookIndex, 10);
     if (kind === 'photocube') return parseInt(el.dataset.photocubeIndex, 10);
+    if (kind === 'carousel') return parseInt(el.dataset.carouselIndex, 10);
+    if (kind === 'labyrinth') return parseInt(el.dataset.labyrinthIndex, 10);
     return NaN;
   }
 
@@ -15286,11 +15893,13 @@ function formatTextWithMarkup(rawText) {
     if (!el) return;
     el.classList.add(el.classList.contains('gallery-block')
       ? 'gallery-block--paste-target'
-      : 'photoview-block--paste-target');
+      : el.classList.contains('labyrinth-block')
+        ? 'labyrinth-block--paste-target'
+        : 'photoview-block--paste-target');
   }
 
   function clearPhotoPasteBlock() {
-    photoPasteHoverBlock?.classList.remove('gallery-block--paste-target', 'photoview-block--paste-target');
+    photoPasteHoverBlock?.classList.remove('gallery-block--paste-target', 'photoview-block--paste-target', 'labyrinth-block--paste-target');
     photoPasteHoverBlock = null;
   }
 
@@ -15329,24 +15938,58 @@ function formatTextWithMarkup(rawText) {
     return null;
   }
 
-  async function pasteClipboardOntoPhotoBlock(kind, blockIndex, files, youtubeId) {
+  function applyPhotoFenceUpdate(kind, blockIndex, update) {
+    if (!easyMDE || !Number.isFinite(blockIndex)) return false;
+    const oldMarkdown = easyMDE.value();
+    const updated = kind === 'gallery'
+      ? updateGalleryInMarkdown(oldMarkdown, blockIndex, update)
+      : kind === 'labyrinth'
+        ? updateLabyrinthInMarkdown(oldMarkdown, blockIndex, update)
+        : updatePhotoFenceInMarkdown(oldMarkdown, kind, blockIndex, update);
+    if (updated === oldMarkdown) return false;
+    easyMDE.value(updated);
+    scheduleSave();
+    schedulePreviewRefresh();
+    return true;
+  }
+
+  async function importDrivePhotos(kind, blockIndex, url) {
+    try {
+      const data = await api(`api/drive/resolve/?kind=image&url=${encodeURIComponent(url)}`);
+      const photos = (Array.isArray(data?.photos) ? data.photos : [])
+        .map((item) => ({
+          src: item.src || '',
+          label: item.title || item.label || 'Photo',
+        }))
+        .filter((item) => item.src);
+      if (!photos.length) {
+        showToast('No images in that Drive folder. Share it as “Anyone with the link”.', 'warning');
+        return;
+      }
+      applyPhotoFenceUpdate(kind, blockIndex, { drive: data.url || url, photos });
+      showToast(`${photos.length} Drive photo${photos.length === 1 ? '' : 's'} added.`);
+    } catch (err) {
+      showToast(err?.message || 'Google Drive listing failed.', 'danger');
+    }
+  }
+
+  async function pasteClipboardOntoPhotoBlock(kind, blockIndex, files, youtubeId, imageUrls) {
     if (!easyMDE || !Number.isFinite(blockIndex)) return;
     const labelFromFile = (file) => (file.name ? String(file.name).replace(/\.[^.]+$/, '') : 'Photo');
-    const applyUpdate = (update) => {
-      const oldMarkdown = easyMDE.value();
-      const updated = kind === 'gallery'
-        ? updateGalleryInMarkdown(oldMarkdown, blockIndex, update)
-        : updatePhotoFenceInMarkdown(oldMarkdown, kind, blockIndex, update);
-      if (updated === oldMarkdown) return;
-      easyMDE.value(updated);
-      scheduleSave();
-      schedulePreviewRefresh();
-    };
+    const applyUpdate = (update) => applyPhotoFenceUpdate(kind, blockIndex, update);
     if (youtubeId) {
       applyUpdate({
         addYoutube: `https://www.youtube.com/embed/${youtubeId}`,
         label: 'YouTube',
       });
+    }
+    if (!youtubeId) {
+      for (const url of imageUrls || []) {
+        applyUpdate({
+          addImage: url,
+          label: imageLabelFromUrl(url),
+        });
+      }
     }
     for (const file of files || []) {
       try {
@@ -15378,11 +16021,28 @@ function formatTextWithMarkup(rawText) {
       || window.NotesProPhotocube?.extractYoutubeId?.(text)
       || window.NotesProPhotobook?.extractYoutubeId?.(text)
       || '';
-    if (!files.length && !ytId) return false;
+    const urls = (!files.length && !ytId) ? clipboardImageUrls(data) : [];
+    const driveUrl = (!files.length && !ytId) ? driveLinkFromText(`${text}\n${html}`) : '';
+    const pageUrls = (!files.length && !ytId && !urls.length && !driveUrl) ? clipboardPageUrls(data) : [];
+    if (!files.length && !ytId && !urls.length && !driveUrl && !pageUrls.length) return false;
     event.preventDefault();
     event.stopPropagation();
     block.classList.remove('photoview-block--paste-armed', 'gallery-block--paste-armed');
-    void pasteClipboardOntoPhotoBlock(kind, blockIndex, files, ytId);
+    if (driveUrl) {
+      void importDrivePhotos(kind, blockIndex, driveUrl);
+      return true;
+    }
+    if (pageUrls.length) {
+      void linkPreviewImages(pageUrls).then((hits) => {
+        if (!hits.length) {
+          showToast('No image found for that link.', 'warning');
+          return;
+        }
+        void pasteClipboardOntoPhotoBlock(kind, blockIndex, [], '', hits.map((hit) => hit.image));
+      });
+      return true;
+    }
+    void pasteClipboardOntoPhotoBlock(kind, blockIndex, files, ytId, urls);
     return true;
   }
 
@@ -15400,6 +16060,8 @@ function formatTextWithMarkup(rawText) {
       { kind: 'gallery', re: /```gallery(?:\{[^}]*\})?[ \t]*(?:\r?\n[\s\S]*?)?```/gi },
       { kind: 'photocube', re: /```(?:photocube|photo-cube)(?:\{[^}]*\})?[ \t]*(?:\r?\n[\s\S]*?)?```/gi },
       { kind: 'photobook', re: /```(?:photobook|photo-book|flipbook)(?:\{[^}]*\})?[ \t]*(?:\r?\n[\s\S]*?)?```/gi },
+      { kind: 'carousel', re: /```(?:carousel|photo-carousel|slideshow)(?:\{[^}]*\})?[ \t]*(?:\r?\n[\s\S]*?)?```/gi },
+      { kind: 'labyrinth', re: /```(?:labyrinth|photo-labyrinth|maze)(?:\{[^}]*\})?[ \t]*(?:\r?\n[\s\S]*?)?```/gi },
     ];
     for (const { kind, re } of kinds) {
       re.lastIndex = 0;
@@ -15428,10 +16090,27 @@ function formatTextWithMarkup(rawText) {
       || window.NotesProPhotocube?.extractYoutubeId?.(text)
       || window.NotesProPhotobook?.extractYoutubeId?.(text)
       || '';
-    if (!files.length && !ytId) return false;
+    const urls = (!files.length && !ytId) ? clipboardImageUrls(data) : [];
+    const driveUrl = (!files.length && !ytId) ? driveLinkFromText(`${text}\n${html}`) : '';
+    const pageUrls = (!files.length && !ytId && !urls.length && !driveUrl) ? clipboardPageUrls(data) : [];
+    if (!files.length && !ytId && !urls.length && !driveUrl && !pageUrls.length) return false;
     event.preventDefault();
     event.stopPropagation();
-    void pasteClipboardOntoPhotoBlock(fence.kind, fence.blockIndex, files, ytId);
+    if (driveUrl) {
+      void importDrivePhotos(fence.kind, fence.blockIndex, driveUrl);
+      return true;
+    }
+    if (pageUrls.length) {
+      void linkPreviewImages(pageUrls).then((hits) => {
+        if (!hits.length) {
+          showToast('No image found for that link.', 'warning');
+          return;
+        }
+        void pasteClipboardOntoPhotoBlock(fence.kind, fence.blockIndex, [], '', hits.map((hit) => hit.image));
+      });
+      return true;
+    }
+    void pasteClipboardOntoPhotoBlock(fence.kind, fence.blockIndex, files, ytId, urls);
     return true;
   }
 
@@ -15655,21 +16334,24 @@ function formatTextWithMarkup(rawText) {
     }
   }
 
-  async function addPastedImagesToCalendarNote(files) {
+  async function addPastedImagesToCalendarNote(files, imageUrls = []) {
     if (!calendarNoteContext) return false;
     const imageFiles = [...(files || [])].filter((file) => file && String(file.type || '').startsWith('image/'));
-    if (!imageFiles.length) return false;
+    const urls = [...(imageUrls || [])].map((src) => String(src || '').trim()).filter(Boolean);
+    if (!imageFiles.length && !urls.length) return false;
+    urls.forEach((url) => addCalendarNoteImagePath(url));
     for (const file of imageFiles) {
       await uploadCalendarNoteImage(file);
     }
     return true;
   }
 
-  async function pasteImagesOntoCalendarUnit(unitEl, files) {
+  async function pasteImagesOntoCalendarUnit(unitEl, files, imageUrls = []) {
     if (!unitEl || !easyMDE || !isPreviewInteractionEnabled()) return false;
-    if (isCalendarNoteModalOpen()) return addPastedImagesToCalendarNote(files);
+    if (isCalendarNoteModalOpen()) return addPastedImagesToCalendarNote(files, imageUrls);
     const imageFiles = [...(files || [])].filter((file) => file && String(file.type || '').startsWith('image/'));
-    if (!imageFiles.length) return false;
+    const urls = [...(imageUrls || [])].map((src) => String(src || '').trim()).filter(Boolean);
+    if (!imageFiles.length && !urls.length) return false;
     const block = unitEl.closest('.calendar-block');
     const key = normalizeCalendarStorageKey(unitEl.dataset.calendarKey);
     const calendarIndex = parseInt(block?.dataset.calendarIndex, 10);
@@ -15678,7 +16360,7 @@ function formatTextWithMarkup(rawText) {
     const spec = getCalendarBlockSpec(easyMDE.value(), calendarIndex);
     const stored = normalizeCalendarEntryList(spec?.entries?.[key]);
     const text = calendarEntriesMarkdown(stored);
-    let images = calendarEntriesImages(stored);
+    let images = uniqueCalendarImages([...calendarEntriesImages(stored), ...urls]);
     const first = stored[0] || {};
     const timeOpts = {
       allday: first.allday !== false,
@@ -15938,10 +16620,27 @@ function formatTextWithMarkup(rawText) {
     });
     calendarNoteModal?.addEventListener('paste', async (e) => {
       const files = clipboardImageFiles(e.clipboardData);
-      if (!files.length) return;
+      const urls = files.length ? [] : clipboardImageUrls(e.clipboardData);
+      const pageUrls = (!files.length && !urls.length) ? clipboardPageUrls(e.clipboardData) : [];
+      if (!files.length && !urls.length && !pageUrls.length) return;
+      if (!files.length && pageUrls.length && isTypingPasteTarget(e.target)) {
+        const hits = await linkPreviewImages(pageUrls);
+        hits.forEach((hit) => addCalendarNoteImagePath(hit.image));
+        return;
+      }
+      if (!files.length && !pageUrls.length && isTypingPasteTarget(e.target)) return;
       e.preventDefault();
       e.stopPropagation();
-      await addPastedImagesToCalendarNote(files);
+      if (pageUrls.length) {
+        const hits = await linkPreviewImages(pageUrls);
+        if (!hits.length) {
+          showToast('No image found for that link.', 'warning');
+          return;
+        }
+        hits.forEach((hit) => addCalendarNoteImagePath(hit.image));
+        return;
+      }
+      await addPastedImagesToCalendarNote(files, urls);
     }, true);
 
     preview.addEventListener('pointerdown', (e) => {
@@ -16893,15 +17592,15 @@ function formatTextWithMarkup(rawText) {
     }
   }
 
-  function castFormVote(block, optionRow) {
+  function castFormVote(block, optionRow, { select = false } = {}) {
     const me = String(currentUserName || '').trim();
-    if (!me) return;
+    if (!me || !optionRow) return;
     const mineKey = me.toLowerCase();
     const already = String(optionRow.dataset.votes || '').split(',').some((n) => n.trim().toLowerCase() === mineKey);
     block.querySelectorAll('.form-widget-option').forEach((row) => {
       let votes = String(row.dataset.votes || '').split(',').map((s) => s.trim()).filter(Boolean)
         .filter((name) => name.toLowerCase() !== mineKey);
-      if (row === optionRow && !already) votes.push(me);
+      if (row === optionRow && (select || !already)) votes.push(me);
       row.dataset.votes = votes.join(',');
       paintVoteRow(row);
     });
@@ -16969,9 +17668,25 @@ function formatTextWithMarkup(rawText) {
 
       if (kind === 'vote') {
         const row = e.target.closest('.form-widget-option');
-        if (row && !e.target.closest('button')) {
-          if (!e.target.closest('.form-widget-option-text')) e.preventDefault();
+        if (!row || e.target.closest('button, .form-widget-option-text')) return;
+        const choice = row.querySelector('.form-widget-choice');
+        const mineKey = String(currentUserName || '').trim().toLowerCase();
+        const already = String(row.dataset.votes || '').split(',').some((n) => n.trim().toLowerCase() === mineKey);
+        if (e.target === choice) {
+          if (already) {
+            e.preventDefault();
+            setTimeout(() => castFormVote(block, row), 0);
+          }
+          return;
+        }
+        if (!choice || choice.disabled) {
           castFormVote(block, row);
+          return;
+        }
+        if (already) castFormVote(block, row);
+        else {
+          choice.checked = true;
+          castFormVote(block, row, { select: true });
         }
         return;
       }
@@ -16997,7 +17712,12 @@ function formatTextWithMarkup(rawText) {
       const block = e.target.closest?.('.form-widget');
       if (!block || !preview.contains(block)) return;
       const kind = block.dataset.formKind;
-      if (kind === 'vote') return;
+      if (kind === 'vote') {
+        if (!e.target.classList.contains('form-widget-choice')) return;
+        const row = e.target.closest('.form-widget-option');
+        if (row) castFormVote(block, row, { select: true });
+        return;
+      }
       if (e.target.classList.contains('form-widget-choice')) {
         block.querySelectorAll('.form-widget-option').forEach((row) => {
           row.classList.toggle('is-selected', !!row.querySelector('.form-widget-choice:checked'));
@@ -18706,6 +19426,7 @@ function formatTextWithMarkup(rawText) {
           const wrap = document.createElement('div');
           wrap.innerHTML = html;
           markFileLinks(wrap);
+          enhanceBareImageLinks(wrap);
           applyPreviewImageStyles(wrap);
           enhanceMarkdownCodeBlocks(wrap);
           return wrap.innerHTML;
@@ -18748,11 +19469,25 @@ function formatTextWithMarkup(rawText) {
 
     easyMDE.codemirror.on('paste', (cm, e) => {
       let text = e.clipboardData?.getData('text/plain')?.trim();
-      if (!text) return;
-      text = text.replace(/^["']|["']$/g, '');
-      if (!isLocalPathText(text)) return;
+      if (text) {
+        text = text.replace(/^["']+|["']+$/g, '');
+        if (isLocalPathText(text)) {
+          e.preventDefault();
+          insertLocalFileLink(text);
+          return;
+        }
+      }
+      if (clipboardImageFiles(e.clipboardData).length) return;
+      const urls = pastedImageUrls(e.clipboardData, text);
+      if (urls.length) {
+        e.preventDefault();
+        insertMarkdownImageUrls(urls);
+        return;
+      }
+      const pageUrls = clipboardPageUrls(e.clipboardData);
+      if (!pageUrls.length) return;
       e.preventDefault();
-      insertLocalFileLink(text);
+      pastePageLinksIntoEditor(e.clipboardData, pageUrls);
     });
 
     setTimeout(() => { if (easyMDE) easyMDE.codemirror.refresh(); }, 200);
@@ -19695,15 +20430,37 @@ function formatTextWithMarkup(rawText) {
     });
   }
 
+  function dragHasFiles(event) {
+    const types = [...(event.dataTransfer?.types || [])];
+    if (types.includes('Files') || types.includes('application/x-moz-file')) return true;
+    return (event.dataTransfer?.files?.length || 0) > 0;
+  }
+
   async function handleFiles(fileList) {
-    for (const file of fileList) {
-      const data = new FormData();
-      data.append('workspace', workspaceId);
-      data.append('file', file);
-      await api('api/uploads/', 'POST', data, true);
+    syncWorkspaceIdFromDom();
+    const files = [...(fileList || [])].filter(Boolean);
+    if (!files.length) return;
+    if (!workspaceId) {
+      setStatus('Upload failed');
+      showToast('Choose a workspace before uploading.', 'warning');
+      return;
     }
-    setStatus('Upload complete');
-    await loadFiles();
+    try {
+      for (const file of files) {
+        const data = new FormData();
+        data.append('workspace', workspaceId);
+        data.append('file', file);
+        const result = await api('api/uploads/', 'POST', data, true);
+        if (result && result.success === false) {
+          throw new Error(result.error || `Could not upload ${file.name || 'file'}.`);
+        }
+      }
+      setStatus('Upload complete');
+      await loadFiles();
+    } catch (err) {
+      setStatus('Upload failed');
+      showToast(err.message || 'Upload failed.', 'danger');
+    }
   }
 
   function syncWorkspaceOwnerControls(selectedOption) {
@@ -19994,13 +20751,19 @@ function formatTextWithMarkup(rawText) {
       const start = match.index;
       const end = start + href.length;
       if (start > last) frag.appendChild(document.createTextNode(text.slice(last, start)));
-      const a = document.createElement('a');
-      a.href = href;
-      a.target = '_blank';
-      a.rel = 'noopener noreferrer';
-      a.className = 'keep-external-link';
-      a.textContent = href;
-      frag.appendChild(a);
+      if (looksLikeImageUrl(href)) {
+        const wrap = document.createElement('span');
+        wrap.innerHTML = renderMarkdownImage(imageLabelFromUrl(href), href, 'width=100%');
+        while (wrap.firstChild) frag.appendChild(wrap.firstChild);
+      } else {
+        const a = document.createElement('a');
+        a.href = href;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        a.className = 'keep-external-link';
+        a.textContent = href;
+        frag.appendChild(a);
+      }
       last = end;
       KEEP_BARE_URL_RE.lastIndex = last;
     }
@@ -20059,8 +20822,26 @@ function formatTextWithMarkup(rawText) {
       showToast('Use an http(s) or mailto link.', 'warning');
       return;
     }
+    if (looksLikeImageUrl(href)) {
+      insertTextareaImageUrls(el, [unwrapImageUrl(href)]);
+      return;
+    }
     const label = selected && !/^https?:\/\//i.test(selected.trim()) ? selected : href.replace(/^https?:\/\//i, '');
     insertMarkdownLinkAtCursor(el, href, label);
+    if (!/^https?:\/\//i.test(href)) return;
+    const block = `[${label}](${href})`;
+    void (async () => {
+      const hits = await linkPreviewImages([href]);
+      const hit = hits[0];
+      if (!hit?.image || !el.isConnected) return;
+      const replacement = linkThumbMarkdown(href, hit, label);
+      const idx = el.value.lastIndexOf(block);
+      if (idx < 0) return;
+      el.value = `${el.value.slice(0, idx)}${replacement}${el.value.slice(idx + block.length)}`;
+      const pos = idx + replacement.length;
+      if (typeof el.setSelectionRange === 'function') el.setSelectionRange(pos, pos);
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    })();
   }
 
   function keepSearchActive() {
@@ -20155,6 +20936,7 @@ function formatTextWithMarkup(rawText) {
         patchQuickNote(noteId, { color });
       });
     });
+    enhanceBareImageLinks(grid);
     applyPreviewImageStyles(grid);
     enhanceMarkdownCodeBlocks(grid);
     markFileLinks(grid);
@@ -21326,23 +22108,36 @@ function formatTextWithMarkup(rawText) {
     });
 
     const dz = document.getElementById('dropzone');
-    ['dragenter','dragover'].forEach(ev => {
-      dz?.addEventListener(ev, e => {
-        e.preventDefault();
-        dz.classList.add('active');
+    const fileDropPanel = dz?.closest('.panel-body') || dz;
+    if (fileDropPanel && fileDropPanel.dataset.fileDropBound !== '1') {
+      fileDropPanel.dataset.fileDropBound = '1';
+      const allowFileDrop = (event) => {
+        if (!dragHasFiles(event)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+        dz?.classList.add('active');
+      };
+      fileDropPanel.addEventListener('dragenter', allowFileDrop);
+      fileDropPanel.addEventListener('dragover', allowFileDrop);
+      fileDropPanel.addEventListener('dragleave', (event) => {
+        const next = event.relatedTarget;
+        if (next && fileDropPanel.contains(next)) return;
+        dz?.classList.remove('active');
       });
-    });
-
-    ['dragleave','drop'].forEach(ev => {
-      dz?.addEventListener(ev, e => {
-        e.preventDefault();
-        dz.classList.remove('active');
+      fileDropPanel.addEventListener('drop', async (event) => {
+        if (!dragHasFiles(event)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        dz?.classList.remove('active');
+        const files = [...(event.dataTransfer?.files || [])];
+        if (!files.length) {
+          showToast('That drop did not include any files.', 'warning');
+          return;
+        }
+        await handleFiles(files);
       });
-    });
-
-    dz?.addEventListener('drop', async e => {
-      await handleFiles(e.dataTransfer.files);
-    });
+    }
 
     document.getElementById('edit-toggle')?.addEventListener('click', () => {
       setEditing(!isEditing);
@@ -21368,6 +22163,40 @@ function formatTextWithMarkup(rawText) {
     const isOwner = initialWsOption?.dataset?.ownerId
       && String(initialWsOption.dataset.ownerId) === String(currentUserId);
     if (isOwner) syncUserEditAccess(true, 'write');
+  }
+
+  function bootPublicPage() {
+    document.body.classList.add('public-page');
+    userCanEdit = false;
+    initMarked();
+    try {
+      initEditors();
+    } catch (err) {
+      console.error('Editor init failed:', err);
+      setStatus('Editor failed to load');
+    }
+    initPreviewImageClicks();
+    initMarkdownCodeCopy();
+    initCalcsPlotTooltips();
+    initPreviewTagClicks();
+    syncMobileLayoutClass();
+    setEditing(false);
+    const page = window.APP_BOOT?.publicPage;
+    if (page) applyPageToEditor(page, { fromHistory: true, statusText: '' });
+    document.getElementById('toc-toggle')?.addEventListener('click', toggleFloatingToc);
+    document.getElementById('mobile-toc-backdrop')?.addEventListener('click', closeFloatingToc);
+    window.addEventListener('resize', () => {
+      clearTimeout(window.__notesproResizeTimer);
+      window.__notesproResizeTimer = setTimeout(() => {
+        syncMobileLayoutClass();
+        if (!isEditing) switchMode('preview');
+      }, 150);
+    });
+  }
+
+  if (publicView) {
+    bootPublicPage();
+    return;
   }
 
   initMarked();
@@ -21478,8 +22307,11 @@ function formatTextWithMarkup(rawText) {
 
   function tryPasteOntoHoveredShopCard(event) {
     if (!userCanEdit || !easyMDE) return false;
-    const files = clipboardImageFiles(event.clipboardData || event.originalEvent?.clipboardData);
-    if (!files.length) return false;
+    const data = event.clipboardData || event.originalEvent?.clipboardData;
+    const files = clipboardImageFiles(data);
+    const urls = files.length ? [] : clipboardImageUrls(data);
+    const pageUrls = (!files.length && !urls.length) ? clipboardPageUrls(data) : [];
+    if (!files.length && !urls.length && !pageUrls.length) return false;
     const preview = document.getElementById('preview-content');
     if (!preview) return false;
     const x = photoPastePointer.x;
@@ -21493,6 +22325,16 @@ function formatTextWithMarkup(rawText) {
     const itemIndex = parseInt(card?.dataset?.shopItem || '0', 10) || 0;
     event.preventDefault();
     event.stopPropagation();
+    if (pageUrls.length) {
+      pageUrls.forEach((url) => {
+        void pasteResolvedPageImage(url, (image) => applyShopProductImage(block, itemIndex, image));
+      });
+      return true;
+    }
+    if (urls.length) {
+      urls.forEach((url) => applyShopProductImage(block, itemIndex, url));
+    }
+    if (!files.length) return true;
     void (async () => {
       for (const file of files) {
         try {
@@ -21507,45 +22349,49 @@ function formatTextWithMarkup(rawText) {
   }
 
   document.addEventListener('paste', function (event) {
-    if (tryPasteImagesOntoHoveredCalendarDay(event)) return;
-    if (tryPasteOntoHoveredPhotoBlock(event)) return;
-    if (tryPasteOntoHoveredShopCard(event)) return;
-    if (tryPasteIntoEditorPhotoFence(event)) return;
-    const pasteFiles = clipboardImageFiles(event.clipboardData || event.originalEvent?.clipboardData);
-    if (event.target.closest?.('.puzzle-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .voice-block, .jukebox-block, .calendar-block, #calendar-note-modal')) return;
-    const items = (event.clipboardData || event.originalEvent.clipboardData).items;
-    for (let index in items) {
-      const item = items[index];
-      if (item.kind === 'file') {
-        event.preventDefault();
-        const blob = item.getAsFile();
-        const formData = new FormData();
-        formData.append('image', blob, 'screenshot.png');
-        formData.append('workspace', workspaceId);
-        api(`api/upload_pasted_image/`, 'POST', formData, true)
-          .then(data => {
-            if (data.success) {
-              const cm = easyMDE?.codemirror;
-              if (!cm) return;
-
-              const linkName = data.file?.original_name?.split('/').pop() || 'screenshot';
-              const mediaPath = mediaMarkdownPath(data.url || data.path || data.file?.mediaName);
-              const mdLink = `![${linkName}](${mediaPath}){width=100%}`;
-
-              const doc = cm.getDoc();
-              const cursor = doc.getCursor();
-              doc.replaceRange(mdLink, cursor);
-              cm.focus();
-              scheduleSave();
-            } else {
-              console.error('Django meldet Fehler:', data.error);
-            }
-          })
-          .catch(error => {
-            console.error('Error:', error);
-          });
-      }
+    const pasteNode = event.target?.nodeType === 1 ? event.target : event.target?.parentElement;
+    const inEditor = Boolean(pasteNode?.closest?.('.CodeMirror, .EasyMDEContainer'));
+    if (!inEditor) {
+      if (tryPasteImagesOntoHoveredCalendarDay(event)) return;
+      if (tryPasteOntoHoveredPhotoBlock(event)) return;
+      if (tryPasteOntoHoveredShopCard(event)) return;
     }
+    if (tryPasteIntoEditorPhotoFence(event)) return;
+    if (tryPasteImageUrlsIntoKeep(event)) return;
+    const data = event.clipboardData || event.originalEvent?.clipboardData;
+    const pasteFiles = clipboardImageFiles(data);
+    if (event.target.closest?.('.puzzle-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .voice-block, .jukebox-block, .calendar-block, #calendar-note-modal')) return;
+    if (!pasteFiles.length) {
+      const text = data?.getData?.('text/plain') || '';
+      const fromText = pastedPlainImageUrls(text);
+      const urls = fromText.length ? fromText : clipboardImageUrls(data);
+      const pageUrls = (!urls.length && !inEditor) ? clipboardPageUrls(data) : [];
+      if ((!urls.length && !pageUrls.length) || !userCanEdit || !easyMDE) return;
+      if (isTypingPasteTarget(event.target)) return;
+      if (inEditor) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (pageUrls.length) pastePageLinksIntoEditor(data, pageUrls);
+      else insertMarkdownImageUrls(urls);
+      return;
+    }
+    if (isTypingPasteTarget(event.target) || !userCanEdit || !easyMDE) return;
+    event.preventDefault();
+    event.stopPropagation();
+    void (async () => {
+      for (const file of pasteFiles) {
+        try {
+          const mediaPath = await uploadPastedImageBlob(file, file.name || 'screenshot.png');
+          if (!insertMarkdownImageUrls([mediaPath])) {
+            showToast('Image uploaded, but the editor is not ready.', 'warning');
+          } else {
+            schedulePreviewRefresh({ force: true });
+          }
+        } catch (err) {
+          showToast(err.message || 'Image upload failed.', 'danger');
+        }
+      }
+    })();
   }, true);
 
 

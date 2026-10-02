@@ -21,6 +21,7 @@ FETCH_TIMEOUT_SEC = 30
 LIST_MAX_BYTES = 4 * 1024 * 1024
 MAX_FOLDER_DEPTH = 8
 MAX_TRACKS = 2000
+MAX_IMAGES = 2000
 CHUNK_SIZE = 65536
 
 DRIVE_ID_RE = re.compile(r'^[A-Za-z0-9_-]{16,128}$')
@@ -56,6 +57,15 @@ AUDIO_MIMES = {
     'audio/ogg',
     'audio/opus',
     'audio/webm',
+}
+IMAGE_EXTS = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.avif'}
+IMAGE_MIMES = {
+    'image/jpeg',
+    'image/png',
+    'image/gif',
+    'image/webp',
+    'image/bmp',
+    'image/avif',
 }
 FOLDER_MIME = 'application/vnd.google-apps.folder'
 DRIVE_HOST_SUFFIXES = (
@@ -137,6 +147,25 @@ def track_title_for_album(album: str, name: str) -> str:
     if folder and folder.casefold() != re.sub(r'\.(mp3|m4a|aac|wav|flac|ogg|oga|opus)$', '', song, flags=re.I).casefold():
         return f'{folder} / {song}'
     return song or name
+
+
+def is_image_name(name: str, mime: str = '') -> bool:
+    mime = (mime or '').split(';')[0].strip().lower()
+    if mime in IMAGE_MIMES or (mime.startswith('image/') and mime != 'image/svg+xml'):
+        return True
+    lower = str(name or '').lower()
+    return any(lower.endswith(ext) for ext in IMAGE_EXTS)
+
+
+def image_title(name: str) -> str:
+    base = str(name or '').replace('\\', '/').rstrip('/').split('/')[-1]
+    lower = base.lower()
+    for ext in sorted(IMAGE_EXTS, key=len, reverse=True):
+        if lower.endswith(ext):
+            base = base[: -len(ext)]
+            break
+    cleaned = re.sub(r'[_-]+', ' ', base).strip()
+    return cleaned or 'Photo'
 
 
 def is_audio_name(name: str, mime: str = '') -> bool:
@@ -421,10 +450,77 @@ def collect_folder_tracks(folder_id: str, album: str = '', depth: int = 0) -> li
     return tracks
 
 
-def resolve_drive(raw: str) -> dict:
+def collect_folder_images(folder_id: str, depth: int = 0) -> list[dict]:
+    """Walk a shared folder and return image files as photo records."""
+    folder_id = assert_drive_id(folder_id)
+    try:
+        _folder_name, items = list_folder(folder_id)
+    except (ValueError, HTTPError, URLError, OSError) as exc:
+        raise ValueError(f'Could not list Google Drive folder: {exc}') from exc
+
+    photos: list[dict] = []
+    subfolders = []
+    for item in items:
+        if item.get('is_folder') or item.get('mime') == FOLDER_MIME:
+            subfolders.append(item)
+            continue
+        name = item.get('name') or ''
+        mime = item.get('mime') or ''
+        if not is_image_name(name, mime):
+            continue
+        photos.append({
+            'title': image_title(name),
+            'src': canonical_file_url(item['id']),
+            'id': item['id'],
+        })
+        if len(photos) >= MAX_IMAGES:
+            return photos
+
+    if depth >= MAX_FOLDER_DEPTH:
+        return photos
+    for folder in subfolders:
+        remaining = MAX_IMAGES - len(photos)
+        if remaining <= 0:
+            break
+        photos.extend(collect_folder_images(folder['id'], depth + 1)[:remaining])
+    return photos
+
+
+def _resolve_drive_images(kind: str, item_id: str) -> dict:
+    if kind in ('unknown', 'folder'):
+        try:
+            photos = collect_folder_images(item_id)
+        except ValueError:
+            if kind == 'folder':
+                raise
+            photos = []
+        if photos or kind == 'folder':
+            return {
+                'type': 'folder',
+                'id': item_id,
+                'name': 'Drive',
+                'url': canonical_folder_url(item_id),
+                'photos': photos,
+            }
+    return {
+        'type': 'file',
+        'id': item_id,
+        'name': 'Photo',
+        'url': canonical_file_url(item_id),
+        'photos': [{
+            'title': 'Photo',
+            'src': canonical_file_url(item_id),
+            'id': item_id,
+        }],
+    }
+
+
+def resolve_drive(raw: str, media: str = 'audio') -> dict:
     ref = parse_drive_ref(raw)
     kind = ref['kind']
     item_id = ref['id']
+    if media == 'image':
+        return _resolve_drive_images(kind, item_id)
     if kind in ('unknown', 'folder'):
         try:
             tracks = collect_folder_tracks(item_id, album='')

@@ -4,19 +4,21 @@ from django.contrib import messages
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
 from django.db import IntegrityError, models, transaction
-from django.http import HttpResponseBadRequest, HttpResponse, JsonResponse, StreamingHttpResponse
+from django.http import Http404, HttpResponseBadRequest, HttpResponse, JsonResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.conf import settings as django_settings
 from django.contrib.staticfiles import finders
 from django.views.decorators.http import require_GET, require_POST
 from .forms import RegisterForm
 from .models import Page, Workspace, UploadedFile, PastedFile, \
                     UserSettings, User, \
-                    WorkspaceMembership
+                    WorkspaceMembership, WorkspaceMailMessage, WorkspaceMailRecipient
 from django.shortcuts import get_object_or_404
 from django.core.files.storage import default_storage
 import json
 import os, urllib, hashlib, re, zipfile
+from types import SimpleNamespace
 from pathlib import Path
 from urllib.parse import urlparse
 from django.contrib.auth.models import User
@@ -314,7 +316,23 @@ def _restore_workspace(workspace):
     workspace.save(update_fields=['deleted'])
     workspace.pages.update(deleted=False)
 
+def _public_page_path(page):
+    path = reverse(
+        'public_page',
+        kwargs={
+            'owner': page.workspace.owner.username,
+            'workspace_slug': page.workspace.slug,
+            'page_slug': page.slug,
+        },
+    )
+    base = (getattr(django_settings, 'FORCE_SCRIPT_NAME', None) or '').rstrip('/')
+    if base and not path.startswith(f'{base}/'):
+        return f'{base}{path}'
+    return path
+
+
 def _page_to_dict(page):
+    settings = page.normalized_settings()
     return {
         'id': page.id,
         'workspace': page.workspace_id,
@@ -325,9 +343,104 @@ def _page_to_dict(page):
         'sort_order': page.sort_order,
         'markdown_content': page.markdown_content,
         'archive': page.archive,
-        'settings': page.normalized_settings(),
+        'settings': settings,
         'tags': page_tag_names(page),
+        'public_url': _public_page_path(page) if settings.get('public') and not page.is_folder else '',
     }
+
+
+def _public_page_boot(page):
+    settings = page.normalized_settings()
+    return {
+        'id': page.id,
+        'workspace': page.workspace_id,
+        'title': page.title,
+        'slug': page.slug,
+        'is_folder': False,
+        'markdown_content': page.markdown_content,
+        'archive': '',
+        'settings': settings,
+        'tags': page_tag_names(page) if settings.get('tags') else [],
+        'public_url': _public_page_path(page),
+        'owner': page.workspace.owner.username,
+        'workspace_slug': page.workspace.slug,
+    }
+
+
+def _public_page_or_404(owner, workspace_slug, page_slug):
+    page = (
+        Page.objects.filter(
+            deleted=False,
+            is_folder=False,
+            slug=page_slug,
+            workspace__deleted=False,
+            workspace__slug=workspace_slug,
+            workspace__owner__username=owner,
+        )
+        .select_related('workspace', 'workspace__owner')
+        .first()
+    )
+    if not page or not page.normalized_settings().get('public'):
+        raise Http404('Page not found')
+    return page
+
+
+def _public_shop_order_body(payload, merchant):
+    payment = str(payload.get('payment') or '').strip().lower()
+    labels = {'paypal': 'PayPal', 'visa': 'Visa', 'mastercard': 'Mastercard'}
+    if payment not in labels:
+        return None, 'Choose PayPal, Visa, or Mastercard.'
+    lines = payload.get('lines') if isinstance(payload.get('lines'), list) else []
+    clean_lines = []
+    for line in lines[:40]:
+        if not isinstance(line, dict):
+            continue
+        name = re.sub(r'\s+', ' ', str(line.get('name') or '')).strip()[:120]
+        if not name:
+            continue
+        qty_raw = line.get('qty') or 1
+        try:
+            qty = max(1, min(99, int(qty_raw)))
+        except (TypeError, ValueError):
+            qty = 1
+        price = re.sub(r'\s+', ' ', str(line.get('price') or '')).strip()[:40]
+        clean_lines.append((name, qty, price))
+    if not clean_lines:
+        return None, 'The cart is empty.'
+    buyer = _sanitize_shop_konto(payload.get('buyer_konto'))
+    if _looks_like_card_number(payload.get('buyer_konto')):
+        return None, 'Do not enter card numbers. Use your IBAN or account.'
+    if payment in ('visa', 'mastercard') and not buyer:
+        return None, 'Enter your Konto to transfer from.'
+    title = re.sub(r'\s+', ' ', str(payload.get('title') or 'Shop')).strip()[:120] or 'Shop'
+    note = re.sub(r'\s+', ' ', str(payload.get('note') or '')).strip()[:120]
+    send_to = re.sub(r'\s+', ' ', str(payload.get('send_to') or '')).strip()[:240]
+    bill_to = re.sub(r'\s+', ' ', str(payload.get('bill_to') or '')).strip()[:240]
+    total = re.sub(r'\s+', ' ', str(payload.get('total') or '')).strip()[:40]
+    parts = [f'Shop payment — {title}', f'Payment: {labels[payment]}']
+    if payment in ('visa', 'mastercard'):
+        parts.append(f'Transfer from: {buyer}')
+        if merchant.get('konto'):
+            parts.append(f'Transfer to: {merchant["konto"]}')
+        if merchant.get('mastercard'):
+            parts.append(merchant['mastercard'])
+    if send_to:
+        parts.append(f'Sent to: {send_to}')
+    if bill_to:
+        parts.append(f'Bill to: {bill_to}')
+    if note:
+        parts.append(f'Note: {note}')
+    for name, qty, price in clean_lines:
+        qty_bit = f' ×{qty}' if qty > 1 else ''
+        price_bit = f' — {price}' if price else ''
+        parts.append(f'• {name}{qty_bit}{price_bit}')
+    if total:
+        parts.append(f'Total: {total}')
+    body = '\n'.join(parts)[:4000]
+    subject = f'Shop payment: {title}'
+    if total:
+        subject = f'{subject} · {total}'
+    return {'subject': subject[:180], 'body': body, 'payment': payment}, None
 
 
 def _broadcast_tags_updated(workspace_id, page_id):
@@ -559,6 +672,103 @@ def dashboard(request):
         'app_credits': CREDITS,
         'app_license': LICENSE,
         'game_highscores': serialize_workspace_highscores(current_workspace, request.user),
+    })
+
+
+@require_GET
+def public_page(request, owner, workspace_slug, page_slug):
+    """Read-only page for visitors who are not signed in.
+
+    The switch lives in page settings (outside markdown fences) so a NotesList
+    or shop page can be shared without opening the rest of the workspace.
+    """
+    page = _public_page_or_404(owner, workspace_slug, page_slug)
+
+    owner_settings, _ = UserSettings.objects.get_or_create(user=page.workspace.owner)
+    extra = owner_settings.extra_configs if isinstance(owner_settings.extra_configs, dict) else {}
+    public_settings = SimpleNamespace(
+        extra_configs={'shop': normalize_shop_settings(extra.get('shop'))},
+        workspace_pages={},
+        sidebar_width=None,
+        left_panel_expanded=False,
+        right_panel_width=None,
+        right_panel_expanded=False,
+        font_size=16,
+        stay_informed=False,
+    )
+    app_language = django_settings.LANGUAGE_CODE or 'en'
+    return render(request, 'notes/dashboard.html', {
+        'public_view': True,
+        'public_page': _public_page_boot(page),
+        'workspaces': [page.workspace],
+        'current_workspace': page.workspace,
+        'page': page,
+        'user_settings': public_settings,
+        'app_language': app_language,
+        'app_language_stored': 'browser',
+        'app_language_choices': APP_LANGUAGE_CHOICES,
+        'app_base': (getattr(django_settings, 'FORCE_SCRIPT_NAME', None) or request.META.get('SCRIPT_NAME') or '').rstrip('/'),
+        'local_file_open_enabled': False,
+        'tag_websocket_enabled': False,
+        'allow_games': getattr(django_settings, 'ALLOW_GAMES', True),
+        'allow_photos': getattr(django_settings, 'ALLOW_PHOTOS', True),
+        'allow_offline': False,
+        'can_write_workspace': False,
+        'is_group_admin': False,
+        'app_version': VERSION,
+        'app_credits': CREDITS,
+        'app_license': LICENSE,
+        'game_highscores': {},
+    })
+
+
+@require_POST
+def public_shop_order(request, owner, workspace_slug, page_slug):
+    """Accept a shop payment from a visitor who cannot open Settings."""
+    page = _public_page_or_404(owner, workspace_slug, page_slug)
+    try:
+        payload = json.loads(request.body or '{}')
+    except json.JSONDecodeError:
+        return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+    if not isinstance(payload, dict):
+        return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+
+    owner_settings, _ = UserSettings.objects.get_or_create(user=page.workspace.owner)
+    extra = owner_settings.extra_configs if isinstance(owner_settings.extra_configs, dict) else {}
+    merchant = normalize_shop_settings(extra.get('shop'))
+    built, error = _public_shop_order_body(payload, merchant)
+    if error:
+        return JsonResponse({'status': 'error', 'message': error}, status=400)
+
+    workspace = page.workspace
+    recipient_ids = {workspace.owner_id}
+    to_names = payload.get('to') if isinstance(payload.get('to'), list) else []
+    names = []
+    for name in to_names[:12]:
+        cleaned = str(name or '').strip()
+        if cleaned and cleaned.lower() not in ('all', 'group', 'user', 'an'):
+            names.append(cleaned)
+    if names:
+        member_ids = User.objects.filter(username__in=names).filter(
+            Q(pk=workspace.owner_id) | Q(workspacemembership__workspace=workspace)
+        ).values_list('pk', flat=True)
+        recipient_ids.update(member_ids)
+
+    message = WorkspaceMailMessage.objects.create(
+        workspace=workspace,
+        sender=workspace.owner,
+        subject=built['subject'],
+        body=built['body'],
+    )
+    WorkspaceMailRecipient.objects.bulk_create([
+        WorkspaceMailRecipient(message=message, user_id=uid)
+        for uid in recipient_ids
+    ])
+    return JsonResponse({
+        'status': 'success',
+        'payment': built['payment'],
+        'paypal': merchant.get('paypal') or '',
+        'konto': merchant.get('konto') or '',
     })
 
 
@@ -998,6 +1208,10 @@ def page_update(request, pk):
             merged['contents'] = bool(incoming.get('contents'))
         if 'tags' in incoming:
             merged['tags'] = bool(incoming.get('tags'))
+        if page.is_folder:
+            merged['public'] = False
+        elif 'public' in incoming:
+            merged['public'] = Page._setting_bool(incoming.get('public'), False)
         page.settings = merged
     page.slug = ''
     page.save()
@@ -1520,6 +1734,27 @@ async def rss_fetch(request):
 
 
 @login_required
+async def link_preview(request):
+    """Return a public page's Open Graph / Twitter preview image."""
+    from asgiref.sync import sync_to_async
+
+    from .link_preview import preview_for_url
+
+    if request.method != 'GET':
+        return JsonResponse({'error': 'GET required'}, status=405)
+    url = (request.GET.get('url') or '').strip()
+    if not url:
+        return JsonResponse({'error': 'url required'}, status=400)
+    try:
+        data = await sync_to_async(preview_for_url, thread_sensitive=False)(url)
+    except ValueError as exc:
+        return JsonResponse({'error': str(exc)}, status=400)
+    except Exception as exc:  # noqa: BLE001 — surface fetch failures cleanly
+        return JsonResponse({'error': f'Link preview failed: {exc}'}, status=502)
+    return JsonResponse(data)
+
+
+@login_required
 @require_GET
 def gdrive_resolve(request):
     """List a public Google Drive file or folder for the jukebox."""
@@ -1530,8 +1765,10 @@ def gdrive_resolve(request):
     raw = (request.GET.get('url') or request.GET.get('id') or '').strip()
     if not raw:
         return JsonResponse({'error': 'url required'}, status=400)
+    kind = (request.GET.get('kind') or request.GET.get('media') or 'audio').strip().lower()
+    media = 'image' if kind in ('image', 'images', 'photo', 'photos') else 'audio'
     try:
-        data = resolve_drive(raw)
+        data = resolve_drive(raw, media=media)
     except ValueError as exc:
         return JsonResponse({'error': str(exc)}, status=400)
     except (HTTPError, URLError, OSError) as exc:

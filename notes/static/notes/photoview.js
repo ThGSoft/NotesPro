@@ -75,8 +75,39 @@
     return { theme, colorCss, bgCss };
   }
 
+  function driveFolderId(src) {
+    const raw = String(src || '');
+    const folder = raw.match(/\/folders\/([A-Za-z0-9_-]+)/i)
+      || raw.match(/embeddedfolderview\?id=([A-Za-z0-9_-]+)/i);
+    return folder ? folder[1] : '';
+  }
+
+  function driveFileId(src) {
+    if (driveFolderId(src)) return '';
+    const raw = String(src || '');
+    const file = raw.match(/\/file\/d\/([A-Za-z0-9_-]+)/i)
+      || raw.match(/[?&]id=([A-Za-z0-9_-]+)/i);
+    return file ? file[1] : '';
+  }
+
+  function isDriveLink(src) {
+    const raw = String(src || '').trim();
+    if (!/(?:drive|docs)\.google\.com/i.test(raw)) return false;
+    return !!(driveFolderId(raw) || driveFileId(raw));
+  }
+
+  function driveMediaHref(href) {
+    const id = driveFileId(href);
+    if (!id) return '';
+    const appBase = (typeof window !== 'undefined' && window.APP_BASE) ? String(window.APP_BASE).replace(/\/$/, '') : '';
+    const path = `api/drive/media/${encodeURIComponent(id)}/`;
+    return appBase ? `${appBase}/${path}` : `/${path}`;
+  }
+
   function resolveMediaHref(href) {
     if (!href) return '';
+    const drive = driveMediaHref(href);
+    if (drive) return drive;
     if (/^https?:\/\//i.test(href) || /^data:/i.test(href)) return href;
     const appBase = (typeof window !== 'undefined' && window.APP_BASE) ? String(window.APP_BASE).replace(/\/$/, '') : '';
     let path = String(href).replace(/\\/g, '/');
@@ -211,6 +242,78 @@
     return `<img${cls} src="${escapeHtml(href)}" alt="${alt}" draggable="false">`;
   }
 
+  function driveFolderControls() {
+    return `<input class="photo-drive-url" type="url" placeholder="Google Drive folder of photos" autocomplete="off">`
+      + `<button type="button" class="btn btn-sm btn-outline-secondary" data-action="drive-add">Use Drive</button>`;
+  }
+
+  function driveFolderBar() {
+    return `<div class="photo-drive-bar">${driveFolderControls()}</div>`;
+  }
+
+  function bindDriveFolder(el, options) {
+    async function addDriveLink(raw) {
+      const text = String(raw || '').trim();
+      if (!text) {
+        setStatus(el, 'Paste a Google Drive folder of photos.');
+        return;
+      }
+      if (!isDriveLink(text)) {
+        setStatus(el, 'That is not a Google Drive file or folder link.');
+        return;
+      }
+      if (typeof options.onDriveList !== 'function') {
+        setStatus(el, 'Sign in to load Google Drive.');
+        return;
+      }
+      setStatus(el, 'Loading Google Drive photos…');
+      try {
+        const data = await options.onDriveList(text);
+        const photos = (Array.isArray(data?.photos) ? data.photos : [])
+          .map((item) => ({
+            src: item.src || '',
+            label: item.title || item.label || 'Photo',
+          }))
+          .filter((item) => item.src);
+        if (!photos.length) {
+          setStatus(el, 'No images in that Drive folder. Share it as “Anyone with the link”.');
+          return;
+        }
+        if (typeof options.onDrivePhotos === 'function') {
+          await options.onDrivePhotos({ drive: data.url || text, photos });
+        }
+        const input = el.querySelector('.photo-drive-url');
+        if (input) input.value = '';
+        setStatus(el, `${photos.length} Drive photo${photos.length === 1 ? '' : 's'} added.`);
+      } catch (err) {
+        setStatus(el, err?.message || 'Google Drive listing failed.');
+      }
+    }
+
+    el.addEventListener('click', (e) => {
+      if (e.target.closest('[data-action]')?.dataset.action !== 'drive-add') return;
+      e.preventDefault();
+      e.stopPropagation();
+      const input = el.querySelector('.photo-drive-url');
+      void addDriveLink(input?.value || '');
+    });
+    el.querySelector('.photo-drive-url')?.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      void addDriveLink(e.target.value);
+    });
+    el.addEventListener('paste', (e) => {
+      const raw = String(e.clipboardData?.getData('text/plain') || '').trim();
+      const text = (raw.match(/https?:\/\/\S+/i) || [raw])[0].replace(/[),.;]+$/g, '');
+      if (!isDriveLink(text)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const input = el.querySelector('.photo-drive-url');
+      if (input) input.value = text;
+      void addDriveLink(text);
+    }, true);
+  }
+
   function renderPasteZone(label) {
     const mobile = isPhotoviewMobile();
     const text = label || (mobile
@@ -329,7 +432,10 @@
   }
 
   function bindPasteDrop(el, spec, options) {
-    if (typeof options.onPasteImage !== 'function' && typeof options.onPasteYoutube !== 'function') return;
+    if (typeof options.onPasteImage !== 'function'
+      && typeof options.onPasteYoutube !== 'function'
+      && typeof options.onPasteImageUrl !== 'function'
+      && typeof options.onPastePageUrl !== 'function') return;
 
     async function handlePasteFiles(files) {
       const imageFiles = [...files].filter(f => f && String(f.type || '').startsWith('image/'));
@@ -366,11 +472,29 @@
       if (!files.length) {
         files = [...(e.clipboardData?.files || [])].filter(f => String(f.type || '').startsWith('image/'));
       }
-      if (!files.length) return;
+      if (files.length) {
+        e.preventDefault();
+        e.stopPropagation();
+        el.classList.remove('photoview-block--paste-armed');
+        void handlePasteFiles(files);
+        return;
+      }
+      const urls = window.NotesProGallery?.clipboardImageUrls?.(e.clipboardData) || [];
+      if (urls.length && typeof options.onPasteImageUrl === 'function') {
+        e.preventDefault();
+        e.stopPropagation();
+        el.classList.remove('photoview-block--paste-armed');
+        setStatus(el, urls.length === 1 ? 'Added image URL.' : `Added ${urls.length} image URLs.`);
+        urls.forEach((url) => void options.onPasteImageUrl(url, spec));
+        return;
+      }
+      const pageUrls = window.NotesProGallery?.clipboardPageUrls?.(e.clipboardData) || [];
+      if (!pageUrls.length || typeof options.onPastePageUrl !== 'function') return;
       e.preventDefault();
       e.stopPropagation();
       el.classList.remove('photoview-block--paste-armed');
-      void handlePasteFiles(files);
+      setStatus(el, 'Fetching link image…');
+      pageUrls.forEach((url) => void options.onPastePageUrl(url, spec));
     }, true);
 
     el.addEventListener('dragover', (e) => {
@@ -407,12 +531,23 @@
 
   /* ---------- Photo cube ---------- */
 
+  function shufflePhotos(photos) {
+    const copy = (photos || []).slice();
+    for (let i = copy.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      const swap = copy[i];
+      copy[i] = copy[j];
+      copy[j] = swap;
+    }
+    return copy;
+  }
+
   function buildCubeSpec(source, cfg) {
     const title = String(cfg.title || 'Photo cube').trim() || 'Photo cube';
     const photos = parsePhotos(source);
     return {
       title,
-      photos,
+      photos: shufflePhotos(photos),
       draft: !photos.length,
       spin: resolveSpin(cfg),
     };
@@ -434,12 +569,13 @@
     if (spec.draft) {
       return renderPasteZone(editable
         ? (mobile
-          ? 'Tap to add a photo, or paste'
-          : 'Paste a photo (Ctrl+V) or drop files onto the cube')
-        : 'Add photos in markdown.');
+          ? 'Tap to add a photo, or paste a Google Drive folder'
+          : 'Paste a photo (Ctrl+V) or a Google Drive folder')
+        : 'Add photos in markdown.')
+        + (editable ? driveFolderBar() : '');
     }
     const addBtn = editable
-      ? `<button type="button" class="btn btn-sm btn-outline-secondary" data-action="add-photo">Add photo</button>`
+      ? `<button type="button" class="btn btn-sm btn-outline-secondary" data-action="add-photo">Add photo</button>${driveFolderControls()}`
       : '';
     const moreBtn = spec.photos.length > 6
       ? `<button type="button" class="btn btn-sm btn-outline-light" data-action="cube-shift">Next faces</button>`
@@ -489,6 +625,7 @@
     if (!spec) return;
     el.dataset.photocubeHydrated = '1';
     bindFullscreenButton(el);
+    bindDriveFolder(el, options);
 
     const cube = el.querySelector('.photocube-cube');
     const scene = el.querySelector('.photocube-scene');
@@ -611,7 +748,7 @@
         return;
       }
       if (action === 'cube-shift' && spec.photos?.length) {
-        offset = (offset + 1) % spec.photos.length;
+        offset = (offset + CUBE_FACES.length) % spec.photos.length;
         paintFaces();
         setStatus(el, `Faces shifted · showing set from photo ${offset + 1}`);
         return;
@@ -635,7 +772,7 @@
     const photos = parsePhotos(source);
     return {
       title,
-      photos,
+      photos: shufflePhotos(photos),
       draft: !photos.length,
     };
   }
@@ -680,12 +817,13 @@
   function renderBookBody(spec, editable) {
     if (spec.draft) {
       return renderPasteZone(editable
-        ? 'Paste a photo (Ctrl+V) or drop files onto the book'
-        : 'Add photos in markdown.');
+        ? 'Paste a photo (Ctrl+V) or a Google Drive folder'
+        : 'Add photos in markdown.')
+        + (editable ? driveFolderBar() : '');
     }
     const coverPhoto = spec.photos[0];
     const addBtn = editable
-      ? `<button type="button" class="btn btn-sm btn-outline-secondary" data-action="add-photo">Add photo</button>`
+      ? `<button type="button" class="btn btn-sm btn-outline-secondary" data-action="add-photo">Add photo</button>${driveFolderControls()}`
       : '';
     return [
       `<div class="photobook-stage">`,
@@ -741,6 +879,7 @@
     if (!spec) return;
     el.dataset.photobookHydrated = '1';
     bindFullscreenButton(el);
+    bindDriveFolder(el, options);
     if (!spec.photos?.length) {
       bindPasteDrop(el, spec, options);
       return;
@@ -972,7 +1111,7 @@
     const photos = parsePhotos(source);
     return {
       title,
-      photos,
+      photos: shufflePhotos(photos),
       draft: !photos.length,
       autoplay: resolveAutoplay(cfg),
       interval: resolveInterval(cfg),
@@ -1003,11 +1142,12 @@
   function renderCarouselBody(spec, editable) {
     if (spec.draft) {
       return renderPasteZone(editable
-        ? 'Paste photos (Ctrl+V) or drop files onto the carousel'
-        : 'Add photos in markdown.');
+        ? 'Paste photos (Ctrl+V) or a Google Drive folder'
+        : 'Add photos in markdown.')
+        + (editable ? driveFolderBar() : '');
     }
     const addBtn = editable
-      ? `<button type="button" class="btn btn-sm btn-outline-secondary" data-action="add-photo">Add photo</button>`
+      ? `<button type="button" class="btn btn-sm btn-outline-secondary" data-action="add-photo">Add photo</button>${driveFolderControls()}`
       : '';
     const n = spec.photos.length;
     const first = spec.photos[0];
@@ -1068,6 +1208,7 @@
     if (!spec) return;
     el.dataset.carouselHydrated = '1';
     bindFullscreenButton(el);
+    bindDriveFolder(el, options);
     bindPasteDrop(el, spec, options);
 
     const scene = el.querySelector('.carousel-scene');

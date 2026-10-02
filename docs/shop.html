@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NotesPro Shop — Catalog and checkout in the page</title>
+  <meta name="description" content="NotesPro shop: a product catalog in markdown. Checkout asks for PayPal, Visa, or Mastercard. Card numbers are never stored.">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="NotesPro Shop — catalog, cart, and checkout">
+  <meta property="og:description" content="Add products in a markdown fence. Visitors check out with PayPal, Visa, or Mastercard. No card numbers stored.">
+  <meta property="og:url" content="https://thgsoft.online/DjangoNotesPro/">
+  <meta property="og:image" content="https://raw.githubusercontent.com/ThGSoft/NotesPro/main/docs/screenshots/dashboard-full.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="NotesPro Shop">
+  <meta name="twitter:description" content="A catalog in the page. Checkout asks how to pay. Card numbers are never stored.">
+  <meta name="twitter:image" content="https://raw.githubusercontent.com/ThGSoft/NotesPro/main/docs/screenshots/dashboard-full.png">
+  <link rel="icon" href="favicon.ico" type="image/x-icon">
+  <link rel="shortcut icon" href="favicon.ico" type="image/x-icon">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --note: #f0e070;
+      --note-ink: #111111;
+      --pin: #e31b23;
+      --cork: #d4c4a8;
+      --cork-dark: #c4b08e;
+      --paper: #f7f1e3;
+      --muted: #4a453c;
+      --font-display: "Archivo Black", Impact, sans-serif;
+      --font-body: "Source Sans 3", "Segoe UI", sans-serif;
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: var(--font-body);
+      font-size: 1.05rem;
+      line-height: 1.55;
+      color: var(--note-ink);
+      background:
+        radial-gradient(circle at 1px 1px, rgba(90, 70, 40, 0.14) 1px, transparent 0) 0 0 / 18px 18px,
+        linear-gradient(165deg, #e8d9bc 0%, var(--cork) 45%, var(--cork-dark) 100%);
+      min-height: 100vh;
+    }
+    a { color: #8b1218; text-underline-offset: 3px; }
+    a:hover { color: var(--pin); }
+    .nav, .hero, .section, footer, .legal {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding-left: clamp(1.25rem, 4vw, 3rem);
+      padding-right: clamp(1.25rem, 4vw, 3rem);
+    }
+    .nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding-top: 1rem;
+      padding-bottom: 1rem;
+    }
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.55rem;
+      font-family: var(--font-display);
+      color: var(--note-ink);
+      text-decoration: none;
+    }
+    .nav-actions { display: flex; flex-wrap: wrap; gap: 0.55rem; }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.7rem 1.15rem;
+      border-radius: 4px;
+      border: 2px solid #1a1a1a;
+      font-weight: 700;
+      text-decoration: none;
+      color: var(--note-ink);
+      background: var(--note);
+      box-shadow: 3px 3px 0 rgba(0,0,0,0.18);
+    }
+    .btn:hover { color: var(--note-ink); background: #ffe56a; }
+    .btn-ghost { background: var(--paper); }
+    .pay-paypal { background: #003087; color: #fff; border-color: #001c50; }
+    .pay-paypal:hover { background: #0043b8; color: #fff; }
+    .pay-visa { background: #1a1f71; color: #fff; border-color: #0f134a; }
+    .pay-visa:hover { background: #2a328c; color: #fff; }
+    .pay-master { background: linear-gradient(90deg, #eb001b, #f79e1b); color: #fff; border-color: #7a0d12; }
+    .pay-master:hover { color: #fff; filter: brightness(1.06); }
+    .hero { padding-bottom: 1.5rem; }
+    .sticky {
+      background: var(--note);
+      border: 3px solid #1a1a1a;
+      box-shadow: 6px 8px 0 rgba(0,0,0,0.16);
+      padding: clamp(1.4rem, 4vw, 2.4rem);
+      transform: rotate(-0.6deg);
+    }
+    .kicker {
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-size: 0.75rem;
+    }
+    h1 {
+      font-family: var(--font-display);
+      font-size: clamp(2rem, 6vw, 3.2rem);
+      line-height: 0.95;
+      margin: 0.35rem 0 0.8rem;
+    }
+    .tagline { margin: 0 0 1.2rem; max-width: 40rem; font-weight: 600; }
+    .hero-cta, .sw-actions { display: flex; flex-wrap: wrap; gap: 0.55rem; }
+    .section { padding-bottom: 2rem; }
+    .section-head h2 {
+      font-family: var(--font-display);
+      font-size: clamp(1.4rem, 3vw, 1.9rem);
+      margin: 0 0 0.35rem;
+    }
+    .section-head p { margin: 0 0 1rem; max-width: 42rem; color: var(--muted); font-weight: 600; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 1rem;
+    }
+    .card, .sw-info, .legal-card {
+      background: var(--paper);
+      border: 2px solid #1a1a1a;
+      box-shadow: 3px 4px 0 rgba(0,0,0,0.12);
+      padding: 1.1rem 1.15rem 1.25rem;
+    }
+    .card h3, .sw-info h3, .legal-card h2 {
+      font-family: var(--font-display);
+      font-size: 1.05rem;
+      margin: 0 0 0.4rem;
+    }
+    .card p, .sw-info p, .legal-card p { margin: 0; color: var(--muted); font-weight: 600; }
+    .sw-info p + p, .legal-card p + p { margin-top: 0.65rem; }
+    .label {
+      display: inline-block;
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 0.3rem;
+    }
+    .sw-price { font-weight: 800; margin: 0 0 0.55rem; }
+    video {
+      width: 100%;
+      height: auto;
+      display: block;
+      border: 3px solid #1a1a1a;
+      box-shadow: 5px 6px 0 rgba(0,0,0,0.14);
+      background: #0b1220;
+    }
+    footer {
+      padding-top: 0.5rem;
+      padding-bottom: 2rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.8rem 1.2rem;
+      justify-content: space-between;
+      font-weight: 600;
+      color: var(--muted);
+    }
+    .legal { padding-bottom: 1.2rem; }
+    @media (max-width: 720px) {
+      .nav { flex-direction: column; align-items: flex-start; }
+      .sticky { transform: none; }
+    }
+  </style>
+</head>
+<body>
+  <nav class="nav" aria-label="Primary">
+    <a class="brand" href="notespro.html">
+      <img src="favicon.ico" width="36" height="36" alt="">
+      NotesPro
+    </a>
+    <div class="nav-actions">
+      <a class="btn btn-ghost" href="notespro.html">NotesPro home</a>
+      <a class="btn btn-ghost" href="jukebox.html">Jukebox</a>
+      <a class="btn btn-ghost" href="promo/shop-25s.mp4">25s video</a>
+      <a class="btn" href="https://thgsoft.online/DjangoNotesPro/">Open NotesPro</a>
+    </div>
+  </nav>
+
+  <header class="hero">
+    <div class="sticky">
+      <span class="kicker">NotesPro shop</span>
+      <h1>Catalog, cart, checkout.</h1>
+      <p class="tagline">Put a shop in a markdown fence. Visitors add items and choose PayPal, Visa, or Mastercard on the page. Card numbers are never stored.</p>
+      <div class="hero-cta">
+        <a class="btn" href="https://thgsoft.online/DjangoNotesPro/">Open the shop →</a>
+        <a class="btn btn-ghost" href="#pay">How checkout works</a>
+        <a class="btn btn-ghost" href="promo/shop-25s.mp4">Watch 25 seconds</a>
+      </div>
+    </div>
+  </header>
+
+  <section class="section" aria-labelledby="video-title">
+    <div class="section-head">
+      <h2 id="video-title">Shop promo</h2>
+      <p>Twenty-five seconds: products, a cart, then the payment question. No third-party soundtrack.</p>
+    </div>
+    <video controls playsinline preload="metadata" poster="">
+      <source src="promo/shop-25s.mp4" type="video/mp4">
+    </video>
+  </section>
+
+  <section class="section" id="pay" aria-labelledby="pay-title">
+    <div class="section-head">
+      <h2 id="pay-title">Checkout asks for payment</h2>
+      <p>The shop owner keeps PayPal, Visa, Mastercard, and Konto in Settings. A public page does not show that screen. The buyer still picks how to pay.</p>
+    </div>
+    <div class="grid">
+      <article class="card">
+        <span class="label">PayPal</span>
+        <h3>Opens the merchant checkout</h3>
+        <p>When the shop has a PayPal email or paypal.me name, Checkout can open that payment page. The order is mailed to the shop.</p>
+      </article>
+      <article class="card">
+        <span class="label">Visa</span>
+        <h3>Transfer from a Konto</h3>
+        <p>Visa asks for the buyer’s IBAN or account and shows the shop Konto. Card numbers are rejected.</p>
+      </article>
+      <article class="card">
+        <span class="label">Mastercard</span>
+        <h3>Same transfer, no card data</h3>
+        <p>Mastercard uses the same Konto step. NotesPro does not store card numbers.</p>
+      </article>
+      <article class="card">
+        <span class="label">Public page</span>
+        <h3>Show without login</h3>
+        <p>Page settings can publish the shop. Anyone with the link can read the catalog and check out. The rest of the workspace stays private.</p>
+      </article>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="license-title">
+    <div class="section-head">
+      <h2 id="license-title">NotesPro itself</h2>
+    </div>
+    <article class="card">
+      <span class="label">NotesPro</span>
+      <h3>Collaborative notes</h3>
+      <p class="sw-price">Source free · License 49 EUR</p>
+      <p>Markdown workspaces, Keep notes, menus, jukebox, games, and team chat.</p>
+      <div class="sw-actions" style="margin-top:0.9rem;">
+        <a class="btn" href="https://github.com/ThGSoft/NotesPro/archive/refs/heads/main.zip">Download</a>
+        <a class="btn pay-paypal" href="https://thgsoft.online/DjangoNotesPro/">PayPal</a>
+        <a class="btn pay-visa" href="#pay">Visa</a>
+        <a class="btn pay-master" href="#pay">Mastercard</a>
+      </div>
+    </article>
+  </section>
+
+  <section class="legal" aria-labelledby="privacy-title">
+    <div class="legal-card">
+      <h2 id="privacy-title">Privacy</h2>
+      <p>This promo page does not collect payment card numbers and does not run a checkout. PayPal, Visa, and Mastercard in the app ask how to pay; Visa and Mastercard take a Konto, not a card number.</p>
+      <p>NotesPro is from <strong>ThGSoft</strong>. Live app: <a href="https://thgsoft.online/DjangoNotesPro/">thgsoft.online/DjangoNotesPro</a>. Source: <a href="https://github.com/ThGSoft/NotesPro">github.com/ThGSoft/NotesPro</a>.</p>
+    </div>
+  </section>
+
+  <footer>
+    <a class="brand" href="notespro.html">NotesPro</a>
+    <span>
+      <a href="notespro.html#shop">Shop on the home page</a>
+      · <a href="promo/shop-25s.mp4">Video</a>
+      · <a href="jukebox.html">Jukebox</a>
+    </span>
+  </footer>
+</body>
+</html>

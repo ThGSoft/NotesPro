@@ -214,7 +214,9 @@
       border: 2px solid rgba(255, 87, 51, 0.45);
       box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
     }
-    .shot img { display: block; width: 100%; height: auto; }
+    .shot img,
+    .shot iframe { display: block; width: 100%; height: auto; background: #120b16; border: 0; }
+    .shot iframe { aspect-ratio: 16 / 9; }
 
     footer {
       max-width: 1100px;
@@ -273,6 +275,12 @@
         </div>
       </div>
     </header>
+
+    <section class="section" aria-label="Jukebox promo">
+      <figure class="shot">
+        <iframe src="https://www.youtube-nocookie.com/embed/Ylm7hILLRPA?rel=0" title="Free Jukebox everywhere" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen loading="lazy"></iframe>
+      </figure>
+    </section>
 
     <section class="section" id="drive" aria-labelledby="drive-title">
       <div class="section-head">

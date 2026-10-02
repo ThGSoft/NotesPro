@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Notes Pro</title>
+  <title>{% if public_view and page %}{{ page.title }} — Notes Pro{% else %}Notes Pro{% endif %}</title>
   <meta name="csrf-token" content="{{ csrf_token }}">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jstree@3.3.17/dist/themes/default/style.min.css">
@@ -15,12 +15,12 @@
   <link rel="stylesheet" href="{% static 'notes/vendor/jqJigsawPuzzle/jqJigsawPuzzle.css' %}">
   <link rel="stylesheet" href="{% static 'notes/dashboard.css' %}?v={% now 'YmdHis' %}">
 </head>
-<body>
+<body class="{% if public_view %}public-page{% endif %}">
 <div class="app-shell">
   <header class="topbar">
     <div class="title-wrap d-flex align-items-center gap-4">
       <button id="toggle-left" class="btn btn-sm btn-outline-light">☰</button>
-      <span class="topbar-app-label"><strong>Notes Pro</strong>: {{ user.username }}</span>
+      <span class="topbar-app-label"><strong>Notes Pro</strong>{% if user.is_authenticated %}: {{ user.username }}{% endif %}</span>
       <span id="offline-badge" class="offline-badge d-none" hidden>Offline</span>
 
       <div class="flex-grow-1">
@@ -30,6 +30,9 @@
     </div>
     
     <div class="topbar-actions">
+      {% if public_view %}
+      <a id="public-login-link" class="btn btn-sm btn-outline-light" href="{% url 'login' %}?next={{ request.get_full_path|urlencode }}">Login</a>
+      {% else %}
       <button id="mobile-topbar-menu-toggle" class="btn btn-sm btn-outline-light mobile-topbar-menu-btn" type="button" aria-label="App menu" aria-expanded="false" aria-controls="mobile-topbar-menu">
         <span aria-hidden="true">⋮</span>
       </button>
@@ -47,6 +50,7 @@
         </form>
         <div class="slug-box hidden-edit">Slug: <span id="page-slug"></span></div>
       </nav>
+      {% endif %}
     </div>
     <div id="offline-warning" class="offline-warning d-none" hidden role="status"></div>
   </header>
@@ -393,6 +397,9 @@
   </aside>
 
 </div>
+{% if public_view %}
+{{ public_page|json_script:"app-public-page" }}
+{% endif %}
 {{ user_settings.extra_configs|json_script:"app-extra-configs" }}
 {{ user_settings.workspace_pages|json_script:"app-workspace-pages" }}
 {{ game_highscores|json_script:"app-game-highscores" }}
@@ -432,6 +439,12 @@
         allowPhotos: {{ allow_photos|yesno:"true,false" }},
         allowOffline: {{ allow_offline|yesno:"true,false" }},
         version: "{{ app_version|escapejs }}",
+        publicView: {% if public_view %}true{% else %}false{% endif %},
+        {% if public_view %}
+        publicPage: JSON.parse(document.getElementById('app-public-page').textContent),
+        {% else %}
+        publicPage: null,
+        {% endif %}
     };
 
     // Falls gar nichts existiert, Fehlermeldung oder Default-Handling
@@ -1045,6 +1058,19 @@
           <label class="form-check-label" for="page-settings-tags-visible">Tags</label>
         </div>
         <p class="small dashboard-modal-hint mt-2 mb-0">Show the tag bar on this page.</p>
+        <div class="form-check mt-3">
+          <input class="form-check-input" type="checkbox" id="page-settings-public">
+          <label class="form-check-label" for="page-settings-public">Show without login</label>
+        </div>
+        <p class="small dashboard-modal-hint mt-2 mb-0">Anyone with the link can read this page, including NotesList and shop blocks. The switch is stored on the page, outside those fences. Orders and mail stay private.</p>
+        <p class="small dashboard-modal-hint mt-2 mb-0 d-none" id="page-settings-public-pending">Save to publish the link.</p>
+        <div id="page-settings-public-link" class="mt-2 d-none">
+          <label class="small fw-semibold" for="page-settings-public-url">Public link</label>
+          <div class="d-flex gap-2 mt-1">
+            <input id="page-settings-public-url" class="form-control form-control-sm" type="text" readonly>
+            <button type="button" class="btn btn-sm btn-outline-light" id="page-settings-public-copy">Copy</button>
+          </div>
+        </div>
         <div class="page-settings-tags-section mt-3 pt-3 border-top border-secondary-subtle">
           <div class="small fw-semibold mb-2">Tags</div>
           <div id="page-settings-tags" class="page-settings-tags-list"></div>

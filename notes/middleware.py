@@ -21,6 +21,8 @@ class ApiLoginRequiredJsonMiddleware:
         path = request.path or ''
         if not path.startswith('/api/'):
             return self.get_response(request)
+        if '/api/public/' in path:
+            return self.get_response(request)
 
         user = getattr(request, 'user', None)
         if user is not None and not user.is_authenticated:
