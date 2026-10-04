@@ -11397,6 +11397,22 @@ table {
 .muhle-point--sel::after { box-shadow: 0 0 0 3px #facc15; }
 .muhle-point--take::after { box-shadow: 0 0 0 3px #fb7185; }
 .muhle-block--busy .muhle-point { cursor: wait; }
+.muhle-result {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 2;
+  transform: translate(-50%, -50%);
+  margin: 0;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.9);
+  color: #f8fafc;
+  font: 700 16px/1.2 system-ui, sans-serif;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.muhle-result[hidden] { display: none; }
 .muhle-score {
   font-size: 15px;
   color: var(--strat-title, #e2e8f0);
