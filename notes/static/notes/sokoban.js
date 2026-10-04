@@ -609,7 +609,7 @@
     function syncPad() {
       if (!pad) return;
       const mobile = document.body.classList.contains('mobile-layout')
-        || (typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 768px)').matches);
+        || (typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse), (max-width: 900px)').matches);
       pad.classList.toggle('is-visible', mobile);
     }
 

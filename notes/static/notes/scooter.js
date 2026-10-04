@@ -245,7 +245,7 @@
       `<div class="scooter-overlay">`,
       `<p class="scooter-hint">${spec.draft
         ? 'Paste photos — each becomes another bumper car'
-        : 'WASD drive · C / View camera · bump cars · click to focus'}</p>`,
+        : 'Steer with the pad or WASD · bump the other cars'}</p>`,
       `<div class="scooter-caption" aria-live="polite"></div>`,
       `</div>`,
       `</div>`,
@@ -256,6 +256,12 @@
       editable
         ? `<button type="button" class="btn btn-sm btn-outline-secondary" data-action="add-photo">Add photo</button>`
         : '',
+      `</div>`,
+      `<div class="scooter-pad" aria-label="Scooter controls">`,
+      `<button type="button" class="scooter-pad__btn scooter-pad__btn--w" data-key="KeyW" tabindex="-1" aria-label="Accelerate">▲</button>`,
+      `<button type="button" class="scooter-pad__btn scooter-pad__btn--a" data-key="KeyA" tabindex="-1" aria-label="Left">◀</button>`,
+      `<button type="button" class="scooter-pad__btn scooter-pad__btn--s" data-key="KeyS" tabindex="-1" aria-label="Brake">▼</button>`,
+      `<button type="button" class="scooter-pad__btn scooter-pad__btn--d" data-key="KeyD" tabindex="-1" aria-label="Right">▶</button>`,
       `</div>`,
       `</div>`,
     ].join('');
@@ -1008,6 +1014,35 @@
 
     canvas.addEventListener('click', focusRink);
     viewport.addEventListener('click', focusRink);
+    const pad = el.querySelector('.scooter-pad');
+    const padHeld = new Map();
+    const setPadKey = (code, down, btn) => {
+      if (!code) return;
+      keys[code] = !!down;
+      btn?.classList.toggle('is-active', !!down);
+    };
+    const onPadDown = (event) => {
+      const btn = event.currentTarget;
+      const code = btn.getAttribute('data-key');
+      event.preventDefault();
+      try { btn.setPointerCapture(event.pointerId); } catch (_) { /* ignore */ }
+      padHeld.set(event.pointerId, { code, btn });
+      setPadKey(code, true, btn);
+      focusRink();
+    };
+    const onPadUp = (event) => {
+      const rec = padHeld.get(event.pointerId);
+      if (!rec) return;
+      padHeld.delete(event.pointerId);
+      setPadKey(rec.code, false, rec.btn);
+    };
+    pad?.querySelectorAll('[data-key]')?.forEach((btn) => {
+      btn.addEventListener('pointerdown', onPadDown);
+      btn.addEventListener('pointerup', onPadUp);
+      btn.addEventListener('pointercancel', onPadUp);
+      btn.addEventListener('lostpointercapture', onPadUp);
+      btn.addEventListener('contextmenu', (event) => event.preventDefault());
+    });
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
     window.addEventListener('resize', resize);
@@ -1035,6 +1070,14 @@
         window.removeEventListener('keydown', onKeyDown);
         window.removeEventListener('keyup', onKeyUp);
         window.removeEventListener('resize', resize);
+        pad?.querySelectorAll('[data-key]')?.forEach((btn) => {
+          btn.removeEventListener('pointerdown', onPadDown);
+          btn.removeEventListener('pointerup', onPadUp);
+          btn.removeEventListener('pointercancel', onPadUp);
+          btn.removeEventListener('lostpointercapture', onPadUp);
+        });
+        padHeld.forEach((rec) => setPadKey(rec.code, false, rec.btn));
+        padHeld.clear();
         mediaNodes.forEach((video) => {
           video.pause();
           video.removeAttribute('src');

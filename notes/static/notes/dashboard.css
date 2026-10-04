@@ -11165,7 +11165,7 @@ table {
 /* --- Strategy boards (chess, connect 4, reversi) --- */
 .chess-block,
 .connect4-block,
-.reversi-block {
+.reversi-block, .muhle-block {
   --strat-bg: var(--panel, #1e1e2e);
   --strat-border: var(--line, #3b3b52);
   --strat-title: var(--text, #e2e8f0);
@@ -11184,37 +11184,38 @@ table {
 .chess-block { --strat-accent: #e2e8f0; --chess-accent: var(--strat-accent); --chess-bg: var(--strat-bg); --chess-meta: var(--strat-meta); }
 .connect4-block { --strat-accent: #38bdf8; --connect4-accent: var(--strat-accent); --connect4-bg: var(--strat-bg); --connect4-meta: var(--strat-meta); }
 .reversi-block { --strat-accent: #4ade80; --reversi-accent: var(--strat-accent); --reversi-bg: var(--strat-bg); --reversi-meta: var(--strat-meta); }
-.chess-block--info, .connect4-block--info, .reversi-block--info { --strat-accent: #38bdf8; }
-.chess-block--success, .connect4-block--success, .reversi-block--success { --strat-accent: #4ade80; }
-.chess-block--warning, .connect4-block--warning, .reversi-block--warning { --strat-accent: #fbbf24; }
-.chess-block--danger, .connect4-block--danger, .reversi-block--danger { --strat-accent: #f87171; }
-.chess-block--note, .connect4-block--note, .reversi-block--note { --strat-accent: #94a3b8; }
-.chess-block--custom, .connect4-block--custom, .reversi-block--custom { background: var(--strat-bg); }
-.chess-block--error, .connect4-block--error, .reversi-block--error { color: #f87171; padding: 12px 14px; }
-.chess-block:focus, .connect4-block:focus, .reversi-block:focus {
+.muhle-block { --strat-accent: #f59e0b; --muhle-accent: var(--strat-accent); --muhle-bg: var(--strat-bg); --muhle-meta: var(--strat-meta); }
+.chess-block--info, .connect4-block--info, .reversi-block--info, .muhle-block--info { --strat-accent: #38bdf8; }
+.chess-block--success, .connect4-block--success, .reversi-block--success, .muhle-block--success { --strat-accent: #4ade80; }
+.chess-block--warning, .connect4-block--warning, .reversi-block--warning, .muhle-block--warning { --strat-accent: #fbbf24; }
+.chess-block--danger, .connect4-block--danger, .reversi-block--danger, .muhle-block--danger { --strat-accent: #f87171; }
+.chess-block--note, .connect4-block--note, .reversi-block--note, .muhle-block--note { --strat-accent: #94a3b8; }
+.chess-block--custom, .connect4-block--custom, .reversi-block--custom, .muhle-block--custom { background: var(--strat-bg); }
+.chess-block--error, .connect4-block--error, .reversi-block--error, .muhle-block--error { color: #f87171; padding: 12px 14px; }
+.chess-block:focus, .connect4-block:focus, .reversi-block:focus, .muhle-block:focus {
   outline: 2px solid var(--strat-accent);
   outline-offset: 2px;
 }
-.chess-block-header, .connect4-block-header, .reversi-block-header {
+.chess-block-header, .connect4-block-header, .reversi-block-header, .muhle-block-header {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 6px;
 }
-.chess-block-title, .connect4-block-title, .reversi-block-title { font-weight: 700; color: var(--strat-title); }
-.chess-block-meta, .connect4-block-meta, .reversi-block-meta {
+.chess-block-title, .connect4-block-title, .reversi-block-title, .muhle-block-title { font-weight: 700; color: var(--strat-title); }
+.chess-block-meta, .connect4-block-meta, .reversi-block-meta, .muhle-block-meta {
   font-size: 12px;
   color: var(--strat-meta);
   text-transform: capitalize;
 }
-.chess-play-area, .connect4-play-area, .reversi-play-area {
+.chess-play-area, .connect4-play-area, .reversi-play-area, .muhle-play-area {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 12px;
 }
-.chess-toolbar, .connect4-toolbar, .reversi-toolbar {
+.chess-toolbar, .connect4-toolbar, .reversi-toolbar, .muhle-toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -11222,8 +11223,8 @@ table {
   gap: 6px;
   width: min(100%, 420px);
 }
-.chess-toolbar-gap, .connect4-toolbar-gap, .reversi-toolbar-gap { width: 8px; }
-.chess-chip, .connect4-chip, .reversi-chip {
+.chess-toolbar-gap, .connect4-toolbar-gap, .reversi-toolbar-gap, .muhle-toolbar-gap { width: 8px; }
+.chess-chip, .connect4-chip, .reversi-chip, .muhle-chip {
   border: 1px solid rgba(148, 163, 184, 0.4);
   background: rgba(15, 23, 42, 0.65);
   color: #cbd5e1;
@@ -11237,27 +11238,27 @@ table {
   white-space: nowrap;
   cursor: pointer;
 }
-.chess-chip.is-active, .connect4-chip.is-active, .reversi-chip.is-active {
+.chess-chip.is-active, .connect4-chip.is-active, .reversi-chip.is-active, .muhle-chip.is-active {
   background: rgba(56, 189, 248, 0.22);
   border-color: rgba(56, 189, 248, 0.7);
   color: #e0f2fe;
 }
-.chess-score, .connect4-score, .reversi-score {
+.chess-score, .connect4-score, .reversi-score, .muhle-score {
   display: flex;
   gap: 14px;
   font: 600 13px/1.2 system-ui, sans-serif;
   color: var(--strat-meta);
 }
-.chess-actions, .connect4-actions, .reversi-actions { display: flex; gap: 8px; }
-.chess-status, .connect4-status, .reversi-status {
+.chess-actions, .connect4-actions, .reversi-actions, .muhle-actions { display: flex; gap: 8px; }
+.chess-status, .connect4-status, .reversi-status, .muhle-status {
   min-height: 1.25rem;
   margin-top: 8px;
   font-size: 0.85rem;
   color: var(--strat-meta);
 }
-.chess-status--success, .connect4-status--success, .reversi-status--success { color: #4ade80; }
-.chess-status--warn, .connect4-status--warn, .reversi-status--warn { color: #fbbf24; }
-.chess-status--info, .connect4-status--info, .reversi-status--info { color: var(--strat-meta); }
+.chess-status--success, .connect4-status--success, .reversi-status--success, .muhle-status--success { color: #4ade80; }
+.chess-status--warn, .connect4-status--warn, .reversi-status--warn, .muhle-status--warn { color: #fbbf24; }
+.chess-status--info, .connect4-status--info, .reversi-status--info, .muhle-status--info { color: var(--strat-meta); }
 .chess-block--busy .chess-sq, .connect4-block--busy .connect4-cell, .reversi-block--busy .reversi-cell { cursor: wait; }
 
 .chess-grid {
@@ -11349,10 +11350,68 @@ table {
 
 .chess-block--fullscreen,
 .connect4-block--fullscreen,
-.reversi-block--fullscreen {
+.reversi-block--fullscreen, .muhle-block--fullscreen {
   background: #0f172a;
   min-height: min(90vh, 960px);
 }
+
+
+.muhle-board {
+  position: relative;
+  width: min(100%, 440px);
+  aspect-ratio: 1;
+  background: radial-gradient(circle at 50% 40%, #166534, #14532d 55%, #052e16);
+  border: 8px solid #92400e;
+  border-radius: 18px;
+  box-shadow: inset 0 0 0 3px #fbbf24;
+}
+.muhle-lines { position: absolute; inset: 0; width: 100%; height: 100%; }
+.muhle-lines path { fill: none; stroke: #f8fafc; stroke-width: 1.6; stroke-linecap: square; }
+.muhle-point {
+  position: absolute;
+  width: 12%;
+  height: 12%;
+  transform: translate(-50%, -50%);
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+}
+.muhle-point::after {
+  content: "";
+  display: block;
+  width: 34%;
+  height: 34%;
+  margin: 33%;
+  border-radius: 50%;
+  background: #0f172a;
+  box-shadow: inset 0 0 0 2px rgba(248, 250, 252, 0.35);
+}
+.muhle-point--x::after,
+.muhle-point--o::after { width: 78%; height: 78%; margin: 11%; }
+.muhle-point--x::after { background: radial-gradient(circle at 35% 30%, #fff, #e2e8f0 45%, #94a3b8); box-shadow: 0 2px 4px rgba(0, 0, 0, 0.35); }
+.muhle-point--o::after { background: radial-gradient(circle at 35% 30%, #475569, #0f172a 55%, #020617); box-shadow: 0 2px 4px rgba(0, 0, 0, 0.45); }
+.muhle-point--mill::after { box-shadow: 0 0 0 3px #fbbf24; }
+.muhle-point--dest::after { box-shadow: 0 0 0 3px #4ade80; }
+.muhle-point--sel::after { box-shadow: 0 0 0 3px #facc15; }
+.muhle-point--take::after { box-shadow: 0 0 0 3px #fb7185; }
+.muhle-block--busy .muhle-point { cursor: wait; }
+.muhle-score {
+  font-size: 15px;
+  color: var(--strat-title, #e2e8f0);
+}
+.muhle-score [data-score="x"] { color: #f8fafc; }
+.muhle-score [data-score="o"] { color: #cbd5e1; }
+.muhle-score {
+  font-size: 15px;
+  color: var(--strat-title, #e2e8f0);
+}
+.muhle-score [data-score="x"] { color: #f8fafc; }
+.muhle-score [data-score="o"] { color: #cbd5e1; }
+.muhle-block--fullscreen .muhle-board,
+.muhle-block:fullscreen .muhle-board,
+.muhle-block:-webkit-full-screen .muhle-board { width: min(92vw, 72vh); }
 
 /* --- Tetris --- */
 .tetris-block {
@@ -12090,7 +12149,7 @@ body.mobile-layout .sokoban-tips__controls--mobile {
 .tictactoe-block--fullscreen,
 .chess-block--fullscreen,
 .connect4-block--fullscreen,
-.reversi-block--fullscreen,
+.reversi-block--fullscreen, .muhle-block--fullscreen,
 .tetris-block--fullscreen,
 .sokoban-block--fullscreen,
 .invaders-block--fullscreen,
@@ -12177,7 +12236,7 @@ body.mobile-layout .sokoban-tips__controls--mobile {
 .tictactoe-block--fullscreen .tictactoe-play-area,
 .chess-block--fullscreen .chess-play-area,
 .connect4-block--fullscreen .connect4-play-area,
-.reversi-block--fullscreen .reversi-play-area {
+.reversi-block--fullscreen .reversi-play-area, .muhle-block--fullscreen .muhle-play-area {
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -12364,7 +12423,7 @@ body.mobile-layout .sokoban-tips__controls--mobile {
 .tictactoe-block--fullscreen .tictactoe-status,
 .chess-block--fullscreen .chess-status,
 .connect4-block--fullscreen .connect4-status,
-.reversi-block--fullscreen .reversi-status,
+.reversi-block--fullscreen .reversi-status, .muhle-block--fullscreen .muhle-status,
 .tetris-block--fullscreen .tetris-status,
 .sokoban-block--fullscreen .sokoban-status,
 .invaders-block--fullscreen .invaders-status,
@@ -12385,7 +12444,7 @@ body.mobile-layout .sokoban-tips__controls--mobile {
 .editor-wrap--preview-only .preview-content:has(> .tictactoe-block--fullscreen:only-child),
 .editor-wrap--preview-only .preview-content:has(> .chess-block--fullscreen:only-child),
 .editor-wrap--preview-only .preview-content:has(> .connect4-block--fullscreen:only-child),
-.editor-wrap--preview-only .preview-content:has(> .reversi-block--fullscreen:only-child),
+.editor-wrap--preview-only .preview-content:has(> .reversi-block--fullscreen:only-child, .muhle-block--fullscreen:only-child),
 .editor-wrap--preview-only .preview-content:has(> .tetris-block--fullscreen:only-child),
 .editor-wrap--preview-only .preview-content:has(> .sokoban-block--fullscreen:only-child),
 .editor-wrap--preview-only .preview-content:has(> .invaders-block--fullscreen:only-child),
@@ -12407,7 +12466,7 @@ body.mobile-layout .sokoban-tips__controls--mobile {
 .editor-wrap--preview-only .preview-content > .tictactoe-block--fullscreen:only-child,
 .editor-wrap--preview-only .preview-content > .chess-block--fullscreen:only-child,
 .editor-wrap--preview-only .preview-content > .connect4-block--fullscreen:only-child,
-.editor-wrap--preview-only .preview-content > .reversi-block--fullscreen:only-child,
+.editor-wrap--preview-only .preview-content > .reversi-block--fullscreen:only-child, .muhle-block--fullscreen:only-child,
 .editor-wrap--preview-only .preview-content > .tetris-block--fullscreen:only-child,
 .editor-wrap--preview-only .preview-content > .sokoban-block--fullscreen:only-child,
 .editor-wrap--preview-only .preview-content > .invaders-block--fullscreen:only-child,
@@ -14889,7 +14948,7 @@ body.mobile-layout .labyrinth-toolbar [data-action="walk-demo"] {
 .tictactoe-block,
 .chess-block,
 .connect4-block,
-.reversi-block,
+.reversi-block, .muhle-block,
 .tetris-block,
 .sokoban-block,
 .invaders-block,
@@ -14956,7 +15015,7 @@ body.mobile-layout .labyrinth-toolbar [data-action="walk-demo"] {
 .tictactoe-block:fullscreen .game-fullscreen-btn__icon--enter,
 .chess-block:fullscreen .game-fullscreen-btn__icon--enter,
 .connect4-block:fullscreen .game-fullscreen-btn__icon--enter,
-.reversi-block:fullscreen .game-fullscreen-btn__icon--enter,
+.reversi-block:fullscreen .game-fullscreen-btn__icon--enter, .muhle-block:fullscreen .game-fullscreen-btn__icon--enter,
 .tetris-block:fullscreen .game-fullscreen-btn__icon--enter,
 .sokoban-block:fullscreen .game-fullscreen-btn__icon--enter,
 .invaders-block:fullscreen .game-fullscreen-btn__icon--enter,
@@ -14980,7 +15039,7 @@ body.mobile-layout .labyrinth-toolbar [data-action="walk-demo"] {
 .tictactoe-block:-webkit-full-screen .game-fullscreen-btn__icon--enter,
 .chess-block:-webkit-full-screen .game-fullscreen-btn__icon--enter,
 .connect4-block:-webkit-full-screen .game-fullscreen-btn__icon--enter,
-.reversi-block:-webkit-full-screen .game-fullscreen-btn__icon--enter,
+.reversi-block:-webkit-full-screen .game-fullscreen-btn__icon--enter, .muhle-block:-webkit-full-screen .game-fullscreen-btn__icon--enter,
 .tetris-block:-webkit-full-screen .game-fullscreen-btn__icon--enter,
 .sokoban-block:-webkit-full-screen .game-fullscreen-btn__icon--enter,
 .invaders-block:-webkit-full-screen .game-fullscreen-btn__icon--enter,
@@ -15007,7 +15066,7 @@ body.mobile-layout .labyrinth-toolbar [data-action="walk-demo"] {
 .tictactoe-block:fullscreen .game-fullscreen-btn__icon--exit,
 .chess-block:fullscreen .game-fullscreen-btn__icon--exit,
 .connect4-block:fullscreen .game-fullscreen-btn__icon--exit,
-.reversi-block:fullscreen .game-fullscreen-btn__icon--exit,
+.reversi-block:fullscreen .game-fullscreen-btn__icon--exit, .muhle-block:fullscreen .game-fullscreen-btn__icon--exit,
 .tetris-block:fullscreen .game-fullscreen-btn__icon--exit,
 .sokoban-block:fullscreen .game-fullscreen-btn__icon--exit,
 .invaders-block:fullscreen .game-fullscreen-btn__icon--exit,
@@ -15031,7 +15090,7 @@ body.mobile-layout .labyrinth-toolbar [data-action="walk-demo"] {
 .tictactoe-block:-webkit-full-screen .game-fullscreen-btn__icon--exit,
 .chess-block:-webkit-full-screen .game-fullscreen-btn__icon--exit,
 .connect4-block:-webkit-full-screen .game-fullscreen-btn__icon--exit,
-.reversi-block:-webkit-full-screen .game-fullscreen-btn__icon--exit,
+.reversi-block:-webkit-full-screen .game-fullscreen-btn__icon--exit, .muhle-block:-webkit-full-screen .game-fullscreen-btn__icon--exit,
 .tetris-block:-webkit-full-screen .game-fullscreen-btn__icon--exit,
 .sokoban-block:-webkit-full-screen .game-fullscreen-btn__icon--exit,
 .invaders-block:-webkit-full-screen .game-fullscreen-btn__icon--exit,
@@ -15057,7 +15116,7 @@ body.mobile-layout .labyrinth-toolbar [data-action="walk-demo"] {
 .tictactoe-block:fullscreen,
 .chess-block:fullscreen,
 .connect4-block:fullscreen,
-.reversi-block:fullscreen,
+.reversi-block:fullscreen, .muhle-block:fullscreen,
 .tetris-block:fullscreen,
 .sokoban-block:fullscreen,
 .invaders-block:fullscreen,
@@ -15073,7 +15132,7 @@ body.mobile-layout .labyrinth-toolbar [data-action="walk-demo"] {
 .tictactoe-block:-webkit-full-screen,
 .chess-block:-webkit-full-screen,
 .connect4-block:-webkit-full-screen,
-.reversi-block:-webkit-full-screen,
+.reversi-block:-webkit-full-screen, .muhle-block:-webkit-full-screen,
 .tetris-block:-webkit-full-screen,
 .sokoban-block:-webkit-full-screen,
 .invaders-block:-webkit-full-screen,
@@ -15102,7 +15161,7 @@ body.mobile-layout .labyrinth-toolbar [data-action="walk-demo"] {
 .tictactoe-block:fullscreen .tictactoe-play-area,
 .chess-block:fullscreen .chess-play-area,
 .connect4-block:fullscreen .connect4-play-area,
-.reversi-block:fullscreen .reversi-play-area,
+.reversi-block:fullscreen .reversi-play-area, .muhle-block:fullscreen .muhle-play-area,
 .tetris-block:fullscreen .tetris-stage,
 .sokoban-block:fullscreen .sokoban-stage,
 .invaders-block:fullscreen .invaders-stage,
@@ -15116,7 +15175,7 @@ body.mobile-layout .labyrinth-toolbar [data-action="walk-demo"] {
 .tictactoe-block:-webkit-full-screen .tictactoe-play-area,
 .chess-block:-webkit-full-screen .chess-play-area,
 .connect4-block:-webkit-full-screen .connect4-play-area,
-.reversi-block:-webkit-full-screen .reversi-play-area,
+.reversi-block:-webkit-full-screen .reversi-play-area, .muhle-block:-webkit-full-screen .muhle-play-area,
 .tetris-block:-webkit-full-screen .tetris-stage,
 .sokoban-block:-webkit-full-screen .sokoban-stage,
 .invaders-block:-webkit-full-screen .invaders-stage,
@@ -15840,5 +15899,303 @@ body.mobile-layout .labyrinth-toolbar [data-action="walk-demo"] {
 
   .keep-card-footer {
     opacity: 1;
+  }
+}
+
+.scooter-pad {
+  display: none;
+  margin-top: 10px;
+  grid-template-columns: 72px 72px 72px;
+  grid-template-areas:
+    ". w ."
+    "a s d";
+  justify-content: center;
+  gap: 8px;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.scooter-pad__btn {
+  touch-action: none;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  background: rgba(15, 23, 42, 0.72);
+  color: #e2e8f0;
+  font: 600 18px/1 system-ui, sans-serif;
+  border-radius: 14px;
+  min-height: 52px;
+}
+
+.scooter-pad__btn--w { grid-area: w; }
+.scooter-pad__btn--a { grid-area: a; }
+.scooter-pad__btn--s { grid-area: s; }
+.scooter-pad__btn--d { grid-area: d; }
+
+.scooter-pad__btn.is-active,
+.scooter-pad__btn:active {
+  background: rgba(56, 189, 248, 0.35);
+}
+
+@media (pointer: coarse), (max-width: 900px) {
+  .pacman-pad,
+  .mario-pad,
+  .tetris-pad,
+  .sokoban-pad,
+  .invaders-pad,
+  .breakout-pad,
+  .snake-pad,
+  .marbleblast-pad,
+  .labyrinth-pad,
+  .scooter-pad,
+  body.mobile-layout .pacman-pad,
+  body.mobile-layout .mario-pad,
+  body.mobile-layout .tetris-pad,
+  body.mobile-layout .sokoban-pad,
+  body.mobile-layout .invaders-pad,
+  body.mobile-layout .breakout-pad,
+  body.mobile-layout .snake-pad,
+  body.mobile-layout .marbleblast-pad,
+  body.mobile-layout .labyrinth-pad,
+  body.mobile-layout .scooter-pad {
+    display: grid;
+  }
+
+  .pacman-block,
+  .mario-block,
+  .lemmings-block,
+  .tictactoe-block,
+  .chess-block,
+  .connect4-block,
+  .reversi-block,
+  .muhle-block,
+  .tetris-block,
+  .sokoban-block,
+  .invaders-block,
+  .breakout-block,
+  .snake-block,
+  .marbleblast-block,
+  .sudoku-block,
+  .puzzle-block,
+  .pinball-block,
+  .scooter-block,
+  .rollercoast-block,
+  .ghosttrain-block,
+  .labyrinth-block {
+    width: 100%;
+    max-width: 100%;
+    touch-action: manipulation;
+  }
+
+  .chess-grid,
+  .connect4-grid,
+  .reversi-grid,
+  .tictactoe-grid,
+  .sudoku-grid,
+  .muhle-board {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .chess-grid {
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+    grid-template-rows: none;
+  }
+
+  .chess-sq {
+    aspect-ratio: 1;
+    height: auto;
+    min-height: 0;
+    font-size: clamp(1rem, 5.2vw, 1.6rem);
+  }
+
+  .connect4-grid {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    grid-template-rows: none;
+  }
+
+  .connect4-cell,
+  .reversi-cell,
+  .tictactoe-cell {
+    aspect-ratio: 1;
+    min-height: 0;
+    height: auto;
+  }
+
+  .reversi-grid,
+  .tictactoe-grid {
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+    grid-template-rows: none;
+  }
+
+  .tictactoe-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .pacman-block--fullscreen,
+  .mario-block--fullscreen,
+  .tetris-block--fullscreen,
+  .sokoban-block--fullscreen,
+  .invaders-block--fullscreen,
+  .breakout-block--fullscreen,
+  .snake-block--fullscreen,
+  .lemmings-block--fullscreen,
+  .pinball-block--fullscreen,
+  .sudoku-block--fullscreen,
+  .puzzle-block--fullscreen,
+  .marbleblast-block--fullscreen,
+  .scooter-block--fullscreen,
+  .rollercoast-block--fullscreen,
+  .ghosttrain-block--fullscreen,
+  .labyrinth-block--fullscreen,
+  .chess-block--fullscreen,
+  .connect4-block--fullscreen,
+  .reversi-block--fullscreen,
+  .muhle-block--fullscreen,
+  .tictactoe-block--fullscreen {
+    min-height: 0;
+    height: auto;
+  }
+
+  .pacman-block--fullscreen .pacman-canvas,
+  .mario-block--fullscreen .mario-canvas,
+  .tetris-block--fullscreen .tetris-canvas,
+  .sokoban-block--fullscreen .sokoban-canvas,
+  .invaders-block--fullscreen .invaders-canvas,
+  .breakout-block--fullscreen .breakout-canvas,
+  .snake-block--fullscreen .snake-canvas,
+  .lemmings-block--fullscreen .lemmings-canvas,
+  .pacman-canvas,
+  .mario-canvas,
+  .tetris-canvas,
+  .sokoban-canvas,
+  .invaders-canvas,
+  .breakout-canvas,
+  .snake-canvas,
+  .lemmings-canvas {
+    max-height: 58vh;
+    width: 100%;
+    height: auto;
+  }
+
+  .scooter-block--fullscreen .scooter-viewport,
+  .rollercoast-block--fullscreen .rollercoast-viewport,
+  .ghosttrain-block--fullscreen .ghosttrain-viewport,
+  .marbleblast-block--fullscreen .marbleblast-stage,
+  .labyrinth-block--fullscreen .labyrinth-viewport,
+  .pinball-block--fullscreen .pinball-frame-wrap,
+  .scooter-viewport,
+  .rollercoast-viewport,
+  .ghosttrain-viewport,
+  .marbleblast-stage,
+  .labyrinth-viewport,
+  .pinball-frame-wrap {
+    min-height: 42vh;
+    max-height: 58vh;
+  }
+
+  .puzzle-block .piece {
+    touch-action: none;
+  }
+
+  .pacman-block:fullscreen .pacman-stage,
+  .pacman-block:-webkit-full-screen .pacman-stage,
+  .mario-block:fullscreen .mario-stage,
+  .mario-block:-webkit-full-screen .mario-stage,
+  .tetris-block:fullscreen .tetris-stage,
+  .tetris-block:-webkit-full-screen .tetris-stage,
+  .sokoban-block:fullscreen .sokoban-stage,
+  .sokoban-block:-webkit-full-screen .sokoban-stage,
+  .invaders-block:fullscreen .invaders-stage,
+  .invaders-block:-webkit-full-screen .invaders-stage,
+  .breakout-block:fullscreen .breakout-stage,
+  .breakout-block:-webkit-full-screen .breakout-stage,
+  .snake-block:fullscreen .snake-stage,
+  .snake-block:-webkit-full-screen .snake-stage,
+  .lemmings-block:fullscreen .lemmings-stage,
+  .lemmings-block:-webkit-full-screen .lemmings-stage {
+    min-height: 0;
+    flex: 1 1 auto;
+  }
+
+  .pacman-block:fullscreen .pacman-canvas,
+  .pacman-block:-webkit-full-screen .pacman-canvas,
+  .mario-block:fullscreen .mario-canvas,
+  .mario-block:-webkit-full-screen .mario-canvas,
+  .tetris-block:fullscreen .tetris-canvas,
+  .tetris-block:-webkit-full-screen .tetris-canvas,
+  .sokoban-block:fullscreen .sokoban-canvas,
+  .sokoban-block:-webkit-full-screen .sokoban-canvas,
+  .invaders-block:fullscreen .invaders-canvas,
+  .invaders-block:-webkit-full-screen .invaders-canvas,
+  .breakout-block:fullscreen .breakout-canvas,
+  .breakout-block:-webkit-full-screen .breakout-canvas,
+  .snake-block:fullscreen .snake-canvas,
+  .snake-block:-webkit-full-screen .snake-canvas,
+  .lemmings-block:fullscreen .lemmings-canvas,
+  .lemmings-block:-webkit-full-screen .lemmings-canvas {
+    width: 100%;
+    height: auto;
+    max-height: 58vh;
+  }
+
+  .sudoku-num {
+    min-width: 44px;
+    height: 44px;
+  }
+
+  .pacman-block .btn,
+  .mario-block .btn,
+  .tetris-block .btn,
+  .sokoban-block .btn,
+  .invaders-block .btn,
+  .breakout-block .btn,
+  .snake-block .btn,
+  .lemmings-block .btn,
+  .marbleblast-block .btn,
+  .scooter-block .btn,
+  .rollercoast-block .btn,
+  .ghosttrain-block .btn,
+  .labyrinth-block .btn,
+  .pinball-block .btn,
+  .sudoku-block .btn,
+  .puzzle-block .btn,
+  .chess-block .btn,
+  .connect4-block .btn,
+  .reversi-block .btn,
+  .muhle-block .btn,
+  .tictactoe-block .btn {
+    min-height: 44px;
+  }
+
+  .muhle-toolbar {
+    width: 100%;
+  }
+
+  .muhle-chip {
+    min-height: 44px;
+  }
+
+  .muhle-lines {
+    pointer-events: none;
+  }
+
+  .muhle-point {
+    width: 13.5%;
+    height: 13.5%;
+    touch-action: manipulation;
+  }
+
+  .muhle-point--empty::after {
+    width: 48%;
+    height: 48%;
+    margin: 26%;
+  }
+
+  .muhle-board,
+  .muhle-block--fullscreen .muhle-board,
+  .muhle-block:fullscreen .muhle-board,
+  .muhle-block:-webkit-full-screen .muhle-board {
+    width: min(100%, max(240px, calc(100dvh - 210px)));
+    max-width: 100%;
+    border-width: 5px;
   }
 }

@@ -521,6 +521,45 @@
     return el.querySelector('.puzzle-jq-mount .jigsaw');
   }
 
+  function bindPuzzleTouch(el) {
+    if (!el || el.dataset.puzzleTouch === '1') return;
+    el.dataset.puzzleTouch = '1';
+    const fire = (touch, type) => {
+      const target = document.elementFromPoint(touch.clientX, touch.clientY) || touch.target;
+      if (!target) return;
+      const mouse = new MouseEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        view: window,
+        clientX: touch.clientX,
+        clientY: touch.clientY,
+        screenX: touch.screenX,
+        screenY: touch.screenY,
+        button: 0,
+        buttons: type === 'mouseup' ? 0 : 1,
+      });
+      target.dispatchEvent(mouse);
+    };
+    el.addEventListener('touchstart', (event) => {
+      if (!event.target.closest?.('.piece') || event.touches.length !== 1) return;
+      event.preventDefault();
+      fire(event.changedTouches[0], 'mousedown');
+    }, { passive: false });
+    el.addEventListener('touchmove', (event) => {
+      if (event.touches.length !== 1) return;
+      if (!el.querySelector('.ui-draggable-dragging')) return;
+      event.preventDefault();
+      fire(event.changedTouches[0], 'mousemove');
+    }, { passive: false });
+    el.addEventListener('touchend', (event) => {
+      if (!el.querySelector('.ui-draggable-dragging') && !event.target.closest?.('.piece')) return;
+      fire(event.changedTouches[0], 'mouseup');
+    });
+    el.addEventListener('touchcancel', (event) => {
+      fire(event.changedTouches[0], 'mouseup');
+    });
+  }
+
   function jqReady() {
     return typeof window.jQuery !== 'undefined'
       && typeof window.jQuery.fn !== 'undefined'
@@ -663,7 +702,10 @@
 
     if (!spec.draft) {
       const start = () => initJqPuzzle(el, spec, {
-        onReady: wirePersistence,
+        onReady: (jigsaw) => {
+          wirePersistence(jigsaw);
+          bindPuzzleTouch(el);
+        },
         onShuffle: () => schedulePersist(true),
         onPieceStop: () => schedulePersist(false),
       });

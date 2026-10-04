@@ -78,7 +78,7 @@
   function parentIsMobile() {
     try {
       return document.body.classList.contains('mobile-layout')
-        || window.matchMedia('(max-width: 768px)').matches;
+        || window.matchMedia('(pointer: coarse), (max-width: 900px)').matches;
     } catch (_) {
       return false;
     }

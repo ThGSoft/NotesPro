@@ -2502,7 +2502,7 @@
   }
 
   function isPreviewRichBlock(el) {
-    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .form-widget, .mindmap-block, .md-news, .md-python, .voice-block, .jukebox-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .page-tags');
+    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .form-widget, .mindmap-block, .md-news, .md-python, .voice-block, .jukebox-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .page-tags');
   }
 
   function getPreviewBlockSourceLine(node) {
@@ -4293,6 +4293,8 @@
     if (tagsBox) tagsBox.checked = pageTagsEnabled();
     const publicBox = document.getElementById('page-settings-public');
     if (publicBox) publicBox.checked = currentPage?.settings?.public === true;
+    const rootBox = document.getElementById('page-settings-root');
+    if (rootBox) rootBox.checked = currentPage?.settings?.root === true;
     syncPageSettingsPublicLink();
     pageSettingsTags = collectPageSettingsTags();
     const input = document.getElementById('page-settings-tag-input');
@@ -4319,7 +4321,12 @@
     const contents = !!document.getElementById('page-settings-contents')?.checked;
     const tags = !!document.getElementById('page-settings-tags-visible')?.checked;
     const isPublic = !!document.getElementById('page-settings-public')?.checked;
+    const rootBox = document.getElementById('page-settings-root');
     const settings = { ...(currentPage.settings || {}), contents, tags, public: isPublic };
+    if (rootBox) {
+      settings.root = !!rootBox.checked;
+      if (settings.root) settings.public = true;
+    }
     const originalMd = currentPageMarkdownSource();
     const tagsChanged = pageSettingsTagsChanged(originalMd, pageSettingsTags);
     const nextMarkdown = tagsChanged
@@ -4365,6 +4372,15 @@
       addPageSettingsTag(e.target.value);
     });
     document.getElementById('page-settings-public')?.addEventListener('change', () => {
+      const publicBox = document.getElementById('page-settings-public');
+      const rootBox = document.getElementById('page-settings-root');
+      if (publicBox && !publicBox.checked && rootBox) rootBox.checked = false;
+      syncPageSettingsPublicLink();
+    });
+    document.getElementById('page-settings-root')?.addEventListener('change', () => {
+      const rootBox = document.getElementById('page-settings-root');
+      const publicBox = document.getElementById('page-settings-public');
+      if (rootBox?.checked && publicBox) publicBox.checked = true;
       syncPageSettingsPublicLink();
     });
     document.getElementById('page-settings-public-copy')?.addEventListener('click', async () => {
@@ -9139,6 +9155,7 @@
   const CHESS_BLOCK_RE = /```(?:chessgame|chess)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
   const CONNECT4_BLOCK_RE = /```(?:connect4|connect-4|connectfour|c4)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
   const REVERSI_BLOCK_RE = /```(?:reversi|othello)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+  const MUHLE_BLOCK_RE = /```(?:muhle|mühle|muehle|mills|nine-mens-morris)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
 
   function updateStrategyFence(markdown, re, engine, fenceName, index, payload) {
     if (!engine) return markdown;
@@ -9148,7 +9165,7 @@
       idx += 1;
       if (thisIndex !== index) return match;
       const cfg = engine.parseFenceAttrs(fenceAttrs || '');
-      ['mode', 'difficulty', 'score', 'turn', 'castle', 'ep'].forEach((key) => {
+      ['mode', 'difficulty', 'score', 'turn', 'castle', 'ep', 'xleft', 'oleft', 'takes'].forEach((key) => {
         if (payload[key] != null && payload[key] !== '') cfg[key] = payload[key];
       });
       const board = payload.board || engine.serializeBoard?.([]) || '';
@@ -9255,6 +9272,38 @@
   }
 
   const TETRIS_BLOCK_RE = /```(?:tetris|tetrix|tetric)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function parseMuhleBlocks(text, options = {}) {
+    let muhleIndex = 0;
+    MUHLE_BLOCK_RE.lastIndex = 0;
+    return text.replace(MUHLE_BLOCK_RE, (_, fenceAttrs, content) => {
+      const engine = window.NotesProMuhle;
+      const idx = muhleIndex++;
+      const html = engine?.renderBlock
+        ? engine.renderBlock(content || '', fenceAttrs || '', { muhleIndex: idx, editable: !!options.sheetEditable })
+        : '<div class="muhle-block muhle-block--error">Mühle engine not loaded.</div>';
+      return wrapRichPreviewBlock(html);
+    });
+  }
+
+  function hydrateMuhleBlocks(root) {
+    const engine = window.NotesProMuhle;
+    if (!engine) return;
+    (root || document).querySelectorAll('.muhle-block[data-muhle-index]').forEach((el) => {
+      const muhleIndex = parseInt(el.dataset.muhleIndex, 10);
+      engine.hydrateBlock(el, {
+        onPersist: userCanEdit && Number.isFinite(muhleIndex) && easyMDE
+          ? (payload) => {
+            const oldMarkdown = easyMDE.value();
+            const updated = updateStrategyFence(oldMarkdown, /```(?:muhle|mühle|muehle|mills|nine-mens-morris)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, engine, 'muhle', muhleIndex, payload || {});
+            if (updated === oldMarkdown) return;
+            easyMDE.value(updated);
+            scheduleSave();
+          }
+          : null,
+      });
+    });
+  }
 
   function parseTetrisBlocks(text) {
     let tetrisIndex = 0;
@@ -11949,7 +11998,7 @@ function formatTextWithMarkup(rawText) {
     if (!root) return;
     root.querySelectorAll('pre').forEach(pre => {
       if (pre.closest('.md-code-block')) return;
-      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .form-widget, .mindmap-block, .md-news, .md-python, .voice-block, .jukebox-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block')) {
+      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .form-widget, .mindmap-block, .md-news, .md-python, .voice-block, .jukebox-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block')) {
         return;
       }
       const wrap = document.createElement('div');
@@ -12016,6 +12065,93 @@ function formatTextWithMarkup(rawText) {
       a.setAttribute('target', '_blank');
       a.setAttribute('rel', 'noopener noreferrer');
     });
+    markPageLinks(root);
+  }
+
+  function publicPageHref(wsSlug, pageSlug) {
+    const owner = window.APP_BOOT?.publicPage?.owner || window.APP_BOOT?.username || '';
+    if (!owner || !wsSlug || !pageSlug) return '';
+    const path = `/p/${encodeURIComponent(owner)}/${encodeURIComponent(wsSlug)}/${encodeURIComponent(pageSlug)}/`;
+    return appBase ? `${appBase}${path}` : path;
+  }
+
+  function markPageLinks(root) {
+    if (!root) return;
+    root.querySelectorAll('a[href]').forEach((anchor) => {
+      const ref = localPageHref(anchor.getAttribute('href') || '');
+      if (!ref) return;
+      const parts = ref.split(':');
+      if (parts.length !== 2) return;
+      anchor.classList.add('page-link-app');
+      anchor.dataset.wsSlug = parts[0];
+      anchor.dataset.pageSlug = parts[1];
+      anchor.removeAttribute('target');
+      anchor.removeAttribute('rel');
+      if (window.APP_BOOT?.publicView) {
+        const href = publicPageHref(parts[0], parts[1]);
+        if (href) anchor.setAttribute('href', href);
+      }
+    });
+  }
+
+  function treeNodeBySlug(slug) {
+    const tree = $('#tree').jstree(true);
+    if (!tree) return null;
+    const want = String(slug || '').toLowerCase();
+    const root = tree.get_node('#');
+    const ids = root?.children_d || [];
+    for (let i = 0; i < ids.length; i += 1) {
+      const node = tree.get_node(ids[i]);
+      if (String(node?.data?.slug || '').toLowerCase() === want) return node;
+    }
+    return null;
+  }
+
+  async function openLocalPageLink(wsSlug, pageSlug) {
+    const wantWs = String(wsSlug || '').toLowerCase();
+    const wantPage = String(pageSlug || '').toLowerCase();
+    const select = document.getElementById('workspace-select');
+    const option = [...(select?.options || [])].find((opt) => String(opt.dataset.slug || '').toLowerCase() === wantWs);
+    if (!option) {
+      showToast(`Workspace “${wsSlug}” was not found.`, 'warning');
+      return;
+    }
+    const sameWs = String(option.value) === String(workspaceId);
+    let node = sameWs ? treeNodeBySlug(wantPage) : null;
+    if (!node) {
+      try {
+        const nodes = sameWs ? null : await api(`api/workspaces/${option.value}/tree/`);
+        node = (Array.isArray(nodes) ? nodes : []).find((item) => String(item?.data?.slug || '').toLowerCase() === wantPage) || node;
+      } catch (err) {
+        showToast(err.message || 'Could not open that page.', 'danger');
+        return;
+      }
+    }
+    if (!node) {
+      showToast(`Page “${wsSlug}:${pageSlug}” was not found.`, 'warning');
+      return;
+    }
+    if (!sameWs) {
+      if (select) select.value = String(option.value);
+      syncWorkspaceOwnerControls(option);
+      await activateWorkspace(option.value, { pageId: node.id });
+      return;
+    }
+    const tree = $('#tree').jstree(true);
+    tree?.deselect_all();
+    tree?.select_node(String(node.id));
+  }
+
+  function onPageLinkClick(event) {
+    if (window.APP_BOOT?.publicView) return;
+    const link = event.target.closest?.('a.page-link-app');
+    if (!link) return;
+    const wsSlug = link.dataset.wsSlug;
+    const pageSlug = link.dataset.pageSlug;
+    if (!wsSlug || !pageSlug) return;
+    event.preventDefault();
+    event.stopPropagation();
+    void openLocalPageLink(wsSlug, pageSlug);
   }
 
   function onFileLinkClick(e) {
@@ -12036,6 +12172,7 @@ function formatTextWithMarkup(rawText) {
   }
 
   function initFileLinkDialog() {
+    document.addEventListener('click', onPageLinkClick);
     document.getElementById('preview-content')?.addEventListener('click', onFileLinkClick);
     document.getElementById('markdown-wrap')?.addEventListener('click', onFileLinkClick);
     document.getElementById('file-link-modal-path')?.addEventListener('input', syncFileLinkDialogPreview);
@@ -12408,6 +12545,11 @@ function formatTextWithMarkup(rawText) {
       const label = cfg.title || 'Reversi';
       return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
     });
+    md = md.replace(/```(?:muhle|mühle|muehle|mills|nine-mens-morris)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const cfg = window.NotesProMuhle?.parseFenceAttrs?.(fenceAttrs) || {};
+      const label = cfg.title || 'Mühle';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
     md = md.replace(/```(?:tetris|tetrix|tetric)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
       const cfg = window.NotesProTetris?.parseFenceAttrs?.(fenceAttrs) || {};
       const label = cfg.title || 'Tetris';
@@ -12547,6 +12689,7 @@ function formatTextWithMarkup(rawText) {
       md = parseChessBlocks(md, options);
       md = parseConnect4Blocks(md, options);
       md = parseReversiBlocks(md, options);
+      md = parseMuhleBlocks(md, options);
       md = parseTetrisBlocks(md);
       md = parseSokobanBlocks(md);
       md = parseSpeisekarteBlocks(md, options);
@@ -12992,6 +13135,7 @@ function formatTextWithMarkup(rawText) {
     hydrateChessBlocks(preview);
     hydrateConnect4Blocks(preview);
     hydrateReversiBlocks(preview);
+    hydrateMuhleBlocks(preview);
     hydrateTetrisBlocks(preview);
     hydrateSokobanBlocks(preview);
     hydrateSpeisekarteBlocks(preview);
@@ -14408,6 +14552,12 @@ function formatTextWithMarkup(rawText) {
           action: (editor) => insertFenceBlock(editor, 'reversi{fullscreen;mode=cpu;difficulty=medium}', ''),
         },
         {
+          name: 'insert-muhle',
+          text: 'Mühle',
+          title: 'Insert Mühle (Nine Men\'s Morris)',
+          action: (editor) => insertFenceBlock(editor, 'muhle{fullscreen;mode=cpu;difficulty=medium}', ''),
+        },
+        {
           name: 'insert-tetris',
           text: 'Tetris',
           title: 'Insert Tetris',
@@ -15557,17 +15707,27 @@ function formatTextWithMarkup(rawText) {
     return window.NotesProGallery?.clipboardPageUrls?.(clipboardData) || [];
   }
 
+  function localPageHref(url) {
+    return window.NotesProOutlookPaste?.localPageRef?.(url) || '';
+  }
+
   function pastedLinkMarkdown(clipboardData, pageUrls) {
     const text = String(clipboardData?.getData?.('text/plain') || '').trim().replace(/^["']+|["']+$/g, '');
+    const hrefFor = (url) => localPageHref(url) || url;
     if (pageUrls.length === 1) {
       const url = pageUrls[0];
+      const href = hrefFor(url);
       const plain = text.replace(/\s+/g, ' ').trim();
       if (plain && plain !== url && !/^https?:\/\//i.test(plain)) {
-        return `[${plain.replace(/[\[\]]/g, '')}](${url})`;
+        return `[${plain.replace(/[\[\]]/g, '')}](${href})`;
       }
+      if (href !== url) return `[${href}](${href})`;
       return url;
     }
-    return pageUrls.join('\n');
+    return pageUrls.map((url) => {
+      const href = hrefFor(url);
+      return href === url ? url : `[${href}](${href})`;
+    }).join('\n');
   }
 
   async function linkPreviewForUrl(url) {
@@ -15601,9 +15761,10 @@ function formatTextWithMarkup(rawText) {
   }
 
   function linkThumbMarkdown(pageUrl, hit, label) {
-    const name = String(label || hit?.title || pageUrl).replace(/[\[\]]/g, '').trim() || pageUrl;
-    const href = unwrapImageUrl(hit.image);
-    return `![${name}](${href}){width=48px align=left} [${name}](${pageUrl})`;
+    const href = localPageHref(pageUrl) || pageUrl;
+    const name = String(label || hit?.title || href).replace(/[\[\]]/g, '').trim() || href;
+    const image = unwrapImageUrl(hit.image);
+    return `![${name}](${image}){width=48px align=left} [${name}](${href})`;
   }
 
   function linkPreviewBlock(block, pageUrls, hits) {
@@ -15616,7 +15777,8 @@ function formatTextWithMarkup(rawText) {
       const escaped = String(url).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const linked = String(block || '').match(new RegExp(`\\[([^\\]]*)\\]\\(${escaped}\\)`));
       const label = (linked?.[1] || hit?.title || url).replace(/[\[\]]/g, '');
-      if (!hit) return linked ? `[${label}](${url})` : url;
+      const href = localPageHref(url) || url;
+      if (!hit) return `[${label}](${href})`;
       return linkThumbMarkdown(url, hit, label);
     }).join('\n');
   }
@@ -21467,6 +21629,7 @@ function formatTextWithMarkup(rawText) {
       const option = document.createElement('option');
       option.value = ws.id;
       option.textContent = ws.name;
+      if (ws.slug) option.dataset.slug = ws.slug;
       if (currentUserId) option.dataset.ownerId = String(currentUserId);
       select.appendChild(option);
       sortWorkspaceSelect();
@@ -21502,6 +21665,7 @@ function formatTextWithMarkup(rawText) {
             newOption.textContent = result.name || name.trim();
             newOption.dataset.name = result.name || name.trim();
             if (currentUserId) newOption.dataset.ownerId = String(currentUserId);
+            if (result.slug) newOption.dataset.slug = result.slug;
             select.appendChild(newOption);
             sortWorkspaceSelect();
             select.value = String(result.id);
@@ -21582,6 +21746,7 @@ function formatTextWithMarkup(rawText) {
       option.value = String(result.id || wsId);
       option.textContent = result.name || wsName;
       option.dataset.name = result.name || wsName;
+      if (result.slug) option.dataset.slug = result.slug;
       if (currentUserId) option.dataset.ownerId = String(currentUserId);
       select.appendChild(option);
       sortWorkspaceSelect();
@@ -22348,6 +22513,134 @@ function formatTextWithMarkup(rawText) {
     return true;
   }
 
+  function isEditorSurface(el) {
+    const node = el?.nodeType === 1 ? el : el?.parentElement;
+    if (!node?.closest) return false;
+    if (node.closest('input, textarea:not(#markdown-editor), select')) return false;
+    return Boolean(node.closest('.CodeMirror, #markdown-editor'));
+  }
+
+  function dataUrlToBlob(dataUrl) {
+    const match = /^data:([^;,]+)?(;base64)?,(.*)$/is.exec(String(dataUrl || ''));
+    if (!match) return null;
+    const mime = match[1] || 'image/png';
+    const payload = match[3] || '';
+    let bytes;
+    if (match[2]) {
+      const binary = atob(payload.replace(/\s/g, ''));
+      bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+    } else {
+      bytes = new TextEncoder().encode(decodeURIComponent(payload));
+    }
+    const ext = /jpe?g/i.test(mime) ? 'jpg' : /gif/i.test(mime) ? 'gif' : /webp/i.test(mime) ? 'webp' : 'png';
+    return { blob: new Blob([bytes], { type: mime }), name: `paste.${ext}` };
+  }
+
+  function outlookClipboardImages(clipboardData) {
+    const typed = clipboardImageFiles(clipboardData);
+    if (typed.length) return typed;
+    return [...(clipboardData?.files || [])].filter((file) => (
+      /^image\//i.test(String(file?.type || '')) || /\.(png|jpe?g|gif|webp|bmp)$/i.test(file?.name || '')
+    ));
+  }
+
+  function outlookImageMarkdown(alt, href, width) {
+    const name = String(alt || 'image').replace(/[\[\]\r\n]/g, '').trim() || 'image';
+    const safeHref = String(href || '').replace(/[()]/g, (ch) => encodeURIComponent(ch));
+    return width ? `![${name}](${safeHref}){width=${width}}` : `![${name}](${safeHref})`;
+  }
+
+  function insertOutlookMarkdown(doc, startMark, endMark, markdown) {
+    const start = startMark.find();
+    const end = endMark.find();
+    if (!start || !end) return false;
+    let block = String(markdown || '').trim();
+    if (!block) return false;
+    const startLine = doc.getLine(start.line) || '';
+    const before = startLine.slice(0, start.ch);
+    const endLine = doc.getLine(end.line) || '';
+    const after = endLine.slice(end.ch);
+    if (block.includes('\n')) {
+      if (before.trim()) block = `\n\n${block}`;
+      else if (start.ch > 0) block = `\n${block}`;
+      if (after.trim()) block = `${block}\n\n`;
+      else block = `${block}\n`;
+    }
+    doc.replaceRange(block, start, end);
+    easyMDE?.codemirror?.focus();
+    scheduleSave();
+    schedulePreviewRefresh({ force: true });
+    return true;
+  }
+
+  async function resolveOutlookImages(markdown, images, clipboardData) {
+    const files = outlookClipboardImages(clipboardData);
+    let fileIndex = 0;
+    let output = String(markdown || '');
+    for (const image of images || []) {
+      const token = `%%NPIMG${image.id}%%`;
+      let href = '';
+      try {
+        if (/^data:image\//i.test(image.src || '')) {
+          const parsed = dataUrlToBlob(image.src);
+          if (parsed) href = await uploadPastedImageBlob(parsed.blob, parsed.name);
+        } else if (/^https?:\/\//i.test(image.src || '')) {
+          href = image.src;
+        } else if (fileIndex < files.length) {
+          const file = files[fileIndex];
+          fileIndex += 1;
+          href = await uploadPastedImageBlob(file, file.name || 'paste.png');
+        }
+      } catch (err) {
+        showToast(err.message || 'Image upload failed.', 'danger');
+      }
+      const replacement = href ? outlookImageMarkdown(image.alt, href, image.width) : '';
+      output = output.split(token).join(replacement);
+    }
+    return output.replace(/[ \t]+\n/g, '\n').replace(/\n{4,}/g, '\n\n\n').trim();
+  }
+
+  function tryPasteOutlookMessage(event) {
+    if (!userCanEdit || !easyMDE?.codemirror) return false;
+    if (!isEditorSurface(event.target)) return false;
+    const data = event.clipboardData || event.originalEvent?.clipboardData;
+    const html = data?.getData?.('text/html') || '';
+    const plain = data?.getData?.('text/plain') || '';
+    const engine = window.NotesProOutlookPaste;
+    if (!engine?.shouldHandle?.(html, plain)) return false;
+    event.preventDefault();
+    event.stopPropagation();
+    event.codemirrorIgnore = true;
+    const doc = easyMDE.codemirror.getDoc();
+    const startMark = doc.setBookmark(doc.getCursor('from'), { insertLeft: true });
+    const endMark = doc.setBookmark(doc.getCursor('to'), { insertLeft: false });
+    void (async () => {
+      try {
+        let markdown = plain;
+        let images = [];
+        if (engine.isWordOrOutlookHtml(html)) {
+          const converted = engine.htmlToMarkdown(html);
+          markdown = converted.markdown || engine.formatPlainHeaders(plain) || plain;
+          images = converted.images || [];
+        } else {
+          markdown = engine.formatPlainHeaders(plain) || plain;
+        }
+        if (images.length) markdown = await resolveOutlookImages(markdown, images, data);
+        if (!insertOutlookMarkdown(doc, startMark, endMark, markdown)) {
+          insertOutlookMarkdown(doc, startMark, endMark, plain);
+        }
+      } catch (err) {
+        showToast(err.message || 'Could not paste the Outlook message.', 'danger');
+        insertOutlookMarkdown(doc, startMark, endMark, engine.formatPlainHeaders(plain) || plain);
+      } finally {
+        startMark.clear();
+        endMark.clear();
+      }
+    })();
+    return true;
+  }
+
   document.addEventListener('paste', function (event) {
     const pasteNode = event.target?.nodeType === 1 ? event.target : event.target?.parentElement;
     const inEditor = Boolean(pasteNode?.closest?.('.CodeMirror, .EasyMDEContainer'));
@@ -22356,11 +22649,12 @@ function formatTextWithMarkup(rawText) {
       if (tryPasteOntoHoveredPhotoBlock(event)) return;
       if (tryPasteOntoHoveredShopCard(event)) return;
     }
+    if (tryPasteOutlookMessage(event)) return;
     if (tryPasteIntoEditorPhotoFence(event)) return;
     if (tryPasteImageUrlsIntoKeep(event)) return;
     const data = event.clipboardData || event.originalEvent?.clipboardData;
     const pasteFiles = clipboardImageFiles(data);
-    if (event.target.closest?.('.puzzle-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .voice-block, .jukebox-block, .calendar-block, #calendar-note-modal')) return;
+    if (event.target.closest?.('.puzzle-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .voice-block, .jukebox-block, .calendar-block, #calendar-note-modal')) return;
     if (!pasteFiles.length) {
       const text = data?.getData?.('text/plain') || '';
       const fromText = pastedPlainImageUrls(text);

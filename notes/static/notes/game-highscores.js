@@ -10,7 +10,7 @@
 }(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
-  const GAMES = ['pacman', 'tetris', 'lemmings', 'mario', 'sokoban', 'invaders', 'breakout', 'snake', 'marbleblast', 'chess', 'connect4', 'reversi'];
+  const GAMES = ['pacman', 'tetris', 'lemmings', 'mario', 'sokoban', 'invaders', 'breakout', 'snake', 'marbleblast', 'chess', 'connect4', 'reversi', 'muhle'];
   const listeners = [];
   let cache = { me: {}, boards: {} };
 
