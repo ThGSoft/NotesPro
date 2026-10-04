@@ -408,13 +408,17 @@ class UserSettingsAdmin(admin.ModelAdmin):
 class IpVisitLogAdmin(admin.ModelAdmin):
     list_display = (
         'created_at', 'ip_address', 'geo_display', 'map_link', 'user', 'event_type',
-        'method', 'path',
+        'site', 'screen', 'method', 'path',
     )
     list_filter = ('event_type', 'country', 'country_code', 'method')
-    search_fields = ('ip_address', 'user__username', 'path', 'city', 'region', 'country', 'isp', 'org')
+    search_fields = (
+        'ip_address', 'hostname', 'user__username', 'path', 'site', 'referer',
+        'city', 'region', 'country', 'isp', 'org',
+    )
     date_hierarchy = 'created_at'
     readonly_fields = (
-        'created_at', 'ip_address', 'user', 'method', 'path', 'query_string', 'user_agent',
+        'created_at', 'ip_address', 'hostname', 'user', 'method', 'path', 'site',
+        'query_string', 'referer', 'user_agent', 'screen', 'color_depth',
         'event_type', 'country', 'country_code', 'region', 'city', 'latitude', 'longitude',
         'isp', 'org', 'map_link',
     )

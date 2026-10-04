@@ -628,6 +628,17 @@ GAMES_DEMO_PAGES = (
         '```\n',
     ),
     (
+        'muhle',
+        'Mühle',
+        9,
+        '# Mühle\n\n'
+        'Nine Men\'s Morris. Place nine white stones, then slide along the lines. '
+        'Three in a row is a mill: remove an opponent stone. '
+        'With three stones left you may fly.\n\n'
+        '```muhle{fullscreen;mode=cpu;difficulty=medium}\n'
+        '```\n',
+    ),
+    (
         'tetris',
         'Tetris',
         10,

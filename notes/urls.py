@@ -8,9 +8,10 @@ from . import views_incoming
 from . import views_quicknotes
 from . import views_issues
 from . import views_games
+from . import ip_logging
 
 urlpatterns = [
-    path('', views.dashboard, name='dashboard'),
+    path('', views.site_entry, name='dashboard'),
     path(
         'p/<str:owner>/<slug:workspace_slug>/<slug:page_slug>/',
         views.public_page,
@@ -22,6 +23,7 @@ urlpatterns = [
         name='public_shop_order',
     ),
     path('sw.js', views.service_worker, name='service_worker'),
+    path('pixel/', ip_logging.visit_pixel, name='visit_pixel'),
     path('favicon.ico', RedirectView.as_view(url=settings.STATIC_URL + 'images/favicon.ico')),
 
     path('register/', views.register_view, name='register'),

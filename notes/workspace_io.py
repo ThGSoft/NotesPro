@@ -469,6 +469,18 @@ def _import_pages_into_workspace(owner, workspace, data, archive=None, root_pare
                     row.get('archive') or '',
                     path_map,
                 )
+                raw_settings = row.get('settings') if isinstance(row.get('settings'), dict) else {}
+                page_settings = dict(raw_settings)
+                on_root = (
+                    owner.is_superuser
+                    and not bool(row.get('is_folder'))
+                    and Page._setting_bool(page_settings.get('root'), False)
+                )
+                if on_root:
+                    page_settings['root'] = True
+                    page_settings['public'] = True
+                else:
+                    page_settings['root'] = False
                 page = Page.objects.create(
                     workspace=workspace,
                     parent=parent,
@@ -478,8 +490,10 @@ def _import_pages_into_workspace(owner, workspace, data, archive=None, root_pare
                     sort_order=int(row.get('sort_order') or 0),
                     markdown_content=markdown,
                     archive=archive,
-                    settings=row.get('settings') if isinstance(row.get('settings'), dict) else {},
+                    settings=page_settings,
                 )
+                if on_root:
+                    page.release_other_site_roots()
                 ref_to_page[ref] = page
                 created.append(page)
                 progress = True

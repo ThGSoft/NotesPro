@@ -430,7 +430,18 @@ class Page(models.Model):
             'contents': self._setting_bool(raw.get('contents'), True),
             'tags': self._setting_bool(raw.get('tags'), True),
             'public': self._setting_bool(raw.get('public'), False),
+            'root': self._setting_bool(raw.get('root'), False),
         }
+
+    def release_other_site_roots(self):
+        others = Page.objects.exclude(pk=self.pk).filter(settings__root=True)
+        for other in others:
+            data = other.normalized_settings()
+            if not data.get('root'):
+                continue
+            data['root'] = False
+            other.settings = data
+            other.save(update_fields=['settings'])
 
     @staticmethod
     def _setting_bool(value, default=True):
@@ -662,6 +673,11 @@ class IpVisitLog(models.Model):
     longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     isp = models.CharField(max_length=255, blank=True, default='')
     org = models.CharField(max_length=255, blank=True, default='')
+    hostname = models.CharField(max_length=255, blank=True, default='')
+    referer = models.CharField(max_length=1024, blank=True, default='')
+    site = models.CharField(max_length=512, blank=True, default='')
+    screen = models.CharField(max_length=32, blank=True, default='')
+    color_depth = models.CharField(max_length=8, blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:

@@ -3,6 +3,7 @@ from channels.layers import get_channel_layer
 from django.contrib import messages
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.views import redirect_to_login
 from django.db import IntegrityError, models, transaction
 from django.http import Http404, HttpResponseBadRequest, HttpResponse, JsonResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -316,7 +317,14 @@ def _restore_workspace(workspace):
     workspace.save(update_fields=['deleted'])
     workspace.pages.update(deleted=False)
 
+def _site_root_path():
+    base = (getattr(django_settings, 'FORCE_SCRIPT_NAME', None) or '').rstrip('/')
+    return f'{base}/' if base else '/'
+
+
 def _public_page_path(page):
+    if page.normalized_settings().get('root'):
+        return _site_root_path()
     path = reverse(
         'public_page',
         kwargs={
@@ -329,6 +337,26 @@ def _public_page_path(page):
     if base and not path.startswith(f'{base}/'):
         return f'{base}{path}'
     return path
+
+
+def _root_public_page():
+    page = (
+        Page.objects.filter(
+            deleted=False,
+            is_folder=False,
+            workspace__deleted=False,
+            settings__root=True,
+        )
+        .select_related('workspace', 'workspace__owner')
+        .order_by('-updated_at', '-id')
+        .first()
+    )
+    if not page:
+        return None
+    settings = page.normalized_settings()
+    if not settings.get('root') or not settings.get('public'):
+        return None
+    return page
 
 
 def _page_to_dict(page):
@@ -603,6 +631,16 @@ def activate_view(request):
 
     return render(request, 'registration/activate.html', activate_ctx)
 
+def site_entry(request):
+    """Notes app for signed-in users. A superuser can publish one page at /."""
+    if request.user.is_authenticated:
+        return dashboard(request)
+    page = _root_public_page()
+    if page:
+        return _render_public_page(request, page)
+    return redirect_to_login(request.get_full_path() or '/')
+
+
 @login_required
 def dashboard(request):
     # 1. Sicherstellen, dass Workspaces existieren
@@ -675,15 +713,7 @@ def dashboard(request):
     })
 
 
-@require_GET
-def public_page(request, owner, workspace_slug, page_slug):
-    """Read-only page for visitors who are not signed in.
-
-    The switch lives in page settings (outside markdown fences) so a NotesList
-    or shop page can be shared without opening the rest of the workspace.
-    """
-    page = _public_page_or_404(owner, workspace_slug, page_slug)
-
+def _render_public_page(request, page):
     owner_settings, _ = UserSettings.objects.get_or_create(user=page.workspace.owner)
     extra = owner_settings.extra_configs if isinstance(owner_settings.extra_configs, dict) else {}
     public_settings = SimpleNamespace(
@@ -720,6 +750,17 @@ def public_page(request, owner, workspace_slug, page_slug):
         'app_license': LICENSE,
         'game_highscores': {},
     })
+
+
+@require_GET
+def public_page(request, owner, workspace_slug, page_slug):
+    """Read-only page for visitors who are not signed in.
+
+    The switch lives in page settings (outside markdown fences) so a NotesList
+    or shop page can be shared without opening the rest of the workspace.
+    """
+    page = _public_page_or_404(owner, workspace_slug, page_slug)
+    return _render_public_page(request, page)
 
 
 @require_POST
@@ -1210,11 +1251,27 @@ def page_update(request, pk):
             merged['tags'] = bool(incoming.get('tags'))
         if page.is_folder:
             merged['public'] = False
+            merged['root'] = False
         elif 'public' in incoming:
             merged['public'] = Page._setting_bool(incoming.get('public'), False)
+        if (
+            not page.is_folder
+            and 'root' in incoming
+            and request.user.is_superuser
+        ):
+            merged['root'] = Page._setting_bool(incoming.get('root'), False)
+        if merged.get('root'):
+            merged['public'] = True
+            claim_root = True
+        else:
+            claim_root = False
         page.settings = merged
+    else:
+        claim_root = False
     page.slug = ''
     page.save()
+    if claim_root:
+        page.release_other_site_roots()
     sync_page_tags(page)
     _broadcast_tags_updated(page.workspace_id, page.id)
     return JsonResponse(_page_to_dict(page))

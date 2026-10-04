@@ -68,7 +68,7 @@
         <div class="workspace-row">
           <select id="workspace-select" class="form-select form-select-sm">
             {% for ws in workspaces %}
-            <option value="{{ ws.id }}" data-owner-id="{{ ws.owner_id }}" data-name="{{ ws.name }}" {% if ws.id == current_workspace.id %}selected{% endif %}>{% if ws.owner == user %}{{ ws.name }}{% else %}{{ ws.owner.username }}: {{ ws.name }}{% endif %}</option>
+            <option value="{{ ws.id }}" data-owner-id="{{ ws.owner_id }}" data-name="{{ ws.name }}" data-slug="{{ ws.slug }}" {% if ws.id == current_workspace.id %}selected{% endif %}>{% if ws.owner == user %}{{ ws.name }}{% else %}{{ ws.owner.username }}: {{ ws.name }}{% endif %}</option>
             {% endfor %}
           </select>
           <!-- <button id="new-workspace" class="btn btn-sm btn-primary">+</button> -->
@@ -1063,6 +1063,13 @@
           <label class="form-check-label" for="page-settings-public">Show without login</label>
         </div>
         <p class="small dashboard-modal-hint mt-2 mb-0">Anyone with the link can read this page, including NotesList and shop blocks. The switch is stored on the page, outside those fences. Orders and mail stay private.</p>
+        {% if user.is_superuser %}
+        <div class="form-check mt-3">
+          <input class="form-check-input" type="checkbox" id="page-settings-root">
+          <label class="form-check-label" for="page-settings-root">Show at site root</label>
+        </div>
+        <p class="small dashboard-modal-hint mt-2 mb-0">Visitors who are not signed in see this page at the site address. Signed-in users still open the notes app there. Only one page can be the root.</p>
+        {% endif %}
         <p class="small dashboard-modal-hint mt-2 mb-0 d-none" id="page-settings-public-pending">Save to publish the link.</p>
         <div id="page-settings-public-link" class="mt-2 d-none">
           <label class="small fw-semibold" for="page-settings-public-url">Public link</label>
@@ -1272,6 +1279,7 @@
 <script src="{% static 'notes/chess.js' %}?v={% now 'YmdHis' %}"></script>
 <script src="{% static 'notes/connect4.js' %}?v={% now 'YmdHis' %}"></script>
 <script src="{% static 'notes/reversi.js' %}?v={% now 'YmdHis' %}"></script>
+<script src="{% static 'notes/muhle.js' %}?v={% now 'YmdHis' %}"></script>
 <script src="{% static 'notes/tetris.js' %}?v={% now 'YmdHis' %}"></script>
 <script src="{% static 'notes/sokoban.js' %}?v={% now 'YmdHis' %}"></script>
 <script src="{% static 'notes/speisekarte.js' %}?v={% now 'YmdHis' %}"></script>
@@ -1308,6 +1316,7 @@
   <div id="editor-emoji-grid" class="editor-emoji-grid" role="listbox" aria-label="Emoji"></div>
 </div>
 
+<script src="{% static 'notes/outlook-paste.js' %}?v={% now 'YmdHis' %}"></script>
 <script src="{% static 'notes/dashboard.js' %}?v={% now 'YmdHis' %}"></script>
 
 
@@ -1323,5 +1332,6 @@
   </div>
 </div>
 
+{% include 'notes/visit_pixel.html' %}
 </body>
 </html>

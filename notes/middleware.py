@@ -3,7 +3,12 @@
 from django.conf import settings
 from django.http import JsonResponse
 
-from .ip_logging import _normalized_path, log_ip_visit, should_log_request
+from .ip_logging import (
+    _normalized_path,
+    log_ip_visit,
+    should_log_anonymous_html,
+    should_log_request,
+)
 
 
 class ApiLoginRequiredJsonMiddleware:
@@ -42,7 +47,7 @@ class ApiLoginRequiredJsonMiddleware:
 
 
 class IpVisitLogMiddleware:
-    """Log client IP and geolocation for authenticated visits and logins."""
+    """Log client IP for signed-in visits, logins, and public HTML pages."""
 
     def __init__(self, get_response):
         self.get_response = get_response
@@ -66,5 +71,7 @@ class IpVisitLogMiddleware:
 
         if track_login and getattr(request, 'user', None) and request.user.is_authenticated:
             log_ip_visit(request, event_type='login')
+        elif should_log_anonymous_html(request, response):
+            log_ip_visit(request)
 
         return response

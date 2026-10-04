@@ -1,6 +1,6 @@
 from .models import GameHighScore
 
-GAMES = ('pacman', 'tetris', 'lemmings', 'mario', 'sokoban', 'invaders', 'breakout', 'snake', 'marbleblast', 'chess', 'connect4', 'reversi')
+GAMES = ('pacman', 'tetris', 'lemmings', 'mario', 'sokoban', 'invaders', 'breakout', 'snake', 'marbleblast', 'chess', 'connect4', 'reversi', 'muhle')
 MAX_SCORE = 99_999_999
 TOP_N = 10
 ALLOWED_EXTRA_KEYS = {

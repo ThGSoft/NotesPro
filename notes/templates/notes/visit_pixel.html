@@ -1,0 +1,14 @@
+<script>
+(function () {
+  if (/(?:^|;\s*)dontcount=/.test(document.cookie)) return;
+  var site = location.pathname || '/';
+  var w = (window.screen && screen.width) || 0;
+  var h = (window.screen && screen.height) || 0;
+  var c = (window.screen && (screen.colorDepth || screen.pixelDepth)) || '';
+  var img = new Image(1, 1);
+  img.alt = '';
+  img.src = '{% url "visit_pixel" %}?site=' + encodeURIComponent(site)
+    + '&jsres=' + encodeURIComponent(String(w) + 'x' + String(h))
+    + '&jscolor=' + encodeURIComponent(String(c));
+})();
+</script>
