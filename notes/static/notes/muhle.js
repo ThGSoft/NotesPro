@@ -271,11 +271,10 @@
   }
 
   function winnerOf(state) {
-    if (!placementDone(state)) return null;
     const xc = countOf(state.board, 'X');
     const oc = countOf(state.board, 'O');
-    if (xc < 3) return 'O';
-    if (oc < 3) return 'X';
+    if (state.xleft === 0 && xc < 3) return 'O';
+    if (state.oleft === 0 && oc < 3) return 'X';
     if (state.takes > 0) return null;
     if (!legalMoves(state).length) return opponent(state.turn);
     return null;
@@ -580,6 +579,7 @@
       `<div class="muhle-board" role="group" aria-label="${escapeHtml(title)}">`,
       renderBoardSvg(),
       renderPoints(state, -1, [], []),
+      `<div class="muhle-result" hidden></div>`,
       `</div>`,
       `<div class="muhle-actions">`,
       `<button type="button" class="btn btn-sm btn-outline-light" data-action="new">New game</button>`,
@@ -662,10 +662,11 @@
     const seen = new Map();
 
     function remember() {
-      const key = `${serializeBoard(state)}|${state.turn}|${state.takes}|${state.xleft}|${state.oleft}`;
+      if (!placementDone(state) || state.takes > 0) return false;
+      const key = `${serializeBoard(state)}|${state.turn}|${state.xleft}|${state.oleft}`;
       const n = (seen.get(key) || 0) + 1;
       seen.set(key, n);
-      return n >= 3;
+      return n >= 8;
     }
 
     function schedulePersist() {
@@ -717,6 +718,20 @@
         status.textContent = busy && state.turn === 'O' && mode === 'cpu' ? 'CPU is thinking…' : st.text;
         status.className = 'muhle-status' + (st.kind ? ` muhle-status--${st.kind}` : '');
       }
+      const result = el.querySelector('.muhle-result');
+      if (result) {
+        const over = winnerOf(state);
+        if (over === 'X') {
+          result.hidden = false;
+          result.textContent = mode === 'cpu' ? 'You win' : 'White wins';
+        } else if (over === 'O') {
+          result.hidden = false;
+          result.textContent = mode === 'cpu' ? 'CPU wins' : 'Black wins';
+        } else {
+          result.hidden = true;
+          result.textContent = '';
+        }
+      }
     }
 
     function refresh() {
@@ -761,10 +776,15 @@
       if (repeated) {
         const status = el.querySelector('.muhle-status');
         if (status) {
-          status.textContent = 'Draw by repetition.';
+          status.textContent = 'Draw — this position kept repeating.';
           status.className = 'muhle-status muhle-status--info';
         }
-        if (mode === 'cpu') publishResult('draw', 'Draw by repetition.');
+        const result = el.querySelector('.muhle-result');
+        if (result) {
+          result.hidden = false;
+          result.textContent = 'Draw';
+        }
+        if (mode === 'cpu') publishResult('draw', 'Draw — this position kept repeating.');
       }
       schedulePersist();
       if (!repeated && mode === 'cpu' && !win && state.turn === 'O') playCpu();
@@ -783,7 +803,9 @@
         const mv = chooseMove(state, difficulty);
         if (!mv) {
           busy = false;
+          tally('X');
           refresh();
+          schedulePersist();
           return;
         }
         state = applyMove(state, mv);
@@ -964,6 +986,45 @@
     check('late mill', milled.takes === 1 && milled.xleft === 0);
     const won = applyMove(milled, { type: 'remove', to: 4 });
     check('win by two stones', winnerOf(won) === 'X' && countOf(won.board, 'O') === 2);
+    const earlyLoss = emptyState();
+    earlyLoss.xleft = 0;
+    earlyLoss.oleft = 4;
+    earlyLoss.turn = 'X';
+    earlyLoss.board[0] = 'X';
+    earlyLoss.board[1] = 'X';
+    earlyLoss.board[4] = 'O';
+    earlyLoss.board[5] = 'O';
+    earlyLoss.board[6] = 'O';
+    check('two stones lose while the opponent is still placing', winnerOf(earlyLoss) === 'O');
+    const handLeft = emptyState();
+    handLeft.xleft = 2;
+    handLeft.oleft = 4;
+    handLeft.turn = 'X';
+    handLeft.board[0] = 'X';
+    handLeft.board[1] = 'X';
+    check('stones still in hand keep the game going', winnerOf(handLeft) === null);
+    const boxed = emptyState();
+    boxed.xleft = 0;
+    boxed.oleft = 1;
+    boxed.turn = 'X';
+    [[0, 'X'], [1, 'O'], [7, 'O'], [4, 'X'], [3, 'O'], [5, 'O'], [18, 'X'], [17, 'O'], [19, 'O'], [22, 'X'], [21, 'O'], [23, 'O']].forEach(([i, mark]) => {
+      boxed.board[i] = mark;
+    });
+    check('no legal move loses before placement ends', legalMoves(boxed).length === 0 && winnerOf(boxed) === 'O');
+    let frozen = 0;
+    for (let game = 0; game < 40; game += 1) {
+      let round = emptyState();
+      for (let ply = 0; ply < 400; ply += 1) {
+        if (winnerOf(round)) break;
+        const moves = legalMoves(round);
+        if (!moves.length) {
+          frozen += 1;
+          break;
+        }
+        round = applyMove(round, moves[Math.floor(Math.random() * moves.length)]);
+      }
+    }
+    check('a side that cannot move is not left waiting', frozen === 0);
 
     const fly = emptyState();
     fly.xleft = 0;

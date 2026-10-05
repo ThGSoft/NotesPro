@@ -9457,6 +9457,35 @@ body.mobile-layout .sheet-structure-menu-btn {
   text-decoration: none;
 }
 
+.file-item-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: grab;
+}
+
+.file-item-name:active,
+.file-item.is-dragging .file-item-name {
+  cursor: grabbing;
+}
+
+.file-item.is-dragging .file-item-name {
+  opacity: 0.45;
+}
+
+.file-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+#markdown-wrap.is-file-drop .CodeMirror {
+  box-shadow: inset 0 0 0 2px var(--accent, #2563eb);
+}
+
 #save-status {
   color: var(--muted);
   font-size: 14px;
@@ -11397,6 +11426,22 @@ table {
 .muhle-point--sel::after { box-shadow: 0 0 0 3px #facc15; }
 .muhle-point--take::after { box-shadow: 0 0 0 3px #fb7185; }
 .muhle-block--busy .muhle-point { cursor: wait; }
+.muhle-result {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 2;
+  transform: translate(-50%, -50%);
+  margin: 0;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.9);
+  color: #f8fafc;
+  font: 700 16px/1.2 system-ui, sans-serif;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.muhle-result[hidden] { display: none; }
 .muhle-score {
   font-size: 15px;
   color: var(--strat-title, #e2e8f0);
@@ -11980,6 +12025,8 @@ body.mobile-layout .sokoban-tips__controls--mobile {
   width: 100%;
   height: auto;
   background: #06140c;
+  touch-action: none;
+  cursor: crosshair;
 }
 
 .snake-pad {

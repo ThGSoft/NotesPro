@@ -28,8 +28,12 @@ backups/NotesPro-backup-20260814-170811.tar.gz
 backups/NotesPro-backup-20260814-164911.tar.gz
 backups/DjangoNotesPro-backup-20260814-164911.tar.gz
 backups/DjangoNotesPro-backup-20260814-170811.tar.gz
-/dashboard/__pycache__
-/dashboard/migrations/__pycache__
-/notes/management/commands/__pycache__
-/notes/tests/__pycache__/*.pyc
+/notes/tests/__pycache__
+/docs/promo/*.mp4
+docs/promo/jukebox-25s.mp4
+docs/promo/notespro-25s.mp4
 /.env
+notes/management/__pycache__/__init__.cpython-311.pyc
+/dashboard/__pycache__
+/dashboard/migrations/__pycache__/*.pyc
+/notes/management/commands/__pycache__
