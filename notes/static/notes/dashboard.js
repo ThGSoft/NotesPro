@@ -6919,6 +6919,102 @@
     });
   }
 
+  const CHECKLIST_DONE_RE = /```checklistdone(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function checklistDoneTitleKey(title) {
+    return String(title || '').replace(/[;{}\r\n]/g, ' ').trim();
+  }
+
+  function appendChecklistDonesToPageArchive(title, texts) {
+    const lines = (Array.isArray(texts) ? texts : [texts])
+      .map((text) => String(text || '').replace(/\r?\n/g, ' ').trim())
+      .filter(Boolean)
+      .map((text) => `- [x] ${text}`);
+    if (!lines.length || !currentPage) return;
+    const titleKey = checklistDoneTitleKey(title);
+    let merged = false;
+    CHECKLIST_DONE_RE.lastIndex = 0;
+    const archive = String(currentPage.archive || '');
+    const next = archive.replace(CHECKLIST_DONE_RE, (match, fenceAttrs, content = '') => {
+      if (merged) return match;
+      const spec = parseChecklistSpec(fenceAttrs, content);
+      if (checklistDoneTitleKey(spec.title) !== titleKey) return match;
+      merged = true;
+      const kept = String(content || '').replace(/\s+$/, '');
+      const body = `${kept}\n${lines.join('\n')}\n`;
+      const fence = fenceAttrs != null && String(fenceAttrs).length
+        ? `checklistdone{${fenceAttrs}}`
+        : 'checklistdone';
+      return `\`\`\`${fence}\n${body.replace(/^\n/, '')}\`\`\``;
+    });
+    if (merged) {
+      currentPage.archive = next;
+      return;
+    }
+    const titleLine = titleKey ? `# ${titleKey}` : '';
+    const block = `\`\`\`checklistdone\n${[titleLine, ...lines].filter(Boolean).join('\n')}\n\`\`\``;
+    const existing = archive.trim();
+    currentPage.archive = existing ? `${existing}\n\n${block}` : block;
+  }
+
+  function fileChecklistDonesInMarkdown(markdown) {
+    if (!userCanEdit || !currentPage) return { markdown: String(markdown || ''), changed: false };
+    const groups = [];
+    let changed = false;
+    CHECKLIST_BLOCK_RE.lastIndex = 0;
+    const next = String(markdown || '').replace(CHECKLIST_BLOCK_RE, (match, fenceAttrs, content = '') => {
+      const spec = parseChecklistSpec(fenceAttrs, content);
+      const done = [];
+      const open = [];
+      (spec.items || []).forEach((item) => {
+        const text = String(item.text || '').trim();
+        if (item.checked && text) done.push(text);
+        else open.push(item);
+      });
+      if (!done.length && open.length === (spec.items || []).length) return match;
+      changed = true;
+      if (done.length) groups.push({ title: spec.title, texts: done });
+      spec.items = open;
+      const body = buildChecklistFenceBody(spec, fenceAttrs);
+      const fence = fenceAttrs != null && String(fenceAttrs).length
+        ? `checklist{${fenceAttrs}}`
+        : 'checklist';
+      return `\`\`\`${fence}${body}\`\`\``;
+    });
+    CHECKLIST_BLOCK_RE.lastIndex = 0;
+    if (!changed) return { markdown: String(markdown || ''), changed: false };
+    groups.forEach((group) => appendChecklistDonesToPageArchive(group.title, group.texts));
+    return { markdown: next, changed: true };
+  }
+
+  function renderArchivedChecklistsSection(archiveMarkdown) {
+    const trimmed = String(archiveMarkdown || '').trim();
+    if (!trimmed || !/```checklistdone\b/i.test(trimmed)) return '';
+    CHECKLIST_DONE_RE.lastIndex = 0;
+    const blocks = [];
+    let count = 0;
+    trimmed.replace(CHECKLIST_DONE_RE, (_, fenceAttrs, content) => {
+      const spec = parseChecklistSpec(fenceAttrs, content);
+      spec.items = (spec.items || [])
+        .filter((item) => String(item.text || '').trim())
+        .map((item) => ({ ...item, checked: true }));
+      count += spec.items.length;
+      if (spec.items.length) blocks.push(renderChecklistBlockHtml(spec, { editable: false }));
+      return '';
+    });
+    CHECKLIST_DONE_RE.lastIndex = 0;
+    if (!blocks.length) return '';
+    const label = count === 1 ? 'Archived checklist · 1 done' : `Archived checklist · ${count} dones`;
+    return [
+      '<details class="calendar-archive-section checklist-archive-section">',
+      `<summary>${escapeHtml(label)}</summary>`,
+      '<div class="calendar-archive-section-body">',
+      blocks.join(''),
+      '</div>',
+      '</details>',
+    ].join('');
+  }
+
   const FORM_WIDGET_FENCE_RE = /```(?:radiobuttons?|radiolist|radio|votelist|vote|poll|text-area|textarea|text-input|textinput|inputtext|numinput|number|dropdown|enum)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
 
   function formWidgetKind(name) {
@@ -11867,6 +11963,31 @@ function formatTextWithMarkup(rawText) {
     schedulePreviewRefresh();
   }
 
+  function insertUploadedFileMarkdown(rawUrl, name) {
+    if (!easyMDE || !rawUrl) return;
+    const url = /^file:/i.test(rawUrl) ? rawUrl : mediaMarkdownPath(rawUrl);
+    if (isImageFileHref(url)) {
+      const fileName = url.split('/').pop() || name || 'image';
+      const cleanName = String(fileName).replace(/_[A-Za-z0-9]+(?=\.[a-z0-9]+$)/i, '');
+      easyMDE.codemirror.replaceSelection(`![${cleanName}](${url}){width=100%}\n`);
+      easyMDE.codemirror.focus();
+      scheduleSave();
+      schedulePreviewRefresh();
+      return;
+    }
+    insertMarkdownFileLink(rawUrl, name);
+  }
+
+  function moveEditorCursorToPoint(clientX, clientY) {
+    const cm = easyMDE?.codemirror;
+    if (!cm || !Number.isFinite(clientX) || !Number.isFinite(clientY)) return;
+    try {
+      const pos = cm.coordsChar({ left: clientX, top: clientY }, 'window');
+      if (pos) cm.setCursor(pos);
+      cm.focus();
+    } catch (_) { /* editor not laid out yet */ }
+  }
+
   function insertLocalFileLink(hrefOrPath, label) {
     if (!easyMDE) return;
     const fileUrl = /^file:/i.test(hrefOrPath) ? hrefOrPath : displayPathToFileUrl(hrefOrPath);
@@ -13064,7 +13185,20 @@ function formatTextWithMarkup(rawText) {
     if (!preview) return;
     hideSheetCellStructureToolbar();
     hideSheetStructureMenu();
-    const raw = easyMDE ? (easyMDE.value() || '') : (currentPage?.markdown_content || '');
+    let raw = easyMDE ? (easyMDE.value() || '') : (currentPage?.markdown_content || '');
+    const filedDones = fileChecklistDonesInMarkdown(raw);
+    if (filedDones.changed) {
+      raw = filedDones.markdown;
+      if (easyMDE && easyMDE.value() !== raw) {
+        suppressPreviewRefresh += 1;
+        try { easyMDE.value(raw); } finally {
+          suppressPreviewRefresh = Math.max(0, suppressPreviewRefresh - 1);
+        }
+      } else if (currentPage) {
+        currentPage.markdown_content = raw;
+      }
+      scheduleSave();
+    }
     const savedPreviewScrollTop = preservedPreviewScrollTop ?? preview.scrollTop;
     preservedPreviewScrollTop = null;
 
@@ -13113,6 +13247,7 @@ function formatTextWithMarkup(rawText) {
     html += renderArchivedCalendarsSection(currentPage?.archive, {
       sheetEditable: isPreviewInteractionEnabled(),
     });
+    html += renderArchivedChecklistsSection(currentPage?.archive);
     window.NotesProJukebox?.parkPlayback?.();
     preview.innerHTML = html;
     enhanceBareImageLinks(preview);
@@ -17356,6 +17491,37 @@ function formatTextWithMarkup(rawText) {
     checklistSyncTimer = setTimeout(() => applyChecklistDomToMarkdown(block), 250);
   }
 
+  function checklistBlockTitle(block) {
+    const titleEl = block?.querySelector('.checklist-block-title');
+    const rawTitle = String(titleEl?.textContent || '').trim();
+    if (rawTitle === 'Checklist' && !block?.dataset?.checklistTitle) return '';
+    return rawTitle;
+  }
+
+  function fileCheckedChecklistRow(block, row) {
+    if (!block || !row) return;
+    const check = row.querySelector('.checklist-check');
+    if (check) check.checked = true;
+    row.classList.add('is-checked');
+    const index = parseInt(block.dataset.checklistIndex, 10);
+    if (!easyMDE && currentPage && Number.isFinite(index)) {
+      const items = checklistItemsFromDom(block);
+      const title = checklistBlockTitle(block);
+      currentPage.markdown_content = rewriteChecklistBlock(
+        currentPage.markdown_content || '',
+        index,
+        (spec) => {
+          spec.items = items;
+          spec.title = title;
+          return { spec };
+        },
+      );
+    } else {
+      applyChecklistDomToMarkdown(block);
+    }
+    renderPreview();
+  }
+
   function newChecklistItemId() {
     return `i${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
   }
@@ -17449,8 +17615,12 @@ function formatTextWithMarkup(rawText) {
         const check = item.querySelector('.checklist-check');
         if (check && !check.disabled) {
           e.preventDefault();
-          check.checked = !check.checked;
-          item.classList.toggle('is-checked', check.checked);
+          if (!check.checked) {
+            fileCheckedChecklistRow(block, item);
+            return;
+          }
+          check.checked = false;
+          item.classList.remove('is-checked');
           applyChecklistDomToMarkdown(block);
         }
       }
@@ -17463,7 +17633,11 @@ function formatTextWithMarkup(rawText) {
       const row = check.closest('.checklist-item');
       const block = check.closest('.checklist-block');
       if (!row || !block) return;
-      row.classList.toggle('is-checked', check.checked);
+      if (check.checked) {
+        fileCheckedChecklistRow(block, row);
+        return;
+      }
+      row.classList.remove('is-checked');
       applyChecklistDomToMarkdown(block);
     });
 
@@ -20553,14 +20727,15 @@ function formatTextWithMarkup(rawText) {
     if (!list) return;
 
     list.innerHTML = files.map(f => `
-      <div class="file-item">
-        <div>${f.original_name}</div>
-        <div>
-          <a href="#" class="open-file-link" data-url="${f.furl}" data-name="${f.original_name}">Open</a>
-          <button class="btn btn-sm btn-outline-light insert-file" data-url="${f.furl}" data-name="${f.original_name}">Insert</button>
+      <div class="file-item" data-url="${escapeHtml(f.furl)}" data-name="${escapeHtml(f.original_name)}">
+        <div class="file-item-name" draggable="true" title="Drag into the editor">${escapeHtml(f.original_name)}</div>
+        <div class="file-item-actions">
+          <a href="#" class="open-file-link" data-url="${escapeHtml(f.furl)}" data-name="${escapeHtml(f.original_name)}">Open</a>
+          <button type="button" class="btn btn-sm btn-outline-light insert-file" data-url="${escapeHtml(f.furl)}" data-name="${escapeHtml(f.original_name)}">Insert</button>
         </div>
       </div>
     `).join('');
+    bindFileListDrag();
 
     list.querySelectorAll('.open-file-link').forEach(link => {
       link.addEventListener('click', e => {
@@ -20574,21 +20749,109 @@ function formatTextWithMarkup(rawText) {
     list.querySelectorAll('.insert-file').forEach(btn => {
       btn.addEventListener('click', () => {
         ensureEditingForInsert();
-        const rawUrl = btn.dataset.url;
-        const name = btn.dataset.name || '';
-        const url = mediaMarkdownPath(rawUrl);
-        if (!easyMDE) return;
-        if (isImageFileHref(url)) {
-          const fileName = url.split('/').pop();
-          const cleanName = fileName.replace(/_[A-Za-z0-9]+(?=\.[a-z0-9]+$)/i, '');
-          easyMDE.codemirror.replaceSelection(`![${cleanName}](${url}){width=100%}\n`);
-          easyMDE.codemirror.focus();
-          scheduleSave();
-          return;
+        insertUploadedFileMarkdown(btn.dataset.url, btn.dataset.name || '');
+        if (!isImageFileHref(mediaMarkdownPath(btn.dataset.url || ''))) {
+          showToast('Link inserted.', 'success', 2000);
         }
-        insertMarkdownFileLink(rawUrl, name);
-        showToast('Link inserted.', 'success', 2000);
       });
+    });
+  }
+
+  let managedFileDrag = null;
+
+  function bindFileListDrag() {
+    const list = document.getElementById('file-list');
+    if (!list || list.dataset.dragBound === '1') return;
+    list.dataset.dragBound = '1';
+    list.addEventListener('dragstart', (event) => {
+      const nameEl = event.target.closest?.('.file-item-name');
+      const item = nameEl?.closest('.file-item');
+      if (!item || !userCanEdit) {
+        event.preventDefault();
+        return;
+      }
+      managedFileDrag = {
+        url: item.dataset.url || '',
+        name: item.dataset.name || '',
+      };
+      item.classList.add('is-dragging');
+      event.dataTransfer.effectAllowed = 'copy';
+      event.dataTransfer.setData('application/x-notespro-file', JSON.stringify(managedFileDrag));
+      event.dataTransfer.setData('text/plain', managedFileDrag.url);
+    });
+    list.addEventListener('dragend', () => {
+      list.querySelectorAll('.file-item.is-dragging').forEach((item) => item.classList.remove('is-dragging'));
+      setTimeout(() => { managedFileDrag = null; }, 0);
+    });
+  }
+
+  function dropManagedFileIntoEditor(event) {
+    const payload = managedFileDrag;
+    if (!payload?.url || !userCanEdit) return false;
+    event.preventDefault();
+    event.stopPropagation();
+    const point = { x: event.clientX, y: event.clientY };
+    ensureEditingForInsert();
+    moveEditorCursorToPoint(point.x, point.y);
+    insertUploadedFileMarkdown(payload.url, payload.name);
+    return true;
+  }
+
+  function bindEditorFileDrop() {
+    const wrap = document.getElementById('markdown-wrap');
+    const preview = document.getElementById('preview-content');
+    const targets = [wrap, preview].filter((el) => el && el.dataset.editorFileDropBound !== '1');
+    if (!targets.length) return;
+    const mark = (on) => wrap?.classList.toggle('is-file-drop', on);
+    const allow = (event) => {
+      if (!userCanEdit) return;
+      const fromList = Boolean(managedFileDrag);
+      const fromOs = dragHasFiles(event);
+      if (!fromList && !fromOs) return;
+      if (fromOs && event.currentTarget === preview && event.target?.closest?.('.calendar-unit, .calendar-week-header, .gallery-block, .puzzle-block, .ghosttrain-block, .rollercoast-block, .scooter-block, .photocube-block, .photobook-block, .carousel-block, .labyrinth-block, .shop-block')) {
+        return;
+      }
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+      mark(true);
+    };
+    const onDrop = async (event) => {
+      const fromList = Boolean(managedFileDrag);
+      const fromOs = dragHasFiles(event);
+      if (!fromList && !fromOs) return;
+      if (fromOs && event.currentTarget === preview && event.target?.closest?.('.calendar-unit, .calendar-week-header, .gallery-block, .puzzle-block, .ghosttrain-block, .rollercoast-block, .scooter-block, .photocube-block, .photobook-block, .carousel-block, .labyrinth-block, .shop-block')) {
+        return;
+      }
+      mark(false);
+      if (fromList) {
+        dropManagedFileIntoEditor(event);
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      const point = { x: event.clientX, y: event.clientY };
+      const files = [...(event.dataTransfer?.files || [])];
+      ensureEditingForInsert();
+      const uploaded = await handleFiles(files);
+      moveEditorCursorToPoint(point.x, point.y);
+      uploaded.forEach((result) => {
+        const url = result?.file?.url || result?.url || result?.path || '';
+        const name = result?.file?.original_name || '';
+        insertUploadedFileMarkdown(url, name);
+      });
+    };
+    targets.forEach((el) => {
+      if (el.dataset.editorFileDropBound === '1') return;
+      el.dataset.editorFileDropBound = '1';
+      const capture = el === wrap;
+      el.addEventListener('dragenter', allow, capture);
+      el.addEventListener('dragover', allow, capture);
+      el.addEventListener('dragleave', (event) => {
+        const next = event.relatedTarget;
+        if (next && el.contains(next)) return;
+        mark(false);
+      }, capture);
+      el.addEventListener('drop', onDrop, capture);
     });
   }
 
@@ -20601,12 +20864,13 @@ function formatTextWithMarkup(rawText) {
   async function handleFiles(fileList) {
     syncWorkspaceIdFromDom();
     const files = [...(fileList || [])].filter(Boolean);
-    if (!files.length) return;
+    if (!files.length) return [];
     if (!workspaceId) {
       setStatus('Upload failed');
       showToast('Choose a workspace before uploading.', 'warning');
-      return;
+      return [];
     }
+    const uploaded = [];
     try {
       for (const file of files) {
         const data = new FormData();
@@ -20616,12 +20880,15 @@ function formatTextWithMarkup(rawText) {
         if (result && result.success === false) {
           throw new Error(result.error || `Could not upload ${file.name || 'file'}.`);
         }
+        uploaded.push(result);
       }
       setStatus('Upload complete');
       await loadFiles();
+      return uploaded;
     } catch (err) {
       setStatus('Upload failed');
       showToast(err.message || 'Upload failed.', 'danger');
+      return uploaded;
     }
   }
 
@@ -22273,6 +22540,7 @@ function formatTextWithMarkup(rawText) {
     });
 
     const dz = document.getElementById('dropzone');
+    bindEditorFileDrop();
     const fileDropPanel = dz?.closest('.panel-body') || dz;
     if (fileDropPanel && fileDropPanel.dataset.fileDropBound !== '1') {
       fileDropPanel.dataset.fileDropBound = '1';

@@ -9457,6 +9457,35 @@ body.mobile-layout .sheet-structure-menu-btn {
   text-decoration: none;
 }
 
+.file-item-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: grab;
+}
+
+.file-item-name:active,
+.file-item.is-dragging .file-item-name {
+  cursor: grabbing;
+}
+
+.file-item.is-dragging .file-item-name {
+  opacity: 0.45;
+}
+
+.file-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+#markdown-wrap.is-file-drop .CodeMirror {
+  box-shadow: inset 0 0 0 2px var(--accent, #2563eb);
+}
+
 #save-status {
   color: var(--muted);
   font-size: 14px;
@@ -11996,6 +12025,8 @@ body.mobile-layout .sokoban-tips__controls--mobile {
   width: 100%;
   height: auto;
   background: #06140c;
+  touch-action: none;
+  cursor: crosshair;
 }
 
 .snake-pad {

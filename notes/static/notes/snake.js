@@ -115,7 +115,7 @@
       `<div class="snake-block-title">${escapeHtml(title)}</div>`,
       `<div class="snake-block-meta">${wrap ? 'wrap edges' : 'solid walls'}</div>`,
       `</div>`,
-      `<p class="snake-block-hint">←↑↓→ / WASD · P pause · R restart</p>`,
+      `<p class="snake-block-hint">Mouse steers · ←↑↓→ / WASD · P pause · R restart</p>`,
     ].join('');
     return [
       `<div class="snake-block${themeClass}${customClass}${fullClass}"${styleAttr}`
@@ -226,6 +226,7 @@
     }
 
     function step() {
+      aimPointer();
       const dir = state.queued || state.dir;
       state.dir = dir;
       state.queued = null;
@@ -363,7 +364,7 @@
         ctx.fillStyle = '#e2e8f0';
         ctx.font = '700 18px system-ui, sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText('CLICK TO PLAY', canvas.width / 2, canvas.height / 2);
+        ctx.fillText('CLICK TO PLAY · MOUSE STEERS', canvas.width / 2, canvas.height / 2);
       }
     }
 
@@ -416,6 +417,7 @@
       }
       startIfNeeded();
       if (state.over || state.paused) return;
+      steer = 'keys';
       if (k === 'ArrowLeft' || k === 'a' || k === 'A') {
         event.preventDefault();
         turn('left');
@@ -446,6 +448,7 @@
           event.preventDefault();
           el.focus({ preventScroll: true });
           startIfNeeded();
+          steer = 'keys';
           turn(act);
         };
         btn.addEventListener('pointerdown', down);
@@ -453,10 +456,52 @@
       });
     }
 
+    let pointer = null;
+    let steer = 'keys';
+
+    function canvasPoint(event) {
+      const rect = canvas.getBoundingClientRect();
+      if (!rect.width || !rect.height) return null;
+      return {
+        x: (event.clientX - rect.left) * (canvas.width / rect.width),
+        y: (event.clientY - rect.top) * (canvas.height / rect.height),
+      };
+    }
+
+    function aimPointer() {
+      if (steer !== 'mouse' || !pointer || !state.started || state.over || state.paused) return;
+      const head = state.body[state.body.length - 1];
+      if (!head) return;
+      const c = cellSize();
+      const boardW = COLS * c;
+      const boardH = ROWS * c;
+      const ox = Math.floor((canvas.width - boardW) / 2);
+      const oy = 28 + Math.floor((canvas.height - 28 - boardH) / 2);
+      const dx = pointer.x - (ox + head.x * c + c / 2);
+      const dy = pointer.y - (oy + head.y * c + c / 2);
+      if (Math.abs(dx) < c * 0.45 && Math.abs(dy) < c * 0.45) return;
+      if (Math.abs(dx) >= Math.abs(dy)) turn(dx < 0 ? 'left' : 'right');
+      else turn(dy < 0 ? 'up' : 'down');
+    }
+
     function onPointerDown(event) {
       if (event.target.closest?.('.snake-pad')) return;
       el.focus({ preventScroll: true });
       if (!state.started || state.over) restart();
+      steer = 'mouse';
+      pointer = canvasPoint(event);
+      aimPointer();
+    }
+
+    function onPointerMove(event) {
+      if (event.pointerType === 'touch' && event.buttons === 0) return;
+      steer = 'mouse';
+      pointer = canvasPoint(event);
+      if (state.started && !state.over && !state.paused) aimPointer();
+    }
+
+    function onPointerLeave() {
+      pointer = null;
     }
 
     fitCanvas();
@@ -465,6 +510,9 @@
     draw();
     el.addEventListener('keydown', onKeyDown);
     canvas.addEventListener('pointerdown', onPointerDown);
+    canvas.addEventListener('pointermove', onPointerMove);
+    canvas.addEventListener('pointerleave', onPointerLeave);
+    canvas.addEventListener('pointercancel', onPointerLeave);
     const onResize = () => {
       fitCanvas();
       syncPad();
@@ -483,6 +531,9 @@
         cancelAnimationFrame(state.raf);
         el.removeEventListener('keydown', onKeyDown);
         canvas.removeEventListener('pointerdown', onPointerDown);
+        canvas.removeEventListener('pointermove', onPointerMove);
+        canvas.removeEventListener('pointerleave', onPointerLeave);
+        canvas.removeEventListener('pointercancel', onPointerLeave);
         window.removeEventListener('resize', onResize);
         io.disconnect();
       },

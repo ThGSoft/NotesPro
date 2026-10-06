@@ -244,7 +244,7 @@
       `<div class="ghosttrain-overlay">`,
       `<p class="ghosttrain-hint">${spec.draft
         ? 'Paste photos — they appear lit along the dark rails'
-        : 'Ego view · auto ride · Boo! at photos · C view · Pause to stop'}</p>`,
+        : 'Ego view · auto ride · C view · Pause to stop'}</p>`,
       `<div class="ghosttrain-caption" aria-live="polite"></div>`,
       `</div>`,
       `</div>`,
@@ -659,7 +659,6 @@
     const TRAIN_SPACING = 0.034;
     const CONVOY_CARS = Math.max(4, Math.min(8, 3 + (photos.length ? Math.ceil(photos.length / 2) : 2)));
     const AUTO_SPEED = 0.044;
-    const BOO_LINES = ['Boo!', 'Boo…', 'Boooo!', '👻 Boo!'];
 
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -693,7 +692,6 @@
         index: i,
         isPlayer: i === 0,
         label: i === 0 ? 'Lead engine' : `Car ${i}`,
-        bumpFlash: 0,
       });
     }
 
@@ -721,9 +719,7 @@
     let camMode = 'ego';
     const CAM_MODES = ['ego', 'chase', 'top'];
     let nearestPhotoIndex = -1;
-    let lastBooIndex = -1;
-    let booCooldown = 0;
-    let audioCtx = null;
+    let lastCaptionIndex = -1;
 
     function syncRideButton() {
       if (!rideBtn) return;
@@ -732,43 +728,11 @@
       rideBtn.classList.toggle('active', riding);
     }
 
-    function unlockAudio() {
-      if (audioCtx) return;
-      try {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      } catch (_) { /* ignore */ }
-    }
-
-    function playBoo() {
-      unlockAudio();
-      if (!audioCtx) return;
-      if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
-      try {
-        const t0 = audioCtx.currentTime;
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(195, t0);
-        osc.frequency.exponentialRampToValueAtTime(88, t0 + 0.38);
-        gain.gain.setValueAtTime(0.0001, t0);
-        gain.gain.exponentialRampToValueAtTime(0.11, t0 + 0.05);
-        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.48);
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        osc.start(t0);
-        osc.stop(t0 + 0.5);
-      } catch (_) { /* ignore */ }
-    }
-
-    function triggerBoo(entry) {
-      if (!entry || entry.index === lastBooIndex || booCooldown > 0) return;
-      lastBooIndex = entry.index;
-      booCooldown = 0.55;
+    function showPhotoCaption(entry) {
+      if (!entry || entry.index === lastCaptionIndex) return;
+      lastCaptionIndex = entry.index;
       const label = entry.photo.label || (entry.kind === 'video' ? 'Video' : 'Photo');
-      const line = BOO_LINES[entry.index % BOO_LINES.length];
-      if (captionEl) captionEl.textContent = `${line} ${label}`;
-      playBoo();
-      trains.forEach((train) => { train.bumpFlash = 0.22; });
+      if (captionEl) captionEl.textContent = label;
     }
 
     function resize() {
@@ -782,11 +746,6 @@
     function syncConvoy() {
       trains.forEach((train, i) => {
         placeTrainOnTrack(train.mesh, trackCurve, convoyHeadT - i * TRAIN_SPACING);
-        if (train.bumpFlash > 0) {
-          train.mesh.scale.setScalar(1 + train.bumpFlash * 0.08);
-        } else {
-          train.mesh.scale.setScalar(1);
-        }
       });
     }
 
@@ -878,10 +837,6 @@
       last = now;
 
       updateConvoy(dt);
-      if (booCooldown > 0) booCooldown = Math.max(0, booCooldown - dt);
-      trains.forEach((train) => {
-        if (train.bumpFlash > 0) train.bumpFlash = Math.max(0, train.bumpFlash - dt);
-      });
       syncConvoy();
       updateTracksideLighting(tracksidePhotos, convoyHeadT, trackCurve, camera);
       updateCamera(dt);
@@ -889,10 +844,10 @@
       const near = nearestTracksidePhoto();
       if (near) {
         nearestPhotoIndex = near.index;
-        triggerBoo(near);
+        showPhotoCaption(near);
       } else if (nearestPhotoIndex >= 0) {
         nearestPhotoIndex = -1;
-        lastBooIndex = -1;
+        lastCaptionIndex = -1;
         if (captionEl && riding) {
           captionEl.textContent = photos.length
             ? '…'
@@ -919,18 +874,16 @@
       }
       if (e.code === 'Space' && !e.repeat) {
         e.preventDefault();
-        unlockAudio();
-        if (!riding) riding = true;
-        syncRideButton();
-        playBoo();
-        if (captionEl) captionEl.textContent = BOO_LINES[Math.floor(Math.random() * BOO_LINES.length)];
+        if (!riding) {
+          riding = true;
+          syncRideButton();
+        }
       }
     }
 
     function toggleRide() {
       riding = !riding;
       syncRideButton();
-      unlockAudio();
       if (riding && captionEl && !captionEl.textContent) {
         captionEl.textContent = photos.length ? `${CONVOY_CARS} cars in line · auto ride` : `${CONVOY_CARS} cars in line`;
       }
@@ -940,8 +893,7 @@
       convoyHeadT = 0;
       riding = true;
       nearestPhotoIndex = -1;
-      lastBooIndex = -1;
-      booCooldown = 0;
+      lastCaptionIndex = -1;
       syncRideButton();
       if (captionEl) {
         captionEl.textContent = photos.length
@@ -952,7 +904,6 @@
 
     function focusYard() {
       viewport.focus({ preventScroll: true });
-      unlockAudio();
     }
 
     canvas.addEventListener('click', focusYard);
@@ -969,7 +920,7 @@
     syncTrainVisibility();
     raf = requestAnimationFrame(tick);
     if (!photos.length) {
-      setStatus(el, 'Paste photos (Ctrl+V) — the train auto-rides and boos at each one.');
+      setStatus(el, 'Paste photos (Ctrl+V) — the train rides past each one.');
     } else if (spec.demo) {
       focusYard();
     }
@@ -983,7 +934,6 @@
         cancelAnimationFrame(raf);
         window.removeEventListener('keydown', onKeyDown);
         window.removeEventListener('resize', resize);
-        audioCtx?.close?.();
         mediaNodes.forEach((video) => {
           video.pause();
           video.removeAttribute('src');
