@@ -33,3 +33,4 @@ backups/DjangoNotesPro-backup-20260814-170811.tar.gz
 /notes/management/commands/__pycache__
 /notes/tests/__pycache__/*.pyc
 /.env
+notes/management/__pycache__/__init__.cpython-311.pyc
