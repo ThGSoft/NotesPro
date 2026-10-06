@@ -241,7 +241,7 @@ Lunch	vote: Pizza | Sushi
 ```
 
 # Menu
-```speisekarte{to=demo;title=Lunch menu;col=warning;tables=1-4}
+```menu{to=demo;title=Lunch menu;col=warning;tables=1-4}
 # Starters
 Soup of the day | 6.50
 Mixed salad | 7.90
@@ -301,7 +301,7 @@ Your content here.
 Your content here.
 ```
 # Sprint Board
-```kanbangantt{cols=Todo,Doing,Suspended,Done;withcost=1;rate=50;currency=EUR;col=info}
+```sprintboard{cols=Todo,Doing,Suspended,Done;withcost=1;rate=50;currency=EUR;col=info}
 # Sprint board
 Todo | Design wireframes | status=idle;rate=60
 Doing | Build API | status=idle;rate=75
