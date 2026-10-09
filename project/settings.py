@@ -160,9 +160,16 @@ ENABLE_TAG_WEBSOCKET = _env_bool('ENABLE_TAG_WEBSOCKET', DEBUG)
 ALLOW_GAMES = _env_bool_any(('ALLOW_GAMES', 'allowGames'), True)
 ALLOW_PHOTOS = _env_bool_any(('ALLOW_PHOTOS', 'allowPhotos'), True)
 
+# Cache pages on the device and keep editing when the network drops.
+ALLOW_OFFLINE = _env_bool_any(('ALLOW_OFFLINE', 'allowOffline'), True)
+
 # Registration: require email and/or mobile. Default on (current behaviour).
 REGISTER_MAIL = _env_bool_any(('REGISTER_MAIL', 'registerMail'), True)
 REGISTER_MOBILE = _env_bool_any(('REGISTER_MOBILE', 'registerMobile'), True)
+
+# Optional Drive API key — lists public folders more reliably than the HTML fallback.
+GOOGLE_DRIVE_API_KEY = os.environ.get('GOOGLE_DRIVE_API_KEY', os.environ.get('GOOGLE_API_KEY', '')).strip()
+GOOGLE_API_KEY = os.environ.get('GOOGLE_API_KEY', GOOGLE_DRIVE_API_KEY).strip()
 
 IP_VISIT_LOG_ENABLED = _env_bool('IP_VISIT_LOG_ENABLED', True)
 IP_VISIT_LOG_GEO = _env_bool('IP_VISIT_LOG_GEO', True)

@@ -115,6 +115,55 @@ class RegistrationActivationTests(TestCase):
         self.assertTrue(user.is_active)
         self.assertTrue(Workspace.objects.filter(owner=user).exists())
 
+    @override_settings(REGISTER_MAIL=False, REGISTER_MOBILE=False)
+    def test_register_stay_informed_opt_in(self):
+        response = self.client.post(reverse('register'), {
+            'username': 'newsuser',
+            'password1': 'NotesPro-pass-9',
+            'password2': 'NotesPro-pass-9',
+            'stay_informed': 'on',
+        })
+        self.assertEqual(response.status_code, 302)
+        user = User.objects.get(username='newsuser')
+        self.assertTrue(UserSettings.objects.get(user=user).stay_informed)
+
+    @override_settings(REGISTER_MAIL=False, REGISTER_MOBILE=False)
+    def test_register_stay_informed_defaults_off(self):
+        response = self.client.post(reverse('register'), {
+            'username': 'quietuser',
+            'password1': 'NotesPro-pass-9',
+            'password2': 'NotesPro-pass-9',
+        })
+        self.assertEqual(response.status_code, 302)
+        user = User.objects.get(username='quietuser')
+        self.assertFalse(UserSettings.objects.get(user=user).stay_informed)
+
+    def test_settings_api_toggles_stay_informed(self):
+        user = User.objects.create_user('optuser', 'opt@example.com', 'pass')
+        workspace = Workspace.objects.create(owner=user, name='Main', slug='main')
+        settings_obj, _ = UserSettings.objects.get_or_create(user=user)
+        self.assertFalse(settings_obj.stay_informed)
+        self.client.force_login(user)
+        url = reverse('updateUserSettings', args=[workspace.id])
+        response = self.client.post(
+            url,
+            data='{"stay_informed": true}',
+            content_type='application/json',
+            HTTP_HOST='127.0.0.1',
+        )
+        self.assertEqual(response.status_code, 200)
+        settings_obj.refresh_from_db()
+        self.assertTrue(settings_obj.stay_informed)
+        response = self.client.post(
+            url,
+            data='{"stay_informed": false}',
+            content_type='application/json',
+            HTTP_HOST='127.0.0.1',
+        )
+        self.assertEqual(response.status_code, 200)
+        settings_obj.refresh_from_db()
+        self.assertFalse(settings_obj.stay_informed)
+
     def test_duplicate_mobile_rejected(self):
         existing = User.objects.create_user('old', 'old@example.com', 'pass')
         UserSettings.objects.filter(user=existing).update(mobile='+41791112233')

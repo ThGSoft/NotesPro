@@ -1,5 +1,5 @@
 /**
- * NotesPro ```speisekarte``` / ```menu``` block — tap a dish to message a user.
+ * NotesPro ```menu``` / ```speisekarte``` block — tap a dish to message a user.
  */
 (function (root, factory) {
   const api = factory();

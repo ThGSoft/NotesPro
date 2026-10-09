@@ -34,6 +34,8 @@ docs/promo/jukebox-25s.mp4
 docs/promo/notespro-25s.mp4
 /.env
 notes/management/__pycache__/__init__.cpython-311.pyc
+/notes/management/commands/__pycache__
 /dashboard/__pycache__
 /dashboard/migrations/__pycache__/*.pyc
-/notes/management/commands/__pycache__
+/deploy
+/docs/promo/__pycache__

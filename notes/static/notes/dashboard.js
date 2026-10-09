@@ -495,8 +495,9 @@
     const titleInput = document.getElementById('page-title');
     const titlePreview = document.getElementById('page-title-preview');
     const slugEl = document.getElementById('page-slug');
+    if (issuesTableOpen) hideIssuesTable();
     if (titleInput) titleInput.value = currentPage.title || '';
-    if (titlePreview) titlePreview.textContent = currentPage.title || 'Untitled';
+    if (titlePreview && mainView !== 'keep') titlePreview.textContent = currentPage.title || 'Untitled';
     if (slugEl) slugEl.textContent = currentPage.slug || '';
     if (easyMDE) {
       easyMDE.value(currentPage.markdown_content || '');
@@ -1064,19 +1065,41 @@
   }
 
   function parseMarkdownImageAttrs(attributes) {
-    if (!attributes) return { width: null, align: null };
+    if (!attributes) return { width: null, align: null, turn: 0 };
     const widthMatch = attributes.match(/width\s*=\s*["']?([^"';\s,}]+)/i);
     const alignMatch = attributes.match(/align\s*=\s*["']?(\w+)/i);
+    const turnMatch = attributes.match(/turn\s*=\s*["']?(-?\d+)/i);
     let width = widthMatch ? widthMatch[1].trim() : null;
     if (width && /^\d+$/.test(width)) width = `${width}px`;
     const align = alignMatch ? alignMatch[1].toLowerCase() : null;
-    return { width, align };
+    const turnDeg = turnMatch ? ((parseInt(turnMatch[1], 10) % 360) + 360) % 360 : 0;
+    const turn = [90, 180, 270].includes(turnDeg) ? turnDeg : 0;
+    return { width, align, turn };
   }
 
+  // 90/270: the wrapper takes the requested width and the rotated image's aspect ratio
+  // (set on load), so the turned picture reserves its real height in the page flow.
+  function wrapTurnedImage(innerHtml, turn, width) {
+    const auto = width ? '' : ' data-md-turn-auto="1"';
+    return `<span class="md-image-turn md-image-turn--${turn}" style="width: ${width || '100%'}"${auto}>${innerHtml}</span>`;
+  }
+
+  function fitTurnedImage(img) {
+    const box = img?.closest?.('.md-image-turn');
+    if (!box || !img.naturalWidth || !img.naturalHeight) return;
+    box.style.aspectRatio = `${img.naturalHeight} / ${img.naturalWidth}`;
+    if (box.dataset.mdTurnAuto === '1') box.style.width = `${img.naturalHeight}px`;
+  }
+
+  document.addEventListener('load', (e) => {
+    if (e.target?.classList?.contains('md-image--turned')) fitTurnedImage(e.target);
+  }, true);
+
   function renderMarkdownImage(alt, src, attributes, options = {}) {
-    const { width, align } = parseMarkdownImageAttrs(attributes);
+    const { width, align, turn } = parseMarkdownImageAttrs(attributes);
     const isInlineThumb = align === 'left' && width && /px$/i.test(String(width));
     const isFullWidth = Boolean(width && /^100%$/.test(String(width).trim()));
+    const sideways = (turn === 90 || turn === 270) && !isInlineThumb;
     const styles = isInlineThumb
       ? [`width: ${width}`, `height: ${width}`, 'max-width: none', 'object-fit: cover', 'display: inline-block', 'vertical-align: middle']
       : ['height: auto'];
@@ -1086,13 +1109,19 @@
     } else if (!isInlineThumb) {
       styles.unshift('max-width: 100%');
     }
-    const imgClass = `md-image${isFullWidth ? ' md-image--full' : ''}${isInlineThumb ? ' md-image--inline' : ''}`;
+    if (turn && !sideways) styles.push(`transform: rotate(${turn}deg)`);
     const resolvedSrc = resolveMediaHref(src);
-    const img = `<img class="${imgClass}" src="${escapeHtml(resolvedSrc)}" alt="${escapeHtml(alt)}" style="${styles.join('; ')}"${width ? ` data-md-width="${width}"` : ''}>`;
+    const sourceAttrs = options.source
+      ? ` data-md-source="1" data-md-alt="${escapeHtml(alt)}" data-md-src="${escapeHtml(src)}" data-md-attrs="${escapeHtml(attributes || '')}"`
+      : '';
+    const img = sideways
+      ? `<img class="md-image md-image--turned" src="${escapeHtml(resolvedSrc)}" alt="${escapeHtml(alt)}"${sourceAttrs}>`
+      : `<img class="md-image${isFullWidth ? ' md-image--full' : ''}${isInlineThumb ? ' md-image--inline' : ''}" src="${escapeHtml(resolvedSrc)}" alt="${escapeHtml(alt)}" style="${styles.join('; ')}"${width ? ` data-md-width="${width}"` : ''}${sourceAttrs}>`;
     const tabHref = imageTabHref(src);
-    const linkedImg = tabHref
+    let linkedImg = tabHref
       ? `<a href="${String(tabHref).replace(/"/g, '&quot;')}" target="_blank" rel="noopener noreferrer" class="md-image-link${isFullWidth ? ' md-image-link--full' : ''}${isInlineThumb ? ' md-image-link--inline' : ''}">${img}</a>`
       : img;
+    if (sideways) linkedImg = wrapTurnedImage(linkedImg, turn, width);
     if (isInlineThumb) return linkedImg;
     // In table cells use <span> (valid phrasing/flow in td after restore); avoid <figure>
     // so GFM pipe tables stay intact during tokenize → marked → restore.
@@ -1138,7 +1167,7 @@
       const lastOpen = Math.max(before.lastIndexOf('<td'), before.lastIndexOf('<th'));
       const lastClose = Math.max(before.lastIndexOf('</td>'), before.lastIndexOf('</th>'));
       const inTable = lastOpen > lastClose;
-      return renderMarkdownImage(spec.alt, spec.src, spec.attributes, { tableCell: inTable });
+      return renderMarkdownImage(spec.alt, spec.src, spec.attributes, { tableCell: inTable, source: true });
     });
     return out;
   }
@@ -1155,6 +1184,10 @@
       if (img.closest('.d3-chart-wrap')) return;
       img.classList.add('md-image-zoomable');
       wrapImageWithTabLink(img);
+      if (img.classList.contains('md-image--turned')) {
+        if (img.complete) fitTurnedImage(img);
+        return;
+      }
       if (img.classList.contains('md-image--inline')) {
         const size = img.dataset.mdWidth || '48px';
         img.style.width = size;
@@ -1246,6 +1279,7 @@
     'gantt-note-label', 'gantt-note-text',
     'mindmap-node-label', 'mindmap-node-text',
     'calendar-note-text',
+    'text-block-text',
   ];
   let lastMarkdownModalField = null;
   const modalFieldSelections = new WeakMap();
@@ -1562,10 +1596,11 @@
   }
 
   function renderSheetMarkdownImage(alt, src, attributes) {
-    const { width, align } = parseMarkdownImageAttrs(attributes);
+    const { width, align, turn } = parseMarkdownImageAttrs(attributes);
     // Sheet cells: fill cell by default; honor explicit {width=…} overrides.
     const effectiveWidth = width || '100%';
     const isFullWidth = /^100%$/.test(String(effectiveWidth).trim());
+    const sideways = turn === 90 || turn === 270;
     const styles = [
       `width: ${effectiveWidth}`,
       'max-width: 100%',
@@ -1573,12 +1608,16 @@
       'object-fit: contain',
       'display: block',
     ];
+    if (turn === 180) styles.push('transform: rotate(180deg)');
     const imgClass = `md-image md-image--sheet-cell${isFullWidth ? ' md-image--full' : ''}`;
-    const img = `<img class="${imgClass}" src="${src}" alt="${alt}" style="${styles.join('; ')}" data-md-width="${escapeHtml(effectiveWidth)}">`;
+    const img = sideways
+      ? `<img class="md-image md-image--turned" src="${src}" alt="${alt}">`
+      : `<img class="${imgClass}" src="${src}" alt="${alt}" style="${styles.join('; ')}" data-md-width="${escapeHtml(effectiveWidth)}">`;
     const tabHref = imageTabHref(src);
-    const linkedImg = tabHref
+    let linkedImg = tabHref
       ? `<a href="${String(tabHref).replace(/"/g, '&quot;')}" target="_blank" rel="noopener noreferrer" class="md-image-link${isFullWidth ? ' md-image-link--full' : ''}">${img}</a>`
       : img;
+    if (sideways) linkedImg = wrapTurnedImage(linkedImg, turn, effectiveWidth);
     const wrapClass = `md-image-wrap md-image-wrap--sheet-cell${isFullWidth ? ' md-image-wrap--full' : ''}`;
     if (align && align !== 'left') {
       return `<figure class="${wrapClass}" style="text-align: ${align}; margin: 0; width: ${isFullWidth ? '100%' : 'auto'};">${linkedImg}</figure>`;
@@ -4172,6 +4211,7 @@
     const show = Boolean(
       userCanEdit
       && mainView !== 'keep'
+      && !issuesTableOpen
       && currentPage
       && !currentPage.is_folder,
     );
@@ -6408,7 +6448,7 @@
   const KANBAN_DEFAULT_COLS = ['Todo', 'Doing', 'Done'];
   const KANBANGANTT_DEFAULT_COLS = ['Todo', 'Doing', 'Suspended', 'Done'];
   const KANBANGANTT_SUSPEND_COL = 'Suspended';
-  const KANBANGANTT_BLOCK_RE = /```(?:kanbangantt|kbgantt|kgantt)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+  const KANBANGANTT_BLOCK_RE = /```(?:sprintboard|kanbangantt|kbgantt|kgantt)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
   const KANBANGANTT_STATUSES = ['idle', 'running', 'suspended', 'stopped'];
 
   function kgColumnByName(columns, name) {
@@ -8363,8 +8403,8 @@
       const nextAttrs = next.fenceAttrs != null ? next.fenceAttrs : fenceAttrs;
       const body = buildKanbanganttFenceBody(nextSpec, nextAttrs);
       const fence = nextAttrs != null && String(nextAttrs).length
-        ? `kanbangantt{${nextAttrs}}`
-        : 'kanbangantt';
+        ? `sprintboard{${nextAttrs}}`
+        : 'sprintboard';
       return `\`\`\`${fence}${body}\`\`\``;
     });
   }
@@ -9689,7 +9729,7 @@
       });
       nextAttrs = setGanttFenceAttr(nextAttrs, 'tables', tablesValue);
       const body = content ? `\n${String(content).replace(/^\n/, '').replace(/\s+$/, '')}\n` : '\n';
-      return `\`\`\`speisekarte{${nextAttrs}}${body}\`\`\``;
+      return `\`\`\`menu{${nextAttrs}}${body}\`\`\``;
     });
   }
 
@@ -12127,9 +12167,13 @@ function formatTextWithMarkup(rawText) {
       const lang = codeBlockLanguageLabel(pre);
       const header = document.createElement('div');
       header.className = 'md-code-block__header';
+      const editable = root.id === 'preview-content';
       header.innerHTML = [
         `<span class="md-code-block__lang">${escapeHtml(lang || 'code')}</span>`,
+        '<span class="md-code-block__actions">',
+        editable ? '<button type="button" class="md-code-edit" title="Edit code" aria-label="Edit code">Edit</button>' : '',
         '<button type="button" class="md-code-copy" title="Copy code" aria-label="Copy code">Copy</button>',
+        '</span>',
       ].join('');
       pre.parentNode.insertBefore(wrap, pre);
       wrap.appendChild(header);
@@ -12558,7 +12602,7 @@ function formatTextWithMarkup(rawText) {
         : 'Gantt';
       return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
     });
-    md = md.replace(/```(?:kanbangantt|kbgantt|kgantt)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+    md = md.replace(/```(?:sprintboard|kanbangantt|kbgantt|kgantt)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
       const spec = parseKanbanganttSpec(fenceAttrs, '');
       const label = spec.title || 'Kanban Gantt';
       return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
@@ -13531,7 +13575,7 @@ function formatTextWithMarkup(rawText) {
       || window.APP_BOOT?.isGroupAdmin
     );
     const editToggle = document.getElementById('edit-toggle');
-    if (editToggle) editToggle.classList.toggle('d-none', !userCanEdit || mainView === 'keep');
+    if (editToggle) editToggle.classList.toggle('d-none', !userCanEdit || mainView === 'keep' || issuesTableOpen);
     syncMobileEditButton();
     ['create-page', 'create-folder', 'delete-page'].forEach(id => {
       const btn = document.getElementById(id);
@@ -13540,6 +13584,7 @@ function formatTextWithMarkup(rawText) {
     if (!userCanEdit && isEditing) setEditing(false);
     document.getElementById('keep-composer')?.classList.toggle('d-none', !userCanEdit);
     document.getElementById('issues-new-btn')?.classList.toggle('d-none', !userCanEdit);
+    document.getElementById('issues-table-new-btn')?.classList.toggle('d-none', !userCanEdit);
     if (mainView === 'keep') renderKeepGrid();
     if (isMobileLayout() && !isEditing) renderPreview();
   }
@@ -13689,7 +13734,7 @@ function formatTextWithMarkup(rawText) {
   function syncMobileUndoButton() {
     const btn = document.getElementById('mobile-undo-toggle');
     if (!btn) return;
-    const show = isMobileLayout() && userCanEdit && isEditing && mainView !== 'keep';
+    const show = isMobileLayout() && userCanEdit && isEditing && mainView !== 'keep' && !issuesTableOpen;
     btn.classList.toggle('visible', show);
   }
 
@@ -13705,7 +13750,7 @@ function formatTextWithMarkup(rawText) {
   function syncMobileEditButton() {
     const btn = document.getElementById('mobile-edit-toggle');
     if (!btn) return;
-    const show = isMobileLayout() && userCanEdit && mainView !== 'keep';
+    const show = isMobileLayout() && userCanEdit && mainView !== 'keep' && !issuesTableOpen;
     btn.classList.toggle('visible', show);
     const label = btn.querySelector('span');
     const text = isEditing ? 'Preview' : 'Edit';
@@ -14348,6 +14393,10 @@ function formatTextWithMarkup(rawText) {
     if (isMailPanelVisible()) {
       if (mailBox === 'compose') ensureMailRecipients();
       else loadMailList();
+      return;
+    }
+    if (isIssuesPanelVisible()) {
+      loadIssuesList();
       return;
     }
     updateChatUnreadBadge();
@@ -19020,6 +19069,528 @@ function formatTextWithMarkup(rawText) {
     });
   }
 
+  let textBlockContext = null;
+
+  function isMarkdownBlockStartLine(line) {
+    return /^\s{0,3}(#{1,6}\s|>|[-*+]\s|\d+[.)]\s|```|\||(?:[-*_]\s*){3,}$)/.test(line);
+  }
+
+  // Headings (level 1-6) and paragraphs (level 0) outside fenced blocks, with their line ranges.
+  function findMarkdownTextBlocks(lines) {
+    const blocks = [];
+    let inFence = false;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (/^\s*```/.test(line)) {
+        inFence = !inFence;
+        continue;
+      }
+      if (inFence || !line.trim()) continue;
+      const heading = line.match(/^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$/);
+      if (heading) {
+        blocks.push({ start: i, end: i, level: heading[1].length, text: heading[2] });
+        continue;
+      }
+      if (isMarkdownBlockStartLine(line)) continue;
+      let end = i;
+      while (end + 1 < lines.length && lines[end + 1].trim() && !isMarkdownBlockStartLine(lines[end + 1])) end++;
+      blocks.push({ start: i, end, level: 0, text: lines.slice(i, end + 1).join('\n') });
+      i = end;
+    }
+    return blocks;
+  }
+
+  function normalizeTextBlockMatch(text) {
+    return String(text || '').replace(/[*_~`]/g, '').replace(/\s+/g, ' ').trim();
+  }
+
+  function plainTextOfMarkdown(text) {
+    return normalizeTextBlockMatch(String(text || '')
+      .replace(/!\[[^\]]*\]\([^)]*\)(\{[^}]*\})?/g, '')
+      .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+      .replace(/<[^>]+>/g, ''));
+  }
+
+  // data-source-line is only a hint (it counts non-blank lines), so match the block by its text.
+  function locatePreviewTextBlock(el) {
+    const cm = getEditorCm();
+    if (!cm) return null;
+    const level = el.tagName === 'P' ? 0 : parseInt(el.tagName.slice(1), 10);
+    const hint = parseInt(el.dataset.sourceLine, 10);
+    const target = normalizeTextBlockMatch(el.textContent);
+    const blocks = findMarkdownTextBlocks(cm.getValue().split('\n')).filter(b => b.level === level);
+    const matches = blocks.filter(b => plainTextOfMarkdown(b.text) === target);
+    const pool = matches.length
+      ? matches
+      : blocks.filter(b => Number.isFinite(hint) && hint >= b.start && hint <= b.end);
+    if (!pool.length) return null;
+    if (!Number.isFinite(hint)) return pool[0];
+    return pool.reduce((best, b) => (Math.abs(b.start - hint) < Math.abs(best.start - hint) ? b : best));
+  }
+
+  function openTextBlockModal(el) {
+    const cm = getEditorCm();
+    const block = locatePreviewTextBlock(el);
+    if (!cm || !block) {
+      showToast('This text could not be found in the page source.', 'warning');
+      return;
+    }
+    textBlockContext = {
+      start: block.start,
+      end: block.end,
+      original: cm.getRange({ line: block.start, ch: 0 }, { line: block.end, ch: cm.getLine(block.end).length }),
+    };
+    const kind = document.getElementById('text-block-kind');
+    const text = document.getElementById('text-block-text');
+    if (kind) kind.value = String(block.level >= 1 && block.level <= 3 ? block.level : 0);
+    if (text) text.value = block.text;
+    const modalEl = document.getElementById('text-block-modal');
+    if (!modalEl) return;
+    modalEl.addEventListener('shown.bs.modal', () => text?.focus(), { once: true });
+    openDashboardModal(modalEl);
+  }
+
+  // Lines may have moved (collab edits) since the dialog opened; find the original text again.
+  function resolveTextBlockRange(cm, ctx) {
+    const rangeText = (start, end) => cm.getRange({ line: start, ch: 0 }, { line: end, ch: cm.getLine(end).length });
+    if (ctx.end < cm.lineCount() && rangeText(ctx.start, ctx.end) === ctx.original) {
+      return { start: ctx.start, end: ctx.end };
+    }
+    const span = ctx.end - ctx.start;
+    for (let i = 0; i + span < cm.lineCount(); i++) {
+      if (rangeText(i, i + span) === ctx.original) return { start: i, end: i + span };
+    }
+    return null;
+  }
+
+  // Drops the lines and one of the blank lines left around them.
+  function removeMarkdownLines(cm, start, end) {
+    const last = cm.lineCount() - 1;
+    if (end < last) cm.replaceRange('', { line: start, ch: 0 }, { line: end + 1, ch: 0 });
+    else if (start > 0) cm.replaceRange('', { line: start - 1, ch: cm.getLine(start - 1).length }, { line: end, ch: cm.getLine(end).length });
+    else cm.replaceRange('', { line: 0, ch: 0 }, { line: end, ch: cm.getLine(end).length });
+    const nextBlank = start < cm.lineCount() && !cm.getLine(start).trim();
+    const prevBlank = start === 0 || !cm.getLine(start - 1).trim();
+    if (nextBlank && prevBlank && start + 1 < cm.lineCount()) {
+      cm.replaceRange('', { line: start, ch: 0 }, { line: start + 1, ch: 0 });
+    }
+  }
+
+  function saveTextBlockFromModal({ remove = false } = {}) {
+    const cm = getEditorCm();
+    const ctx = textBlockContext;
+    if (!cm || !ctx) return;
+    const range = resolveTextBlockRange(cm, ctx);
+    if (!range) {
+      showToast('The page changed. Open the text again to edit it.', 'warning');
+      return;
+    }
+    const level = parseInt(document.getElementById('text-block-kind')?.value, 10) || 0;
+    const raw = String(document.getElementById('text-block-text')?.value || '').replace(/\r\n/g, '\n').trim();
+    const { start, end } = range;
+    cm.operation(() => {
+      if (remove || !raw) {
+        removeMarkdownLines(cm, start, end);
+        return;
+      }
+      let replacement;
+      if (level) {
+        replacement = `${'#'.repeat(level)} ${raw.replace(/\s*\n\s*/g, ' ')}`;
+      } else {
+        const needsGap = (line) => line != null && line.trim() && !isMarkdownBlockStartLine(line);
+        const before = start > 0 ? cm.getLine(start - 1) : null;
+        const after = end + 1 < cm.lineCount() ? cm.getLine(end + 1) : null;
+        replacement = `${needsGap(before) ? '\n' : ''}${raw}${needsGap(after) ? '\n' : ''}`;
+      }
+      cm.replaceRange(replacement, { line: start, ch: 0 }, { line: end, ch: cm.getLine(end).length });
+    });
+    textBlockContext = null;
+    scheduleSave();
+    schedulePreviewRefresh();
+    bootstrap.Modal.getInstance(document.getElementById('text-block-modal'))?.hide();
+  }
+
+  function initTextBlockEditor() {
+    const preview = document.getElementById('preview-content');
+    if (!preview || preview.dataset.textBlockEditBound === '1') return;
+    preview.dataset.textBlockEditBound = '1';
+
+    preview.addEventListener('dblclick', e => {
+      if (!isPreviewInteractionEnabled()) return;
+      if (e.target.closest?.('a, button, input, select, textarea, img, [contenteditable]')) return;
+      const el = e.target.closest?.('h1, h2, h3, p');
+      if (!el || !preview.contains(el) || isPreviewRichBlock(el)) return;
+      for (let node = el.parentElement; node && node !== preview; node = node.parentElement) {
+        if (node.matches('[class*="-block"], .md-panel, li, blockquote, table, figure')) return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      window.getSelection()?.removeAllRanges();
+      openTextBlockModal(el);
+    });
+
+    document.getElementById('text-block-save-btn')?.addEventListener('click', () => saveTextBlockFromModal());
+    document.getElementById('text-block-delete-btn')?.addEventListener('click', () => saveTextBlockFromModal({ remove: true }));
+    document.getElementById('text-block-text')?.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        saveTextBlockFromModal();
+      }
+    });
+  }
+
+  let codeBlockContext = null;
+
+  // ``` fences with their line range, info string and body (fence indent removed).
+  function findMarkdownCodeFences(lines) {
+    const fences = [];
+    let open = null;
+    lines.forEach((line, i) => {
+      const m = line.match(/^(\s*)```(.*)$/);
+      if (!m) return;
+      if (!open) {
+        open = { start: i, indent: m[1], info: m[2].trim() };
+        return;
+      }
+      const body = lines.slice(open.start + 1, i).map(l => (l.startsWith(open.indent) ? l.slice(open.indent.length) : l.trimStart()));
+      fences.push({ ...open, end: i, body: body.join('\n') });
+      open = null;
+    });
+    return fences;
+  }
+
+  function normalizeCodeText(text) {
+    return String(text || '')
+      .replace(/\r\n?/g, '\n')
+      .replace(/\u00a0/g, ' ')
+      .split('\n')
+      .map(l => l.replace(/\s+$/, ''))
+      .join('\n')
+      .replace(/^\n+|\n+$/g, '');
+  }
+
+  function editablePreviewCodeBlock(node) {
+    const preview = document.getElementById('preview-content');
+    const block = node?.closest?.('.md-code-block');
+    if (!block || !preview?.contains(block)) return null;
+    if (isPreviewRichBlock(block) || block.closest('.md-panel')) return null;
+    return block;
+  }
+
+  // The nth preview block with this code is matched to the nth ``` fence with the same body.
+  function locatePreviewCodeFence(block) {
+    const cm = getEditorCm();
+    const pre = block.querySelector('pre');
+    if (!cm || !pre) return null;
+    const target = normalizeCodeText(pre.textContent);
+    const preview = document.getElementById('preview-content');
+    const peers = [...preview.querySelectorAll('.md-code-block')]
+      .filter(b => editablePreviewCodeBlock(b) && normalizeCodeText(b.querySelector('pre')?.textContent) === target);
+    const occurrence = Math.max(0, peers.indexOf(block));
+    const fences = findMarkdownCodeFences(cm.getValue().split('\n'))
+      .filter(f => normalizeCodeText(f.body) === target);
+    return fences[occurrence] || fences[0] || null;
+  }
+
+  function openCodeBlockModal(block) {
+    const cm = getEditorCm();
+    const fence = block && locatePreviewCodeFence(block);
+    if (!cm || !fence) {
+      showToast('This code block could not be found in the page source.', 'warning');
+      return;
+    }
+    codeBlockContext = {
+      start: fence.start,
+      end: fence.end,
+      indent: fence.indent,
+      original: cm.getRange({ line: fence.start, ch: 0 }, { line: fence.end, ch: cm.getLine(fence.end).length }),
+    };
+    const lang = document.getElementById('code-block-lang');
+    const text = document.getElementById('code-block-text');
+    if (lang) lang.value = fence.info;
+    if (text) text.value = fence.body;
+    const modalEl = document.getElementById('code-block-modal');
+    if (!modalEl) return;
+    modalEl.addEventListener('shown.bs.modal', () => {
+      text?.focus();
+      text?.setSelectionRange(0, 0);
+    }, { once: true });
+    openDashboardModal(modalEl);
+  }
+
+  function saveCodeBlockFromModal({ remove = false } = {}) {
+    const cm = getEditorCm();
+    const ctx = codeBlockContext;
+    if (!cm || !ctx) return;
+    const info = String(document.getElementById('code-block-lang')?.value || '').replace(/[`\r\n]/g, '').trim();
+    const body = String(document.getElementById('code-block-text')?.value || '').replace(/\r\n?/g, '\n').replace(/^\n+|\n+$/g, '');
+    if (!remove && body.includes('```')) {
+      showToast('Code inside a ``` block cannot contain ``` itself.', 'warning');
+      return;
+    }
+    const range = resolveTextBlockRange(cm, ctx);
+    if (!range) {
+      showToast('The page changed. Open the code block again to edit it.', 'warning');
+      return;
+    }
+    const { start, end } = range;
+    cm.operation(() => {
+      if (remove) {
+        removeMarkdownLines(cm, start, end);
+        return;
+      }
+      const indent = ctx.indent || '';
+      const lines = [
+        `${indent}\`\`\`${info}`,
+        ...(body ? body.split('\n').map(l => (l ? indent + l : l)) : []),
+        `${indent}\`\`\``,
+      ];
+      cm.replaceRange(lines.join('\n'), { line: start, ch: 0 }, { line: end, ch: cm.getLine(end).length });
+    });
+    codeBlockContext = null;
+    scheduleSave();
+    schedulePreviewRefresh();
+    bootstrap.Modal.getInstance(document.getElementById('code-block-modal'))?.hide();
+  }
+
+  function initCodeBlockEditor() {
+    const preview = document.getElementById('preview-content');
+    if (!preview || preview.dataset.codeBlockEditBound === '1') return;
+    preview.dataset.codeBlockEditBound = '1';
+
+    preview.addEventListener('pointerover', e => {
+      const block = editablePreviewCodeBlock(e.target);
+      if (block) block.classList.toggle('is-editable', isPreviewInteractionEnabled());
+    });
+    preview.addEventListener('click', e => {
+      const btn = e.target.closest?.('.md-code-edit');
+      if (!btn || !preview.contains(btn)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (isPreviewInteractionEnabled()) openCodeBlockModal(editablePreviewCodeBlock(btn));
+    });
+    preview.addEventListener('dblclick', e => {
+      if (!isPreviewInteractionEnabled()) return;
+      if (e.target.closest?.('button')) return;
+      const block = editablePreviewCodeBlock(e.target);
+      if (!block) return;
+      e.preventDefault();
+      e.stopPropagation();
+      window.getSelection()?.removeAllRanges();
+      openCodeBlockModal(block);
+    });
+
+    document.getElementById('code-block-save-btn')?.addEventListener('click', () => saveCodeBlockFromModal());
+    document.getElementById('code-block-delete-btn')?.addEventListener('click', () => saveCodeBlockFromModal({ remove: true }));
+    document.getElementById('code-block-lang')?.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        saveCodeBlockFromModal();
+      }
+    });
+    document.getElementById('code-block-text')?.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        saveCodeBlockFromModal();
+      } else if (e.key === 'Tab' && !e.shiftKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        e.target.setRangeText('    ', e.target.selectionStart, e.target.selectionEnd, 'end');
+      }
+    });
+  }
+
+  let imageEditButton = null;
+  let imageEditTarget = null;
+  let imageEditHideTimer = null;
+  let imageEditContext = null;
+
+  function editablePreviewImage(node) {
+    const preview = document.getElementById('preview-content');
+    const img = node?.closest?.('img.md-image[data-md-source]');
+    if (!img || !preview?.contains(img)) return null;
+    if (isPreviewRichBlock(img) || img.closest('.md-panel')) return null;
+    return img;
+  }
+
+  function imageSourceKey(img) {
+    return { alt: img.dataset.mdAlt || '', src: img.dataset.mdSrc || '', attrs: img.dataset.mdAttrs || '' };
+  }
+
+  function sameImageKey(a, b) {
+    return a.alt === b.alt && a.src === b.src && a.attrs === b.attrs;
+  }
+
+  // Same scan as materializeMarkdownImages (fenced blocks skipped), so the nth match lines up
+  // with the nth rendered image that has the same alt/src/attrs.
+  function findMarkdownImageSources(text, key) {
+    const found = [];
+    let offset = 0;
+    String(text || '').split(/(```[\s\S]*?```)/g).forEach(part => {
+      if (!part.startsWith('```')) {
+        const re = /!\[(.*?)\]\((.*?)\)\s*(?:\{(.*?)\})?/g;
+        let m;
+        while ((m = re.exec(part))) {
+          if (sameImageKey({ alt: m[1], src: m[2], attrs: m[3] || '' }, key)) {
+            found.push({ index: offset + m.index, text: m[0], hasAttrs: m[3] !== undefined });
+          }
+        }
+      }
+      offset += part.length;
+    });
+    return found;
+  }
+
+  function nextImageAttrs(attributes, { width, turn }) {
+    const kept = String(attributes || '')
+      .replace(/\s*=\s*/g, '=')
+      .split(/[;,\s]+/)
+      .filter(part => part && !/^(width|turn)=/i.test(part));
+    return [
+      ...(width ? [`width=${width}`] : []),
+      ...kept,
+      ...(turn ? [`turn=${turn}`] : []),
+    ].join('; ');
+  }
+
+  function rebuildMarkdownImage(match, key, attrs) {
+    const head = `![${key.alt}](${key.src})`;
+    const rest = match.text.slice(head.length);
+    const gap = match.hasAttrs ? rest.slice(0, rest.indexOf('{')) : '';
+    const trailing = match.hasAttrs ? '' : rest;
+    return `${head}${attrs ? `${gap}{${attrs}}` : ''}${trailing}`;
+  }
+
+  function hideImageEditButton() {
+    clearTimeout(imageEditHideTimer);
+    imageEditButton?.classList.add('d-none');
+  }
+
+  function scheduleHideImageEditButton() {
+    clearTimeout(imageEditHideTimer);
+    imageEditHideTimer = setTimeout(hideImageEditButton, 200);
+  }
+
+  function showImageEditButton(img) {
+    if (!imageEditButton) return;
+    clearTimeout(imageEditHideTimer);
+    imageEditTarget = img;
+    const rect = img.getBoundingClientRect();
+    imageEditButton.style.top = `${Math.round(rect.top + 6)}px`;
+    imageEditButton.style.left = `${Math.round(Math.max(rect.left + 6, rect.right - 38))}px`;
+    imageEditButton.classList.remove('d-none');
+  }
+
+  function refreshImageEditPreview() {
+    const preview = document.getElementById('image-edit-preview');
+    const turn = parseInt(document.getElementById('image-edit-turn')?.value, 10) || 0;
+    if (preview) preview.style.transform = turn ? `rotate(${turn}deg)` : '';
+  }
+
+  function openImageEditModal(img) {
+    const cm = getEditorCm();
+    if (!cm || !img) return;
+    hideImageEditButton();
+    const key = imageSourceKey(img);
+    const preview = document.getElementById('preview-content');
+    const peers = [...(preview?.querySelectorAll('img.md-image[data-md-source]') || [])]
+      .filter(other => editablePreviewImage(other) && sameImageKey(imageSourceKey(other), key));
+    const occurrence = Math.max(0, peers.indexOf(img));
+    const matches = findMarkdownImageSources(cm.getValue(), key);
+    const match = matches[occurrence] || matches[0];
+    if (!match) {
+      showToast('This image could not be found in the page source.', 'warning');
+      return;
+    }
+    imageEditContext = { key, occurrence, text: match.text };
+    const { width, turn } = parseMarkdownImageAttrs(key.attrs);
+    document.getElementById('image-edit-width').value = width || '';
+    document.getElementById('image-edit-turn').value = String(turn || 0);
+    const thumb = document.getElementById('image-edit-preview');
+    if (thumb) thumb.src = img.currentSrc || img.src;
+    refreshImageEditPreview();
+    openDashboardModal(document.getElementById('image-edit-modal'));
+  }
+
+  function saveImageEditFromModal() {
+    const cm = getEditorCm();
+    const ctx = imageEditContext;
+    if (!cm || !ctx) return;
+    let width = String(document.getElementById('image-edit-width')?.value || '').trim().replace(/\s+/g, '');
+    if (/^\d+(\.\d+)?$/.test(width)) width = `${width}px`;
+    if (width && !/^\d+(\.\d+)?(px|%|em|rem|vw)$/i.test(width)) {
+      showToast('Width must look like 50% or 300px.', 'warning');
+      return;
+    }
+    const turn = parseInt(document.getElementById('image-edit-turn')?.value, 10) || 0;
+    const matches = findMarkdownImageSources(cm.getValue(), ctx.key);
+    const match = [matches[ctx.occurrence], ...matches].find(m => m?.text === ctx.text);
+    if (!match) {
+      showToast('The page changed. Open the image again to edit it.', 'warning');
+      return;
+    }
+    const replacement = rebuildMarkdownImage(match, ctx.key, nextImageAttrs(ctx.key.attrs, { width, turn }));
+    if (replacement !== match.text) {
+      cm.replaceRange(replacement, cm.posFromIndex(match.index), cm.posFromIndex(match.index + match.text.length));
+      scheduleSave();
+      schedulePreviewRefresh();
+    }
+    imageEditContext = null;
+    bootstrap.Modal.getInstance(document.getElementById('image-edit-modal'))?.hide();
+  }
+
+  function initImageEditor() {
+    const preview = document.getElementById('preview-content');
+    if (!preview || preview.dataset.imageEditBound === '1') return;
+    preview.dataset.imageEditBound = '1';
+
+    imageEditButton = document.createElement('button');
+    imageEditButton.type = 'button';
+    imageEditButton.className = 'md-image-edit-btn d-none';
+    imageEditButton.title = 'Edit image (width, turn)';
+    imageEditButton.innerHTML = '<i class="fa fa-pencil" aria-hidden="true"></i>';
+    imageEditButton.addEventListener('mousedown', e => e.preventDefault());
+    imageEditButton.addEventListener('pointerenter', () => clearTimeout(imageEditHideTimer));
+    imageEditButton.addEventListener('pointerleave', scheduleHideImageEditButton);
+    imageEditButton.addEventListener('click', () => openImageEditModal(imageEditTarget));
+    document.body.appendChild(imageEditButton);
+
+    preview.addEventListener('pointerover', e => {
+      if (!isPreviewInteractionEnabled()) return;
+      const img = editablePreviewImage(e.target);
+      if (img) showImageEditButton(img);
+    });
+    preview.addEventListener('pointerout', e => {
+      if (!editablePreviewImage(e.target)) return;
+      if (e.relatedTarget && imageEditButton.contains(e.relatedTarget)) return;
+      scheduleHideImageEditButton();
+    });
+    window.addEventListener('scroll', hideImageEditButton, true);
+
+    document.getElementById('image-edit-width-presets')?.addEventListener('click', e => {
+      const btn = e.target.closest('[data-width]');
+      if (btn) document.getElementById('image-edit-width').value = btn.dataset.width;
+    });
+    document.getElementById('image-edit-width-clear')?.addEventListener('click', () => {
+      document.getElementById('image-edit-width').value = '';
+    });
+    const turnSelect = document.getElementById('image-edit-turn');
+    turnSelect?.addEventListener('change', refreshImageEditPreview);
+    const stepTurn = (delta) => {
+      if (!turnSelect) return;
+      turnSelect.value = String(((parseInt(turnSelect.value, 10) || 0) + delta + 360) % 360);
+      refreshImageEditPreview();
+    };
+    document.getElementById('image-edit-turn-left')?.addEventListener('click', () => stepTurn(-90));
+    document.getElementById('image-edit-turn-right')?.addEventListener('click', () => stepTurn(90));
+    document.getElementById('image-edit-save-btn')?.addEventListener('click', saveImageEditFromModal);
+    document.getElementById('image-edit-width')?.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        saveImageEditFromModal();
+      }
+    });
+  }
+
   function insertFenceBlock(editor, fence, body) {
     const cm = editor.codemirror;
     const snippet = `\n\`\`\`${fence}\n${body}\n\`\`\`\n`;
@@ -19304,6 +19875,17 @@ function formatTextWithMarkup(rawText) {
         '|',
         'code',
         {
+          name: 'insert-code-fence',
+          action: (editor) => {
+            const cm = editor.codemirror;
+            const selected = cm.getSelection();
+            insertFenceBlock(editor, '', selected);
+            if (!selected) cm.setCursor({ line: cm.getCursor().line - 2, ch: 0 });
+          },
+          className: 'fa fa-file-code-o',
+          title: 'Insert code block (```)',
+        },
+        {
           name: 'bold',
           action: (editor) => applyEditorOrModalFormat(editor, '**', '**', window.EasyMDE?.toggleBold),
           className: 'fa fa-bold',
@@ -19360,36 +19942,75 @@ function formatTextWithMarkup(rawText) {
           title: 'Insert calendar',
         },
         {
-          name: 'insert-gantt',
-          action: (editor) => {
-            const today = new Date();
-            const from = formatCalendarDate(new Date(today.getFullYear(), today.getMonth(), 1));
-            const mid = formatCalendarDate(new Date(today.getFullYear(), today.getMonth(), 15));
-            const to = formatCalendarDate(new Date(today.getFullYear(), today.getMonth() + 1, 0));
-            const body = [
-              '# Project plan',
-              `Phase A | ${from} | ${mid} | **Start**`,
-              `Phase B | ${mid} | ${to} | Delivery`,
-            ].join('\n');
-            insertFenceBlock(editor, `gantt{from=${from};to=${to};col=info}`, body);
-          },
-          className: 'fa fa-tasks',
-          title: 'Insert gantt',
-        },
-        {
-          name: 'insert-kanban',
-          action: (editor) => {
-            const body = [
-              '# Board',
-              'Todo | Design wireframes | **First draft**',
-              'Todo | Write copy',
-              'Doing | Build API',
-              'Done | Kickoff | ![](media/uploads/photo.png)',
-            ].join('\n');
-            insertFenceBlock(editor, 'kanban{cols=Todo,Doing,Done;col=info}', body);
-          },
+          name: 'boardsMenu',
           className: 'fa fa-th-large',
-          title: 'Insert kanban',
+          title: 'Insert kanban / gantt / mindmap / kanban gantt',
+          children: [
+            {
+              name: 'insert-gantt',
+              text: 'Gantt',
+              title: 'Insert gantt',
+              action: (editor) => {
+                const today = new Date();
+                const from = formatCalendarDate(new Date(today.getFullYear(), today.getMonth(), 1));
+                const mid = formatCalendarDate(new Date(today.getFullYear(), today.getMonth(), 15));
+                const to = formatCalendarDate(new Date(today.getFullYear(), today.getMonth() + 1, 0));
+                const body = [
+                  '# Project plan',
+                  `Phase A | ${from} | ${mid} | **Start**`,
+                  `Phase B | ${mid} | ${to} | Delivery`,
+                ].join('\n');
+                insertFenceBlock(editor, `gantt{from=${from};to=${to};col=info}`, body);
+              },
+            },
+            {
+              name: 'insert-kanban',
+              text: 'Kanban',
+              title: 'Insert kanban',
+              action: (editor) => {
+                const body = [
+                  '# Board',
+                  'Todo | Design wireframes | **First draft**',
+                  'Todo | Write copy',
+                  'Doing | Build API',
+                  'Done | Kickoff | ![](media/uploads/photo.png)',
+                ].join('\n');
+                insertFenceBlock(editor, 'kanban{cols=Todo,Doing,Done;col=info}', body);
+              },
+            },
+            {
+              name: 'insert-mindmap',
+              text: 'Mindmap',
+              title: 'Insert mindmap',
+              action: (editor) => {
+                const body = [
+                  '# Ideas',
+                  'Central topic',
+                  '  Branch A | **Key point**',
+                  '    Detail A1',
+                  '    Detail A2',
+                  '  Branch B',
+                  '    Detail B1 | note',
+                ].join('\n');
+                insertFenceBlock(editor, 'mindmap{dir=right;col=info}', body);
+              },
+            },
+            {
+              name: 'insert-kanbangantt',
+              text: 'Kanban gantt',
+              title: 'Insert kanban gantt (time + cost)',
+              action: (editor) => {
+                const body = [
+                  '# Sprint board',
+                  'Todo | Design wireframes | status=idle;rate=60',
+                  'Doing | Build API | status=idle;rate=75',
+                  'Suspended | On hold task | status=suspended;rate=75;elapsed=1800',
+                  'Done | Kickoff | status=stopped;rate=50;started=14.07.26 09:00;stopped=14.07.26 11:00;elapsed=7200',
+                ].join('\n');
+                insertFenceBlock(editor, 'sprintboard{cols=Todo,Doing,Suspended,Done;withcost=1;rate=50;currency=EUR;col=info}', body);
+              },
+            },
+          ],
         },
         {
           name: 'insert-checklist',
@@ -19407,114 +20028,89 @@ function formatTextWithMarkup(rawText) {
         },
         buildFormToolbarDropdown(),
         {
-          name: 'insert-speisekarte',
-          action: (editor) => {
-            const body = [
-              '# Starters',
-              'Soup of the day | 6.50',
-              'Mixed salad | 7.90',
-              '',
-              '# Mains',
-              'Wiener schnitzel | 18.50 | with fries',
-              'Garlic spaghetti | 14.00',
-              '',
-              '# Desserts',
-              'Tiramisu | 6.50',
-            ].join('\n');
-            insertFenceBlock(editor, `speisekarte{to=${currentUserName || 'demo'};title=Lunch menu;col=warning;tables=1-4}`, body);
-          },
+          name: 'menuShopMenu',
           className: 'fa fa-cutlery',
-          title: 'Insert menu (tables + bills)',
-        },
-        {
-          name: 'insert-shop',
-          action: (editor) => {
-            const body = [
-              '# Stationery',
-              'Notebook A5 | 4.50 | Lined, 80 pages — pocket notebook for daily notes | https://picsum.photos/id/24/400/300',
-              'Pens (pack of 10) | 3.20 | Smooth black ink, office pack | https://picsum.photos/id/367/400/300',
-              '',
-              '# Snacks',
-              'Coffee beans | 12.00 | 250g medium roast | https://picsum.photos/id/425/400/300',
-              'Tea selection | 8.50 | Assorted herbal and black teas | https://picsum.photos/id/225/400/300',
-            ].join('\n');
-            insertFenceBlock(editor, `shop{to=${currentUserName || 'demo'};title=Office shop;col=info;currency=EUR}`, body);
-          },
-          className: 'fa fa-shopping-cart',
-          title: 'Insert shop (cart + checkout)',
-        },
-        {
-          name: 'insert-swshop',
-          action: (editor) => {
-            const body = [
-              '# NotesPro',
-              'NotesPro source | 0.00 | Collaborative notes app — download the zip or add a license to the cart | https://picsum.photos/id/180/640/400 | https://github.com/ThGSoft/NotesPro/archive/refs/heads/main.zip | Runs with Python and Django. Source on GitHub.',
-              'NotesPro license | 49.00 | Single-site license with setup notes by mail | https://picsum.photos/id/0/640/400 | Windows, macOS, and Linux. Card numbers are never stored.',
-            ].join('\n');
-            insertFenceBlock(editor, `swshop{to=${currentUserName || 'demo'};title=SW Shop;col=info;currency=EUR;kind=sw}`, body);
-          },
-          className: 'fa fa-download',
-          title: 'Insert SW shop (download + PayPal / Visa / Mastercard)',
-        },
-        {
-          name: 'insert-noteslist',
-          action: (editor) => {
-            const body = [
-              '# community',
-              'Neighborhood picnic | free | Riverside | Saturday potluck at the park. Bring a dish.',
-              '',
-              '# services',
-              'Bike tune-up | 35 | Downtown | Pickup or drop-off. Same-day if booked before noon.',
-              '',
-              '# housing',
-              'Studio loft | 780 | Old Town | Bright one-room, available Oct 1.',
-              '',
-              '# for sale',
-              'Desk lamp | 12 | Downtown | Working LED lamp, pickup only | https://picsum.photos/id/106/400/300',
-              'Road bike | 180 | Harbor | 21-speed, recently serviced | https://picsum.photos/id/146/400/300',
-              '',
-              '# jobs',
-              'Barista | hourly | Cafe Row | Weekend shifts, training provided.',
-              '',
-              '# gigs',
-              'Moving help | 40 | West End | Two hours, Saturday morning.',
-            ].join('\n');
-            insertFenceBlock(editor, `noteslist{to=${currentUserName || 'demo'};city=Main;currency=EUR}`, body);
-          },
-          className: 'fa fa-list',
-          title: 'Insert NotesList',
-        },
-        {
-          name: 'insert-kanbangantt',
-          action: (editor) => {
-            const body = [
-              '# Sprint board',
-              'Todo | Design wireframes | status=idle;rate=60',
-              'Doing | Build API | status=idle;rate=75',
-              'Suspended | On hold task | status=suspended;rate=75;elapsed=1800',
-              'Done | Kickoff | status=stopped;rate=50;started=14.07.26 09:00;stopped=14.07.26 11:00;elapsed=7200',
-            ].join('\n');
-            insertFenceBlock(editor, 'kanbangantt{cols=Todo,Doing,Suspended,Done;withcost=1;rate=50;currency=EUR;col=info}', body);
-          },
-          className: 'fa fa-clock-o',
-          title: 'Insert kanban gantt (time + cost)',
-        },
-        {
-          name: 'insert-mindmap',
-          action: (editor) => {
-            const body = [
-              '# Ideas',
-              'Central topic',
-              '  Branch A | **Key point**',
-              '    Detail A1',
-              '    Detail A2',
-              '  Branch B',
-              '    Detail B1 | note',
-            ].join('\n');
-            insertFenceBlock(editor, 'mindmap{dir=right;col=info}', body);
-          },
-          className: 'fa fa-sitemap',
-          title: 'Insert mindmap',
+          title: 'Insert menu / shop / SW shop / NotesList',
+          children: [
+            {
+              name: 'insert-speisekarte',
+              text: 'Menu',
+              title: 'Insert menu (tables + bills)',
+              action: (editor) => {
+                const body = [
+                  '# Starters',
+                  'Soup of the day | 6.50',
+                  'Mixed salad | 7.90',
+                  '',
+                  '# Mains',
+                  'Wiener schnitzel | 18.50 | with fries',
+                  'Garlic spaghetti | 14.00',
+                  '',
+                  '# Desserts',
+                  'Tiramisu | 6.50',
+                ].join('\n');
+                insertFenceBlock(editor, `menu{to=${currentUserName || 'demo'};title=Lunch menu;col=warning;tables=1-4}`, body);
+              },
+            },
+            {
+              name: 'insert-shop',
+              text: 'Shop',
+              title: 'Insert shop (cart + checkout)',
+              action: (editor) => {
+                const body = [
+                  '# Stationery',
+                  'Notebook A5 | 4.50 | Lined, 80 pages — pocket notebook for daily notes | https://picsum.photos/id/24/400/300',
+                  'Pens (pack of 10) | 3.20 | Smooth black ink, office pack | https://picsum.photos/id/367/400/300',
+                  '',
+                  '# Snacks',
+                  'Coffee beans | 12.00 | 250g medium roast | https://picsum.photos/id/425/400/300',
+                  'Tea selection | 8.50 | Assorted herbal and black teas | https://picsum.photos/id/225/400/300',
+                ].join('\n');
+                insertFenceBlock(editor, `shop{to=${currentUserName || 'demo'};title=Office shop;col=info;currency=EUR}`, body);
+              },
+            },
+            {
+              name: 'insert-swshop',
+              text: 'SW shop',
+              title: 'Insert SW shop (download + PayPal / Visa / Mastercard)',
+              action: (editor) => {
+                const body = [
+                  '# NotesPro',
+                  'NotesPro source | 0.00 | Collaborative notes app — download the zip or add a license to the cart | https://picsum.photos/id/180/640/400 | https://github.com/ThGSoft/NotesPro/archive/refs/heads/main.zip | Runs with Python and Django. Source on GitHub.',
+                  'NotesPro license | 49.00 | Single-site license with setup notes by mail | https://picsum.photos/id/0/640/400 | Windows, macOS, and Linux. Card numbers are never stored.',
+                ].join('\n');
+                insertFenceBlock(editor, `swshop{to=${currentUserName || 'demo'};title=SW Shop;col=info;currency=EUR;kind=sw}`, body);
+              },
+            },
+            {
+              name: 'insert-noteslist',
+              text: 'NotesList',
+              title: 'Insert NotesList',
+              action: (editor) => {
+                const body = [
+                  '# community',
+                  'Neighborhood picnic | free | Riverside | Saturday potluck at the park. Bring a dish.',
+                  '',
+                  '# services',
+                  'Bike tune-up | 35 | Downtown | Pickup or drop-off. Same-day if booked before noon.',
+                  '',
+                  '# housing',
+                  'Studio loft | 780 | Old Town | Bright one-room, available Oct 1.',
+                  '',
+                  '# for sale',
+                  'Desk lamp | 12 | Downtown | Working LED lamp, pickup only | https://picsum.photos/id/106/400/300',
+                  'Road bike | 180 | Harbor | 21-speed, recently serviced | https://picsum.photos/id/146/400/300',
+                  '',
+                  '# jobs',
+                  'Barista | hourly | Cafe Row | Weekend shifts, training provided.',
+                  '',
+                  '# gigs',
+                  'Moving help | 40 | West End | Two hours, Saturday morning.',
+                ].join('\n');
+                insertFenceBlock(editor, `noteslist{to=${currentUserName || 'demo'};city=Main;currency=EUR}`, body);
+              },
+            },
+          ],
         },
         {
           name: 'insert-calcs',
@@ -20498,6 +21094,7 @@ function formatTextWithMarkup(rawText) {
     resetTagTransport();
     if (mainView === 'keep') loadQuickNotes();
     loadIssuesList();
+    if (issuesTableOpen) loadIssuesTable();
     if (isEditing) switchMode('markdown');
     else switchMode('preview');
   }
@@ -20913,6 +21510,7 @@ function formatTextWithMarkup(rawText) {
   ];
 
   let mainView = window.APP_BOOT?.extraConfigs?.main_view === 'keep' ? 'keep' : 'pages';
+  let issuesTableOpen = false;
   let quickNotesCache = [];
   let keepSearchTimer = null;
   let keepShowArchived = Boolean(window.APP_BOOT?.extraConfigs?.keep_show_archived);
@@ -21037,6 +21635,12 @@ function formatTextWithMarkup(rawText) {
   }
 
   function setMainView(mode) {
+    if (issuesTableOpen) {
+      issuesTableOpen = false;
+      document.getElementById('issues-table-wrap')?.classList.add('d-none');
+      document.querySelector('.main-pane')?.classList.remove('main-pane--issues');
+      syncIssuesTableButton();
+    }
     mainView = mode === 'keep' ? 'keep' : 'pages';
     const mainPane = document.querySelector('.main-pane');
     const keepWrap = document.getElementById('quick-notes-wrap');
@@ -22660,6 +23264,9 @@ function formatTextWithMarkup(rawText) {
   initFormWidgetEditors();
   initKanbanganttEditors();
   initMindmapEditors();
+  initTextBlockEditor();
+  initCodeBlockEditor();
+  initImageEditor();
   initChartInsertModal();
   initPanelInsertModal();
   initSnippetsModal();
@@ -23257,13 +23864,107 @@ function formatTextWithMarkup(rawText) {
     const badge = document.getElementById('issues-open-badge');
     if (!badge) return;
     const n = Number(count) || 0;
-    badge.textContent = String(n);
+    badge.textContent = n > 99 ? '99+' : String(n);
     badge.classList.toggle('d-none', n <= 0);
+  }
+
+  function issueDescriptionText(body) {
+    const text = String(body || '')
+      .replace(/!\[[^\]]*\]\([^)]*\)(\{[^}]*\})?/g, '')
+      .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+      .replace(/<[^>]+>/g, '')
+      .replace(/^#{1,6}\s+/gm, '')
+      .replace(/(\*\*|__)([\s\S]*?)\1/g, '$2')
+      .replace(/~~([\s\S]*?)~~/g, '$1')
+      .replace(/`+/g, '')
+      .replace(/[ \t]+\n/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+    if (!text) return '';
+    return text.length > 600 ? `${text.slice(0, 597)}…` : text;
+  }
+
+  function ensureIssueHoverTooltip() {
+    let tip = document.getElementById('issue-hover-tooltip');
+    if (!tip) {
+      tip = document.createElement('div');
+      tip.id = 'issue-hover-tooltip';
+      tip.className = 'issue-hover-tooltip';
+      tip.setAttribute('role', 'tooltip');
+      document.body.appendChild(tip);
+    }
+    return tip;
+  }
+
+  let issueHoverAnchor = null;
+  let issueHoverTimer = 0;
+
+  function hideIssueHoverTooltip() {
+    clearTimeout(issueHoverTimer);
+    issueHoverTimer = 0;
+    issueHoverAnchor = null;
+    document.getElementById('issue-hover-tooltip')?.classList.remove('visible');
+  }
+
+  function positionIssueHoverTooltip(tip, anchor) {
+    const pad = 8;
+    const rect = anchor.getBoundingClientRect();
+    tip.style.left = '0px';
+    tip.style.top = '0px';
+    const tipRect = tip.getBoundingClientRect();
+    let left = rect.left - tipRect.width - pad;
+    let top = rect.top;
+    if (left < 8) {
+      left = Math.max(8, Math.min(rect.left, window.innerWidth - tipRect.width - 8));
+      top = rect.bottom + pad;
+    }
+    if (top + tipRect.height > window.innerHeight - 8) {
+      top = Math.max(8, window.innerHeight - tipRect.height - 8);
+    }
+    tip.style.left = `${left}px`;
+    tip.style.top = `${top}px`;
+  }
+
+  function showIssueHoverTooltip(anchor, text) {
+    const tip = ensureIssueHoverTooltip();
+    tip.textContent = text;
+    tip.classList.add('visible');
+    positionIssueHoverTooltip(tip, anchor);
+  }
+
+  function bindIssueDescriptionHover(root, itemSelector) {
+    if (!root || root.dataset.issueDescBound === '1') return;
+    root.dataset.issueDescBound = '1';
+    root.addEventListener('pointerover', e => {
+      const row = e.target.closest?.(itemSelector);
+      if (!row || !root.contains(row)) return;
+      const text = row.getAttribute('data-issue-desc') || '';
+      if (!text) {
+        hideIssueHoverTooltip();
+        return;
+      }
+      if (issueHoverAnchor === row) return;
+      issueHoverAnchor = row;
+      clearTimeout(issueHoverTimer);
+      issueHoverTimer = setTimeout(() => {
+        if (issueHoverAnchor !== row) return;
+        const anchor = row.querySelector('.issues-table-title-cell') || row;
+        showIssueHoverTooltip(anchor, text);
+      }, 350);
+    });
+    root.addEventListener('pointerout', e => {
+      const row = e.target.closest?.(itemSelector);
+      if (!row) return;
+      const next = e.relatedTarget?.closest?.(itemSelector);
+      if (next === row) return;
+      if (issueHoverAnchor === row) hideIssueHoverTooltip();
+    });
   }
 
   function renderIssuesList() {
     const list = document.getElementById('issues-list');
     if (!list) return;
+    hideIssueHoverTooltip();
     if (!issuesCache.length) {
       list.innerHTML = '<div class="issues-empty">No issues yet.</div>';
       return;
@@ -23273,8 +23974,10 @@ function formatTextWithMarkup(rawText) {
       const assignee = issue.assignee_username
         ? `<span class="issue-item-assignee">@${escapeHtml(issue.assignee_username)}</span>`
         : '';
+      const desc = issueDescriptionText(issue.body);
+      const tipAttr = desc ? ` data-issue-desc="${escapeHtml(desc)}"` : '';
       return `
-        <div class="issue-item" data-issue-id="${issue.id}">
+        <div class="issue-item" data-issue-id="${issue.id}"${tipAttr}>
           <div class="issue-item-head">
             <span class="issue-item-num">#${issue.number}</span>
             <span class="issue-item-title">${escapeHtml(title)}</span>
@@ -23438,6 +24141,7 @@ function formatTextWithMarkup(rawText) {
       bootstrap.Modal.getInstance(document.getElementById('issue-modal'))?.hide();
       editingIssueId = null;
       await loadIssuesList();
+      if (issuesTableOpen) await loadIssuesTable();
     } catch (err) {
       showToast(err.message || 'Could not save issue.', 'danger');
     }
@@ -23452,17 +24156,206 @@ function formatTextWithMarkup(rawText) {
       bootstrap.Modal.getInstance(document.getElementById('issue-modal'))?.hide();
       editingIssueId = null;
       await loadIssuesList();
+      if (issuesTableOpen) await loadIssuesTable();
     } catch (err) {
       showToast(err.message || 'Delete failed.', 'danger');
     }
   }
 
+  let issuesTableCache = [];
+  let issuesTableSearchTimer = null;
+  let issuesTableSort = { key: 'updated_at', dir: 'desc' };
+
+  const ISSUE_STATUS_ORDER = { open: 0, in_progress: 1, review: 2, closed: 3 };
+  const ISSUE_PRIORITY_ORDER = { urgent: 0, high: 1, normal: 2, low: 3 };
+
+  function syncIssuesTableButton() {
+    const btn = document.getElementById('issues-all-btn');
+    if (!btn) return;
+    btn.classList.toggle('btn-primary', issuesTableOpen);
+    btn.classList.toggle('btn-outline-light', !issuesTableOpen);
+    btn.setAttribute('aria-pressed', issuesTableOpen ? 'true' : 'false');
+  }
+
+  function issueSortValue(issue, key) {
+    switch (key) {
+      case 'number': return Number(issue.number) || 0;
+      case 'title': return (issue.title || '').toLowerCase();
+      case 'status': return ISSUE_STATUS_ORDER[issue.status] ?? 9;
+      case 'priority': return ISSUE_PRIORITY_ORDER[issue.priority] ?? 9;
+      case 'assignee': return (issue.assignee_username || '').toLowerCase();
+      case 'page': return (issue.page_title || '').toLowerCase();
+      case 'labels': return (Array.isArray(issue.labels) ? issue.labels.join(', ') : '').toLowerCase();
+      case 'updated_at': return issue.updated_at || '';
+      default: return '';
+    }
+  }
+
+  function sortedIssuesTable() {
+    const { key, dir } = issuesTableSort;
+    const mul = dir === 'asc' ? 1 : -1;
+    return [...issuesTableCache].sort((a, b) => {
+      const av = issueSortValue(a, key);
+      const bv = issueSortValue(b, key);
+      if (av < bv) return -1 * mul;
+      if (av > bv) return 1 * mul;
+      return (Number(b.number) || 0) - (Number(a.number) || 0);
+    });
+  }
+
+  function renderIssuesTable() {
+    const body = document.getElementById('issues-table-body');
+    const countEl = document.getElementById('issues-table-count');
+    if (!body) return;
+    hideIssueHoverTooltip();
+    const rows = sortedIssuesTable();
+    if (countEl) {
+      const n = rows.length;
+      countEl.textContent = n === 1 ? '1 issue' : `${n} issues`;
+    }
+    document.querySelectorAll('.issues-table th[data-sort]').forEach(th => {
+      const active = th.dataset.sort === issuesTableSort.key;
+      th.classList.toggle('is-sorted', active);
+      const label = th.dataset.label || th.textContent.replace(/^[▲▼]\s*/, '');
+      th.dataset.label = label;
+      th.textContent = active ? `${issuesTableSort.dir === 'asc' ? '▲' : '▼'} ${label}` : label;
+    });
+    if (!rows.length) {
+      body.innerHTML = '<tr><td colspan="8" class="issues-table-empty">No issues match this filter.</td></tr>';
+      return;
+    }
+    body.innerHTML = rows.map(issue => {
+      const labels = Array.isArray(issue.labels) && issue.labels.length
+        ? issue.labels.map(label => `<span class="issue-label">${escapeHtml(label)}</span>`).join('')
+        : '';
+      const updated = issue.updated_at ? new Date(issue.updated_at).toLocaleString() : '';
+      const pageCell = issue.page
+        ? `<button type="button" class="issues-table-page-link" data-issue-page="${issue.page}">${escapeHtml(issue.page_title || 'Page')}</button>`
+        : '';
+      const desc = issueDescriptionText(issue.body);
+      const tipAttr = desc ? ` data-issue-desc="${escapeHtml(desc)}"` : '';
+      return `
+        <tr data-issue-id="${issue.id}"${tipAttr}>
+          <td class="issues-table-num">#${issue.number}</td>
+          <td class="issues-table-title-cell">${escapeHtml(issue.title || '(untitled)')}</td>
+          <td>${issueStatusBadge(issue.status)}</td>
+          <td>${issuePriorityBadge(issue.priority)}</td>
+          <td>${issue.assignee_username ? `@${escapeHtml(issue.assignee_username)}` : ''}</td>
+          <td>${pageCell}</td>
+          <td class="issues-table-labels">${labels}</td>
+          <td class="issues-table-updated">${escapeHtml(updated)}</td>
+        </tr>`;
+    }).join('');
+  }
+
+  async function loadIssuesTable() {
+    if (!workspaceId || !issuesTableOpen) return;
+    try {
+      const statusVal = document.getElementById('issues-table-status')?.value ?? '__all__';
+      const q = (document.getElementById('issues-table-search')?.value || '').trim();
+      let statusParam = '';
+      if (statusVal === '__all__') statusParam = '__all__';
+      else if (statusVal) statusParam = statusVal;
+      const data = await api(
+        `api/workspaces/${workspaceId}/issues/?status=${encodeURIComponent(statusParam)}&q=${encodeURIComponent(q)}`,
+      );
+      issuesTableCache = data.issues || [];
+      updateIssuesOpenBadge(data.open_count);
+      renderIssuesTable();
+    } catch (e) {
+      console.warn('issues table', e);
+    }
+  }
+
+  function showIssuesTable() {
+    issuesTableOpen = true;
+    document.getElementById('issues-table-wrap')?.classList.remove('d-none');
+    document.querySelector('.editor-wrap')?.classList.add('d-none');
+    document.getElementById('quick-notes-wrap')?.classList.add('d-none');
+    document.querySelector('.main-pane')?.classList.add('main-pane--issues');
+    document.getElementById('edit-toggle')?.classList.add('d-none');
+    const titlePreview = document.getElementById('page-title-preview');
+    if (titlePreview) titlePreview.textContent = 'Issues';
+    document.getElementById('issues-table-new-btn')?.classList.toggle('d-none', !userCanEdit);
+    syncIssuesTableButton();
+    syncMobileEditButton();
+    syncPageSettingsButton();
+    loadIssuesTable();
+  }
+
+  function hideIssuesTable() {
+    if (!issuesTableOpen) return;
+    issuesTableOpen = false;
+    document.getElementById('issues-table-wrap')?.classList.add('d-none');
+    document.querySelector('.main-pane')?.classList.remove('main-pane--issues');
+    document.getElementById('quick-notes-wrap')?.classList.toggle('d-none', mainView !== 'keep');
+    document.querySelector('.editor-wrap')?.classList.toggle('d-none', mainView === 'keep');
+    document.getElementById('edit-toggle')?.classList.toggle('d-none', mainView === 'keep' || !userCanEdit);
+    const titlePreview = document.getElementById('page-title-preview');
+    if (mainView === 'keep') {
+      if (titlePreview) titlePreview.textContent = 'Keep';
+    } else if (titlePreview) {
+      titlePreview.textContent = currentPage?.title || '';
+    }
+    syncIssuesTableButton();
+    syncMobileEditButton();
+    syncPageSettingsButton();
+  }
+
   function initIssues() {
     document.getElementById('issues-new-btn')?.classList.toggle('d-none', !userCanEdit);
+    document.getElementById('issues-table-new-btn')?.classList.toggle('d-none', !userCanEdit);
     document.getElementById('issues-new-btn')?.addEventListener('click', () => openIssueModal(null));
-    document.getElementById('issues-list')?.addEventListener('click', e => {
+    document.getElementById('issues-table-new-btn')?.addEventListener('click', () => openIssueModal(null));
+    document.getElementById('issues-all-btn')?.addEventListener('click', () => {
+      if (issuesTableOpen) hideIssuesTable();
+      else showIssuesTable();
+    });
+    document.getElementById('issues-table-close-btn')?.addEventListener('click', hideIssuesTable);
+    document.getElementById('issues-table-status')?.addEventListener('change', () => loadIssuesTable());
+    document.getElementById('issues-table-search')?.addEventListener('input', () => {
+      clearTimeout(issuesTableSearchTimer);
+      issuesTableSearchTimer = setTimeout(() => loadIssuesTable(), 250);
+    });
+    document.querySelector('.issues-table thead')?.addEventListener('click', e => {
+      const th = e.target.closest('th[data-sort]');
+      if (!th) return;
+      const key = th.dataset.sort;
+      if (issuesTableSort.key === key) {
+        issuesTableSort.dir = issuesTableSort.dir === 'asc' ? 'desc' : 'asc';
+      } else {
+        issuesTableSort = { key, dir: key === 'title' || key === 'assignee' || key === 'page' || key === 'labels' ? 'asc' : 'desc' };
+      }
+      renderIssuesTable();
+    });
+    document.getElementById('issues-table-body')?.addEventListener('click', e => {
+      const pageBtn = e.target.closest('[data-issue-page]');
+      if (pageBtn) {
+        e.stopPropagation();
+        const pageId = parseInt(pageBtn.dataset.issuePage, 10);
+        if (pageId) {
+          selectTreeNode(pageId, true);
+          loadPage(pageId);
+        }
+        return;
+      }
+      const row = e.target.closest('tr[data-issue-id]');
+      if (!row) return;
+      hideIssueHoverTooltip();
+      const id = parseInt(row.dataset.issueId, 10);
+      const issue = issuesTableCache.find(i => i.id === id);
+      if (issue) openIssueModal(issue);
+    });
+    const issuesList = document.getElementById('issues-list');
+    const issuesTableBody = document.getElementById('issues-table-body');
+    bindIssueDescriptionHover(issuesList, '.issue-item');
+    bindIssueDescriptionHover(issuesTableBody, 'tr[data-issue-id]');
+    issuesList?.addEventListener('scroll', hideIssueHoverTooltip);
+    document.querySelector('.issues-table-scroll')?.addEventListener('scroll', hideIssueHoverTooltip);
+    issuesList?.addEventListener('click', e => {
       const row = e.target.closest('.issue-item');
       if (!row) return;
+      hideIssueHoverTooltip();
       const id = parseInt(row.dataset.issueId, 10);
       const issue = issuesCache.find(i => i.id === id);
       if (issue) openIssueModal(issue);
@@ -23820,16 +24713,21 @@ function formatTextWithMarkup(rawText) {
     }, 5000);
   }
 
+  function showCommTab(tab) {
+    document.querySelectorAll('[data-comm-tab]').forEach(b => {
+      b.classList.toggle('active', b.dataset.commTab === tab);
+    });
+    document.getElementById('comm-chat-pane')?.classList.toggle('d-none', tab !== 'chat');
+    document.getElementById('comm-mail-pane')?.classList.toggle('d-none', tab !== 'mail');
+    document.getElementById('comm-issues-pane')?.classList.toggle('d-none', tab !== 'issues');
+  }
+
   async function openPrivateChatPanel() {
     const panel = document.getElementById('right-panel');
     if (panel?.classList.contains('collapsed')) {
       document.getElementById('toggle-right')?.click();
     }
-    document.querySelectorAll('[data-comm-tab]').forEach(b => {
-      b.classList.toggle('active', b.dataset.commTab === 'chat');
-    });
-    document.getElementById('comm-chat-pane')?.classList.remove('d-none');
-    document.getElementById('comm-mail-pane')?.classList.add('d-none');
+    showCommTab('chat');
     if (chatMode !== 'private') setChatMode('private');
     else loadDmConversations({ quiet: true });
   }
@@ -23857,6 +24755,14 @@ function formatTextWithMarkup(rawText) {
     return panel
       && !panel.classList.contains('collapsed')
       && mailTab?.classList.contains('active');
+  }
+
+  function isIssuesPanelVisible() {
+    const panel = document.getElementById('right-panel');
+    const issuesTab = document.querySelector('[data-comm-tab="issues"]');
+    return panel
+      && !panel.classList.contains('collapsed')
+      && issuesTab?.classList.contains('active');
   }
 
   function updateChatUnreadBadge() {
@@ -24559,11 +25465,7 @@ function formatTextWithMarkup(rawText) {
   }
 
   function openMailCompose() {
-    document.querySelectorAll('[data-comm-tab]').forEach(b => {
-      b.classList.toggle('active', b.dataset.commTab === 'mail');
-    });
-    document.getElementById('comm-chat-pane')?.classList.add('d-none');
-    document.getElementById('comm-mail-pane')?.classList.remove('d-none');
+    showCommTab('mail');
     stopChatPolling();
 
     document.querySelectorAll('[data-mail-box]').forEach(b => {
@@ -24590,11 +25492,8 @@ function formatTextWithMarkup(rawText) {
   function initChatAndMail() {
     document.querySelectorAll('[data-comm-tab]').forEach(btn => {
       btn.addEventListener('click', () => {
-        document.querySelectorAll('[data-comm-tab]').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
         const tab = btn.dataset.commTab;
-        document.getElementById('comm-chat-pane')?.classList.toggle('d-none', tab !== 'chat');
-        document.getElementById('comm-mail-pane')?.classList.toggle('d-none', tab !== 'mail');
+        showCommTab(tab);
         if (tab === 'chat') {
           refreshActiveChat();
         } else {
@@ -24606,6 +25505,7 @@ function formatTextWithMarkup(rawText) {
           if (mailBox === 'compose') showMailView('compose');
           else { showMailView('list'); loadMailList(); }
         }
+        if (tab === 'issues') loadIssuesList();
         requestAnimationFrame(refreshCommPanelLayout);
       });
     });
@@ -24792,6 +25692,9 @@ function formatTextWithMarkup(rawText) {
         if (document.querySelector('[data-comm-tab].active')?.dataset.commTab === 'mail') {
           if (mailBox === 'compose') ensureMailRecipients();
           else loadMailList();
+        }
+        if (document.querySelector('[data-comm-tab].active')?.dataset.commTab === 'issues') {
+          loadIssuesList();
         }
       });
     }

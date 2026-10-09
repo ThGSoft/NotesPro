@@ -24,6 +24,27 @@ def _issue_qs(user):
     ).select_related('assignee', 'reporter', 'page').distinct()
 
 
+# Imported trackers (for example Redmine) use different names for the same states.
+STATUS_ALIASES = {
+    Issue.STATUS_OPEN: ('open', 'new'),
+    Issue.STATUS_IN_PROGRESS: ('in_progress', 'doing'),
+    Issue.STATUS_REVIEW: ('review', 'feedback'),
+    Issue.STATUS_CLOSED: ('closed', 'rejected'),
+}
+
+
+def _status_q(status):
+    query = Q()
+    for name in STATUS_ALIASES.get(status, (status,)):
+        query |= Q(status__iexact=name)
+    return query
+
+
+def _matches_query(issue, q):
+    blob = f'{issue.title or ""}\n{issue.body or ""}'.lower()
+    return q in blob
+
+
 def _normalize_status(value):
     status = (value or Issue.STATUS_OPEN).strip().lower()
     if status not in Issue.VALID_STATUSES:
@@ -123,15 +144,24 @@ def issue_list(request, workspace_id):
     q = (request.GET.get('q') or '').strip().lower()
     issues = _issue_qs(request.user).filter(workspace_id=workspace_id)
     if status and status in Issue.VALID_STATUSES:
-        issues = issues.filter(status=status)
+        issues = issues.filter(_status_q(status))
     elif status != '__all__':
-        issues = issues.exclude(status=Issue.STATUS_CLOSED)
+        issues = issues.exclude(_status_q(Issue.STATUS_CLOSED))
+    # Title and body are encrypted, so a SQL icontains search cannot match them.
     if q:
-        issues = issues.filter(Q(title__icontains=q) | Q(body__icontains=q))
-    items = [_issue_to_dict(i) for i in issues[:300]]
+        matched = []
+        for issue in issues.iterator():
+            if _matches_query(issue, q):
+                matched.append(issue)
+                if len(matched) >= 300:
+                    break
+        issue_rows = matched
+    else:
+        issue_rows = list(issues[:300])
+    items = [_issue_to_dict(i) for i in issue_rows]
     open_count = _issue_qs(request.user).filter(
         workspace_id=workspace_id,
-    ).exclude(status=Issue.STATUS_CLOSED).count()
+    ).exclude(_status_q(Issue.STATUS_CLOSED)).count()
     return JsonResponse({'issues': items, 'open_count': open_count})
 
 

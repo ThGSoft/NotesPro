@@ -870,10 +870,10 @@ Optional title or number bounds go in brackets: `radio[Color]: Red | *Green`, `n
 
 ### Kanban Gantt
 
-A kanban board with per-task timers and hourly cost rollups. Fence name: `kanbangantt` (also `kbgantt` / `kgantt`):
+A kanban board with per-task timers and hourly cost rollups. Fence name: `sprintboard` (also `kanbangantt` / `kbgantt` / `kgantt`):
 
 markdown
-```kanbangantt{cols=Todo,Doing,Suspended,Done;withcost=1;rate=50;currency=EUR;col=info}
+```sprintboard{cols=Todo,Doing,Suspended,Done;withcost=1;rate=50;currency=EUR;col=info}
 # Sprint board
 Todo | Design wireframes | status=idle;rate=60
 Doing | Build API | status=running;rate=75;started=14.07.26 09:15;elapsed=3600
@@ -919,10 +919,10 @@ Turn off **With cost** (`withcost=0`) for a time-only board: rates and money tot
 
 ### Speisekarte
 
-Restaurant menu card with a table panel per table. Click a dish to order, then send the bill. Fence names: `speisekarte` (also `speise` / `menukarte` / `menucard` / `menu`):
+Restaurant menu card with a table panel per table. Click a dish to order, then send the bill. Fence names: `menu` (also `speisekarte` / `speise` / `menukarte` / `menucard`):
 
 markdown
-```speisekarte{to=demo;title=Lunch menu;col=warning;tables=1-4}
+```menu{to=demo;title=Lunch menu;col=warning;tables=1-4}
 # Starters
 Soup of the day | 6.50
 Mixed salad | 7.90
@@ -1984,6 +1984,7 @@ The server fetches and caches the feed asynchronously (like MagpieRSS, non-block
 ## Notes
 
 - Markdown images support optional size and alignment: `![alt](/media/uploads/photo.png){width=50%}` or `{width=120px; align=center}`. Pasted screenshots default to `{width=100%}`.
+- Turn an image with `turn=90`, `turn=180`, or `turn=270` (clockwise), e.g. `![alt](/media/uploads/photo.png){width=50%; turn=90}`. With 90 and 270, `width` is the width of the turned picture, and the page reserves its turned height.
 - Markdown images and attachments use `/api/uploads/`; preview and chat images open in a new browser tab when clicked.
 - File manager lists uploads for the current workspace.
 - Superusers manage media quotas, usage, and unreferenced-file purge under Django admin **NOTES → Storage control**. Per-workspace overrides are on each Workspace; per-user overrides are on **User settings** (`storage_quota_mb`: empty inherit, `0` unlimited).

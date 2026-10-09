@@ -12,6 +12,10 @@
     .helptext, .form-text, form p span.helptext { display:block; font-size:.85rem; color:#94a3b8; margin-top:.25rem; }
     form p { margin-bottom: 1rem; }
     form label { display:block; margin-bottom:.35rem; }
+    form p:has(input[type="checkbox"]) { display:flex; flex-wrap:wrap; align-items:center; gap:.35rem .65rem; }
+    form p:has(input[type="checkbox"]) label { display:inline; margin-bottom:0; order:2; }
+    form p:has(input[type="checkbox"]) input { order:1; width:auto; min-height:1.15rem; }
+    form p:has(input[type="checkbox"]) .helptext { flex-basis:100%; order:3; margin-top:0; }
     .errorlist { color:#fca5a5; padding-left:1.1rem; }
   </style>
 </head>
@@ -37,5 +41,6 @@
     </form>
     <p class="mt-3 mb-0"><a href="{% url 'login' %}">Back to login</a></p>
   </div>
+{% include 'notes/visit_pixel.html' %}
 </body>
 </html>

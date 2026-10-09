@@ -19,6 +19,7 @@
       top: -20px;
       bottom: 0;
       width: 100%;
+      touch-action: none;
     }
     .loading {
       position: fixed;
@@ -31,11 +32,91 @@
       background: #000;
       z-index: 2;
     }
+    .mobile-controls {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 3;
+      display: none;
+      padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+      gap: 10px;
+      pointer-events: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .mobile-controls.is-visible {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      grid-template-rows: auto auto;
+      align-items: end;
+    }
+    .mobile-controls__row {
+      grid-column: 1 / -1;
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      pointer-events: auto;
+    }
+    .mobile-controls__btn {
+      pointer-events: auto;
+      touch-action: none;
+      border: 1px solid rgba(148, 163, 184, 0.45);
+      background: rgba(15, 23, 42, 0.72);
+      color: #e2e8f0;
+      font: 600 13px/1.2 system-ui, sans-serif;
+      border-radius: 999px;
+      min-height: 52px;
+      padding: 10px 18px;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
+    .mobile-controls__btn:active,
+    .mobile-controls__btn.is-active {
+      background: rgba(251, 191, 36, 0.35);
+      border-color: rgba(251, 191, 36, 0.85);
+      color: #fff;
+    }
+    .mobile-controls__btn--flipper {
+      width: 100%;
+      min-height: 64px;
+      font-size: 15px;
+      border-radius: 16px;
+    }
+    .mobile-controls__btn--launch {
+      min-width: 88px;
+      min-height: 64px;
+      font-size: 14px;
+      border-radius: 16px;
+      background: rgba(56, 189, 248, 0.22);
+      border-color: rgba(56, 189, 248, 0.55);
+    }
+    .mobile-controls__btn--launch:active,
+    .mobile-controls__btn--launch.is-active {
+      background: rgba(56, 189, 248, 0.45);
+      border-color: rgba(56, 189, 248, 0.9);
+    }
+    .mobile-controls__btn--small {
+      min-height: 40px;
+      padding: 8px 14px;
+      font-size: 12px;
+      font-weight: 500;
+      opacity: 0.92;
+    }
   </style>
 </head>
 <body>
   <canvas id="canvas" tabindex="0"></canvas>
   <div class="loading" id="loading">Loading Space Cadet…</div>
+  <div class="mobile-controls" id="mobileControls" aria-label="Pinball touch controls">
+    <button type="button" class="mobile-controls__btn mobile-controls__btn--flipper" data-action="left" tabindex="-1" aria-label="Left flipper">◀ Left</button>
+    <button type="button" class="mobile-controls__btn mobile-controls__btn--launch" data-action="launch" tabindex="-1" aria-label="Launch ball">Launch</button>
+    <button type="button" class="mobile-controls__btn mobile-controls__btn--flipper" data-action="right" tabindex="-1" aria-label="Right flipper">Right ▶</button>
+    <div class="mobile-controls__row">
+      <button type="button" class="mobile-controls__btn mobile-controls__btn--small" data-action="restart" tabindex="-1" aria-label="Restart game">Restart</button>
+      <button type="button" class="mobile-controls__btn mobile-controls__btn--small" data-action="sound" tabindex="-1" aria-label="Toggle sound">Sound</button>
+    </div>
+  </div>
   <script>
     function getBooleanSetting(settingName) {
       try {
@@ -55,6 +136,245 @@
 
     var GAME_SOUND_ENABLED = getBooleanSetting('GAME_SOUND_ENABLED');
 
+    var KEY_BINDINGS = {
+      left: { key: 'z', code: 'KeyZ', which: 90, keyCode: 90 },
+      right: { key: '/', code: 'Slash', which: 191, keyCode: 191 },
+      launch: { key: ' ', code: 'Space', which: 32, keyCode: 32 },
+      restartDown: { key: 'F2', code: 'F2', which: 113, keyCode: 113 },
+      restartUp: { key: 'F2', code: 'F2', which: 113, keyCode: 113 },
+    };
+
+    function getCanvas() {
+      return document.getElementById('canvas');
+    }
+
+    function makeKeyEvent(type, binding) {
+      var event;
+      try {
+        event = new KeyboardEvent(type, {
+          key: binding.key,
+          code: binding.code,
+          bubbles: true,
+          cancelable: true,
+          composed: true,
+          view: window,
+          repeat: false,
+        });
+      } catch (err) {
+        event = document.createEvent('Event');
+        event.initEvent(type, true, true);
+        event.key = binding.key;
+        event.code = binding.code;
+      }
+      try {
+        Object.defineProperty(event, 'keyCode', { value: binding.keyCode, configurable: true });
+        Object.defineProperty(event, 'which', { value: binding.which, configurable: true });
+        Object.defineProperty(event, 'charCode', { value: 0, configurable: true });
+      } catch (err) {
+        event.keyCode = binding.keyCode;
+        event.which = binding.which;
+      }
+      return event;
+    }
+
+    function dispatchCanvasKey(type, binding) {
+      if (!binding) return;
+      var canvas = getCanvas();
+      if (canvas && typeof canvas.focus === 'function') {
+        try { canvas.focus({ preventScroll: true }); } catch (err) { canvas.focus(); }
+      }
+      if (typeof JSEvents !== 'undefined' && JSEvents.eventHandlers) {
+        var injected = makeKeyEvent(type, binding);
+        for (var i = 0; i < JSEvents.eventHandlers.length; i += 1) {
+          var handler = JSEvents.eventHandlers[i];
+          if (handler && handler.eventTypeString === type && typeof handler.handlerFunc === 'function') {
+            try { handler.handlerFunc(injected); } catch (err) {}
+          }
+        }
+      }
+      // SDL/Emscripten listens on window in the capture phase — a canvas-only
+      // dispatch never reaches those listeners.
+      window.dispatchEvent(makeKeyEvent(type, binding));
+      document.dispatchEvent(makeKeyEvent(type, binding));
+      if (canvas) canvas.dispatchEvent(makeKeyEvent(type, binding));
+    }
+
+    function toggleSound() {
+      GAME_SOUND_ENABLED = !GAME_SOUND_ENABLED;
+      document.cookie = 'pinballspacecadetGAME_SOUND_ENABLED=' + GAME_SOUND_ENABLED + '; path=/';
+      if (typeof Module !== 'undefined' && Module.SDL2 && Module.SDL2.audioContext) {
+        if (GAME_SOUND_ENABLED) Module.SDL2.audioContext.resume();
+        else Module.SDL2.audioContext.suspend();
+      }
+      var soundBtn = document.querySelector('[data-action="sound"]');
+      if (soundBtn) soundBtn.textContent = GAME_SOUND_ENABLED ? 'Sound on' : 'Sound off';
+    }
+
+    var forcedMobile = null;
+
+    function shouldShowMobileControls() {
+      if (forcedMobile === true) return true;
+      if (forcedMobile === false) return false;
+      try {
+        var params = new URLSearchParams(window.location.search);
+        if (params.get('mobile') === '1') return true;
+        if (params.get('mobile') === '0') return false;
+      } catch (err) {}
+      try {
+        if (window.parent && window.parent !== window) {
+          var parentBody = window.parent.document.body;
+          if (parentBody && parentBody.classList.contains('mobile-layout')) return true;
+          if (window.parent.matchMedia('(pointer: coarse), (max-width: 900px)').matches) return true;
+          return false;
+        }
+      } catch (err) {}
+      return /Mobi|Android|iPhone|iPod/i.test(navigator.userAgent || '');
+    }
+
+    function syncMobileControlsVisibility() {
+      var panel = document.getElementById('mobileControls');
+      if (!panel) return;
+      panel.classList.toggle('is-visible', shouldShowMobileControls());
+    }
+
+    window.addEventListener('message', function (event) {
+      if (!event.data || event.data.type !== 'notespro-pinball-mobile') return;
+      forcedMobile = !!event.data.mobile;
+      syncMobileControlsVisibility();
+    });
+
+    function initMobileControls() {
+      var panel = document.getElementById('mobileControls');
+      if (!panel) return;
+      syncMobileControlsVisibility();
+      if (panel.dataset.bound === '1') return;
+      panel.dataset.bound = '1';
+
+      var soundBtn = panel.querySelector('[data-action="sound"]');
+      if (soundBtn) soundBtn.textContent = GAME_SOUND_ENABLED ? 'Sound on' : 'Sound off';
+
+      function bindHoldButton(btn, downBinding, upBinding) {
+        var active = false;
+        function press() {
+          if (active) return;
+          active = true;
+          btn.classList.add('is-active');
+          dispatchCanvasKey('keydown', downBinding);
+        }
+        function release() {
+          if (!active) return;
+          active = false;
+          btn.classList.remove('is-active');
+          dispatchCanvasKey('keyup', upBinding || downBinding);
+        }
+        btn.addEventListener('pointerdown', function (event) {
+          event.preventDefault();
+          event.stopPropagation();
+          try { btn.setPointerCapture(event.pointerId); } catch (err) {}
+          press();
+        });
+        btn.addEventListener('pointerup', function (event) {
+          event.preventDefault();
+          release();
+        });
+        btn.addEventListener('pointercancel', release);
+        btn.addEventListener('lostpointercapture', release);
+        btn.addEventListener('contextmenu', function (event) { event.preventDefault(); });
+      }
+
+      function bindTapButton(btn, handler) {
+        btn.addEventListener('pointerdown', function (event) {
+          event.preventDefault();
+          btn.classList.add('is-active');
+        });
+        btn.addEventListener('pointerup', function (event) {
+          event.preventDefault();
+          btn.classList.remove('is-active');
+          handler();
+        });
+        btn.addEventListener('pointercancel', function () {
+          btn.classList.remove('is-active');
+        });
+        btn.addEventListener('contextmenu', function (event) { event.preventDefault(); });
+      }
+
+      var leftBtn = panel.querySelector('[data-action="left"]');
+      var rightBtn = panel.querySelector('[data-action="right"]');
+      var launchBtn = panel.querySelector('[data-action="launch"]');
+      var restartBtn = panel.querySelector('[data-action="restart"]');
+
+      if (leftBtn) bindHoldButton(leftBtn, KEY_BINDINGS.left);
+      if (rightBtn) bindHoldButton(rightBtn, KEY_BINDINGS.right);
+      if (launchBtn) {
+        bindHoldButton(launchBtn, KEY_BINDINGS.launch);
+      }
+      if (restartBtn) {
+        bindTapButton(restartBtn, function () {
+          dispatchCanvasKey('keydown', KEY_BINDINGS.restartDown);
+          dispatchCanvasKey('keyup', KEY_BINDINGS.restartUp);
+        });
+      }
+      if (soundBtn) {
+        bindTapButton(soundBtn, toggleSound);
+      }
+    }
+
+    function bindCanvasSideFlippers() {
+      var canvas = getCanvas();
+      if (!canvas || canvas.dataset.sideFlippers === '1') return;
+      canvas.dataset.sideFlippers = '1';
+      var pointerSides = {};
+      var held = { left: 0, right: 0 };
+
+      function sideFromEvent(event) {
+        var rect = canvas.getBoundingClientRect();
+        var x = (event.clientX != null ? event.clientX : 0) - rect.left;
+        return x >= rect.width * 0.5 ? 'right' : 'left';
+      }
+
+      function bindingFor(side) {
+        return side === 'right' ? KEY_BINDINGS.right : KEY_BINDINGS.left;
+      }
+
+      function addHold(side) {
+        if (!side) return;
+        held[side] += 1;
+        if (held[side] === 1) dispatchCanvasKey('keydown', bindingFor(side));
+      }
+
+      function removeHold(side) {
+        if (!side || held[side] <= 0) return;
+        held[side] -= 1;
+        if (held[side] === 0) dispatchCanvasKey('keyup', bindingFor(side));
+      }
+
+      canvas.addEventListener('pointerdown', function (event) {
+        if (event.button != null && event.button !== 0) return;
+        var side = sideFromEvent(event);
+        pointerSides[event.pointerId] = side;
+        try { canvas.setPointerCapture(event.pointerId); } catch (err) {}
+        addHold(side);
+      });
+      canvas.addEventListener('pointermove', function (event) {
+        if (pointerSides[event.pointerId] == null) return;
+        var next = sideFromEvent(event);
+        var prev = pointerSides[event.pointerId];
+        if (next === prev) return;
+        pointerSides[event.pointerId] = next;
+        removeHold(prev);
+        addHold(next);
+      });
+      function endPointer(event) {
+        var prev = pointerSides[event.pointerId];
+        if (prev == null) return;
+        delete pointerSides[event.pointerId];
+        removeHold(prev);
+      }
+      canvas.addEventListener('pointerup', endPointer);
+      canvas.addEventListener('pointercancel', endPointer);
+      canvas.addEventListener('lostpointercapture', endPointer);
+    }
+
     var Module = {
       preRun: [],
       postRun: [function () {
@@ -66,6 +386,9 @@
         document.getElementById('canvas').addEventListener('contextmenu', function (event) {
           event.preventDefault();
         });
+        initMobileControls();
+        bindCanvasSideFlippers();
+        getCanvas() && getCanvas().focus();
       }],
       print: function () {},
       printErr: function () {},
@@ -86,49 +409,42 @@
 
     document.addEventListener('keydown', function (event) {
       if (event.key === 'c' || event.key === 'C') {
-        var keySlash = new KeyboardEvent('keydown', {
-          key: '/', code: 'Slash', which: 191, keyCode: 191,
-          shiftKey: false, ctrlKey: false, altKey: false, metaKey: false,
-          bubbles: true, cancelable: true,
-        });
-        document.getElementById('canvas').dispatchEvent(keySlash);
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        dispatchCanvasKey('keydown', KEY_BINDINGS.right);
       } else if (event.key === 'r' || event.key === 'R') {
-        var keyF2 = new KeyboardEvent('keydown', {
-          key: 'F2', code: 'F2', which: 113, keyCode: 113,
-          shiftKey: false, ctrlKey: false, altKey: false, metaKey: false,
-          bubbles: true, cancelable: true,
-        });
-        document.getElementById('canvas').dispatchEvent(keyF2);
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        dispatchCanvasKey('keydown', KEY_BINDINGS.restartDown);
       } else if (event.key === 't' || event.key === 'T') {
-        GAME_SOUND_ENABLED = !GAME_SOUND_ENABLED;
-        document.cookie = 'pinballspacecadetGAME_SOUND_ENABLED=' + GAME_SOUND_ENABLED + '; path=/';
-        if (Module.SDL2 && Module.SDL2.audioContext) {
-          if (GAME_SOUND_ENABLED) Module.SDL2.audioContext.resume();
-          else Module.SDL2.audioContext.suspend();
-        }
+        toggleSound();
       }
-    });
+    }, true);
 
     document.addEventListener('keyup', function (event) {
       if (event.key === 'c' || event.key === 'C') {
-        var keySlash = new KeyboardEvent('keyup', {
-          key: '/', code: 'Slash', which: 191, keyCode: 191,
-          shiftKey: false, ctrlKey: false, altKey: false, metaKey: false,
-          bubbles: true, cancelable: true,
-        });
-        document.getElementById('canvas').dispatchEvent(keySlash);
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        dispatchCanvasKey('keyup', KEY_BINDINGS.right);
       } else if (event.key === 'r' || event.key === 'R') {
-        var keyF2 = new KeyboardEvent('keyup', {
-          key: 'F2', code: 'F2', which: 113, keyCode: 113,
-          shiftKey: false, ctrlKey: false, altKey: false, metaKey: false,
-          bubbles: true, cancelable: true,
-        });
-        document.getElementById('canvas').dispatchEvent(keyF2);
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        dispatchCanvasKey('keyup', KEY_BINDINGS.restartUp);
       }
-    });
+    }, true);
 
-    window.addEventListener('resize', resizeCanvas);
+    window.addEventListener('resize', function () {
+      resizeCanvas();
+      syncMobileControlsVisibility();
+    });
+    window.addEventListener('orientationchange', syncMobileControlsVisibility);
     resizeCanvas();
+    initMobileControls();
+    try {
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage({ type: 'notespro-pinball-mobile-request' }, '*');
+      }
+    } catch (err) {}
 
     var scriptGame = document.createElement('script');
     scriptGame.src = 'https://cdn.jsdelivr.net/gh/lrusso/3DPinballSpaceCadet@main/3DPinballSpaceCadet.js';
