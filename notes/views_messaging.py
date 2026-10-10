@@ -3,6 +3,7 @@ from urllib.parse import quote
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.db.models import Q
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, render
@@ -65,6 +66,11 @@ def _resolve_mail_recipients(workspace, sender, recipient_ids):
 
 def _mail_message_to_dict(message, *, user, box):
     recipient = message.recipients.filter(user=user).first()
+    shown_box = box
+    recipients = []
+    if box == 'all':
+        recipients = [row.user.username for row in message.recipients.all()]
+        shown_box = 'sent' if message.sender_id == user.id else 'inbox'
     return {
         'id': message.id,
         'subject': message.subject,
@@ -72,8 +78,9 @@ def _mail_message_to_dict(message, *, user, box):
         'sender': message.sender.username,
         'sender_id': message.sender_id,
         'created_at': message.created_at.isoformat(),
-        'read': bool(recipient and recipient.read_at),
-        'box': box,
+        'read': bool(recipient and recipient.read_at) if shown_box != 'sent' else True,
+        'box': shown_box,
+        'recipients': recipients,
     }
 
 
@@ -164,7 +171,17 @@ def workspace_mail_list(request, workspace_id):
     workspace = _workspace_for_user(request.user, workspace_id)
     box = request.GET.get('box', 'inbox')
 
-    if box == 'sent':
+    if box == 'all':
+        messages = (
+            WorkspaceMailMessage.objects.filter(workspace=workspace)
+            .filter(Q(sender=request.user) | Q(recipients__user=request.user))
+            .select_related('sender')
+            .prefetch_related('recipients__user')
+            .distinct()
+            .order_by('-created_at')[:500]
+        )
+        data = [_mail_message_to_dict(m, user=request.user, box='all') for m in messages]
+    elif box == 'sent':
         messages = WorkspaceMailMessage.objects.filter(
             workspace=workspace, sender=request.user,
         ).prefetch_related('recipients__user').order_by('-created_at')[:100]
@@ -281,7 +298,8 @@ def workspace_chat_list(request, workspace_id):
             })
         except (TypeError, ValueError):
             pass
-    messages = list(reversed(list(qs.order_by('-created_at')[:80])))
+    limit = 500 if request.GET.get('all') in ('1', 'true', 'yes') else 80
+    messages = list(reversed(list(qs.order_by('-created_at')[:limit])))
     return JsonResponse({
         'status': 'success',
         'messages': [_chat_to_dict(m) for m in messages],

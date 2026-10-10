@@ -949,7 +949,7 @@
       `<div class="shop-heading">`,
       `<div class="shop-title">${escapeHtml(spec.title)}</div>`,
       `<div class="shop-meta">${options.askPayment
-        ? `${spec.kind === 'sw' ? 'Download or add to cart · ' : 'Add to cart · '}checkout, then choose PayPal, Visa, or Mastercard`
+        ? `${spec.kind === 'sw' ? 'Download or add to cart · ' : 'Add to cart · '}add your email, then choose PayPal, Visa, or Mastercard`
         : `${spec.kind === 'sw' ? 'Download or add to cart · ' : 'Add to cart · '}checkout, then pay with PayPal, Visa, or Mastercard · Visa/Mastercard transfer to the Settings Konto · sent by ${escapeHtml(viaLabel)} to ${escapeHtml(toLabel)}`}</div>`,
       payBadgeHtml,
       `</div>`,
@@ -971,6 +971,9 @@
       `<ul class="shop-cart-lines"></ul>`,
       spec.sendTo || spec.billTo
         ? `<div class="shop-cart-addresses">${spec.sendTo ? `<p><span>Sent to</span> ${escapeHtml(spec.sendTo)}</p>` : ''}${spec.billTo || spec.sendTo ? `<p><span>Bill to</span> ${escapeHtml(spec.billTo || spec.sendTo)}</p>` : ''}</div>`
+        : '',
+      options.askPayment
+        ? `<label class="shop-note-field">Your email <input type="email" class="shop-note-input" data-shop-email maxlength="120" placeholder="you@example.com" autocomplete="email"></label>`
         : '',
       `<label class="shop-note-field">Note`,
       `<input type="text" class="shop-note-input" data-shop-note maxlength="120" placeholder="Delivery or desk">`,
@@ -1037,6 +1040,10 @@
     });
     el.querySelector('.shop-settings')?.addEventListener('click', (event) => event.stopPropagation());
     el.querySelector('.shop-archive')?.addEventListener('click', (event) => event.stopPropagation());
+
+    const emailInput = el.querySelector('[data-shop-email]');
+    emailInput?.addEventListener('click', (event) => event.stopPropagation());
+    emailInput?.addEventListener('keydown', (event) => event.stopPropagation());
 
     const noteInput = el.querySelector('[data-shop-note]');
     noteInput?.addEventListener('click', (event) => event.stopPropagation());

@@ -31,7 +31,7 @@
     
     <div class="topbar-actions">
       {% if public_view %}
-      <a id="public-login-link" class="btn btn-sm btn-outline-light" href="{% url 'login' %}?next={{ request.get_full_path|urlencode }}">Login</a>
+      <a id="public-login-link" class="btn btn-sm btn-outline-light" href="{% url 'login' %}{% if public_login_next %}?next={{ public_login_next|urlencode }}{% endif %}">Login</a>
       {% else %}
       <button id="mobile-topbar-menu-toggle" class="btn btn-sm btn-outline-light mobile-topbar-menu-btn" type="button" aria-label="App menu" aria-expanded="false" aria-controls="mobile-topbar-menu">
         <span aria-hidden="true">⋮</span>
@@ -237,6 +237,58 @@
       </div>
     </section>
 
+    <section id="chat-table-wrap" class="issues-table-wrap d-none" aria-label="All chat">
+      <div class="issues-table-head">
+        <div>
+          <h2 class="issues-table-heading">Chat</h2>
+          <p id="chat-table-count" class="issues-table-count"></p>
+        </div>
+        <div class="issues-table-tools">
+          <input type="search" id="chat-table-search" class="form-control form-control-sm" placeholder="Search chat…" autocomplete="off" aria-label="Search chat">
+          <button type="button" id="chat-table-close-btn" class="btn btn-sm btn-outline-light">Close</button>
+        </div>
+      </div>
+      <div class="issues-table-scroll">
+        <table class="issues-table">
+          <thead>
+            <tr>
+              <th data-sort="created_at" scope="col">When</th>
+              <th data-sort="sender" scope="col">From</th>
+              <th data-sort="body" scope="col">Message</th>
+            </tr>
+          </thead>
+          <tbody id="chat-table-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="mail-table-wrap" class="issues-table-wrap d-none" aria-label="All mail">
+      <div class="issues-table-head">
+        <div>
+          <h2 class="issues-table-heading">Mail</h2>
+          <p id="mail-table-count" class="issues-table-count"></p>
+        </div>
+        <div class="issues-table-tools">
+          <input type="search" id="mail-table-search" class="form-control form-control-sm" placeholder="Search mail…" autocomplete="off" aria-label="Search mail">
+          <button type="button" id="mail-table-close-btn" class="btn btn-sm btn-outline-light">Close</button>
+        </div>
+      </div>
+      <div class="issues-table-scroll">
+        <table class="issues-table">
+          <thead>
+            <tr>
+              <th data-sort="created_at" scope="col">When</th>
+              <th data-sort="box" scope="col">Box</th>
+              <th data-sort="sender" scope="col">From</th>
+              <th data-sort="recipients" scope="col">To</th>
+              <th data-sort="subject" scope="col">Subject</th>
+            </tr>
+          </thead>
+          <tbody id="mail-table-body"></tbody>
+        </table>
+      </div>
+    </section>
+
     <section class="editor-wrap">
       <div id="markdown-wrap" class="editor-panel hidden">
         <div id="editor-find-bar" class="editor-find-bar d-none" aria-label="Find and replace">
@@ -306,7 +358,10 @@
         <li class="nav-item"><button class="nav-link py-1" type="button" data-chat-mode="workspace">Group</button></li>
         <li class="nav-item"><button class="nav-link active py-1" type="button" data-chat-mode="private">Private <span class="text-muted">🔒</span> <span id="dm-unread-badge" class="badge bg-success d-none">0</span></button></li>
       </ul>
-      <button type="button" id="chat-clear-all-btn" class="btn btn-sm btn-outline-danger w-100 mb-2">Clear all</button>
+      <div class="d-flex gap-1 mb-2">
+        <button type="button" id="chat-all-btn" class="btn btn-sm btn-outline-light flex-grow-1" title="Open all group chat as a table">All chat</button>
+        <button type="button" id="chat-clear-all-btn" class="btn btn-sm btn-outline-danger flex-grow-1">Clear all</button>
+      </div>
 
       <div id="dm-list-view" class="dm-list-view">
         <div class="dm-list-header">
@@ -352,7 +407,10 @@
         <li class="nav-item"><button class="nav-link py-1" type="button" data-mail-box="sent">Sent</button></li>
         <li class="nav-item"><button class="nav-link py-1" type="button" data-mail-box="compose">Compose</button></li>
       </ul>
-      <button type="button" id="mail-clear-all-btn" class="btn btn-sm btn-outline-danger w-100 mb-2">Clear all</button>
+      <div class="d-flex gap-1 mb-2">
+        <button type="button" id="mail-all-btn" class="btn btn-sm btn-outline-light flex-grow-1" title="Open all mail as a table">All mail</button>
+        <button type="button" id="mail-clear-all-btn" class="btn btn-sm btn-outline-danger flex-grow-1">Clear all</button>
+      </div>
       <div id="mail-list-view">
         <div id="mail-list" class="mail-list"></div>
       </div>
@@ -470,6 +528,7 @@
         isSuperuser: {% if user.is_superuser %}true{% else %}false{% endif %},
         isGroupAdmin: {% if is_group_admin %}true{% else %}false{% endif %},
         canWrite: {% if can_write_workspace %}true{% else %}false{% endif %},
+        openEditing: {% if open_editing %}true{% else %}false{% endif %},
         localFileOpenEnabled: {{ local_file_open_enabled|yesno:"true,false" }},
         tagWebSocketEnabled: {{ tag_websocket_enabled|yesno:"true,false" }},
         allowGames: {{ allow_games|yesno:"true,false" }},
@@ -967,6 +1026,38 @@
   </div>
 </div>
 
+<!-- Mail / chat message dialog -->
+<div class="modal fade dashboard-modal-root" id="message-modal" tabindex="-1" aria-labelledby="message-modal-title" aria-hidden="true" data-bs-theme="dark">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content dashboard-modal">
+      <div class="modal-header">
+        <h5 class="modal-title" id="message-modal-title">Mail</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div id="message-modal-meta" class="small text-muted mb-2"></div>
+        <div id="message-modal-from-wrap">
+          <label class="form-label small fw-semibold" for="message-modal-from">From</label>
+          <input type="text" class="form-control form-control-sm mb-2" id="message-modal-from" readonly>
+        </div>
+        <div id="message-modal-to-wrap">
+          <label class="form-label small fw-semibold" for="message-modal-to">To</label>
+          <input type="text" class="form-control form-control-sm mb-2" id="message-modal-to" readonly>
+        </div>
+        <div id="message-modal-subject-wrap">
+          <label class="form-label small fw-semibold" for="message-modal-subject">Subject</label>
+          <input type="text" class="form-control form-control-sm mb-2" id="message-modal-subject" readonly>
+        </div>
+        <label class="form-label small fw-semibold" for="message-modal-body">Message</label>
+        <textarea id="message-modal-body" class="form-control form-control-sm" rows="8" readonly></textarea>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-sm btn-outline-light" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Heading / paragraph dialog (double-click in preview) -->
 <div class="modal fade dashboard-modal-root" id="text-block-modal" tabindex="-1" aria-labelledby="text-block-modal-title" aria-hidden="true" data-bs-theme="dark">
   <div class="modal-dialog modal-dialog-centered modal-lg">
@@ -1207,7 +1298,12 @@
           <input class="form-check-input" type="checkbox" id="page-settings-root">
           <label class="form-check-label" for="page-settings-root">Show at site root</label>
         </div>
-        <p class="small dashboard-modal-hint mt-2 mb-0">Visitors who are not signed in see this page at the site address. Signed-in users still open the notes app there. Only one page can be the root.</p>
+        <p class="small dashboard-modal-hint mt-2 mb-0">Visitors who are not signed in see this page at the site address. Login opens it in the editor for people who can change it. Only one page can be the root.</p>
+        <div class="form-check mt-3">
+          <input class="form-check-input" type="checkbox" id="page-settings-ws">
+          <label class="form-check-label" for="page-settings-ws">WebSocket without login</label>
+        </div>
+        <p class="small dashboard-modal-hint mt-2 mb-0">Visitors on the site root can use the live tag connection without signing in. That connection only includes pages that are shown without login.</p>
         {% endif %}
         <p class="small dashboard-modal-hint mt-2 mb-0 d-none" id="page-settings-public-pending">Save to publish the link.</p>
         <div id="page-settings-public-link" class="mt-2 d-none">
@@ -1404,6 +1500,7 @@
 </script>
 <script type="module" src="{% static 'notes/three-global.js' %}?v={% now 'YmdHis' %}"></script>
 <script src="{% static 'notes/gallery.js' %}?v={% now 'YmdHis' %}"></script>
+<script src="{% static 'notes/training.js' %}?v={% now 'YmdHis' %}"></script>
 <script src="{% static 'notes/photoview.js' %}?v={% now 'YmdHis' %}"></script>
 <script src="{% static 'notes/rollercoast.js' %}?v={% now 'YmdHis' %}"></script>
 <script src="{% static 'notes/scooter.js' %}?v={% now 'YmdHis' %}"></script>
@@ -1460,6 +1557,13 @@
 
 
 <!-- Toast-Container (Fest positioniert) -->
+<aside id="arrival-list" class="arrival-list d-none" aria-live="polite" aria-label="New mail and chat">
+  <div class="arrival-list-head">
+    <strong>New</strong>
+    <button type="button" id="arrival-list-close" class="btn btn-sm btn-outline-light">Close</button>
+  </div>
+  <div id="arrival-list-body"></div>
+</aside>
 <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 1055;">
   <div id="action-toast" class="toast align-items-center text-white border-0 shadow" role="alert" aria-live="assertive" aria-atomic="true">
     <div class="d-flex">

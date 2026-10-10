@@ -431,7 +431,21 @@ class Page(models.Model):
             'tags': self._setting_bool(raw.get('tags'), True),
             'public': self._setting_bool(raw.get('public'), False),
             'root': self._setting_bool(raw.get('root'), False),
+            'ws': self._setting_bool(raw.get('ws'), False),
         }
+
+    @classmethod
+    def public_root_ws_enabled(cls, workspace_id):
+        """Anonymous tag WebSocket is allowed only for a published site-root page."""
+        return cls.objects.filter(
+            workspace_id=workspace_id,
+            deleted=False,
+            is_folder=False,
+            workspace__deleted=False,
+            settings__root=True,
+            settings__public=True,
+            settings__ws=True,
+        ).exists()
 
     def release_other_site_roots(self):
         others = Page.objects.exclude(pk=self.pk).filter(settings__root=True)
@@ -440,6 +454,7 @@ class Page(models.Model):
             if not data.get('root'):
                 continue
             data['root'] = False
+            data['ws'] = False
             other.settings = data
             other.save(update_fields=['settings'])
 

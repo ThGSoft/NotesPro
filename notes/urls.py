@@ -22,6 +22,16 @@ urlpatterns = [
         views.public_shop_order,
         name='public_shop_order',
     ),
+    path(
+        'api/public/<str:owner>/<slug:workspace_slug>/<slug:page_slug>/vote/',
+        views.public_vote,
+        name='public_vote',
+    ),
+    path(
+        'api/public/<str:owner>/<slug:workspace_slug>/<slug:page_slug>/noteslist/',
+        views.public_noteslist,
+        name='public_noteslist',
+    ),
     path('sw.js', views.service_worker, name='service_worker'),
     path('pixel/', ip_logging.visit_pixel, name='visit_pixel'),
     path('favicon.ico', RedirectView.as_view(url=settings.STATIC_URL + 'images/favicon.ico')),

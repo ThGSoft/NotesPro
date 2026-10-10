@@ -116,6 +116,13 @@
   const dmSeenClientIds = new Set();
   const dmSeenCiphertexts = new Set();
   let mailBox = 'inbox';
+  let mailArrivalReady = false;
+  let chatArrivalReady = false;
+  let dmArrivalReady = false;
+  const mailArrivalSeenIds = new Set();
+  const dmArrivalLastIds = new Map();
+  let arrivalItems = [];
+  let arrivalTimer = null;
   let tagWs = null;
   let tagWsReconnectTimer = null;
   let tagWsConnectFailures = 0;
@@ -496,6 +503,8 @@
     const titlePreview = document.getElementById('page-title-preview');
     const slugEl = document.getElementById('page-slug');
     if (issuesTableOpen) hideIssuesTable();
+    if (chatTableOpen) hideChatTable();
+    if (mailTableOpen) hideMailTable();
     if (titleInput) titleInput.value = currentPage.title || '';
     if (titlePreview && mainView !== 'keep') titlePreview.textContent = currentPage.title || 'Untitled';
     if (slugEl) slugEl.textContent = currentPage.slug || '';
@@ -919,6 +928,14 @@
       return;
     }
     if (data.type === 'tags_updated') {
+      if (publicView) {
+        const pageId = data.page_id;
+        const currentId = window.APP_BOOT?.publicPage?.id;
+        if (pageId == null || currentId == null || String(pageId) === String(currentId)) {
+          window.location.reload();
+        }
+        return;
+      }
       const query = parseTagQuery(document.getElementById('tag-search')?.value);
       if (query) requestTagList(query);
       if (activeTagFilter) requestTagPages(activeTagFilter, query);
@@ -2541,7 +2558,7 @@
   }
 
   function isPreviewRichBlock(el) {
-    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .form-widget, .mindmap-block, .md-news, .md-python, .voice-block, .jukebox-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .page-tags');
+    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .form-widget, .mindmap-block, .md-news, .md-python, .voice-block, .jukebox-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .gallery-block, .training-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .page-tags');
   }
 
   function getPreviewBlockSourceLine(node) {
@@ -4211,7 +4228,7 @@
     const show = Boolean(
       userCanEdit
       && mainView !== 'keep'
-      && !issuesTableOpen
+      && !anyRecordTableOpen()
       && currentPage
       && !currentPage.is_folder,
     );
@@ -4335,6 +4352,8 @@
     if (publicBox) publicBox.checked = currentPage?.settings?.public === true;
     const rootBox = document.getElementById('page-settings-root');
     if (rootBox) rootBox.checked = currentPage?.settings?.root === true;
+    const wsBox = document.getElementById('page-settings-ws');
+    if (wsBox) wsBox.checked = currentPage?.settings?.ws === true;
     syncPageSettingsPublicLink();
     pageSettingsTags = collectPageSettingsTags();
     const input = document.getElementById('page-settings-tag-input');
@@ -4362,10 +4381,18 @@
     const tags = !!document.getElementById('page-settings-tags-visible')?.checked;
     const isPublic = !!document.getElementById('page-settings-public')?.checked;
     const rootBox = document.getElementById('page-settings-root');
+    const wsBox = document.getElementById('page-settings-ws');
     const settings = { ...(currentPage.settings || {}), contents, tags, public: isPublic };
     if (rootBox) {
       settings.root = !!rootBox.checked;
       if (settings.root) settings.public = true;
+    }
+    if (wsBox) {
+      settings.ws = !!wsBox.checked;
+      if (settings.ws) {
+        settings.root = true;
+        settings.public = true;
+      }
     }
     const originalMd = currentPageMarkdownSource();
     const tagsChanged = pageSettingsTagsChanged(originalMd, pageSettingsTags);
@@ -4414,13 +4441,29 @@
     document.getElementById('page-settings-public')?.addEventListener('change', () => {
       const publicBox = document.getElementById('page-settings-public');
       const rootBox = document.getElementById('page-settings-root');
-      if (publicBox && !publicBox.checked && rootBox) rootBox.checked = false;
+      const wsBox = document.getElementById('page-settings-ws');
+      if (publicBox && !publicBox.checked) {
+        if (rootBox) rootBox.checked = false;
+        if (wsBox) wsBox.checked = false;
+      }
       syncPageSettingsPublicLink();
     });
     document.getElementById('page-settings-root')?.addEventListener('change', () => {
       const rootBox = document.getElementById('page-settings-root');
       const publicBox = document.getElementById('page-settings-public');
+      const wsBox = document.getElementById('page-settings-ws');
       if (rootBox?.checked && publicBox) publicBox.checked = true;
+      if (rootBox && !rootBox.checked && wsBox) wsBox.checked = false;
+      syncPageSettingsPublicLink();
+    });
+    document.getElementById('page-settings-ws')?.addEventListener('change', () => {
+      const wsBox = document.getElementById('page-settings-ws');
+      const rootBox = document.getElementById('page-settings-root');
+      const publicBox = document.getElementById('page-settings-public');
+      if (wsBox?.checked) {
+        if (rootBox) rootBox.checked = true;
+        if (publicBox) publicBox.checked = true;
+      }
       syncPageSettingsPublicLink();
     });
     document.getElementById('page-settings-public-copy')?.addEventListener('click', async () => {
@@ -7316,9 +7359,10 @@
       ? votes.some((name) => String(name).toLowerCase() === me)
       : !!item.selected;
     const group = `form-widget-${kind}-${formIndex}`;
+    const guestVote = kind === 'vote' && publicView && !editable;
     const choice = kind === 'enum'
       ? ''
-      : `<input type="radio" class="form-widget-choice" name="${escapeHtml(group)}"${selected ? ' checked' : ''}${editable ? '' : ' disabled'} aria-label="Choose ${escapeHtml(item.text || 'option')}">`;
+      : `<input type="radio" class="form-widget-choice" name="${escapeHtml(group)}"${selected ? ' checked' : ''}${editable || guestVote ? '' : ' disabled'} aria-label="Choose ${escapeHtml(item.text || 'option')}">`;
     const labelSpan = `<span class="form-widget-option-label">${escapeHtml(item.text || '') || '&nbsp;'}</span>`;
     const settingsEdit = editable && (kind === 'radio' || kind === 'enum');
     const label = settingsEdit
@@ -7382,6 +7426,9 @@
     const addBtn = editable && (kind === 'radio' || kind === 'vote' || kind === 'enum')
       ? '<button type="button" class="form-widget-add">+ Add option</button>'
       : '';
+    const guestEmail = kind === 'vote' && publicView && !editable
+      ? '<label class="form-widget-guest-email">Your email <input type="email" class="form-widget-email" maxlength="120" placeholder="you@example.com" autocomplete="email"></label>'
+      : '';
     const voteFoot = kind === 'vote' ? '<div class="form-widget-vote-foot"></div>' : '';
     const sheetAttrs = sheet
       ? ` data-form-scope="sheet" data-sheet-index="${sheet.sheetIndex}" data-row="${sheet.row}" data-col="${sheet.col}"`
@@ -7404,6 +7451,7 @@
       `<div class="form-widget form-widget--${escapeHtml(kind)}${colClass}${compactClass}${untitledClass}${editable ? ' form-widget--editable' : ''}" data-form-index="${escapeHtml(String(idx))}" data-form-kind="${escapeHtml(kind)}" data-form-title="${escapeHtml(customTitle)}" data-form-min="${escapeHtml(spec.min)}" data-form-max="${escapeHtml(spec.max)}" data-form-step="${escapeHtml(spec.step)}"${sheetAttrs}${colStyle}>`,
       header,
       body,
+      guestEmail,
       voteFoot,
       addBtn,
       '</div>',
@@ -7469,6 +7517,14 @@
     if (!preview) return;
     const votes = preview.querySelectorAll('.form-widget--vote');
     if (!votes.length) return;
+    const guestEmail = publicView ? rememberedGuestEmail() : '';
+    if (guestEmail) {
+      votes.forEach((block) => {
+        const input = block.querySelector('.form-widget-email');
+        if (input && !input.value) input.value = guestEmail;
+        block.querySelectorAll('.form-widget-option').forEach((row) => paintVoteRow(row, guestEmail));
+      });
+    }
     ensureFormVoteMembers().then(() => {
       preview.querySelectorAll('.form-widget--vote').forEach(refreshFormVoteFoot);
     });
@@ -9804,6 +9860,35 @@
     return true;
   }
 
+  function normalizeGuestEmail(value) {
+    const email = String(value || '').replace(/\s+/g, '').trim().toLowerCase().slice(0, 120);
+    if (!/^[^@\s|,;]+@[^@\s|,;]+\.[^@\s|,;]+$/.test(email)) return '';
+    return email;
+  }
+
+  function rememberedGuestEmail() {
+    try {
+      return normalizeGuestEmail(localStorage.getItem('notespro_guest_email') || '');
+    } catch (_) {
+      return '';
+    }
+  }
+
+  function rememberGuestEmail(email) {
+    const clean = normalizeGuestEmail(email);
+    if (!clean) return;
+    try { localStorage.setItem('notespro_guest_email', clean); } catch (_) { /* ignore */ }
+  }
+
+  function prefillGuestEmailInputs(root) {
+    if (!publicView) return;
+    const email = rememberedGuestEmail();
+    if (!email || !root) return;
+    root.querySelectorAll('[data-shop-email], .form-widget-email, [data-cl-email]').forEach((input) => {
+      if (!input.value) input.value = email;
+    });
+  }
+
   async function sendPublicShopOrder({ spec, cart, payment, buyerKonto } = {}) {
     const page = window.APP_BOOT?.publicPage || {};
     const owner = encodeURIComponent(page.owner || '');
@@ -9818,6 +9903,7 @@
       {
         payment,
         buyer_konto: buyerKonto || '',
+        email: cart?.email || '',
         note: cart?.note || '',
         title: spec?.title || '',
         currency: spec?.currency || '',
@@ -9838,6 +9924,18 @@
     if (!cart?.lines?.length) {
       showToast('The cart is empty.', 'warning');
       return false;
+    }
+    let guestEmail = '';
+    if (publicView) {
+      guestEmail = normalizeGuestEmail(el?.querySelector('[data-shop-email]')?.value);
+      if (!guestEmail) {
+        showToast('Enter your email to check out.', 'warning');
+        el?.querySelector('[data-shop-email]')?.focus();
+        return false;
+      }
+      rememberGuestEmail(guestEmail);
+      const emailInput = el?.querySelector('[data-shop-email]');
+      if (emailInput) emailInput.value = guestEmail;
     }
     const merchant = getShopMerchantSettings();
     const pay = String(payment || '').toLowerCase();
@@ -9872,7 +9970,12 @@
     try {
       const paymentLabel = window.NotesProShop?.paymentLabel?.(pay) || pay;
       if (publicView) {
-        await sendPublicShopOrder({ spec, cart, payment: pay, buyerKonto: fromKonto });
+        await sendPublicShopOrder({
+          spec,
+          cart: { ...cart, email: guestEmail },
+          payment: pay,
+          buyerKonto: fromKonto,
+        });
         if (pay === 'paypal') {
           const url = window.NotesProShop?.paypalCheckoutUrl?.(merchant.paypal, {
             amount: cart.total,
@@ -10033,6 +10136,7 @@
         }
         : null,
     });
+    prefillGuestEmailInputs(root || document);
   }
 
   const CRAIGSLIST_BLOCK_RE = /```(?:noteslist|notes-list|craigslist|classifieds|clist|ads)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
@@ -10055,6 +10159,7 @@
             locale: getAppLocale(),
             currentUser: currentUserName || '',
             canEdit: Boolean(userCanEdit),
+            askEmail: publicView && !currentUserId,
           })
         : `<div class="cl-block cl-block--error">${escapeHtml(window.NotesProCraigslist?.t?.('fallback') || 'NotesList')} engine not loaded.</div>`;
       return wrapRichPreviewBlock(html);
@@ -10104,7 +10209,67 @@
     });
   }
 
-  async function sendCraigslistReply({ spec, item, btn, to, text } = {}) {
+  function publicNotesListPath() {
+    const page = window.APP_BOOT?.publicPage || {};
+    const owner = encodeURIComponent(page.owner || '');
+    const workspaceSlug = encodeURIComponent(page.workspace_slug || '');
+    const pageSlug = encodeURIComponent(page.slug || '');
+    if (!owner || !workspaceSlug || !pageSlug) return '';
+    return `api/public/${owner}/${workspaceSlug}/${pageSlug}/noteslist/`;
+  }
+
+  function guestNotesEmail(value) {
+    const email = normalizeGuestEmail(value || rememberedGuestEmail());
+    return email;
+  }
+
+  async function sendCraigslistReply({ spec, item, btn, to, text, email } = {}) {
+    if (publicView && !currentUserId) {
+      const engine = window.NotesProCraigslist;
+      const guestEmail = guestNotesEmail(email);
+      if (!guestEmail) {
+        showToast('Enter your email to reply.', 'warning');
+        return false;
+      }
+      rememberGuestEmail(guestEmail);
+      const bodyText = String(text || '').trim();
+      if (!item?.title || !bodyText) {
+        showToast(engine?.t?.('errReplyEmpty') || 'Enter a reply.', 'warning');
+        return false;
+      }
+      const path = publicNotesListPath();
+      if (!path) {
+        showToast('This notes list link is missing a page address.', 'warning');
+        return false;
+      }
+      if (btn) {
+        btn.disabled = true;
+        btn.classList.add('is-sending');
+      }
+      try {
+        const toList = String(to || '').split(/[,+\s]+/).map((part) => part.trim()).filter(Boolean);
+        await api(path, 'POST', {
+          action: 'reply',
+          email: guestEmail,
+          board: spec?.title || spec?.city || '',
+          title: item.title,
+          price: item.price || '',
+          location: item.location || '',
+          text: bodyText,
+          to: toList.length ? toList : ['all'],
+        });
+        showToast(engine?.t?.('toastReply', { title: item.title }) || `Sent reply for “${item.title}”.`, 'success');
+        return true;
+      } catch (err) {
+        showToast(err.message || engine?.t?.('errReply') || 'Could not send classifieds reply.', 'danger');
+        return false;
+      } finally {
+        if (btn) {
+          btn.classList.remove('is-sending');
+          btn.disabled = false;
+        }
+      }
+    }
     if (guestMustSignIn('Sign in to reply.')) return false;
     const engine = window.NotesProCraigslist;
     if (!item?.title) return false;
@@ -10144,7 +10309,74 @@
     }
   }
 
-  async function sendCraigslistAddItem({ spec, el, btn, to, category, title, price, location, description, until, text } = {}) {
+  async function sendCraigslistAddItem({ spec, el, btn, to, category, title, price, location, description, until, text, email } = {}) {
+    const enginePreview = window.NotesProCraigslist;
+    if (publicView && !currentUserId) {
+      const guestEmail = guestNotesEmail(email);
+      if (!guestEmail) {
+        showToast('Enter your email to add a listing.', 'warning');
+        return false;
+      }
+      rememberGuestEmail(guestEmail);
+      const listingTitle = String(title || '').trim();
+      const listingUntil = String(until || '').trim();
+      if (!listingTitle) {
+        showToast(enginePreview?.t?.('errEmpty') || 'Enter a title.', 'warning');
+        return false;
+      }
+      if (enginePreview?.isUntilInRange && listingUntil && !enginePreview.isUntilInRange(listingUntil)) {
+        showToast(enginePreview?.t?.('errUntil') || 'Choose an end date within one month.', 'warning');
+        return false;
+      }
+      const path = publicNotesListPath();
+      if (!path) {
+        showToast('This notes list link is missing a page address.', 'warning');
+        return false;
+      }
+      const listIndex = parseInt(el?.dataset?.clIndex, 10);
+      if (!Number.isFinite(listIndex)) return false;
+      if (btn) {
+        btn.disabled = true;
+        btn.classList.add('is-sending');
+      }
+      try {
+        const toList = String(to || '').split(/[,+\s]+/).map((part) => part.trim()).filter(Boolean);
+        const data = await api(path, 'POST', {
+          action: 'add',
+          email: guestEmail,
+          list_index: listIndex,
+          board: spec?.title || spec?.city || '',
+          category: String(category || '').trim(),
+          title: listingTitle,
+          price: String(price || '').trim(),
+          location: String(location || '').trim(),
+          description: String(description || text || '').trim(),
+          until: listingUntil,
+          to: toList.length ? toList : (spec?.to || ['all']),
+        });
+        if (data?.markdown_content) {
+          capturePreviewScrollPosition();
+          if (currentPage) currentPage.markdown_content = data.markdown_content;
+          if (easyMDE && easyMDE.value() !== data.markdown_content) {
+            suppressPreviewRefresh += 1;
+            try { easyMDE.value(data.markdown_content); } finally {
+              suppressPreviewRefresh = Math.max(0, suppressPreviewRefresh - 1);
+            }
+          }
+          renderPreview();
+        }
+        showToast(enginePreview?.t?.('toastAdd') || 'Sent new listing.', 'success');
+        return true;
+      } catch (err) {
+        showToast(err.message || enginePreview?.t?.('errAdd') || 'Could not send listing.', 'danger');
+        return false;
+      } finally {
+        if (btn) {
+          btn.classList.remove('is-sending');
+          btn.disabled = false;
+        }
+      }
+    }
     if (guestMustSignIn('Sign in to add a listing.')) return false;
     const engine = window.NotesProCraigslist;
     const listingTitle = String(title || '').trim();
@@ -10299,6 +10531,7 @@
       onEdit: (payload) => saveCraigslistItem(payload),
       fillReplyTo: (input) => fillCraigslistReplyTo(input),
     });
+    prefillGuestEmailInputs(root || document);
   }
 
   function appendShopOrderToPageArchive(fence) {
@@ -10570,6 +10803,115 @@
           ? async ({ drive, photos }) => {
             const oldMarkdown = easyMDE.value();
             const updated = updateGalleryInMarkdown(oldMarkdown, galleryIndex, { drive, photos });
+            if (updated === oldMarkdown) return;
+            easyMDE.value(updated);
+            scheduleSave();
+            schedulePreviewRefresh();
+          }
+          : null,
+      });
+    });
+  }
+
+  const TRAINING_BLOCK_RE = /```training(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function updateTrainingInMarkdown(markdown, trainingIndex, update) {
+    const engine = window.NotesProTraining;
+    if (!engine) return markdown;
+    let idx = 0;
+    const re = /```training(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+    return String(markdown || '').replace(re, (match, fenceAttrs, content = '') => {
+      const thisIndex = idx;
+      idx += 1;
+      if (thisIndex !== trainingIndex) return match;
+      const cfg = engine.parseFenceAttrs(fenceAttrs || '');
+      let steps = engine.parseSteps(content || '', cfg).filter((step) => step.src);
+      const additions = [];
+      if (update.addImage) {
+        additions.push({
+          src: update.addImage,
+          label: update.label || `Photo ${steps.length + 1}`,
+          seconds: update.seconds,
+        });
+      }
+      if (Array.isArray(update.photos)) {
+        update.photos.forEach((photo) => {
+          if (!photo?.src) return;
+          additions.push({
+            src: photo.src,
+            label: photo.label || photo.title || 'Photo',
+            seconds: photo.seconds,
+          });
+        });
+      }
+      if (additions.length) {
+        const next = steps.concat(additions.map((step, offset) => (
+          engine.normalizeStep(step, cfg, steps.length + offset)
+        )));
+        return engine.fenceMarkdown(cfg, next);
+      }
+      if (Array.isArray(update.steps)) return engine.fenceMarkdown(cfg, update.steps);
+      return match;
+    });
+  }
+
+  function parseTrainingBlocks(text, options = {}) {
+    let trainingIndex = 0;
+    TRAINING_BLOCK_RE.lastIndex = 0;
+    return text.replace(TRAINING_BLOCK_RE, (_, fenceAttrs, content) => {
+      const engine = window.NotesProTraining;
+      const idx = trainingIndex++;
+      const html = engine?.renderBlock
+        ? engine.renderBlock(content || '', fenceAttrs || '', {
+          trainingIndex: idx,
+          editable: !!options.sheetEditable,
+        })
+        : '<div class="training-block training-block--error">Training clock not loaded.</div>';
+      return wrapRichPreviewBlock(html);
+    });
+  }
+
+  function hydrateTrainingBlocks(root) {
+    const engine = window.NotesProTraining;
+    if (!engine) return;
+    (root || document).querySelectorAll('.training-block[data-training-spec]').forEach((el) => {
+      const trainingIndex = parseInt(el.dataset.trainingIndex, 10);
+      const secondsFrom = (raw) => engine.parseDuration(raw);
+      engine.hydrateBlock(el, {
+        onSteps: userCanEdit && Number.isFinite(trainingIndex) && easyMDE
+          ? (steps) => {
+            const oldMarkdown = easyMDE.value();
+            const updated = updateTrainingInMarkdown(oldMarkdown, trainingIndex, { steps });
+            if (updated === oldMarkdown) return;
+            easyMDE.value(updated);
+            scheduleSave();
+            schedulePreviewRefresh();
+          }
+          : null,
+        onPasteImage: userCanEdit && Number.isFinite(trainingIndex) && easyMDE
+          ? async (file, seconds) => {
+            const mediaPath = await uploadPastedImageBlob(file, file.name || 'paste.png');
+            if (!mediaPath) return;
+            const oldMarkdown = easyMDE.value();
+            const updated = updateTrainingInMarkdown(oldMarkdown, trainingIndex, {
+              addImage: mediaPath,
+              label: file.name ? String(file.name).replace(/\.[^.]+$/, '') : 'Photo',
+              seconds: secondsFrom(seconds) || seconds,
+            });
+            if (updated === oldMarkdown) return;
+            easyMDE.value(updated);
+            scheduleSave();
+            schedulePreviewRefresh();
+          }
+          : null,
+        onPasteImageUrl: userCanEdit && Number.isFinite(trainingIndex) && easyMDE
+          ? async (url, seconds) => {
+            const oldMarkdown = easyMDE.value();
+            const updated = updateTrainingInMarkdown(oldMarkdown, trainingIndex, {
+              addImage: url,
+              label: imageLabelFromUrl(url),
+              seconds: secondsFrom(seconds) || seconds,
+            });
             if (updated === oldMarkdown) return;
             easyMDE.value(updated);
             scheduleSave();
@@ -12159,7 +12501,7 @@ function formatTextWithMarkup(rawText) {
     if (!root) return;
     root.querySelectorAll('pre').forEach(pre => {
       if (pre.closest('.md-code-block')) return;
-      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .form-widget, .mindmap-block, .md-news, .md-python, .voice-block, .jukebox-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block')) {
+      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .form-widget, .mindmap-block, .md-news, .md-python, .voice-block, .jukebox-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .gallery-block, .training-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block')) {
         return;
       }
       const wrap = document.createElement('div');
@@ -12750,6 +13092,11 @@ function formatTextWithMarkup(rawText) {
       const label = cfg.title || 'Gallery';
       return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
     });
+    md = md.replace(/```training(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const cfg = window.NotesProTraining?.parseFenceAttrs?.(fenceAttrs) || {};
+      const label = cfg.title || 'Training';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
     md = md.replace(/```(?:photocube|photo-cube)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
       const cfg = window.NotesProPhotocube?.parseFenceAttrs?.(fenceAttrs) || {};
       const label = cfg.title || 'Photo cube';
@@ -12865,6 +13212,7 @@ function formatTextWithMarkup(rawText) {
       md = parseSnakeBlocks(md);
       md = parseMarbleblastBlocks(md);
       md = parseGalleryBlocks(md, options);
+      md = parseTrainingBlocks(md, options);
       md = parsePhotocubeBlocks(md, options);
       md = parsePhotobookBlocks(md, options);
       md = parseCarouselBlocks(md, options);
@@ -13325,6 +13673,7 @@ function formatTextWithMarkup(rawText) {
     hydrateSnakeBlocks(preview);
     hydrateMarbleblastBlocks(preview);
     hydrateGalleryBlocks(preview);
+    hydrateTrainingBlocks(preview);
     hydratePhotocubeBlocks(preview);
     hydratePhotobookBlocks(preview);
     hydrateCarouselBlocks(preview);
@@ -13575,7 +13924,7 @@ function formatTextWithMarkup(rawText) {
       || window.APP_BOOT?.isGroupAdmin
     );
     const editToggle = document.getElementById('edit-toggle');
-    if (editToggle) editToggle.classList.toggle('d-none', !userCanEdit || mainView === 'keep' || issuesTableOpen);
+    if (editToggle) editToggle.classList.toggle('d-none', !userCanEdit || mainView === 'keep' || anyRecordTableOpen());
     syncMobileEditButton();
     ['create-page', 'create-folder', 'delete-page'].forEach(id => {
       const btn = document.getElementById(id);
@@ -13734,7 +14083,7 @@ function formatTextWithMarkup(rawText) {
   function syncMobileUndoButton() {
     const btn = document.getElementById('mobile-undo-toggle');
     if (!btn) return;
-    const show = isMobileLayout() && userCanEdit && isEditing && mainView !== 'keep' && !issuesTableOpen;
+    const show = isMobileLayout() && userCanEdit && isEditing && mainView !== 'keep' && !anyRecordTableOpen();
     btn.classList.toggle('visible', show);
   }
 
@@ -13750,7 +14099,7 @@ function formatTextWithMarkup(rawText) {
   function syncMobileEditButton() {
     const btn = document.getElementById('mobile-edit-toggle');
     if (!btn) return;
-    const show = isMobileLayout() && userCanEdit && mainView !== 'keep' && !issuesTableOpen;
+    const show = isMobileLayout() && userCanEdit && mainView !== 'keep' && !anyRecordTableOpen();
     btn.classList.toggle('visible', show);
     const label = btn.querySelector('span');
     const text = isEditing ? 'Preview' : 'Edit';
@@ -14653,6 +15002,48 @@ function formatTextWithMarkup(rawText) {
             editor,
             'gallery{title=Demo walk;front=Welcome;back=Demo walk;mode=walk;demo;col=info}',
             samplePhotoFenceBody('gallery'),
+          ),
+        },
+        {
+          name: 'insert-training',
+          text: 'Training clock',
+          className: 'photos-menu-item photos-menu-item--training',
+          title: 'Insert a training clock — each photo shows for its own time, then the next photo',
+          action: (editor) => insertFenceBlock(
+            editor,
+            'training{title=Good Morning Yoga;time=30s;col=info;endMessage="end"}',
+            [
+              "![Child's pose](/static/notes/yoga/morning/child.jpg) | 30s",
+              '![Cow](/static/notes/yoga/morning/cow.jpg) | 30s',
+              '![Cat](/static/notes/yoga/morning/cat.jpg) | 30s',
+              '![Downward facing dog](/static/notes/yoga/morning/downward-dog.jpg) | 30s',
+              '![Standing forward bend](/static/notes/yoga/morning/forward-bend.jpg) | 30s',
+              '![Mountain](/static/notes/yoga/morning/mountain.jpg) | 30s',
+              '![Chair pose](/static/notes/yoga/morning/chair.jpg) | 30s',
+              '![Standing forward bend](/static/notes/yoga/morning/forward-bend.jpg) | 30s',
+              "![Runner's lunge](/static/notes/yoga/morning/runners-lunge.jpg) | 30s",
+              '![Revolved side angle pose](/static/notes/yoga/morning/revolved.jpg) | 30s',
+              '![Low plank pose](/static/notes/yoga/morning/low-plank.jpg) | 30s',
+              '![Upward facing dog](/static/notes/yoga/morning/upward-dog.jpg) | 30s',
+              "![Child's pose](/static/notes/yoga/morning/child.jpg) | 30s",
+              '![Hero pose](/static/notes/yoga/morning/hero.jpg) | 30s',
+              '![Downward facing dog](/static/notes/yoga/morning/downward-dog.jpg) | 30s',
+              "![Runner's lunge](/static/notes/yoga/morning/runners-lunge.jpg) | 30s",
+              '![Low lunge](/static/notes/yoga/morning/low-lunge.jpg) | 30s',
+              '![Downward facing dog](/static/notes/yoga/morning/downward-dog.jpg) | 30s',
+              '![Warrior 1](/static/notes/yoga/morning/warrior-1.jpg) | 30s',
+              '![Reverse warrior](/static/notes/yoga/morning/reverse-warrior.jpg) | 30s',
+              '![Warrior 2](/static/notes/yoga/morning/warrior-2.jpg) | 30s',
+              '![Extended side angle pose](/static/notes/yoga/morning/side-angle.jpg) | 30s',
+              '![Triangle pose](/static/notes/yoga/morning/triangle.jpg) | 30s',
+              '![Downward facing dog](/static/notes/yoga/morning/downward-dog.jpg) | 30s',
+              '![Pigeon pose](/static/notes/yoga/morning/pigeon.jpg) | 30s',
+              "![Child's pose](/static/notes/yoga/morning/child.jpg) | 30s",
+              '![Meditation pose](/static/notes/yoga/morning/meditation.jpg) | 30s',
+              '![Butterfly forward bend](/static/notes/yoga/morning/butterfly.jpg) | 30s',
+              '![Seated pose](/static/notes/yoga/morning/seated.jpg) | 30s',
+              '![Corpse](/static/notes/yoga/morning/corpse.jpg) | 30s',
+            ].join('\n'),
           ),
         },
         {
@@ -16195,7 +16586,7 @@ function formatTextWithMarkup(rawText) {
     return true;
   }
 
-  const PHOTO_PASTE_BLOCK_SEL = '.gallery-block--editable, .photocube-block.photoview-block--editable, .photobook-block.photoview-block--editable, .carousel-block.photoview-block--editable, .labyrinth-block--editable';
+  const PHOTO_PASTE_BLOCK_SEL = '.gallery-block--editable, .training-block--editable, .photocube-block.photoview-block--editable, .photobook-block.photoview-block--editable, .carousel-block.photoview-block--editable, .labyrinth-block--editable';
   let photoPasteHoverBlock = null;
   let photoPastePointer = { x: 0, y: 0 };
 
@@ -16216,6 +16607,7 @@ function formatTextWithMarkup(rawText) {
   function photoPasteKind(el) {
     if (!el) return null;
     if (el.classList.contains('gallery-block')) return 'gallery';
+    if (el.classList.contains('training-block')) return 'training';
     if (el.classList.contains('photobook-block')) return 'photobook';
     if (el.classList.contains('photocube-block')) return 'photocube';
     if (el.classList.contains('carousel-block')) return 'carousel';
@@ -16225,6 +16617,7 @@ function formatTextWithMarkup(rawText) {
 
   function photoPasteIndex(el, kind) {
     if (kind === 'gallery') return parseInt(el.dataset.galleryIndex, 10);
+    if (kind === 'training') return parseInt(el.dataset.trainingIndex, 10);
     if (kind === 'photobook') return parseInt(el.dataset.photobookIndex, 10);
     if (kind === 'photocube') return parseInt(el.dataset.photocubeIndex, 10);
     if (kind === 'carousel') return parseInt(el.dataset.carouselIndex, 10);
@@ -16239,13 +16632,15 @@ function formatTextWithMarkup(rawText) {
     if (!el) return;
     el.classList.add(el.classList.contains('gallery-block')
       ? 'gallery-block--paste-target'
-      : el.classList.contains('labyrinth-block')
-        ? 'labyrinth-block--paste-target'
-        : 'photoview-block--paste-target');
+      : el.classList.contains('training-block')
+        ? 'training-block--paste-target'
+        : el.classList.contains('labyrinth-block')
+          ? 'labyrinth-block--paste-target'
+          : 'photoview-block--paste-target');
   }
 
   function clearPhotoPasteBlock() {
-    photoPasteHoverBlock?.classList.remove('gallery-block--paste-target', 'photoview-block--paste-target', 'labyrinth-block--paste-target');
+    photoPasteHoverBlock?.classList.remove('gallery-block--paste-target', 'training-block--paste-target', 'photoview-block--paste-target', 'labyrinth-block--paste-target');
     photoPasteHoverBlock = null;
   }
 
@@ -16289,7 +16684,9 @@ function formatTextWithMarkup(rawText) {
     const oldMarkdown = easyMDE.value();
     const updated = kind === 'gallery'
       ? updateGalleryInMarkdown(oldMarkdown, blockIndex, update)
-      : kind === 'labyrinth'
+      : kind === 'training'
+        ? updateTrainingInMarkdown(oldMarkdown, blockIndex, update)
+        : kind === 'labyrinth'
         ? updateLabyrinthInMarkdown(oldMarkdown, blockIndex, update)
         : updatePhotoFenceInMarkdown(oldMarkdown, kind, blockIndex, update);
     if (updated === oldMarkdown) return false;
@@ -16322,7 +16719,14 @@ function formatTextWithMarkup(rawText) {
   async function pasteClipboardOntoPhotoBlock(kind, blockIndex, files, youtubeId, imageUrls) {
     if (!easyMDE || !Number.isFinite(blockIndex)) return;
     const labelFromFile = (file) => (file.name ? String(file.name).replace(/\.[^.]+$/, '') : 'Photo');
-    const applyUpdate = (update) => applyPhotoFenceUpdate(kind, blockIndex, update);
+    const trainingSeconds = kind === 'training'
+      ? window.NotesProTraining?.parseDuration?.(
+        document.querySelector(`.training-block[data-training-index="${blockIndex}"] .training-add-time`)?.value,
+      )
+      : null;
+    const applyUpdate = (update) => applyPhotoFenceUpdate(kind, blockIndex, (
+      kind === 'training' ? { ...update, seconds: trainingSeconds } : update
+    ));
     if (youtubeId) {
       applyUpdate({
         addYoutube: `https://www.youtube.com/embed/${youtubeId}`,
@@ -16404,6 +16808,7 @@ function formatTextWithMarkup(rawText) {
     const text = String(cm.getValue() || '');
     const kinds = [
       { kind: 'gallery', re: /```gallery(?:\{[^}]*\})?[ \t]*(?:\r?\n[\s\S]*?)?```/gi },
+      { kind: 'training', re: /```training(?:\{[^}]*\})?[ \t]*(?:\r?\n[\s\S]*?)?```/gi },
       { kind: 'photocube', re: /```(?:photocube|photo-cube)(?:\{[^}]*\})?[ \t]*(?:\r?\n[\s\S]*?)?```/gi },
       { kind: 'photobook', re: /```(?:photobook|photo-book|flipbook)(?:\{[^}]*\})?[ \t]*(?:\r?\n[\s\S]*?)?```/gi },
       { kind: 'carousel', re: /```(?:carousel|photo-carousel|slideshow)(?:\{[^}]*\})?[ \t]*(?:\r?\n[\s\S]*?)?```/gi },
@@ -17961,9 +18366,9 @@ function formatTextWithMarkup(rawText) {
     return row;
   }
 
-  function paintVoteRow(row) {
+  function paintVoteRow(row, identity) {
     const votes = String(row.dataset.votes || '').split(',').map((s) => s.trim()).filter(Boolean);
-    const me = String(currentUserName || '').trim().toLowerCase();
+    const me = String(identity || currentUserName || '').trim().toLowerCase();
     const choice = row.querySelector('.form-widget-choice');
     const mine = votes.some((name) => name.toLowerCase() === me);
     if (choice) choice.checked = mine;
@@ -17993,12 +18398,63 @@ function formatTextWithMarkup(rawText) {
     applyFormWidgetDomToMarkdown(block);
   }
 
+  async function castGuestVote(block, optionRow, { select = true } = {}) {
+    const emailInput = block?.querySelector('.form-widget-email');
+    const email = normalizeGuestEmail(emailInput?.value || rememberedGuestEmail());
+    if (!email) {
+      showToast('Enter your email to vote.', 'warning');
+      emailInput?.focus();
+      return;
+    }
+    if (emailInput) emailInput.value = email;
+    rememberGuestEmail(email);
+    const formIndex = parseInt(block.dataset.formIndex, 10);
+    const rows = [...block.querySelectorAll('.form-widget-option')];
+    const optionIndex = rows.indexOf(optionRow);
+    const page = window.APP_BOOT?.publicPage || {};
+    const owner = encodeURIComponent(page.owner || '');
+    const workspaceSlug = encodeURIComponent(page.workspace_slug || '');
+    const pageSlug = encodeURIComponent(page.slug || '');
+    if (!owner || !workspaceSlug || !pageSlug || !Number.isFinite(formIndex) || optionIndex < 0) {
+      showToast('This vote link is missing a page address.', 'warning');
+      return;
+    }
+    try {
+      const data = await api(
+        `api/public/${owner}/${workspaceSlug}/${pageSlug}/vote/`,
+        'POST',
+        { email, form_index: formIndex, option_index: optionIndex, select: !!select },
+      );
+      const options = data.options || [];
+      rows.forEach((row, index) => {
+        const votes = options[index]?.votes || [];
+        row.dataset.votes = votes.join(',');
+        paintVoteRow(row, email);
+      });
+      refreshFormVoteFoot(block);
+    } catch (err) {
+      showToast(err.message || 'Could not save your vote.', 'danger');
+    }
+  }
+
   function initFormWidgetEditors() {
     const preview = document.getElementById('preview-content');
     if (!preview || preview.dataset.formWidgetBound === '1') return;
     preview.dataset.formWidgetBound = '1';
 
     preview.addEventListener('click', (e) => {
+      const guestBlock = e.target.closest?.('.form-widget');
+      if (publicView && !userCanEdit && guestBlock?.dataset.formKind === 'vote' && preview.contains(guestBlock)) {
+        if (e.target.closest('input.form-widget-email, label.form-widget-guest-email')) return;
+        const row = e.target.closest('.form-widget-option');
+        if (!row || !guestBlock.contains(row)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const email = normalizeGuestEmail(guestBlock.querySelector('.form-widget-email')?.value || rememberedGuestEmail());
+        const already = !!email && String(row.dataset.votes || '').split(',').some((name) => name.trim().toLowerCase() === email);
+        void castGuestVote(guestBlock, row, { select: !already });
+        return;
+      }
       if (!isChecklistEditEnabled()) return;
       const block = e.target.closest?.('.form-widget');
       if (!block || !preview.contains(block)) return;
@@ -19845,6 +20301,16 @@ function formatTextWithMarkup(rawText) {
     });
   }
 
+  function toolbarGroupLabel(label) {
+    return {
+      name: `toolbar-label-${label}`,
+      className: 'editor-toolbar-label',
+      title: label,
+      action: () => {},
+      attributes: { tabindex: '-1' },
+    };
+  }
+
   function initEditors() {
     easyMDE = new EasyMDE({
       element: document.getElementById('markdown-editor'),
@@ -19860,6 +20326,7 @@ function formatTextWithMarkup(rawText) {
       sideBySideFullscreen: false,
       minHeight: '200px',
       toolbar: [
+        toolbarGroupLabel('edits'),
         {
           name: 'undo',
           action: (editor) => editor?.codemirror?.undo?.(),
@@ -19873,18 +20340,6 @@ function formatTextWithMarkup(rawText) {
           title: 'Redo',
         },
         '|',
-        'code',
-        {
-          name: 'insert-code-fence',
-          action: (editor) => {
-            const cm = editor.codemirror;
-            const selected = cm.getSelection();
-            insertFenceBlock(editor, '', selected);
-            if (!selected) cm.setCursor({ line: cm.getCursor().line - 2, ch: 0 });
-          },
-          className: 'fa fa-file-code-o',
-          title: 'Insert code block (```)',
-        },
         {
           name: 'bold',
           action: (editor) => applyEditorOrModalFormat(editor, '**', '**', window.EasyMDE?.toggleBold),
@@ -19905,13 +20360,138 @@ function formatTextWithMarkup(rawText) {
         },
         '|',
         'quote', 'unordered-list', 'ordered-list', '|',
-        'link','image','table',
+        'link', 'image',
         {
           name: 'local-file-link',
           action: () => openLocalFileLinkInsertDialog(),
           className: 'fa fa-folder-open',
           title: 'Insert local file link',
         },
+        '|',
+        'code',
+        {
+          name: 'insert-code-fence',
+          action: (editor) => {
+            const cm = editor.codemirror;
+            const selected = cm.getSelection();
+            insertFenceBlock(editor, '', selected);
+            if (!selected) cm.setCursor({ line: cm.getCursor().line - 2, ch: 0 });
+          },
+          className: 'fa fa-file-code-o',
+          title: 'Insert code block (```)',
+        },
+        '|',
+        {
+          name: 'find',
+          action: () => editorFind(),
+          className: 'fa fa-search',
+          title: 'Find (Ctrl+F)',
+        },
+        {
+          name: 'replace',
+          action: () => editorReplace(),
+          className: 'fa fa-exchange',
+          title: 'Find & Replace (Ctrl+H)',
+        },
+        '|',
+        {
+            name: "add-tag",
+            action: (editor) => {
+                const cm = editor.codemirror;
+                const selectedText = (cm.getSelection() || "tag").trim();
+                cm.replaceSelection(`{tag:${selectedText}} `);
+            },
+            className: "fa fa-tag",
+            title: "Als Tag markieren ({tag: …})",
+        },
+        '|',
+        {
+          name: "line-break",
+          action: (editor) => {
+            const cm = editor.codemirror;
+            cm.replaceSelection("<br>\n");
+            cm.focus();
+          },
+          className: "fa fa-level-down fa-rotate-90", // Icon das wie ein Return-Pfeil aussieht
+          title: "Zeilenumbruch (br)",
+        },
+        buildSignsToolbarDropdown(),
+        {
+          name: "indent",
+          action: () => editorIndent(),
+          className: "fa fa-indent",
+          title: "Einrücken",
+        },
+        {
+          name: "outdent",
+          action: () => editorOutdent(),
+          className: "fa fa-outdent",
+          title: "Ausrücken",
+        },
+        '|',
+        buildColorToolbarDropdown('color', 'textColorMenu', 'fa fa-font', 'Text color'),
+        buildColorToolbarDropdown('background-color', 'bgColorMenu', 'fa fa-paint-brush', 'Background color'),
+        '|',
+        buildFontSizeToolbarDropdown(),
+        '|',
+        buildHorizontalRuleToolbarDropdown(),
+        {
+          name: "remove-all-formats",
+          action: (editor) => {
+            const cm = editor.codemirror;
+            let text, range;
+            
+            // 1. Bereich bestimmen (Markierung oder ganze Zeile)
+            if (cm.somethingSelected()) {
+              text = cm.getSelection();
+            } else {
+              const cursor = cm.getCursor();
+              const lineNum = cursor.line;
+              text = cm.getLine(lineNum);
+              range = {
+                from: { line: lineNum, ch: 0 },
+                to: { line: lineNum, ch: text.length }
+              };
+            }
+            
+            // 2. Aggressive Bereinigung (Regex mehrmals anwenden für verschachtelte Tags)
+            let cleaned = text;
+            
+            // Entfernt alle HTML-Tags (span, div, etc.)
+            cleaned = cleaned.replace(/<\/?[^>]+(>|$)/g, "");
+            
+            // Entfernt Markdown (Fett, Kursiv, etc.)
+            cleaned = cleaned.replace(/(\*\*|__|\*|_|~~|`)/g, "");
+            
+            // 3. Text im Editor ersetzen
+            if (cm.somethingSelected()) {
+                    // "around" sorgt dafür, dass die neue Auswahl die alte ersetzt
+                    cm.replaceSelection(cleaned, "around");
+                } else {
+                    cm.replaceRange(cleaned, range.from, range.to);
+                }
+
+                // 4. Fokus erzwingen (Wichtig, damit der nächste Klick sofort geht!)
+                cm.focus();
+            },
+            className: "fa fa-eraser",
+            title: "Formatierung komplett entfernen",
+          },
+        {
+          name:         'snippets',
+          action: () => openSnippetsModal(),
+          className: 'fa fa-puzzle-piece',
+          title: 'Snippets',
+        },
+        {
+          name: 'toolbarRowBreak',
+          className: 'editor-toolbar-row-break',
+          title: '',
+          action: () => {},
+          attributes: { 'aria-hidden': 'true', tabindex: '-1' },
+        },
+        toolbarGroupLabel('tables'),
+        'table',
         {
           name: 'insert-sheet',
           action: (editor) => insertFenceBlock(editor, 'sheet', EXAMPLE_SHEET_BODY),
@@ -19925,11 +20505,45 @@ function formatTextWithMarkup(rawText) {
           title: 'Insert chart',
         },
         {
-          name: 'insert-panel',
-          action: (editor) => openPanelInsertModal(editor),
-          className: 'fa fa-square',
-          title: 'Insert colored panel',
+          name: 'insert-calcs',
+          action: (editor) => {
+            const body = [
+              '% Octave-style calcs sample',
+              'f = 50;',
+              'A = 1;',
+              'w = 2*pi*f;',
+              'SR = 96*3;',
+              'i = 0:2*SR;',
+              'y1[i] = exp(-i/SR)*A;',
+              'y2[i] = sin(20*w*i/SR).*exp(-i/SR)*A;',
+              'Plot(y1, y2)',
+            ].join('\n');
+            insertFenceBlock(editor, 'calcs{fix=7;col=info}', body);
+          },
+          className: 'fa fa-calculator',
+          title: 'Insert Calcs',
         },
+        {
+          name: 'insert-python',
+          action: (editor) => {
+            const body = [
+              'import pandas as pd',
+              '',
+              'df = pd.DataFrame({',
+              '    "name": ["Ada", "Grace", "Alan"],',
+              '    "score": [98, 91, 87],',
+              '})',
+              'print(df)',
+              'print()',
+              'print("mean score:", df["score"].mean())',
+              'print(df.describe())',
+            ].join('\n');
+            insertFenceBlock(editor, 'python{title=Pandas;col=info}', body);
+          },
+          className: 'fa fa-code',
+          title: 'Insert Python (sandbox)',
+        },
+        '|',
         {
           name: 'insert-calendar',
           action: (editor) => {
@@ -20026,6 +20640,14 @@ function formatTextWithMarkup(rawText) {
           className: 'fa fa-check-square-o',
           title: 'Insert checklist',
         },
+        '|',
+        toolbarGroupLabel('apps'),
+        {
+          name: 'insert-panel',
+          action: (editor) => openPanelInsertModal(editor),
+          className: 'fa fa-square',
+          title: 'Insert colored panel',
+        },
         buildFormToolbarDropdown(),
         {
           name: 'menuShopMenu',
@@ -20113,45 +20735,6 @@ function formatTextWithMarkup(rawText) {
           ],
         },
         {
-          name: 'insert-calcs',
-          action: (editor) => {
-            const body = [
-              '% Octave-style calcs sample',
-              'f = 50;',
-              'A = 1;',
-              'w = 2*pi*f;',
-              'SR = 96*3;',
-              'i = 0:2*SR;',
-              'y1[i] = exp(-i/SR)*A;',
-              'y2[i] = sin(20*w*i/SR).*exp(-i/SR)*A;',
-              'Plot(y1, y2)',
-            ].join('\n');
-            insertFenceBlock(editor, 'calcs{fix=7;col=info}', body);
-          },
-          className: 'fa fa-calculator',
-          title: 'Insert Calcs',
-        },
-        {
-          name: 'insert-python',
-          action: (editor) => {
-            const body = [
-              'import pandas as pd',
-              '',
-              'df = pd.DataFrame({',
-              '    "name": ["Ada", "Grace", "Alan"],',
-              '    "score": [98, 91, 87],',
-              '})',
-              'print(df)',
-              'print()',
-              'print("mean score:", df["score"].mean())',
-              'print(df.describe())',
-            ].join('\n');
-            insertFenceBlock(editor, 'python{title=Pandas;col=info}', body);
-          },
-          className: 'fa fa-code',
-          title: 'Insert Python (sandbox)',
-        },
-        {
           name: 'insert-voice',
           action: (editor) => {
             insertFenceBlock(editor, 'voice{lang=auto;title=Voice note;col=info}', '');
@@ -20182,32 +20765,13 @@ function formatTextWithMarkup(rawText) {
           title: 'Insert news / RSS feed',
         },
         {
-          name:         'snippets',
-          action: () => openSnippetsModal(),
-          className: 'fa fa-puzzle-piece',
-          title: 'Snippets',
-        },
-        buildHorizontalRuleToolbarDropdown(),'|',
-        {
-          name: 'toolbarRowBreak',
+          name: 'toolbarRowBreakBeforeOutput',
           className: 'editor-toolbar-row-break',
           title: '',
           action: () => {},
           attributes: { 'aria-hidden': 'true', tabindex: '-1' },
         },
-        {
-          name: 'find',
-          action: () => editorFind(),
-          className: 'fa fa-search',
-          title: 'Find (Ctrl+F)',
-        },
-        {
-          name: 'replace',
-          action: () => editorReplace(),
-          className: 'fa fa-exchange',
-          title: 'Find & Replace (Ctrl+H)',
-        },
-        '|',
+        toolbarGroupLabel('output'),
         {
           name: 'side-by-side',
           action: () => {
@@ -20218,89 +20782,6 @@ function formatTextWithMarkup(rawText) {
           title: 'Side by side',
         },
         'fullscreen','|',
-        {
-            name: "add-tag",
-            action: (editor) => {
-                const cm = editor.codemirror;
-                const selectedText = (cm.getSelection() || "tag").trim();
-                cm.replaceSelection(`{tag:${selectedText}} `);
-            },
-            className: "fa fa-tag",
-            title: "Als Tag markieren ({tag: …})",
-        },
-        "|", 
-        {
-          name: "line-break",
-          action: (editor) => {
-            const cm = editor.codemirror;
-            cm.replaceSelection("<br>\n");
-            cm.focus();
-          },
-          className: "fa fa-level-down fa-rotate-90", // Icon das wie ein Return-Pfeil aussieht
-          title: "Zeilenumbruch (br)",
-        },
-        buildSignsToolbarDropdown(),
-        {
-          name: "indent",
-          action: () => editorIndent(),
-          className: "fa fa-indent",
-          title: "Einrücken",
-        },
-        {
-          name: "outdent",
-          action: () => editorOutdent(),
-          className: "fa fa-outdent",
-          title: "Ausrücken",
-        },
-        "|",
-        buildColorToolbarDropdown('color', 'textColorMenu', 'fa fa-font', 'Text color'),
-        buildColorToolbarDropdown('background-color', 'bgColorMenu', 'fa fa-paint-brush', 'Background color'),
-        '|',
-        buildFontSizeToolbarDropdown(),
-        '|',
-        {
-          name: "remove-all-formats",
-          action: (editor) => {
-            const cm = editor.codemirror;
-            let text, range;
-            
-            // 1. Bereich bestimmen (Markierung oder ganze Zeile)
-            if (cm.somethingSelected()) {
-              text = cm.getSelection();
-            } else {
-              const cursor = cm.getCursor();
-              const lineNum = cursor.line;
-              text = cm.getLine(lineNum);
-              range = {
-                from: { line: lineNum, ch: 0 },
-                to: { line: lineNum, ch: text.length }
-              };
-            }
-            
-            // 2. Aggressive Bereinigung (Regex mehrmals anwenden für verschachtelte Tags)
-            let cleaned = text;
-            
-            // Entfernt alle HTML-Tags (span, div, etc.)
-            cleaned = cleaned.replace(/<\/?[^>]+(>|$)/g, "");
-            
-            // Entfernt Markdown (Fett, Kursiv, etc.)
-            cleaned = cleaned.replace(/(\*\*|__|\*|_|~~|`)/g, "");
-            
-            // 3. Text im Editor ersetzen
-            if (cm.somethingSelected()) {
-                    // "around" sorgt dafür, dass die neue Auswahl die alte ersetzt
-                    cm.replaceSelection(cleaned, "around");
-                } else {
-                    cm.replaceRange(cleaned, range.from, range.to);
-                }
-
-                // 4. Fokus erzwingen (Wichtig, damit der nächste Klick sofort geht!)
-                cm.focus();
-            },
-            className: "fa fa-eraser",
-            title: "Formatierung komplett entfernen",
-          },
-          '|',
           {
               name: "export-pdf",
               action: (editor) => {
@@ -20347,7 +20828,7 @@ function formatTextWithMarkup(rawText) {
               className: "fa fa-file-pdf-o", // FontAwesome icon class
               title: "Export to PDF",        // Tooltip text
           },
-          '|', 'guide', '|',
+          '|', 'guide',
         ],
         previewRender: function(plainText) {
           const processed = preprocessMarkdown(plainText, { sheetEditable: false, richBlocks: false });
@@ -21095,6 +21576,8 @@ function formatTextWithMarkup(rawText) {
     if (mainView === 'keep') loadQuickNotes();
     loadIssuesList();
     if (issuesTableOpen) loadIssuesTable();
+    if (chatTableOpen) loadChatTable();
+    if (mailTableOpen) loadMailTable();
     if (isEditing) switchMode('markdown');
     else switchMode('preview');
   }
@@ -21511,6 +21994,43 @@ function formatTextWithMarkup(rawText) {
 
   let mainView = window.APP_BOOT?.extraConfigs?.main_view === 'keep' ? 'keep' : 'pages';
   let issuesTableOpen = false;
+  let chatTableOpen = false;
+  let mailTableOpen = false;
+  let chatTableCache = [];
+  let mailTableCache = [];
+  let chatTableSort = { key: 'created_at', dir: 'desc' };
+  let mailTableSort = { key: 'created_at', dir: 'desc' };
+
+  function anyRecordTableOpen() {
+    return issuesTableOpen || chatTableOpen || mailTableOpen;
+  }
+
+  function applyRecordTableChrome(title) {
+    document.querySelector('.editor-wrap')?.classList.add('d-none');
+    document.getElementById('quick-notes-wrap')?.classList.add('d-none');
+    document.querySelector('.main-pane')?.classList.add('main-pane--issues');
+    document.getElementById('edit-toggle')?.classList.add('d-none');
+    const titlePreview = document.getElementById('page-title-preview');
+    if (titlePreview) titlePreview.textContent = title;
+    syncMobileEditButton();
+    syncPageSettingsButton();
+  }
+
+  function restoreRecordTableChrome() {
+    if (anyRecordTableOpen()) return;
+    document.querySelector('.main-pane')?.classList.remove('main-pane--issues');
+    document.getElementById('quick-notes-wrap')?.classList.toggle('d-none', mainView !== 'keep');
+    document.querySelector('.editor-wrap')?.classList.toggle('d-none', mainView === 'keep');
+    document.getElementById('edit-toggle')?.classList.toggle('d-none', mainView === 'keep' || !userCanEdit);
+    const titlePreview = document.getElementById('page-title-preview');
+    if (mainView === 'keep') {
+      if (titlePreview) titlePreview.textContent = 'Keep';
+    } else if (titlePreview) {
+      titlePreview.textContent = currentPage?.title || '';
+    }
+    syncMobileEditButton();
+    syncPageSettingsButton();
+  }
   let quickNotesCache = [];
   let keepSearchTimer = null;
   let keepShowArchived = Boolean(window.APP_BOOT?.extraConfigs?.keep_show_archived);
@@ -21635,11 +22155,17 @@ function formatTextWithMarkup(rawText) {
   }
 
   function setMainView(mode) {
-    if (issuesTableOpen) {
+    if (issuesTableOpen || chatTableOpen || mailTableOpen) {
       issuesTableOpen = false;
+      chatTableOpen = false;
+      mailTableOpen = false;
       document.getElementById('issues-table-wrap')?.classList.add('d-none');
+      document.getElementById('chat-table-wrap')?.classList.add('d-none');
+      document.getElementById('mail-table-wrap')?.classList.add('d-none');
       document.querySelector('.main-pane')?.classList.remove('main-pane--issues');
       syncIssuesTableButton();
+      syncChatTableButton();
+      syncMailTableButton();
     }
     mainView = mode === 'keep' ? 'keep' : 'pages';
     const mainPane = document.querySelector('.main-pane');
@@ -23220,6 +23746,11 @@ function formatTextWithMarkup(rawText) {
     setEditing(false);
     const page = window.APP_BOOT?.publicPage;
     if (page) applyPageToEditor(page, { fromHistory: true, statusText: '' });
+    if (window.APP_BOOT?.tagWebSocketEnabled) {
+      syncWorkspaceIdFromDom();
+      resetTagTransport();
+      initTagTransport();
+    }
     document.getElementById('toc-toggle')?.addEventListener('click', toggleFloatingToc);
     document.getElementById('mobile-toc-backdrop')?.addEventListener('click', closeFloatingToc);
     window.addEventListener('resize', () => {
@@ -23281,6 +23812,7 @@ function formatTextWithMarkup(rawText) {
   initRightSplitter();
   loadTree(currentPageId).then(() => {
     if (!currentPageId) switchMode('preview');
+    if (window.APP_BOOT?.openEditing) setEditing(true);
   });
   loadFiles();
   syncAppShellLayout();
@@ -23529,7 +24061,7 @@ function formatTextWithMarkup(rawText) {
     if (tryPasteImageUrlsIntoKeep(event)) return;
     const data = event.clipboardData || event.originalEvent?.clipboardData;
     const pasteFiles = clipboardImageFiles(data);
-    if (event.target.closest?.('.puzzle-block, .gallery-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .voice-block, .jukebox-block, .calendar-block, #calendar-note-modal')) return;
+    if (event.target.closest?.('.puzzle-block, .gallery-block, .training-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .voice-block, .jukebox-block, .calendar-block, #calendar-note-modal')) return;
     if (!pasteFiles.length) {
       const text = data?.getData?.('text/plain') || '';
       const fromText = pastedPlainImageUrls(text);
@@ -24268,18 +24800,13 @@ function formatTextWithMarkup(rawText) {
   }
 
   function showIssuesTable() {
+    if (chatTableOpen) hideChatTable();
+    if (mailTableOpen) hideMailTable();
     issuesTableOpen = true;
     document.getElementById('issues-table-wrap')?.classList.remove('d-none');
-    document.querySelector('.editor-wrap')?.classList.add('d-none');
-    document.getElementById('quick-notes-wrap')?.classList.add('d-none');
-    document.querySelector('.main-pane')?.classList.add('main-pane--issues');
-    document.getElementById('edit-toggle')?.classList.add('d-none');
-    const titlePreview = document.getElementById('page-title-preview');
-    if (titlePreview) titlePreview.textContent = 'Issues';
     document.getElementById('issues-table-new-btn')?.classList.toggle('d-none', !userCanEdit);
+    applyRecordTableChrome('Issues');
     syncIssuesTableButton();
-    syncMobileEditButton();
-    syncPageSettingsButton();
     loadIssuesTable();
   }
 
@@ -24287,19 +24814,8 @@ function formatTextWithMarkup(rawText) {
     if (!issuesTableOpen) return;
     issuesTableOpen = false;
     document.getElementById('issues-table-wrap')?.classList.add('d-none');
-    document.querySelector('.main-pane')?.classList.remove('main-pane--issues');
-    document.getElementById('quick-notes-wrap')?.classList.toggle('d-none', mainView !== 'keep');
-    document.querySelector('.editor-wrap')?.classList.toggle('d-none', mainView === 'keep');
-    document.getElementById('edit-toggle')?.classList.toggle('d-none', mainView === 'keep' || !userCanEdit);
-    const titlePreview = document.getElementById('page-title-preview');
-    if (mainView === 'keep') {
-      if (titlePreview) titlePreview.textContent = 'Keep';
-    } else if (titlePreview) {
-      titlePreview.textContent = currentPage?.title || '';
-    }
     syncIssuesTableButton();
-    syncMobileEditButton();
-    syncPageSettingsButton();
+    restoreRecordTableChrome();
   }
 
   function initIssues() {
@@ -24317,7 +24833,7 @@ function formatTextWithMarkup(rawText) {
       clearTimeout(issuesTableSearchTimer);
       issuesTableSearchTimer = setTimeout(() => loadIssuesTable(), 250);
     });
-    document.querySelector('.issues-table thead')?.addEventListener('click', e => {
+    document.querySelector('#issues-table-wrap thead')?.addEventListener('click', e => {
       const th = e.target.closest('th[data-sort]');
       if (!th) return;
       const key = th.dataset.sort;
@@ -24839,6 +25355,7 @@ function formatTextWithMarkup(rawText) {
       const el = document.createElement('div');
       el.className = 'chat-bubble ' + (mine ? 'mine' : 'theirs');
       el.dataset.id = msg.id;
+      stampChatBubble(el, msg);
       el.innerHTML = buildChatBubbleHtml(msg);
       box.appendChild(el);
     });
@@ -24883,6 +25400,224 @@ function formatTextWithMarkup(rawText) {
     else await loadChat(false);
   }
 
+  function arrivalSnippet(text) {
+    const flat = String(text || '').replace(/\s+/g, ' ').trim();
+    if (!flat) return '';
+    return flat.length > 90 ? `${flat.slice(0, 89)}…` : flat;
+  }
+
+  function setMailUnreadBadge(count) {
+    const badge = document.getElementById('mail-unread-badge');
+    if (!badge) return;
+    const n = Number(count) || 0;
+    if (n > 0) {
+      badge.textContent = n > 99 ? '99+' : String(n);
+      badge.classList.remove('d-none');
+    } else {
+      badge.classList.add('d-none');
+    }
+  }
+
+  function bindArrivalList() {
+    const body = document.getElementById('arrival-list-body');
+    const close = document.getElementById('arrival-list-close');
+    if (!body || body.dataset.bound === '1') return;
+    body.dataset.bound = '1';
+    close?.addEventListener('click', clearArrivals);
+    body.addEventListener('click', (event) => {
+      const row = event.target.closest('[data-arrival-key]');
+      if (!row) return;
+      const item = arrivalItems.find((rowItem) => rowItem.key === row.dataset.arrivalKey);
+      dismissArrival(row.dataset.arrivalKey);
+      openArrival(item);
+    });
+  }
+
+  function renderArrivalList() {
+    const wrap = document.getElementById('arrival-list');
+    const body = document.getElementById('arrival-list-body');
+    if (!wrap || !body) return;
+    bindArrivalList();
+    if (!arrivalItems.length) {
+      wrap.classList.add('d-none');
+      body.innerHTML = '';
+      return;
+    }
+    wrap.classList.remove('d-none');
+    body.innerHTML = arrivalItems.map((item) => {
+      const when = item.at ? new Date(item.at).toLocaleTimeString() : '';
+      return `<button type="button" class="arrival-item arrival-item--${escapeHtml(item.kind)}" data-arrival-key="${escapeHtml(item.key)}">
+        <span class="arrival-kind">${escapeHtml(item.kindLabel)}</span>
+        <span class="arrival-title">${escapeHtml(item.title)}</span>
+        <span class="arrival-detail">${escapeHtml([item.detail, when].filter(Boolean).join(' · '))}</span>
+      </button>`;
+    }).join('');
+  }
+
+  function showArrivals(items) {
+    const fresh = (items || []).filter((item) => item?.key && !arrivalItems.some((row) => row.key === item.key));
+    if (!fresh.length) return;
+    arrivalItems = fresh.concat(arrivalItems).slice(0, 12);
+    renderArrivalList();
+  }
+
+  function dismissArrival(key) {
+    arrivalItems = arrivalItems.filter((item) => item.key !== key);
+    renderArrivalList();
+  }
+
+  function clearArrivals() {
+    arrivalItems = [];
+    renderArrivalList();
+  }
+
+  function isInboxListVisible() {
+    return isMailPanelVisible()
+      && mailBox === 'inbox'
+      && !document.getElementById('mail-list-view')?.classList.contains('d-none');
+  }
+
+  function isGroupChatVisible() {
+    return chatMode === 'workspace' && isChatPanelVisible();
+  }
+
+  function openArrival(item) {
+    if (!item) return;
+    if (item.kind === 'mail' && item.message) {
+      ensureRightPanelOpen();
+      showCommTab('mail');
+      mailBox = 'inbox';
+      document.querySelectorAll('[data-mail-box]').forEach((btn) => {
+        btn.classList.toggle('active', btn.dataset.mailBox === 'inbox');
+      });
+      showMailView('list');
+      void openMailForm(item.message);
+      return;
+    }
+    if (item.kind === 'chat') {
+      ensureRightPanelOpen();
+      showCommTab('chat');
+      setChatMode('workspace');
+      return;
+    }
+    if (item.kind === 'private' && item.peerId) {
+      openPrivateChatWithUser(item.peerId, item.peerName);
+    }
+  }
+
+  async function pollNewArrivals() {
+    if (!currentUserId || document.hidden) return;
+    syncWorkspaceIdFromDom();
+    try {
+      if (workspaceId) {
+        const mail = await api(`api/workspaces/${workspaceId}/mail/?box=inbox`);
+        const messages = mail.messages || [];
+        setMailUnreadBadge(mail.unread_count);
+        if (!mailArrivalReady) {
+          messages.forEach((message) => mailArrivalSeenIds.add(message.id));
+          mailArrivalReady = true;
+        } else {
+          const fresh = messages.filter((message) => (
+            !mailArrivalSeenIds.has(message.id) && message.sender_id !== currentUserId
+          ));
+          messages.forEach((message) => mailArrivalSeenIds.add(message.id));
+          if (fresh.length) {
+            if (mailTableOpen) loadMailTable();
+            if (isInboxListVisible()) loadMailList();
+            else {
+              showArrivals(fresh.map((message) => ({
+                key: `mail:${message.id}`,
+                kind: 'mail',
+                kindLabel: 'Mail',
+                title: message.subject || '(no subject)',
+                detail: message.sender || '',
+                at: message.created_at,
+                message,
+              })));
+            }
+          }
+        }
+
+        if (!chatArrivalReady || !lastChatId) {
+          const chat = await api(`api/workspaces/${workspaceId}/chat/`);
+          (chat.messages || []).forEach((message) => {
+            if (message.id > lastChatId) lastChatId = message.id;
+          });
+          chatArrivalReady = true;
+        } else if (!chatPollTimer) {
+          const chat = await api(`api/workspaces/${workspaceId}/chat/?after=${lastChatId}`);
+          const messages = chat.messages || [];
+          if (messages.length) {
+            messages.forEach((message) => {
+              if (message.id > lastChatId) lastChatId = message.id;
+            });
+            const incoming = messages.filter((message) => message.sender_id !== currentUserId);
+            if (chatTableOpen) loadChatTable();
+            if (isGroupChatVisible()) renderChatMessages(messages, true);
+            else if (incoming.length) {
+              updateChatUnreadBadge();
+              showArrivals(incoming.map((message) => ({
+                key: `chat:${message.id}`,
+                kind: 'chat',
+                kindLabel: 'Chat',
+                title: message.sender || 'Chat',
+                detail: arrivalSnippet(message.body || message.attachment_name || 'New message'),
+                at: message.created_at,
+              })));
+            }
+          }
+        }
+      }
+
+      const dm = await api('api/dm/conversations/');
+      const conversations = dm.conversations || [];
+      if (!dmArrivalReady) {
+        conversations.forEach((conv) => {
+          dmArrivalLastIds.set(conv.id, conv.last_message?.id || 0);
+        });
+        dmArrivalReady = true;
+      } else {
+        const fresh = [];
+        conversations.forEach((conv) => {
+          const last = conv.last_message;
+          const prev = dmArrivalLastIds.get(conv.id) || 0;
+          const nextId = last?.id || 0;
+          dmArrivalLastIds.set(conv.id, Math.max(prev, nextId));
+          if (!last || nextId <= prev || last.sender_id === currentUserId) return;
+          if (chatMode === 'private' && activeDmConversationId === conv.id && isChatPanelVisible()) return;
+          fresh.push({
+            key: `private:${conv.id}:${nextId}`,
+            kind: 'private',
+            kindLabel: 'Chat',
+            title: conv.peer?.username || 'Private chat',
+            detail: 'New private chat',
+            at: last.created_at,
+            peerId: conv.peer?.id,
+            peerName: conv.peer?.username || '',
+          });
+        });
+        if (fresh.length) {
+          if (chatMode === 'private' && !activeDmConversationId && isChatPanelVisible()) {
+            loadDmConversations({ quiet: true });
+          }
+          showArrivals(fresh);
+        }
+      }
+    } catch (err) {
+      console.warn('new mail and chat', err);
+    }
+  }
+
+  function startArrivalWatch() {
+    if (arrivalTimer || !currentUserId) return;
+    bindArrivalList();
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) pollNewArrivals();
+    });
+    pollNewArrivals();
+    arrivalTimer = setInterval(pollNewArrivals, 4000);
+  }
+
   async function loadChat(full = false) {
     syncWorkspaceIdFromDom();
     if (!workspaceId) return;
@@ -24893,8 +25628,24 @@ function formatTextWithMarkup(rawText) {
         : `api/workspaces/${workspaceId}/chat/`;
       const data = await api(chatUrl);
       if (data.status === 'success') {
+        const incoming = (!full && lastChatId > 0)
+          ? data.messages.filter((message) => message.sender_id !== currentUserId)
+          : [];
         if (data.messages.length) {
           renderChatMessages(data.messages, !full && lastChatId > 0);
+          if (incoming.length && !isGroupChatVisible()) {
+            if (chatTableOpen) loadChatTable();
+            showArrivals(incoming.map((message) => ({
+              key: `chat:${message.id}`,
+              kind: 'chat',
+              kindLabel: 'Chat',
+              title: message.sender || 'Chat',
+              detail: arrivalSnippet(message.body || message.attachment_name || 'New message'),
+              at: message.created_at,
+            })));
+          } else if (incoming.length && chatTableOpen) {
+            loadChatTable();
+          }
         } else if (full && box) {
           box.innerHTML = '<p class="small text-muted text-center px-2 py-3">No group messages yet. Say hello!</p>';
         }
@@ -25089,6 +25840,7 @@ function formatTextWithMarkup(rawText) {
       el.className = 'chat-bubble ' + (mine ? 'mine' : 'theirs');
       if (msg.client_id) el.dataset.cid = msg.client_id;
       if (msg.id) el.dataset.id = msg.id;
+      stampChatBubble(el, { ...rendered, sender: msg.sender || activeDmPeer?.username || '' });
       el.innerHTML = buildChatBubbleHtml(rendered, {
         showStatus: mine,
         deliveryStatus: msg._deliveryStatus || '✓',
@@ -25408,6 +26160,84 @@ function formatTextWithMarkup(rawText) {
     }
   }
 
+  function messageHoverText(message) {
+    const parts = [message?.body, message?.attachment_name].filter(Boolean);
+    return issueDescriptionText(parts.join('\n'));
+  }
+
+  function showMessageForm(spec) {
+    const modalEl = document.getElementById('message-modal');
+    if (!modalEl) return;
+    hideIssueHoverTooltip();
+    const title = document.getElementById('message-modal-title');
+    const meta = document.getElementById('message-modal-meta');
+    const fromWrap = document.getElementById('message-modal-from-wrap');
+    const toWrap = document.getElementById('message-modal-to-wrap');
+    const subjectWrap = document.getElementById('message-modal-subject-wrap');
+    const fromEl = document.getElementById('message-modal-from');
+    const toEl = document.getElementById('message-modal-to');
+    const subjectEl = document.getElementById('message-modal-subject');
+    const bodyEl = document.getElementById('message-modal-body');
+    if (title) title.textContent = spec.title || 'Message';
+    if (meta) meta.textContent = spec.meta || '';
+    if (fromWrap) fromWrap.classList.toggle('d-none', !spec.from);
+    if (fromEl) fromEl.value = spec.from || '';
+    if (toWrap) toWrap.classList.toggle('d-none', !spec.to);
+    if (toEl) toEl.value = spec.to || '';
+    if (subjectWrap) subjectWrap.classList.toggle('d-none', spec.subject == null);
+    if (subjectEl) subjectEl.value = spec.subject || '';
+    if (bodyEl) bodyEl.value = spec.body || '';
+    window.bootstrap?.Modal?.getOrCreateInstance(modalEl).show();
+  }
+
+  async function openMailForm(message) {
+    if (!message) return;
+    const when = message.created_at ? new Date(message.created_at).toLocaleString() : '';
+    const to = (message.recipients || []).join(', ');
+    const attachment = message.attachment_name ? `\n\n${message.attachment_name}` : '';
+    showMessageForm({
+      title: 'Mail',
+      meta: when,
+      from: message.sender || '',
+      to,
+      subject: message.subject || '',
+      body: `${message.body || ''}${attachment}`.trim(),
+    });
+    const inbox = message.box === 'inbox' || (message.box !== 'sent' && mailBox === 'inbox');
+    if (inbox && message.read === false && message.id) {
+      try {
+        await api(`api/workspaces/${workspaceId}/mail/${message.id}/read/`, 'POST', {});
+        message.read = true;
+        if (isInboxListVisible()) loadMailList();
+        if (mailTableOpen) loadMailTable();
+      } catch (_) { /* ignore */ }
+    }
+  }
+
+  function openChatForm(message) {
+    if (!message) return;
+    const when = message.created_at ? new Date(message.created_at).toLocaleString() : '';
+    const attachment = message.attachment_name ? `\n\n${message.attachment_name}` : '';
+    showMessageForm({
+      title: 'Chat',
+      meta: when,
+      from: message.sender || '',
+      to: '',
+      subject: null,
+      body: `${message.body || ''}${attachment}`.trim(),
+    });
+  }
+
+  function stampChatBubble(el, message) {
+    if (!el || !message) return;
+    const hover = messageHoverText(message);
+    if (hover) el.dataset.issueDesc = hover;
+    el.dataset.sender = message.sender || '';
+    el.dataset.createdAt = message.created_at || '';
+    el.dataset.body = message.body || '';
+    el.dataset.attachment = message.attachment_name || '';
+  }
+
   async function loadMailList() {
     syncWorkspaceIdFromDom();
     if (!workspaceId || mailBox === 'compose') return;
@@ -25418,23 +26248,19 @@ function formatTextWithMarkup(rawText) {
       const data = await api(`api/workspaces/${workspaceId}/mail/?box=${box}`);
       list.innerHTML = '';
       const badge = document.getElementById('mail-unread-badge');
-      if (badge) {
-        if (data.unread_count > 0) {
-          badge.textContent = data.unread_count;
-          badge.classList.remove('d-none');
-        } else {
-          badge.classList.add('d-none');
-        }
-      }
+      if (badge) setMailUnreadBadge(data.unread_count);
       if (!data.messages.length) {
         list.innerHTML = '<p class="small text-muted">No messages.</p>';
         return;
       }
+      hideIssueHoverTooltip();
       data.messages.forEach(m => {
         const item = document.createElement('div');
         item.className = 'mail-item' + (m.read === false && box === 'inbox' ? ' unread' : '');
+        const hover = messageHoverText(m);
+        if (hover) item.dataset.issueDesc = hover;
         item.innerHTML = `<strong>${escapeHtml(m.subject)}</strong><br><span class="small text-muted">${escapeHtml(m.sender)} · ${new Date(m.created_at).toLocaleString()}</span>`;
-        item.addEventListener('click', () => openMailRead(m));
+        item.addEventListener('click', () => { void openMailForm(m); });
         list.appendChild(item);
       });
     } catch (e) {
@@ -25489,7 +26315,242 @@ function formatTextWithMarkup(rawText) {
     }
   }
 
+  function syncChatTableButton() {
+    const btn = document.getElementById('chat-all-btn');
+    if (!btn) return;
+    btn.classList.toggle('btn-primary', chatTableOpen);
+    btn.classList.toggle('btn-outline-light', !chatTableOpen);
+    btn.setAttribute('aria-pressed', chatTableOpen ? 'true' : 'false');
+  }
+
+  function syncMailTableButton() {
+    const btn = document.getElementById('mail-all-btn');
+    if (!btn) return;
+    btn.classList.toggle('btn-primary', mailTableOpen);
+    btn.classList.toggle('btn-outline-light', !mailTableOpen);
+    btn.setAttribute('aria-pressed', mailTableOpen ? 'true' : 'false');
+  }
+
+  function recordSortValue(row, key) {
+    if (key === 'created_at') return row.created_at || '';
+    if (key === 'recipients') return (row.recipients || []).join(', ').toLowerCase();
+    return String(row[key] || '').toLowerCase();
+  }
+
+  function sortedRecordRows(rows, sort) {
+    const mul = sort.dir === 'asc' ? 1 : -1;
+    return [...rows].sort((a, b) => {
+      const av = recordSortValue(a, sort.key);
+      const bv = recordSortValue(b, sort.key);
+      if (av < bv) return -1 * mul;
+      if (av > bv) return 1 * mul;
+      return (Number(b.id) || 0) - (Number(a.id) || 0);
+    });
+  }
+
+  function filteredRecordRows(rows, query) {
+    const q = String(query || '').trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((row) => {
+      const blob = [
+        row.sender,
+        row.subject,
+        row.body,
+        row.attachment_name,
+        row.box,
+        ...(row.recipients || []),
+      ].join(' ').toLowerCase();
+      return blob.includes(q);
+    });
+  }
+
+  function paintRecordSortHeaders(root, sort) {
+    root?.querySelectorAll('th[data-sort]').forEach((th) => {
+      const active = th.dataset.sort === sort.key;
+      th.classList.toggle('is-sorted', active);
+      const label = th.dataset.label || th.textContent.replace(/^[▲▼]\s*/, '');
+      th.dataset.label = label;
+      th.textContent = active ? `${sort.dir === 'asc' ? '▲' : '▼'} ${label}` : label;
+    });
+  }
+
+  function renderChatTable() {
+    const body = document.getElementById('chat-table-body');
+    const countEl = document.getElementById('chat-table-count');
+    if (!body) return;
+    hideIssueHoverTooltip();
+    const query = document.getElementById('chat-table-search')?.value || '';
+    const rows = sortedRecordRows(filteredRecordRows(chatTableCache, query), chatTableSort);
+    if (countEl) countEl.textContent = rows.length === 1 ? '1 message' : `${rows.length} messages`;
+    paintRecordSortHeaders(document.querySelector('#chat-table-wrap thead'), chatTableSort);
+    if (!rows.length) {
+      body.innerHTML = '<tr><td colspan="3" class="issues-table-empty">No chat messages match this filter.</td></tr>';
+      return;
+    }
+    body.innerHTML = rows.map((message) => {
+      const when = message.created_at ? new Date(message.created_at).toLocaleString() : '';
+      const text = message.attachment_name
+        ? `${message.body || ''} ${message.attachment_name}`.trim()
+        : (message.body || '');
+      const hover = messageHoverText({ body: text });
+      const tipAttr = hover ? ` data-issue-desc="${escapeHtml(hover)}"` : '';
+      return `<tr data-chat-id="${message.id}"${tipAttr}>
+        <td class="issues-table-updated">${escapeHtml(when)}</td>
+        <td>${escapeHtml(message.sender || '')}</td>
+        <td class="issues-table-title-cell">${escapeHtml(text)}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  function renderMailTable() {
+    const body = document.getElementById('mail-table-body');
+    const countEl = document.getElementById('mail-table-count');
+    if (!body) return;
+    hideIssueHoverTooltip();
+    const query = document.getElementById('mail-table-search')?.value || '';
+    const rows = sortedRecordRows(filteredRecordRows(mailTableCache, query), mailTableSort);
+    if (countEl) countEl.textContent = rows.length === 1 ? '1 mail' : `${rows.length} mails`;
+    paintRecordSortHeaders(document.querySelector('#mail-table-wrap thead'), mailTableSort);
+    if (!rows.length) {
+      body.innerHTML = '<tr><td colspan="5" class="issues-table-empty">No mail matches this filter.</td></tr>';
+      return;
+    }
+    body.innerHTML = rows.map((message) => {
+      const when = message.created_at ? new Date(message.created_at).toLocaleString() : '';
+      const to = (message.recipients || []).join(', ');
+      const hover = messageHoverText(message);
+      const tipAttr = hover ? ` data-issue-desc="${escapeHtml(hover)}"` : '';
+      return `<tr data-mail-id="${message.id}"${tipAttr}>
+        <td class="issues-table-updated">${escapeHtml(when)}</td>
+        <td>${escapeHtml(message.box === 'sent' ? 'Sent' : 'Inbox')}</td>
+        <td>${escapeHtml(message.sender || '')}</td>
+        <td>${escapeHtml(to)}</td>
+        <td class="issues-table-title-cell">${escapeHtml(message.subject || '(no subject)')}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  async function loadChatTable() {
+    if (!workspaceId || !chatTableOpen) return;
+    try {
+      const data = await api(`api/workspaces/${workspaceId}/chat/?all=1`);
+      chatTableCache = data.messages || [];
+      renderChatTable();
+    } catch (err) {
+      console.warn('chat table', err);
+    }
+  }
+
+  async function loadMailTable() {
+    if (!workspaceId || !mailTableOpen) return;
+    try {
+      const data = await api(`api/workspaces/${workspaceId}/mail/?box=all`);
+      mailTableCache = data.messages || [];
+      renderMailTable();
+    } catch (err) {
+      console.warn('mail table', err);
+    }
+  }
+
+  function showChatTable() {
+    if (issuesTableOpen) hideIssuesTable();
+    if (mailTableOpen) hideMailTable();
+    chatTableOpen = true;
+    document.getElementById('chat-table-wrap')?.classList.remove('d-none');
+    applyRecordTableChrome('Chat');
+    syncChatTableButton();
+    loadChatTable();
+  }
+
+  function hideChatTable() {
+    if (!chatTableOpen) return;
+    chatTableOpen = false;
+    document.getElementById('chat-table-wrap')?.classList.add('d-none');
+    syncChatTableButton();
+    restoreRecordTableChrome();
+  }
+
+  function showMailTable() {
+    if (issuesTableOpen) hideIssuesTable();
+    if (chatTableOpen) hideChatTable();
+    mailTableOpen = true;
+    document.getElementById('mail-table-wrap')?.classList.remove('d-none');
+    applyRecordTableChrome('Mail');
+    syncMailTableButton();
+    loadMailTable();
+  }
+
+  function hideMailTable() {
+    if (!mailTableOpen) return;
+    mailTableOpen = false;
+    document.getElementById('mail-table-wrap')?.classList.add('d-none');
+    syncMailTableButton();
+    restoreRecordTableChrome();
+  }
+
+  function ensureRightPanelOpen() {
+    const panel = document.getElementById('right-panel');
+    if (panel?.classList.contains('collapsed')) toggleRightPanel();
+  }
+
+  function bindRecordSort(wrapId, sort, render) {
+    document.querySelector(`#${wrapId} thead`)?.addEventListener('click', (event) => {
+      const th = event.target.closest('th[data-sort]');
+      if (!th) return;
+      const key = th.dataset.sort;
+      if (sort.key === key) sort.dir = sort.dir === 'asc' ? 'desc' : 'asc';
+      else {
+        sort.key = key;
+        sort.dir = key === 'created_at' ? 'desc' : 'asc';
+      }
+      render();
+    });
+  }
+
   function initChatAndMail() {
+    document.getElementById('chat-all-btn')?.addEventListener('click', () => {
+      if (chatTableOpen) hideChatTable();
+      else showChatTable();
+    });
+    document.getElementById('chat-table-close-btn')?.addEventListener('click', hideChatTable);
+    document.getElementById('chat-table-search')?.addEventListener('input', () => renderChatTable());
+    bindRecordSort('chat-table-wrap', chatTableSort, renderChatTable);
+    document.getElementById('chat-table-body')?.addEventListener('click', (event) => {
+      const row = event.target.closest('tr[data-chat-id]');
+      if (!row) return;
+      const message = chatTableCache.find((item) => String(item.id) === row.dataset.chatId);
+      if (message) openChatForm(message);
+    });
+    bindIssueDescriptionHover(document.getElementById('chat-table-body'), 'tr[data-chat-id]');
+    bindIssueDescriptionHover(document.getElementById('mail-list'), '.mail-item');
+    bindIssueDescriptionHover(document.getElementById('chat-messages'), '.chat-bubble');
+    document.getElementById('chat-messages')?.addEventListener('click', (event) => {
+      if (event.target.closest('a, button, input, textarea, img')) return;
+      const bubble = event.target.closest('.chat-bubble');
+      if (!bubble || !bubble.dataset.issueDesc && !bubble.dataset.body && !bubble.dataset.attachment) return;
+      openChatForm({
+        sender: bubble.dataset.sender || '',
+        created_at: bubble.dataset.createdAt || '',
+        body: bubble.dataset.body || '',
+        attachment_name: bubble.dataset.attachment || '',
+      });
+    });
+
+    document.getElementById('mail-all-btn')?.addEventListener('click', () => {
+      if (mailTableOpen) hideMailTable();
+      else showMailTable();
+    });
+    document.getElementById('mail-table-close-btn')?.addEventListener('click', hideMailTable);
+    document.getElementById('mail-table-search')?.addEventListener('input', () => renderMailTable());
+    bindRecordSort('mail-table-wrap', mailTableSort, renderMailTable);
+    document.getElementById('mail-table-body')?.addEventListener('click', (event) => {
+      const row = event.target.closest('tr[data-mail-id]');
+      if (!row) return;
+      const message = mailTableCache.find((item) => String(item.id) === row.dataset.mailId);
+      if (message) void openMailForm(message);
+    });
+    bindIssueDescriptionHover(document.getElementById('mail-table-body'), 'tr[data-mail-id]');
+
     document.querySelectorAll('[data-comm-tab]').forEach(btn => {
       btn.addEventListener('click', () => {
         const tab = btn.dataset.commTab;
@@ -25685,6 +26746,11 @@ function formatTextWithMarkup(rawText) {
       wsSelect.addEventListener('change', () => {
         lastChatId = 0;
         lastSeenChatId = 0;
+        mailArrivalReady = false;
+        chatArrivalReady = false;
+        mailArrivalSeenIds.clear();
+        arrivalItems = arrivalItems.filter((item) => item.kind === 'private');
+        renderArrivalList();
         setPendingChatAttachment(null);
         if (document.querySelector('[data-comm-tab].active')?.dataset.commTab === 'chat') {
           refreshActiveChat();
@@ -25701,6 +26767,7 @@ function formatTextWithMarkup(rawText) {
 
     setChatMode('private');
     updateChatInputPlaceholder();
+    startArrivalWatch();
   }
 
 })()

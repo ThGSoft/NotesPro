@@ -56,21 +56,24 @@ def page_tag_names(page):
     )
 
 
-def list_workspace_tag_names(workspace_id, query=''):
+def list_workspace_tag_names(workspace_id, query='', public_only=False):
     from .models import Tag
 
     tags = Tag.objects.filter(
         workspace_id=workspace_id,
         page_tags__page__deleted=False,
         page_tags__page__is_folder=False,
-    ).distinct().order_by('name')
+    )
+    if public_only:
+        tags = tags.filter(page_tags__page__settings__public=True)
+    tags = tags.distinct().order_by('name')
     q = (query or '').strip().lower()
     if q:
         tags = tags.filter(name__icontains=q)
     return list(tags.values_list('name', flat=True)[:100])
 
 
-def search_workspace_pages_by_tag(workspace_id, tag_name, query=''):
+def search_workspace_pages_by_tag(workspace_id, tag_name, query='', public_only=False):
     from .models import Page
 
     tag = normalize_tag_name(tag_name)
@@ -82,7 +85,10 @@ def search_workspace_pages_by_tag(workspace_id, tag_name, query=''):
         deleted=False,
         is_folder=False,
         page_tags__tag__name__iexact=tag,
-    ).distinct().order_by('title')
+    )
+    if public_only:
+        pages = pages.filter(settings__public=True)
+    pages = pages.distinct().order_by('title')
 
     q = (query or '').strip()
     if q:

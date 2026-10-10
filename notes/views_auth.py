@@ -5,6 +5,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.contrib.auth.views import LoginView
 from django.shortcuts import redirect, render
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_http_methods
 
 from .activation import register_mail_enabled, register_mobile_enabled
@@ -12,6 +13,27 @@ from .models import UserSettings
 from .totp import generate_secret, provisioning_uri, qr_code_base64, verify_token
 
 SESSION_PENDING_2FA = 'pending_2fa_user_id'
+SESSION_PENDING_2FA_NEXT = 'pending_2fa_next'
+
+
+def _safe_login_next(request, url):
+    url = (url or '').strip()
+    if not url:
+        return ''
+    if url_has_allowed_host_and_scheme(
+        url,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
+    ):
+        return url
+    return ''
+
+
+def _redirect_after_2fa(request):
+    nxt = _safe_login_next(request, request.session.pop(SESSION_PENDING_2FA_NEXT, ''))
+    if nxt:
+        return redirect(nxt)
+    return redirect(settings.LOGIN_REDIRECT_URL)
 
 
 class TwoFactorLoginView(LoginView):
@@ -28,6 +50,11 @@ class TwoFactorLoginView(LoginView):
         user_settings = UserSettings.objects.filter(user=user).first()
         if user_settings and user_settings.totp_enabled and user_settings.totp_secret:
             self.request.session[SESSION_PENDING_2FA] = user.id
+            nxt = _safe_login_next(self.request, self.get_redirect_url())
+            if nxt:
+                self.request.session[SESSION_PENDING_2FA_NEXT] = nxt
+            else:
+                self.request.session.pop(SESSION_PENDING_2FA_NEXT, None)
             return redirect('verify_2fa')
         return super().form_valid(form)
 
@@ -64,14 +91,14 @@ def verify_2fa(request):
     if not user_settings or not user_settings.totp_enabled or not user_settings.totp_secret:
         request.session.pop(SESSION_PENDING_2FA, None)
         login(request, user)
-        return redirect(settings.LOGIN_REDIRECT_URL)
+        return _redirect_after_2fa(request)
 
     if request.method == 'POST':
         token = request.POST.get('token', '')
         if verify_token(user_settings.totp_secret, token):
             request.session.pop(SESSION_PENDING_2FA, None)
             login(request, user)
-            return redirect(settings.LOGIN_REDIRECT_URL)
+            return _redirect_after_2fa(request)
         messages.error(request, 'Invalid verification code. Try again.')
 
     return render(request, 'registration/verify_2fa.html', {'user': user})

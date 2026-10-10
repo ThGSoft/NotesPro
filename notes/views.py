@@ -17,6 +17,7 @@ from .models import Page, Workspace, UploadedFile, PastedFile, \
                     WorkspaceMembership, WorkspaceMailMessage, WorkspaceMailRecipient
 from django.shortcuts import get_object_or_404
 from django.core.files.storage import default_storage
+import datetime
 import json
 import os, urllib, hashlib, re, zipfile
 from types import SimpleNamespace
@@ -413,6 +414,220 @@ def _public_page_or_404(owner, workspace_slug, page_slug):
     return page
 
 
+_GUEST_EMAIL_RE = re.compile(r'^[^@\s|,;]+@[^@\s|,;]+\.[^@\s|,;]+$')
+_FORM_FENCE_RE = re.compile(
+    r'```(radiobuttons?|radiolist|radio|votelist|vote|poll|text-area|textarea|'
+    r'text-input|textinput|inputtext|numinput|number|dropdown|enum)'
+    r'(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```',
+    re.IGNORECASE,
+)
+_VOTE_FENCE_NAMES = {'votelist', 'vote', 'poll'}
+_NOTESLIST_FENCE_RE = re.compile(
+    r'```(noteslist|notes-list|craigslist|classifieds|clist|ads)'
+    r'(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```',
+    re.IGNORECASE,
+)
+_NOTES_BROADCAST = {'all', 'group', 'members', 'everyone', 'workspace', '*', 'alle'}
+
+
+def _guest_email(value):
+    email = re.sub(r'\s+', '', str(value or '')).strip().lower()[:120]
+    if not email or not _GUEST_EMAIL_RE.match(email):
+        return ''
+    return email
+
+
+def _vote_option_parts(line):
+    raw = line.rstrip('\r\n')
+    ending = line[len(raw):]
+    stripped = raw.strip()
+    if not stripped or stripped.startswith('#') or stripped.startswith('`'):
+        return None
+    if re.match(r'^title:\s*', stripped, re.IGNORECASE) and '|' not in stripped:
+        return None
+    indent = raw[:len(raw) - len(raw.lstrip())]
+    rest = raw[len(indent):]
+    bullet = ''
+    bullet_match = re.match(r'^([-*+]\s+)(.*)$', rest)
+    if bullet_match:
+        bullet, rest = bullet_match.group(1), bullet_match.group(2)
+    rest = re.sub(r'^(?:\([xXoO*]\)|\[[xX ]\])\s*', '', rest)
+    if '|' in rest:
+        label, vote_part = rest.split('|', 1)
+        votes = [part.strip() for part in re.split(r'[,;]', vote_part) if part.strip()]
+        label = label.strip()
+    else:
+        label, votes = rest.strip(), []
+    if not label and not votes:
+        return None
+    return {
+        'indent': indent,
+        'bullet': bullet or '- ',
+        'label': label,
+        'votes': votes,
+        'ending': ending,
+    }
+
+
+def _apply_guest_vote(markdown, form_index, option_index, email, select):
+    matches = list(_FORM_FENCE_RE.finditer(markdown or ''))
+    if form_index < 0 or form_index >= len(matches):
+        return None, None, 'That vote was not found.'
+    match = matches[form_index]
+    if match.group(1).lower() not in _VOTE_FENCE_NAMES or match.start(3) < 0:
+        return None, None, 'That block is not a vote.'
+    body = match.group(3) or ''
+    lines = body.splitlines(keepends=True)
+    option_at = []
+    for index, line in enumerate(lines):
+        parts = _vote_option_parts(line)
+        if parts:
+            option_at.append((index, parts))
+    if option_index < 0 or option_index >= len(option_at):
+        return None, None, 'That choice was not found.'
+    for _, parts in option_at:
+        parts['votes'] = [name for name in parts['votes'] if name.lower() != email]
+    if select:
+        chosen = option_at[option_index][1]
+        if len(chosen['votes']) >= 200:
+            return None, None, 'This choice has too many votes.'
+        chosen['votes'].append(email)
+    for index, parts in option_at:
+        votes = ', '.join(parts['votes'])
+        tail = f"{parts['label']} | {votes}" if votes else parts['label']
+        lines[index] = f"{parts['indent']}{parts['bullet']}{tail}{parts['ending']}"
+    updated = f"{markdown[:match.start(3)]}{''.join(lines)}{markdown[match.end(3):]}"
+    options = [{'votes': parts['votes']} for _, parts in option_at]
+    return updated, options, None
+
+
+def _clean_listing_field(value, limit):
+    return re.sub(r'\s+', ' ', str(value or '')).replace('|', '/').strip()[:limit]
+
+
+def _listing_until(value):
+    raw = str(value or '').strip()
+    match = re.match(r'^(\d{4})-(\d{2})-(\d{2})$', raw)
+    if not match:
+        return ''
+    try:
+        day = datetime.date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
+    except ValueError:
+        return ''
+    today = datetime.date.today()
+    if day < today or day > today + datetime.timedelta(days=31):
+        return ''
+    return day.isoformat()
+
+
+def _guest_listing_line(payload, email):
+    title = _clean_listing_field(payload.get('title'), 120)
+    if not title:
+        return '', 'Enter a title.'
+    until_raw = str(payload.get('until') or '').strip()
+    until = _listing_until(until_raw) if until_raw else ''
+    if until_raw and not until:
+        return '', 'Choose an end date within one month.'
+    parts = [
+        title,
+        _clean_listing_field(payload.get('price'), 40),
+        _clean_listing_field(payload.get('location'), 80),
+        _clean_listing_field(payload.get('description'), 500),
+    ]
+    if until:
+        parts.append(f'until:{until}')
+    parts.append(f'from:{email}')
+    return ' | '.join(parts), None
+
+
+def _insert_listing_line(body, category, line):
+    lines = str(body or '').replace('\r\n', '\n').split('\n')
+    cat = _clean_listing_field(category, 80)
+    if not cat:
+        while lines and not lines[-1].strip():
+            lines.pop()
+        lines.append(line)
+        return '\n'.join(lines)
+    cat_key = cat.casefold()
+    heading_idx = -1
+    next_heading = len(lines)
+    for index, row in enumerate(lines):
+        match = re.match(r'^#+\s+(.+)$', row.strip())
+        if not match:
+            continue
+        if heading_idx >= 0:
+            next_heading = index
+            break
+        if match.group(1).strip().casefold() == cat_key:
+            heading_idx = index
+    if heading_idx < 0:
+        if lines and lines[-1].strip():
+            lines.append('')
+        lines.extend([f'# {cat}', line])
+        return '\n'.join(lines)
+    insert_at = next_heading
+    while insert_at > heading_idx + 1 and not str(lines[insert_at - 1] or '').strip():
+        insert_at -= 1
+    lines.insert(insert_at, line)
+    return '\n'.join(lines)
+
+
+def _apply_guest_listing(markdown, list_index, category, line):
+    matches = list(_NOTESLIST_FENCE_RE.finditer(markdown or ''))
+    if list_index < 0 or list_index >= len(matches):
+        return None, 'That notes list was not found.'
+    match = matches[list_index]
+    if (match.group(3) or '').count('\n') > 400:
+        return None, 'This list is full.'
+    body = _insert_listing_line(match.group(3) or '', category, line)
+    if not body.endswith('\n'):
+        body += '\n'
+    if match.start(3) < 0:
+        attrs = match.group(2)
+        header = f"```{match.group(1)}" + (f'{{{attrs}}}' if attrs is not None else '')
+        replacement = f'{header}\n{body}```'
+        return markdown[:match.start()] + replacement + markdown[match.end():], None
+    return markdown[:match.start(3)] + body + markdown[match.end(3):], None
+
+
+def _public_notes_recipient_ids(workspace, to_names):
+    member_ids = set(
+        WorkspaceMembership.objects.filter(workspace=workspace).values_list('user_id', flat=True)
+    )
+    member_ids.add(workspace.owner_id)
+    tokens = []
+    broadcast = False
+    for name in (to_names or [])[:24]:
+        cleaned = str(name or '').strip()
+        if not cleaned:
+            continue
+        if cleaned.lower() in _NOTES_BROADCAST:
+            broadcast = True
+            continue
+        tokens.append(cleaned)
+    if broadcast or not tokens:
+        return member_ids
+    matched = set(
+        User.objects.filter(pk__in=member_ids, username__in=tokens).values_list('pk', flat=True)
+    )
+    return matched or {workspace.owner_id}
+
+
+def _public_notes_mail(workspace, subject, body, to_names):
+    recipient_ids = _public_notes_recipient_ids(workspace, to_names)
+    message = WorkspaceMailMessage.objects.create(
+        workspace=workspace,
+        sender=workspace.owner,
+        subject=str(subject or 'Notes list')[:180],
+        body=str(body or '')[:4000],
+    )
+    WorkspaceMailRecipient.objects.bulk_create([
+        WorkspaceMailRecipient(message=message, user_id=uid)
+        for uid in recipient_ids
+    ])
+    return message
+
+
 def _public_shop_order_body(payload, merchant):
     payment = str(payload.get('payment') or '').strip().lower()
     labels = {'paypal': 'PayPal', 'visa': 'Visa', 'mastercard': 'Mastercard'}
@@ -440,12 +655,15 @@ def _public_shop_order_body(payload, merchant):
         return None, 'Do not enter card numbers. Use your IBAN or account.'
     if payment in ('visa', 'mastercard') and not buyer:
         return None, 'Enter your Konto to transfer from.'
+    email = _guest_email(payload.get('email'))
+    if not email:
+        return None, 'Enter your email.'
     title = re.sub(r'\s+', ' ', str(payload.get('title') or 'Shop')).strip()[:120] or 'Shop'
     note = re.sub(r'\s+', ' ', str(payload.get('note') or '')).strip()[:120]
     send_to = re.sub(r'\s+', ' ', str(payload.get('send_to') or '')).strip()[:240]
     bill_to = re.sub(r'\s+', ' ', str(payload.get('bill_to') or '')).strip()[:240]
     total = re.sub(r'\s+', ' ', str(payload.get('total') or '')).strip()[:40]
-    parts = [f'Shop payment — {title}', f'Payment: {labels[payment]}']
+    parts = [f'Shop payment — {title}', f'Buyer: {email}', f'Payment: {labels[payment]}']
     if payment in ('visa', 'mastercard'):
         parts.append(f'Transfer from: {buyer}')
         if merchant.get('konto'):
@@ -631,9 +849,64 @@ def activate_view(request):
 
     return render(request, 'registration/activate.html', activate_ctx)
 
+def _editor_login_next(request, page):
+    """App URL that opens *page* for someone who can edit it."""
+    base = (
+        getattr(django_settings, 'FORCE_SCRIPT_NAME', None)
+        or request.META.get('SCRIPT_NAME')
+        or ''
+    ).rstrip('/')
+    return f'{base}/?ws={page.workspace_id}&page={page.id}'
+
+
+def _requested_editor_page(request):
+    """Page from ?ws=&page= when this user can edit it, else None."""
+    try:
+        page_id = int(request.GET.get('page') or '')
+    except (TypeError, ValueError):
+        return None
+    try:
+        ws_id = int(request.GET.get('ws') or '')
+    except (TypeError, ValueError):
+        ws_id = None
+    page = (
+        Page.objects.filter(
+            pk=page_id,
+            deleted=False,
+            is_folder=False,
+            workspace__deleted=False,
+        )
+        .select_related('workspace', 'workspace__owner')
+        .first()
+    )
+    if not page:
+        return None
+    if ws_id is not None and page.workspace_id != ws_id:
+        return None
+    if not _workspace_qs(request.user).filter(pk=page.workspace_id).exists():
+        return None
+    if not _user_has_write_access(request.user, page.workspace):
+        return None
+    return page
+
+
+def _remember_editor_page(request, page):
+    settings, _ = UserSettings.objects.get_or_create(user=request.user)
+    settings.last_workspace_id = page.workspace_id
+    settings.last_page_id = page.id
+    _set_workspace_page(settings, page.workspace_id, page.id)
+    settings.save()
+
+
 def site_entry(request):
     """Notes app for signed-in users. A superuser can publish one page at /."""
     if request.user.is_authenticated:
+        if request.GET.get('page') or request.GET.get('ws'):
+            page = _requested_editor_page(request)
+            if page:
+                _remember_editor_page(request, page)
+                request.session['notespro_open_editing'] = page.id
+            return redirect('dashboard')
         return dashboard(request)
     page = _root_public_page()
     if page:
@@ -681,6 +954,14 @@ def dashboard(request):
             _set_workspace_page(settings, current_workspace.id, page.id)
         settings.save()
 
+    open_editing = False
+    pending_edit = request.session.pop('notespro_open_editing', None)
+    if page and pending_edit is not None:
+        try:
+            open_editing = int(pending_edit) == page.id
+        except (TypeError, ValueError):
+            open_editing = False
+
     extra = settings.extra_configs if isinstance(settings.extra_configs, dict) else {}
     app_language_stored = stored_app_language(extra)
     if app_language_stored == 'browser':
@@ -710,6 +991,7 @@ def dashboard(request):
         'app_credits': CREDITS,
         'app_license': LICENSE,
         'game_highscores': serialize_workspace_highscores(current_workspace, request.user),
+        'open_editing': open_editing,
     })
 
 
@@ -739,7 +1021,7 @@ def _render_public_page(request, page):
         'app_language_choices': APP_LANGUAGE_CHOICES,
         'app_base': (getattr(django_settings, 'FORCE_SCRIPT_NAME', None) or request.META.get('SCRIPT_NAME') or '').rstrip('/'),
         'local_file_open_enabled': False,
-        'tag_websocket_enabled': False,
+        'tag_websocket_enabled': _public_page_ws_enabled(page),
         'allow_games': getattr(django_settings, 'ALLOW_GAMES', True),
         'allow_photos': getattr(django_settings, 'ALLOW_PHOTOS', True),
         'allow_offline': False,
@@ -749,6 +1031,11 @@ def _render_public_page(request, page):
         'app_credits': CREDITS,
         'app_license': LICENSE,
         'game_highscores': {},
+        'public_login_next': (
+            _editor_login_next(request, page)
+            if page.normalized_settings().get('root')
+            else ''
+        ),
     })
 
 
@@ -810,6 +1097,103 @@ def public_shop_order(request, owner, workspace_slug, page_slug):
         'payment': built['payment'],
         'paypal': merchant.get('paypal') or '',
         'konto': merchant.get('konto') or '',
+    })
+
+
+@require_POST
+def public_vote(request, owner, workspace_slug, page_slug):
+    """Record one guest vote on a public page. The voter is their email."""
+    page = _public_page_or_404(owner, workspace_slug, page_slug)
+    try:
+        payload = json.loads(request.body or '{}')
+    except json.JSONDecodeError:
+        return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+    if not isinstance(payload, dict):
+        return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+    email = _guest_email(payload.get('email'))
+    if not email:
+        return JsonResponse({'status': 'error', 'message': 'Enter your email.'}, status=400)
+    try:
+        form_index = int(payload.get('form_index'))
+        option_index = int(payload.get('option_index'))
+    except (TypeError, ValueError):
+        return JsonResponse({'status': 'error', 'message': 'That vote was not found.'}, status=400)
+    select = payload.get('select') is not False
+    with transaction.atomic():
+        locked = Page.objects.select_for_update().get(pk=page.pk)
+        if not locked.normalized_settings().get('public') or locked.deleted:
+            raise Http404('Page not found')
+        updated, options, error = _apply_guest_vote(
+            locked.markdown_content, form_index, option_index, email, select,
+        )
+        if error:
+            return JsonResponse({'status': 'error', 'message': error}, status=400)
+        locked.markdown_content = updated
+        locked.save(update_fields=['markdown_content', 'updated_at'])
+    return JsonResponse({'status': 'success', 'email': email, 'options': options})
+
+
+@require_POST
+def public_noteslist(request, owner, workspace_slug, page_slug):
+    """Reply to or add a NotesList entry without an account. The guest is their email."""
+    page = _public_page_or_404(owner, workspace_slug, page_slug)
+    try:
+        payload = json.loads(request.body or '{}')
+    except json.JSONDecodeError:
+        return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+    if not isinstance(payload, dict):
+        return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+    email = _guest_email(payload.get('email'))
+    if not email:
+        return JsonResponse({'status': 'error', 'message': 'Enter your email.'}, status=400)
+    action = str(payload.get('action') or '').strip().lower()
+    to_names = payload.get('to') if isinstance(payload.get('to'), list) else []
+    board = _clean_listing_field(payload.get('board') or 'Notes list', 120) or 'Notes list'
+    if action == 'reply':
+        title = _clean_listing_field(payload.get('title'), 120)
+        text = _clean_listing_field(payload.get('text'), 2000)
+        if not title:
+            return JsonResponse({'status': 'error', 'message': 'That listing was not found.'}, status=400)
+        if not text:
+            return JsonResponse({'status': 'error', 'message': 'Enter a reply.'}, status=400)
+        parts = [f'Notes list reply — {board}', f'From: {email}', f'Listing: {title}']
+        price = _clean_listing_field(payload.get('price'), 40)
+        location = _clean_listing_field(payload.get('location'), 80)
+        if price:
+            parts.append(f'Price: {price}')
+        if location:
+            parts.append(f'Location: {location}')
+        parts.append(f'Message:\n{text}')
+        _public_notes_mail(page.workspace, f'Reply: {title}', '\n'.join(parts), to_names)
+        return JsonResponse({'status': 'success', 'email': email})
+    if action != 'add':
+        return JsonResponse({'status': 'error', 'message': 'Unknown notes list action.'}, status=400)
+    line, error = _guest_listing_line(payload, email)
+    if error:
+        return JsonResponse({'status': 'error', 'message': error}, status=400)
+    try:
+        list_index = int(payload.get('list_index'))
+    except (TypeError, ValueError):
+        return JsonResponse({'status': 'error', 'message': 'That notes list was not found.'}, status=400)
+    category = _clean_listing_field(payload.get('category'), 80)
+    with transaction.atomic():
+        locked = Page.objects.select_for_update().get(pk=page.pk)
+        if not locked.normalized_settings().get('public') or locked.deleted:
+            raise Http404('Page not found')
+        updated, error = _apply_guest_listing(locked.markdown_content, list_index, category, line)
+        if error:
+            return JsonResponse({'status': 'error', 'message': error}, status=400)
+        locked.markdown_content = updated
+        locked.save(update_fields=['markdown_content', 'updated_at'])
+    parts = [f'New notes list listing — {board}', f'From: {email}']
+    if category:
+        parts.append(f'Category: {category}')
+    parts.append(line)
+    _public_notes_mail(page.workspace, f'New listing: {category or board}', '\n'.join(parts), to_names)
+    return JsonResponse({
+        'status': 'success',
+        'email': email,
+        'markdown_content': updated,
     })
 
 
@@ -1133,22 +1517,44 @@ def tree_data(request, workspace_id):
     return JsonResponse( _tree_data(request.user, workspace), safe=False)
 
 
-@login_required
+def _public_page_ws_enabled(page):
+    settings = page.normalized_settings()
+    return bool(
+        getattr(django_settings, 'ENABLE_TAG_WEBSOCKET', False)
+        and settings.get('ws')
+        and settings.get('root')
+        and settings.get('public')
+    )
+
+
+def _tag_read_access(request, workspace_id):
+    """Members see every tag. Anonymous visitors see public pages when root WebSocket is on."""
+    if request.user.is_authenticated:
+        get_object_or_404(_workspace_qs(request.user), pk=workspace_id)
+        return False, None
+    if Page.public_root_ws_enabled(workspace_id):
+        return True, None
+    return False, redirect_to_login(request.get_full_path() or '/')
+
+
 @require_GET
 def workspace_tags_list(request, workspace_id):
-    get_object_or_404(_workspace_qs(request.user), pk=workspace_id)
+    public_only, denied = _tag_read_access(request, workspace_id)
+    if denied:
+        return denied
     query = (request.GET.get('q') or '').strip().lower()
-    tags = list_workspace_tag_names(workspace_id, query)
+    tags = list_workspace_tag_names(workspace_id, query, public_only=public_only)
     return JsonResponse({'tags': tags})
 
 
-@login_required
 @require_GET
 def workspace_tags_search(request, workspace_id):
-    get_object_or_404(_workspace_qs(request.user), pk=workspace_id)
+    public_only, denied = _tag_read_access(request, workspace_id)
+    if denied:
+        return denied
     tag = (request.GET.get('tag') or '').strip()
     query = (request.GET.get('q') or '').strip()
-    pages = search_workspace_pages_by_tag(workspace_id, tag, query)
+    pages = search_workspace_pages_by_tag(workspace_id, tag, query, public_only=public_only)
     return JsonResponse({'pages': pages})
 
 
@@ -1252,6 +1658,7 @@ def page_update(request, pk):
         if page.is_folder:
             merged['public'] = False
             merged['root'] = False
+            merged['ws'] = False
         elif 'public' in incoming:
             merged['public'] = Page._setting_bool(incoming.get('public'), False)
         if (
@@ -1260,10 +1667,19 @@ def page_update(request, pk):
             and request.user.is_superuser
         ):
             merged['root'] = Page._setting_bool(incoming.get('root'), False)
+        if (
+            not page.is_folder
+            and 'ws' in incoming
+            and request.user.is_superuser
+        ):
+            merged['ws'] = Page._setting_bool(incoming.get('ws'), False)
+        if merged.get('ws'):
+            merged['root'] = True
         if merged.get('root'):
             merged['public'] = True
             claim_root = True
         else:
+            merged['ws'] = False
             claim_root = False
         page.settings = merged
     else:

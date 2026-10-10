@@ -105,6 +105,7 @@
       labelUntil: 'Until',
       untilHint: 'Max 1 month',
       untilUntil: 'until {date}',
+      labelEmail: 'Your email',
       labelTo: 'To',
       labelText: 'Text',
     },
@@ -155,6 +156,7 @@
       labelUntil: 'Bis',
       untilHint: 'Max. 1 Monat',
       untilUntil: 'bis {date}',
+      labelEmail: 'Ihre E-Mail',
       labelTo: 'An',
       labelText: 'Text',
     },
@@ -205,6 +207,7 @@
       labelUntil: 'Jusqu’au',
       untilHint: '1 mois max.',
       untilUntil: 'jusqu’au {date}',
+      labelEmail: 'Votre e-mail',
       labelTo: 'À',
       labelText: 'Texte',
     },
@@ -255,6 +258,7 @@
       labelUntil: 'Fino al',
       untilHint: 'Max 1 mese',
       untilUntil: 'fino al {date}',
+      labelEmail: 'La tua email',
       labelTo: 'A',
       labelText: 'Testo',
     },
@@ -305,6 +309,7 @@
       labelUntil: 'Hasta',
       untilHint: 'Máx. 1 mes',
       untilUntil: 'hasta {date}',
+      labelEmail: 'Tu correo',
       labelTo: 'Para',
       labelText: 'Texto',
     },
@@ -526,11 +531,17 @@
     const location = String(parts[2] || '').trim();
     const restParts = parts.slice(3).map((part) => String(part || '').trim());
     let until = '';
+    let from = '';
     const leftover = [];
     restParts.forEach((part) => {
       if (!part) return;
       if (!until && looksLikeUntilToken(part)) {
         until = parseUntilToken(part);
+        return;
+      }
+      const fromMatch = !from && part.match(/^from:\s*(.+)$/i);
+      if (fromMatch) {
+        from = fromMatch[1].trim();
         return;
       }
       leftover.push(part);
@@ -554,6 +565,7 @@
       description,
       image,
       until,
+      from,
       category,
       categorySlug: slugify(category),
     };
@@ -622,6 +634,7 @@
       items,
       currentUser: String(options.currentUser || '').trim(),
       canEdit: Boolean(options.canEdit),
+      askEmail: Boolean(options.askEmail),
     };
   }
 
@@ -668,6 +681,7 @@
       item.location ? `${t('labelLocation', null, lang)}: ${item.location}` : '',
       item.until ? `${t('labelUntil', null, lang)}: ${item.until}` : '',
       item.description ? `\n${item.description}` : '',
+      extras.email ? `${t('labelEmail', null, lang)}: ${extras.email}` : '',
       userText ? `\n${t('labelText', null, lang)}:\n${userText}` : '',
     ];
     return lines.filter(Boolean).join('\n');
@@ -683,6 +697,8 @@
     const image = String(fields.image || '').trim();
     const parts = [title, price, location, description];
     if (until) parts.push(`until:${until}`);
+    const from = String(fields.email || fields.from || '').replace(/\|/g, '').trim();
+    if (from) parts.push(`from:${from}`);
     if (image) parts.push(image);
     return parts.join(' | ');
   }
@@ -755,6 +771,7 @@
     const to = Array.isArray(spec?.to) ? spec.to.join(', ') : String(payload?.to || '');
     return [
       `${t('addBodyTitle', null, lang)} — ${board} (${pageTitle})`,
+      payload?.email ? `${t('labelEmail', null, lang)}: ${payload.email}` : '',
       to ? `${t('labelTo', null, lang)}: ${to}` : '',
       payload?.category ? `${t('category', null, lang)}: ${payload.category}` : '',
       payload?.title ? `${t('labelTitle', null, lang)}: ${payload.title}` : '',
@@ -809,6 +826,7 @@
       price ? `<span>${escapeHtml(price)}</span>` : '',
       item.location ? `<span>${escapeHtml(item.location)}</span>` : '',
       item.until ? `<span>${escapeHtml(t('untilUntil', { date: item.until }, lang))}</span>` : '',
+      item.from ? `<span>${escapeHtml(item.from)}</span>` : '',
       `</p>`,
       img,
       item.description ? `<p class="cl-posting-body">${escapeHtml(item.description)}</p>` : '',
@@ -828,6 +846,9 @@
     const lang = spec.lang;
     return [
       `<form class="cl-reply-form" data-cl-reply-form hidden>`,
+      spec.askEmail
+        ? `<label class="cl-add-field">${escapeHtml(t('labelEmail', null, lang))} <input type="email" class="cl-add-email" data-cl-email data-cl-reply-email maxlength="120" placeholder="you@example.com" autocomplete="email" required></label>`
+        : '',
       `<label class="cl-add-field">${escapeHtml(t('to', null, lang))} `,
       `<input type="text" class="cl-reply-to" data-cl-reply-to value="all" placeholder="${escapeHtml(t('toPlaceholder', null, lang))}" autocomplete="off">`,
       `</label>`,
@@ -907,6 +928,9 @@
     return [
       `<button type="button" class="cl-add-btn" data-cl-add>${escapeHtml(t('add', null, lang))}</button>`,
       `<form class="cl-add-form" data-cl-add-form hidden>`,
+      spec.askEmail
+        ? `<label class="cl-add-field">${escapeHtml(t('labelEmail', null, lang))} <input type="email" class="cl-add-email" data-cl-email data-cl-add-email maxlength="120" placeholder="you@example.com" autocomplete="email" required></label>`
+        : '',
       `<label class="cl-add-field" data-cl-add-to-field>${escapeHtml(t('to', null, lang))}`,
       `<input type="text" class="cl-add-to" data-cl-add-to value="${escapeHtml(defaultTo)}" autocomplete="off">`,
       `</label>`,
@@ -1100,6 +1124,7 @@
         el,
         btn: sendBtn,
         to: el.querySelector('[data-cl-add-to]')?.value || '',
+        email: el.querySelector('[data-cl-add-email]')?.value || '',
         category: el.querySelector('[data-cl-add-cat]')?.value || '',
         title: el.querySelector('[data-cl-add-title]')?.value || '',
         price: el.querySelector('[data-cl-add-price]')?.value || '',
@@ -1137,6 +1162,7 @@
           el,
           btn: sendBtn,
           to: replyForm.querySelector('[data-cl-reply-to]')?.value || '',
+          email: replyForm.querySelector('[data-cl-reply-email]')?.value || '',
           text: replyForm.querySelector('[data-cl-reply-text]')?.value || '',
         })).then((ok) => {
           if (!ok) return;

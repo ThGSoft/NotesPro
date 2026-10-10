@@ -479,8 +479,10 @@ def _import_pages_into_workspace(owner, workspace, data, archive=None, root_pare
                 if on_root:
                     page_settings['root'] = True
                     page_settings['public'] = True
+                    page_settings['ws'] = Page._setting_bool(page_settings.get('ws'), False)
                 else:
                     page_settings['root'] = False
+                    page_settings['ws'] = False
                 page = Page.objects.create(
                     workspace=workspace,
                     parent=parent,

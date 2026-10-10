@@ -2,7 +2,7 @@ from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from django.db.models import Q
 
-from .models import Workspace
+from .models import Page, Workspace
 from .tags import (
     list_workspace_tag_names,
     normalize_tag_name,
@@ -15,13 +15,16 @@ class WorkspaceTagsConsumer(AsyncJsonWebsocketConsumer):
         self.workspace_id = int(self.scope['url_route']['kwargs']['workspace_id'])
         self.user = self.scope['user']
 
-        if not self.user.is_authenticated:
+        self.public_only = False
+        if self.user.is_authenticated:
+            if not await self._user_has_workspace_access():
+                await self.close()
+                return
+        elif not await self._anonymous_root_ws_allowed():
             await self.close()
             return
-
-        if not await self._user_has_workspace_access():
-            await self.close()
-            return
+        else:
+            self.public_only = True
 
         self.group_name = f'workspace_tags_{self.workspace_id}'
         await self.channel_layer.group_add(self.group_name, self.channel_name)
@@ -36,7 +39,9 @@ class WorkspaceTagsConsumer(AsyncJsonWebsocketConsumer):
 
         if action == 'list_tags':
             query = (content.get('q') or '').strip().lower()
-            tags = await database_sync_to_async(list_workspace_tag_names)(self.workspace_id, query)
+            tags = await database_sync_to_async(list_workspace_tag_names)(
+                self.workspace_id, query, self.public_only,
+            )
             await self.send_json({'type': 'tags', 'tags': tags})
             return
 
@@ -47,7 +52,7 @@ class WorkspaceTagsConsumer(AsyncJsonWebsocketConsumer):
                 await self.send_json({'type': 'error', 'message': 'tag required'})
                 return
             pages = await database_sync_to_async(search_workspace_pages_by_tag)(
-                self.workspace_id, tag, query,
+                self.workspace_id, tag, query, self.public_only,
             )
             await self.send_json({'type': 'pages', 'pages': pages})
             return
@@ -59,6 +64,10 @@ class WorkspaceTagsConsumer(AsyncJsonWebsocketConsumer):
             'type': 'tags_updated',
             'page_id': event.get('page_id'),
         })
+
+    @database_sync_to_async
+    def _anonymous_root_ws_allowed(self):
+        return Page.public_root_ws_enabled(self.workspace_id)
 
     @database_sync_to_async
     def _user_has_workspace_access(self):
