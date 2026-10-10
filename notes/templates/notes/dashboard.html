@@ -1292,7 +1292,7 @@
           <input class="form-check-input" type="checkbox" id="page-settings-public">
           <label class="form-check-label" for="page-settings-public">Show without login</label>
         </div>
-        <p class="small dashboard-modal-hint mt-2 mb-0">Anyone with the link can read this page, including NotesList and shop blocks. The switch is stored on the page, outside those fences. Orders and mail stay private.</p>
+        <p class="small dashboard-modal-hint mt-2 mb-0">Anyone with the link can read this page, including NotesList, shop, training, and dance blocks. The switch is stored on the page, outside those fences. Orders and mail stay private.</p>
         {% if user.is_superuser %}
         <div class="form-check mt-3">
           <input class="form-check-input" type="checkbox" id="page-settings-root">
@@ -1501,6 +1501,7 @@
 <script type="module" src="{% static 'notes/three-global.js' %}?v={% now 'YmdHis' %}"></script>
 <script src="{% static 'notes/gallery.js' %}?v={% now 'YmdHis' %}"></script>
 <script src="{% static 'notes/training.js' %}?v={% now 'YmdHis' %}"></script>
+<script src="{% static 'notes/dance.js' %}?v={% now 'YmdHis' %}"></script>
 <script src="{% static 'notes/photoview.js' %}?v={% now 'YmdHis' %}"></script>
 <script src="{% static 'notes/rollercoast.js' %}?v={% now 'YmdHis' %}"></script>
 <script src="{% static 'notes/scooter.js' %}?v={% now 'YmdHis' %}"></script>

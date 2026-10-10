@@ -2558,7 +2558,7 @@
   }
 
   function isPreviewRichBlock(el) {
-    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .form-widget, .mindmap-block, .md-news, .md-python, .voice-block, .jukebox-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .gallery-block, .training-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .page-tags');
+    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .form-widget, .mindmap-block, .md-news, .md-python, .voice-block, .jukebox-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .gallery-block, .training-block, .dance-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .page-tags');
   }
 
   function getPreviewBlockSourceLine(node) {
@@ -10922,6 +10922,25 @@
     });
   }
 
+  const DANCE_BLOCK_RE = /```dance(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function parseDanceBlocks(text) {
+    let danceIndex = 0;
+    DANCE_BLOCK_RE.lastIndex = 0;
+    return text.replace(DANCE_BLOCK_RE, (_, fenceAttrs) => {
+      const engine = window.NotesProDance;
+      danceIndex += 1;
+      const html = engine?.renderBlock
+        ? engine.renderBlock('', fenceAttrs || '', { danceIndex })
+        : '<div class="dance-block dance-block--error">Dance app not loaded.</div>';
+      return wrapRichPreviewBlock(html);
+    });
+  }
+
+  function hydrateDanceBlocks(root) {
+    window.NotesProDance?.hydrate?.(root);
+  }
+
   const PHOTOCUBE_BLOCK_RE = /```(?:photocube|photo-cube)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
   const PHOTOBOOK_BLOCK_RE = /```(?:photobook|photo-book|flipbook)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
   const CAROUSEL_BLOCK_RE = /```(?:carousel|photo-carousel|slideshow)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
@@ -12501,7 +12520,7 @@ function formatTextWithMarkup(rawText) {
     if (!root) return;
     root.querySelectorAll('pre').forEach(pre => {
       if (pre.closest('.md-code-block')) return;
-      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .form-widget, .mindmap-block, .md-news, .md-python, .voice-block, .jukebox-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .gallery-block, .training-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block')) {
+      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .form-widget, .mindmap-block, .md-news, .md-python, .voice-block, .jukebox-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .gallery-block, .training-block, .dance-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block')) {
         return;
       }
       const wrap = document.createElement('div');
@@ -12787,6 +12806,7 @@ function formatTextWithMarkup(rawText) {
     if (!img || !img.closest('#preview-content, .editor-preview-side, .editor-preview, #chat-messages')) return;
     if (img.closest('.d3-chart-wrap')) return;
     if (img.closest('.calendar-unit-thumbs')) return;
+    if (img.closest('.training-block, .dance-block')) return;
     if (img.closest('a[href][target="_blank"]')) return;
     const src = img.currentSrc || img.getAttribute('src');
     if (!src) return;
@@ -13097,6 +13117,11 @@ function formatTextWithMarkup(rawText) {
       const label = cfg.title || 'Training';
       return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
     });
+    md = md.replace(/```dance(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const cfg = window.NotesProDance?.parseFenceAttrs?.(fenceAttrs) || {};
+      const label = cfg.title || 'Dance';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
     md = md.replace(/```(?:photocube|photo-cube)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
       const cfg = window.NotesProPhotocube?.parseFenceAttrs?.(fenceAttrs) || {};
       const label = cfg.title || 'Photo cube';
@@ -13213,6 +13238,7 @@ function formatTextWithMarkup(rawText) {
       md = parseMarbleblastBlocks(md);
       md = parseGalleryBlocks(md, options);
       md = parseTrainingBlocks(md, options);
+      md = parseDanceBlocks(md);
       md = parsePhotocubeBlocks(md, options);
       md = parsePhotobookBlocks(md, options);
       md = parseCarouselBlocks(md, options);
@@ -13674,6 +13700,7 @@ function formatTextWithMarkup(rawText) {
     hydrateMarbleblastBlocks(preview);
     hydrateGalleryBlocks(preview);
     hydrateTrainingBlocks(preview);
+    hydrateDanceBlocks(preview);
     hydratePhotocubeBlocks(preview);
     hydratePhotobookBlocks(preview);
     hydrateCarouselBlocks(preview);
@@ -15013,36 +15040,36 @@ function formatTextWithMarkup(rawText) {
             editor,
             'training{title=Good Morning Yoga;time=30s;col=info;endMessage="end"}',
             [
-              "![Child's pose](/static/notes/yoga/morning/child.jpg) | 30s",
-              '![Cow](/static/notes/yoga/morning/cow.jpg) | 30s',
-              '![Cat](/static/notes/yoga/morning/cat.jpg) | 30s',
-              '![Downward facing dog](/static/notes/yoga/morning/downward-dog.jpg) | 30s',
-              '![Standing forward bend](/static/notes/yoga/morning/forward-bend.jpg) | 30s',
-              '![Mountain](/static/notes/yoga/morning/mountain.jpg) | 30s',
-              '![Chair pose](/static/notes/yoga/morning/chair.jpg) | 30s',
-              '![Standing forward bend](/static/notes/yoga/morning/forward-bend.jpg) | 30s',
-              "![Runner's lunge](/static/notes/yoga/morning/runners-lunge.jpg) | 30s",
-              '![Revolved side angle pose](/static/notes/yoga/morning/revolved.jpg) | 30s',
-              '![Low plank pose](/static/notes/yoga/morning/low-plank.jpg) | 30s',
-              '![Upward facing dog](/static/notes/yoga/morning/upward-dog.jpg) | 30s',
-              "![Child's pose](/static/notes/yoga/morning/child.jpg) | 30s",
-              '![Hero pose](/static/notes/yoga/morning/hero.jpg) | 30s',
-              '![Downward facing dog](/static/notes/yoga/morning/downward-dog.jpg) | 30s',
-              "![Runner's lunge](/static/notes/yoga/morning/runners-lunge.jpg) | 30s",
-              '![Low lunge](/static/notes/yoga/morning/low-lunge.jpg) | 30s',
-              '![Downward facing dog](/static/notes/yoga/morning/downward-dog.jpg) | 30s',
-              '![Warrior 1](/static/notes/yoga/morning/warrior-1.jpg) | 30s',
-              '![Reverse warrior](/static/notes/yoga/morning/reverse-warrior.jpg) | 30s',
-              '![Warrior 2](/static/notes/yoga/morning/warrior-2.jpg) | 30s',
-              '![Extended side angle pose](/static/notes/yoga/morning/side-angle.jpg) | 30s',
-              '![Triangle pose](/static/notes/yoga/morning/triangle.jpg) | 30s',
-              '![Downward facing dog](/static/notes/yoga/morning/downward-dog.jpg) | 30s',
-              '![Pigeon pose](/static/notes/yoga/morning/pigeon.jpg) | 30s',
-              "![Child's pose](/static/notes/yoga/morning/child.jpg) | 30s",
-              '![Meditation pose](/static/notes/yoga/morning/meditation.jpg) | 30s',
-              '![Butterfly forward bend](/static/notes/yoga/morning/butterfly.jpg) | 30s',
-              '![Seated pose](/static/notes/yoga/morning/seated.jpg) | 30s',
-              '![Corpse](/static/notes/yoga/morning/corpse.jpg) | 30s',
+              "![Child's pose — lower back](/static/notes/yoga/morning/child.jpg?v=3) | 30s",
+              '![Cow — lower back](/static/notes/yoga/morning/cow.jpg?v=3) | 30s',
+              '![Cat — upper back](/static/notes/yoga/morning/cat.jpg?v=3) | 30s',
+              '![Downward facing dog — hamstrings, calves](/static/notes/yoga/morning/downward-dog.jpg?v=3) | 30s',
+              '![Standing forward bend — hamstrings](/static/notes/yoga/morning/forward-bend.jpg?v=3) | 30s',
+              '![Mountain — shoulders](/static/notes/yoga/morning/mountain.jpg?v=3) | 30s',
+              '![Chair pose — quadriceps](/static/notes/yoga/morning/chair.jpg?v=3) | 30s',
+              '![Standing forward bend — hamstrings](/static/notes/yoga/morning/forward-bend.jpg?v=3) | 30s',
+              "![Runner's lunge — hip flexors](/static/notes/yoga/morning/runners-lunge.jpg?v=3) | 30s",
+              '![Revolved side angle pose — obliques](/static/notes/yoga/morning/revolved.jpg?v=3) | 30s',
+              '![Low plank pose — core](/static/notes/yoga/morning/low-plank.jpg?v=3) | 30s',
+              '![Upward facing dog — lower back](/static/notes/yoga/morning/upward-dog.jpg?v=3) | 30s',
+              "![Child's pose — lower back](/static/notes/yoga/morning/child.jpg?v=3) | 30s",
+              '![Hero pose — quadriceps](/static/notes/yoga/morning/hero.jpg?v=3) | 30s',
+              '![Downward facing dog — hamstrings, calves](/static/notes/yoga/morning/downward-dog.jpg?v=3) | 30s',
+              "![Runner's lunge — hip flexors](/static/notes/yoga/morning/runners-lunge.jpg?v=3) | 30s",
+              '![Low lunge — hip flexors](/static/notes/yoga/morning/low-lunge.jpg?v=3) | 30s',
+              '![Downward facing dog — hamstrings, calves](/static/notes/yoga/morning/downward-dog.jpg?v=3) | 30s',
+              '![Warrior 1 — quadriceps](/static/notes/yoga/morning/warrior-1.jpg?v=3) | 30s',
+              '![Reverse warrior — obliques](/static/notes/yoga/morning/reverse-warrior.jpg?v=3) | 30s',
+              '![Warrior 2 — quadriceps](/static/notes/yoga/morning/warrior-2.jpg?v=3) | 30s',
+              '![Extended side angle pose — obliques](/static/notes/yoga/morning/side-angle.jpg?v=3) | 30s',
+              '![Triangle pose — hamstrings](/static/notes/yoga/morning/triangle.jpg?v=3) | 30s',
+              '![Downward facing dog — hamstrings, calves](/static/notes/yoga/morning/downward-dog.jpg?v=3) | 30s',
+              '![Pigeon pose — hip](/static/notes/yoga/morning/pigeon.jpg?v=3) | 30s',
+              "![Child's pose — lower back](/static/notes/yoga/morning/child.jpg?v=3) | 30s",
+              '![Meditation pose — rest](/static/notes/yoga/morning/meditation.jpg?v=3) | 30s',
+              '![Butterfly forward bend — inner thighs](/static/notes/yoga/morning/butterfly.jpg?v=3) | 30s',
+              '![Seated pose — hamstrings](/static/notes/yoga/morning/seated.jpg?v=3) | 30s',
+              '![Corpse — rest](/static/notes/yoga/morning/corpse.jpg?v=3) | 30s',
             ].join('\n'),
           ),
         },
@@ -20749,6 +20776,14 @@ function formatTextWithMarkup(rawText) {
           },
           className: 'fa fa-music',
           title: 'Insert jukebox (MP3 / folders / Google Drive / fullscreen)',
+        },
+        {
+          name: 'insert-dance',
+          action: (editor) => {
+            insertFenceBlock(editor, 'dance{title=Dance;col=info}', '');
+          },
+          className: 'fa fa-female',
+          title: "Insert dance — rumba, salsa, waltz, tango, foxtrot, disco fox, blues, rock 'n' roll",
         },
         ...(window.APP_BOOT?.allowPhotos !== false ? [buildPhotosToolbarDropdown()] : []),
         ...(window.APP_BOOT?.allowGames !== false ? [buildGamesToolbarDropdown()] : []),

@@ -16933,3 +16933,240 @@ body.mobile-layout .labyrinth-toolbar [data-action="walk-demo"] {
   max-width: 100%;
   max-height: 100%;
 }
+
+/* --- Dance footstep charts --- */
+.dance-block {
+  --dance-accent: #38bdf8;
+  border: 1px solid var(--line, #3b3b52);
+  border-left: 4px solid var(--dance-accent);
+  background: var(--panel, #1e1e2e);
+  border-radius: 14px;
+  padding: 14px 16px 16px;
+  margin: 16px 0;
+  width: 100%;
+  box-sizing: border-box;
+  color: var(--text, #e2e8f0);
+}
+
+.dance-block--info { --dance-accent: #38bdf8; }
+.dance-block--success { --dance-accent: #4ade80; }
+.dance-block--warning { --dance-accent: #fbbf24; }
+.dance-block--danger { --dance-accent: #f87171; }
+.dance-block--note { --dance-accent: #94a3b8; }
+
+.dance-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.dance-title {
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+
+.dance-tabs,
+.dance-figures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.dance-figures[hidden] {
+  display: none;
+}
+
+.dance-tab,
+.dance-figure,
+.dance-controls button,
+.dance-tools button {
+  border: 1px solid var(--line, #3b3b52);
+  background: transparent;
+  color: inherit;
+  border-radius: 999px;
+  padding: 6px 12px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.dance-tab.is-on,
+.dance-figure.is-on,
+.dance-loop.is-on {
+  background: var(--dance-accent);
+  color: #0f172a;
+  border-color: transparent;
+  font-weight: 700;
+}
+
+.dance-stage {
+  background: #14141c;
+  border-radius: 16px;
+  padding: 12px;
+  touch-action: pan-y;
+  user-select: none;
+}
+
+.dance-boards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  width: 100%;
+}
+
+.dance-board {
+  margin: 0;
+  min-width: 0;
+}
+
+.dance-board figcaption {
+  text-align: center;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.dance-floor {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.dance-caption {
+  margin-top: 10px;
+  text-align: center;
+  font-size: 1.05rem;
+  font-weight: 650;
+  display: grid;
+  gap: 2px;
+}
+
+.dance-next {
+  font-size: 0.92rem;
+  font-weight: 650;
+  color: #e7a090;
+}
+
+.dance-swipe-hint {
+  display: none;
+  margin: 8px 0 0;
+  text-align: center;
+  font-size: 0.85rem;
+  opacity: 0.75;
+}
+
+.dance-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px 14px;
+  margin-top: 12px;
+}
+
+.dance-bpm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dance-bpm input[type="range"] {
+  width: 7.5rem;
+  height: 36px;
+  accent-color: var(--dance-accent);
+}
+
+.dance-bpm-value {
+  min-width: 6.2rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.dance-loop-range {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.92rem;
+}
+
+.dance-loop-range select {
+  color: inherit;
+  background: #14141c;
+  border: 1px solid var(--line, #3b3b52);
+  border-radius: 8px;
+  padding: 6px 8px;
+  max-width: 12rem;
+}
+
+@media (max-width: 720px) {
+  .dance-boards {
+    grid-template-columns: 1fr;
+  }
+
+  .dance-swipe-hint {
+    display: block;
+  }
+
+  .dance-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 4px;
+  }
+
+  .dance-tab,
+  .dance-figure,
+  .dance-controls button,
+  .dance-tools button,
+  .dance-loop-range select {
+    min-height: 44px;
+  }
+
+  .dance-controls button {
+    flex: 1;
+  }
+
+  .dance-tools,
+  .dance-bpm {
+    width: 100%;
+  }
+
+  .dance-bpm input[type="range"] {
+    flex: 1;
+    width: auto;
+  }
+}
+
+.dance-controls {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.dance-block:fullscreen,
+.dance-block:-webkit-full-screen {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  background: #12121a;
+  overflow: auto;
+  padding-bottom: calc(16px + env(safe-area-inset-bottom));
+}
+
+.dance-block:fullscreen .dance-stage,
+.dance-block:-webkit-full-screen .dance-stage {
+  flex: 1;
+  min-height: 0;
+  align-items: center;
+}
+
+.dance-block:fullscreen .dance-floor,
+.dance-block:-webkit-full-screen .dance-floor {
+  width: 100%;
+  height: auto;
+  max-height: 70vh;
+}
