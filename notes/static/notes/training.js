@@ -263,7 +263,7 @@
     const style = resolveStyle(cfg);
     const steps = parseSteps(source, cfg);
     const spec = {
-      title: String(cfg.title || 'Training').trim() || 'Training',
+      title: String(cfg.title || 'Yoga').trim() || 'Yoga',
       steps,
       defaultSeconds: defaultSeconds(cfg),
       loop: resolveLoop(cfg),

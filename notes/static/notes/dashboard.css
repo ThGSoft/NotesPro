@@ -35,6 +35,7 @@ body {
   grid-template-columns: var(--sidebar-width) var(--splitter-width) minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
   height: 100vh;
+  height: var(--vvh, 100dvh);
   overflow: hidden;
   position: relative;
 }
@@ -517,6 +518,21 @@ body.editing #preview-content:focus {
   position: relative;
 }
 
+.editor-toolbar button.add-toolbar-button {
+  width: 34px;
+  min-width: 34px;
+  padding: 0;
+  font-family: Inter, system-ui, sans-serif;
+  font-weight: 700;
+}
+
+.editor-toolbar button.add-toolbar-button::before {
+  content: '♫';
+  font-family: "Segoe UI Symbol", "Noto Sans Symbols 2", sans-serif;
+  font-size: 19px;
+  line-height: 1;
+}
+
 .editor-toolbar button.easymde-dropdown:focus,
 .editor-toolbar button.easymde-dropdown:focus-within,
 .editor-toolbar button.easymde-dropdown:active {
@@ -743,16 +759,6 @@ body.editing #preview-content:focus {
   border-radius: 2px;
   background:
     linear-gradient(135deg, transparent 45%, currentColor 45% 55%, transparent 55%) 3px 6px / 10px 7px no-repeat;
-}
-
-.editor-toolbar .easymde-dropdown-content button.photos-menu-item--training::before {
-  width: 14px;
-  height: 14px;
-  border: 1.5px solid currentColor;
-  border-radius: 50%;
-  background:
-    linear-gradient(currentColor, currentColor) center 3px / 1.5px 4px no-repeat,
-    linear-gradient(currentColor, currentColor) center 7px / 4px 1.5px no-repeat;
 }
 
 .editor-toolbar .easymde-dropdown-content button.photos-menu-item--carousel::before {
@@ -1322,38 +1328,18 @@ body.editing #preview-content:focus {
   min-height: 28px !important;
 }
 
-#markdown-wrap .editor-toolbar button.editor-toolbar-label {
-  width: auto;
-  padding: 0 4px 0 8px;
-  border: none;
-  background: transparent !important;
-  box-shadow: none;
-  color: #64748b;
-  cursor: default;
-  pointer-events: none;
-}
-
-#markdown-wrap .editor-toolbar button.editor-toolbar-label::before {
-  content: attr(title);
-  font-family: system-ui, "Segoe UI", sans-serif;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  text-transform: lowercase;
-}
-
-#markdown-wrap .editor-toolbar .editor-toolbar-row-break {
-  flex-basis: 100%;
-  width: 100%;
-  height: 0 !important;
-  min-height: 0 !important;
+#markdown-wrap .editor-toolbar .editor-toolbar-spacer {
+  flex: 0 0 22px;
+  width: 22px;
+  min-width: 22px;
+  height: 28px !important;
+  min-height: 28px !important;
   padding: 0 !important;
-  margin: 0 !important;
+  margin: 0 2px !important;
   border: none !important;
   background: transparent !important;
   box-shadow: none !important;
   pointer-events: none;
-  overflow: hidden;
 }
 
 #markdown-wrap .editor-toolbar i.separator {
@@ -3352,6 +3338,14 @@ body.public-page .app-shell {
   --right-splitter-width: 0px;
   grid-template-columns: minmax(0, 1fr) !important;
   grid-template-rows: auto minmax(0, 1fr);
+  height: 100vh;
+  height: var(--vvh, 100dvh);
+  max-height: var(--vvh, 100dvh);
+}
+
+body.public-page .preview-content {
+  padding-bottom: calc(28px + env(safe-area-inset-bottom));
+  -webkit-overflow-scrolling: touch;
 }
 
 body.public-page .main-pane,
@@ -16682,7 +16676,7 @@ body.mobile-layout .labyrinth-toolbar [data-action="walk-demo"] {
   }
 }
 
-/* --- Training clock --- */
+/* --- Yoga interval clock --- */
 .training-block {
   --training-bg: var(--panel, #1e1e2e);
   --training-border: var(--line, #3b3b52);
@@ -17135,6 +17129,31 @@ body.mobile-layout .labyrinth-toolbar [data-action="walk-demo"] {
   .dance-bpm input[type="range"] {
     flex: 1;
     width: auto;
+  }
+}
+
+@media (max-height: 520px) {
+  .dance-boards {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .dance-floor {
+    width: min(100%, calc(36dvh * 280 / 340));
+    max-height: 36dvh;
+    margin-inline: auto;
+  }
+
+  .dance-swipe-hint {
+    display: block;
+  }
+
+  .dance-controls {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    margin-top: 8px;
+    padding: 8px 0 calc(8px + env(safe-area-inset-bottom));
+    background: var(--panel, #1e1e2e);
   }
 }
 

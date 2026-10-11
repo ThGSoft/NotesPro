@@ -10866,7 +10866,7 @@
           trainingIndex: idx,
           editable: !!options.sheetEditable,
         })
-        : '<div class="training-block training-block--error">Training clock not loaded.</div>';
+        : '<div class="training-block training-block--error">Yoga not loaded.</div>';
       return wrapRichPreviewBlock(html);
     });
   }
@@ -13981,8 +13981,27 @@ function formatTextWithMarkup(rawText) {
   const LEGACY_SIDEBAR_WIDTH_KEY = 'notesSidebarWidth';
 
   function isMobileLayout() {
-    return window.matchMedia('(max-width: 768px)').matches;
+    return window.matchMedia(
+      '(max-width: 768px), (hover: none) and (pointer: coarse) and (max-width: 1200px)'
+    ).matches;
   }
+
+  function syncVisualViewportHeight() {
+    const height = window.visualViewport?.height || window.innerHeight;
+    if (!height) return;
+    document.documentElement.style.setProperty('--vvh', `${Math.round(height)}px`);
+  }
+
+  syncVisualViewportHeight();
+  window.addEventListener('resize', syncVisualViewportHeight);
+  window.addEventListener('orientationchange', () => {
+    syncVisualViewportHeight();
+    setTimeout(syncVisualViewportHeight, 250);
+  });
+  window.visualViewport?.addEventListener('resize', () => {
+    clearTimeout(window.__notesproViewportTimer);
+    window.__notesproViewportTimer = setTimeout(syncVisualViewportHeight, 50);
+  });
 
   function getMobileSidebarWidth(width) {
     const max = Math.min(SIDEBAR_MOBILE_MAX, Math.max(SIDEBAR_MIN, window.innerWidth - 24));
@@ -15014,6 +15033,46 @@ function formatTextWithMarkup(rawText) {
     return wide.join('\n');
   }
 
+  function insertYogaRoutine(editor) {
+    const poses = [
+      "![Child's pose — lower back](/static/notes/yoga/morning/child.jpg?v=3) | 30s",
+      '![Cow — lower back](/static/notes/yoga/morning/cow.jpg?v=3) | 30s',
+      '![Cat — upper back](/static/notes/yoga/morning/cat.jpg?v=3) | 30s',
+      '![Downward facing dog — hamstrings, calves](/static/notes/yoga/morning/downward-dog.jpg?v=3) | 30s',
+      '![Standing forward bend — hamstrings](/static/notes/yoga/morning/forward-bend.jpg?v=3) | 30s',
+      '![Mountain — shoulders](/static/notes/yoga/morning/mountain.jpg?v=3) | 30s',
+      '![Chair pose — quadriceps](/static/notes/yoga/morning/chair.jpg?v=3) | 30s',
+      '![Standing forward bend — hamstrings](/static/notes/yoga/morning/forward-bend.jpg?v=3) | 30s',
+      "![Runner's lunge — hip flexors](/static/notes/yoga/morning/runners-lunge.jpg?v=3) | 30s",
+      '![Revolved side angle pose — obliques](/static/notes/yoga/morning/revolved.jpg?v=3) | 30s',
+      '![Low plank pose — core](/static/notes/yoga/morning/low-plank.jpg?v=3) | 30s',
+      '![Upward facing dog — lower back](/static/notes/yoga/morning/upward-dog.jpg?v=3) | 30s',
+      "![Child's pose — lower back](/static/notes/yoga/morning/child.jpg?v=3) | 30s",
+      '![Hero pose — quadriceps](/static/notes/yoga/morning/hero.jpg?v=3) | 30s',
+      '![Downward facing dog — hamstrings, calves](/static/notes/yoga/morning/downward-dog.jpg?v=3) | 30s',
+      "![Runner's lunge — hip flexors](/static/notes/yoga/morning/runners-lunge.jpg?v=3) | 30s",
+      '![Low lunge — hip flexors](/static/notes/yoga/morning/low-lunge.jpg?v=3) | 30s',
+      '![Downward facing dog — hamstrings, calves](/static/notes/yoga/morning/downward-dog.jpg?v=3) | 30s',
+      '![Warrior 1 — quadriceps](/static/notes/yoga/morning/warrior-1.jpg?v=3) | 30s',
+      '![Reverse warrior — obliques](/static/notes/yoga/morning/reverse-warrior.jpg?v=3) | 30s',
+      '![Warrior 2 — quadriceps](/static/notes/yoga/morning/warrior-2.jpg?v=3) | 30s',
+      '![Extended side angle pose — obliques](/static/notes/yoga/morning/side-angle.jpg?v=3) | 30s',
+      '![Triangle pose — hamstrings](/static/notes/yoga/morning/triangle.jpg?v=3) | 30s',
+      '![Downward facing dog — hamstrings, calves](/static/notes/yoga/morning/downward-dog.jpg?v=3) | 30s',
+      '![Pigeon pose — hip](/static/notes/yoga/morning/pigeon.jpg?v=3) | 30s',
+      "![Child's pose — lower back](/static/notes/yoga/morning/child.jpg?v=3) | 30s",
+      '![Meditation pose — rest](/static/notes/yoga/morning/meditation.jpg?v=3) | 30s',
+      '![Butterfly forward bend — inner thighs](/static/notes/yoga/morning/butterfly.jpg?v=3) | 30s',
+      '![Seated pose — hamstrings](/static/notes/yoga/morning/seated.jpg?v=3) | 30s',
+      '![Corpse — rest](/static/notes/yoga/morning/corpse.jpg?v=3) | 30s',
+    ];
+    insertFenceBlock(
+      editor,
+      'training{title=Good Morning Yoga;time=30s;col=info;endMessage="end"}',
+      poses.join('\n'),
+    );
+  }
+
   function buildPhotosToolbarDropdown() {
     return {
       name: 'photosMenu',
@@ -15029,48 +15088,6 @@ function formatTextWithMarkup(rawText) {
             editor,
             'gallery{title=Demo walk;front=Welcome;back=Demo walk;mode=walk;demo;col=info}',
             samplePhotoFenceBody('gallery'),
-          ),
-        },
-        {
-          name: 'insert-training',
-          text: 'Training clock',
-          className: 'photos-menu-item photos-menu-item--training',
-          title: 'Insert a training clock — each photo shows for its own time, then the next photo',
-          action: (editor) => insertFenceBlock(
-            editor,
-            'training{title=Good Morning Yoga;time=30s;col=info;endMessage="end"}',
-            [
-              "![Child's pose — lower back](/static/notes/yoga/morning/child.jpg?v=3) | 30s",
-              '![Cow — lower back](/static/notes/yoga/morning/cow.jpg?v=3) | 30s',
-              '![Cat — upper back](/static/notes/yoga/morning/cat.jpg?v=3) | 30s',
-              '![Downward facing dog — hamstrings, calves](/static/notes/yoga/morning/downward-dog.jpg?v=3) | 30s',
-              '![Standing forward bend — hamstrings](/static/notes/yoga/morning/forward-bend.jpg?v=3) | 30s',
-              '![Mountain — shoulders](/static/notes/yoga/morning/mountain.jpg?v=3) | 30s',
-              '![Chair pose — quadriceps](/static/notes/yoga/morning/chair.jpg?v=3) | 30s',
-              '![Standing forward bend — hamstrings](/static/notes/yoga/morning/forward-bend.jpg?v=3) | 30s',
-              "![Runner's lunge — hip flexors](/static/notes/yoga/morning/runners-lunge.jpg?v=3) | 30s",
-              '![Revolved side angle pose — obliques](/static/notes/yoga/morning/revolved.jpg?v=3) | 30s',
-              '![Low plank pose — core](/static/notes/yoga/morning/low-plank.jpg?v=3) | 30s',
-              '![Upward facing dog — lower back](/static/notes/yoga/morning/upward-dog.jpg?v=3) | 30s',
-              "![Child's pose — lower back](/static/notes/yoga/morning/child.jpg?v=3) | 30s",
-              '![Hero pose — quadriceps](/static/notes/yoga/morning/hero.jpg?v=3) | 30s',
-              '![Downward facing dog — hamstrings, calves](/static/notes/yoga/morning/downward-dog.jpg?v=3) | 30s',
-              "![Runner's lunge — hip flexors](/static/notes/yoga/morning/runners-lunge.jpg?v=3) | 30s",
-              '![Low lunge — hip flexors](/static/notes/yoga/morning/low-lunge.jpg?v=3) | 30s',
-              '![Downward facing dog — hamstrings, calves](/static/notes/yoga/morning/downward-dog.jpg?v=3) | 30s',
-              '![Warrior 1 — quadriceps](/static/notes/yoga/morning/warrior-1.jpg?v=3) | 30s',
-              '![Reverse warrior — obliques](/static/notes/yoga/morning/reverse-warrior.jpg?v=3) | 30s',
-              '![Warrior 2 — quadriceps](/static/notes/yoga/morning/warrior-2.jpg?v=3) | 30s',
-              '![Extended side angle pose — obliques](/static/notes/yoga/morning/side-angle.jpg?v=3) | 30s',
-              '![Triangle pose — hamstrings](/static/notes/yoga/morning/triangle.jpg?v=3) | 30s',
-              '![Downward facing dog — hamstrings, calves](/static/notes/yoga/morning/downward-dog.jpg?v=3) | 30s',
-              '![Pigeon pose — hip](/static/notes/yoga/morning/pigeon.jpg?v=3) | 30s',
-              "![Child's pose — lower back](/static/notes/yoga/morning/child.jpg?v=3) | 30s",
-              '![Meditation pose — rest](/static/notes/yoga/morning/meditation.jpg?v=3) | 30s',
-              '![Butterfly forward bend — inner thighs](/static/notes/yoga/morning/butterfly.jpg?v=3) | 30s',
-              '![Seated pose — hamstrings](/static/notes/yoga/morning/seated.jpg?v=3) | 30s',
-              '![Corpse — rest](/static/notes/yoga/morning/corpse.jpg?v=3) | 30s',
-            ].join('\n'),
           ),
         },
         {
@@ -15112,6 +15129,34 @@ function formatTextWithMarkup(rawText) {
             'labyrinth{title=Photo labyrinth;demo;col=warning}',
             samplePhotoFenceBody('labyrinth'),
           ),
+        },
+      ],
+    };
+  }
+
+  function buildAddToolbarDropdown() {
+    return {
+      name: 'addAppsMenu',
+      className: 'add-toolbar-button',
+      title: 'Add Jukebox, Dance, or Yoga',
+      children: [
+        {
+          name: 'add-jukebox',
+          text: 'Jukebox',
+          title: 'Add jukebox (MP3 / folders / Google Drive / fullscreen)',
+          action: (editor) => insertFenceBlock(editor, "jukebox{title=Livia's Jukebox;fullscreen}", ''),
+        },
+        {
+          name: 'add-dance',
+          text: 'Dance',
+          title: "Add dance — rumba, cha-cha-cha, salsa, waltz, tango, foxtrot, disco fox, blues, rock 'n' roll",
+          action: (editor) => insertFenceBlock(editor, 'dance{title=Dance;col=info}', ''),
+        },
+        {
+          name: 'add-yoga',
+          text: 'Yoga',
+          title: 'Add yoga routine',
+          action: (editor) => insertYogaRoutine(editor),
         },
       ],
     };
@@ -20328,16 +20373,6 @@ function formatTextWithMarkup(rawText) {
     });
   }
 
-  function toolbarGroupLabel(label) {
-    return {
-      name: `toolbar-label-${label}`,
-      className: 'editor-toolbar-label',
-      title: label,
-      action: () => {},
-      attributes: { tabindex: '-1' },
-    };
-  }
-
   function initEditors() {
     easyMDE = new EasyMDE({
       element: document.getElementById('markdown-editor'),
@@ -20353,7 +20388,6 @@ function formatTextWithMarkup(rawText) {
       sideBySideFullscreen: false,
       minHeight: '200px',
       toolbar: [
-        toolbarGroupLabel('edits'),
         {
           name: 'undo',
           action: (editor) => editor?.codemirror?.undo?.(),
@@ -20511,13 +20545,18 @@ function formatTextWithMarkup(rawText) {
           title: 'Snippets',
         },
         {
-          name: 'toolbarRowBreak',
-          className: 'editor-toolbar-row-break',
+          name: 'insert-panel',
+          action: (editor) => openPanelInsertModal(editor),
+          className: 'fa fa-square',
+          title: 'Insert colored panel',
+        },
+        {
+          name: 'toolbarSpacerBeforeTables',
+          className: 'editor-toolbar-spacer',
           title: '',
           action: () => {},
           attributes: { 'aria-hidden': 'true', tabindex: '-1' },
         },
-        toolbarGroupLabel('tables'),
         'table',
         {
           name: 'insert-sheet',
@@ -20668,13 +20707,14 @@ function formatTextWithMarkup(rawText) {
           title: 'Insert checklist',
         },
         '|',
-        toolbarGroupLabel('apps'),
         {
-          name: 'insert-panel',
-          action: (editor) => openPanelInsertModal(editor),
-          className: 'fa fa-square',
-          title: 'Insert colored panel',
+          name: 'toolbarSpacerBeforeApps',
+          className: 'editor-toolbar-spacer',
+          title: '',
+          action: () => {},
+          attributes: { 'aria-hidden': 'true', tabindex: '-1' },
         },
+        buildAddToolbarDropdown(),
         buildFormToolbarDropdown(),
         {
           name: 'menuShopMenu',
@@ -20769,22 +20809,6 @@ function formatTextWithMarkup(rawText) {
           className: 'fa fa-microphone',
           title: 'Insert voice note (record + Whisper transcript)',
         },
-        {
-          name: 'insert-jukebox',
-          action: (editor) => {
-            insertFenceBlock(editor, "jukebox{title=Livia's Jukebox;fullscreen}", '');
-          },
-          className: 'fa fa-music',
-          title: 'Insert jukebox (MP3 / folders / Google Drive / fullscreen)',
-        },
-        {
-          name: 'insert-dance',
-          action: (editor) => {
-            insertFenceBlock(editor, 'dance{title=Dance;col=info}', '');
-          },
-          className: 'fa fa-female',
-          title: "Insert dance — rumba, salsa, waltz, tango, foxtrot, disco fox, blues, rock 'n' roll",
-        },
         ...(window.APP_BOOT?.allowPhotos !== false ? [buildPhotosToolbarDropdown()] : []),
         ...(window.APP_BOOT?.allowGames !== false ? [buildGamesToolbarDropdown()] : []),
         {
@@ -20800,13 +20824,12 @@ function formatTextWithMarkup(rawText) {
           title: 'Insert news / RSS feed',
         },
         {
-          name: 'toolbarRowBreakBeforeOutput',
-          className: 'editor-toolbar-row-break',
+          name: 'toolbarSpacerBeforeOutput',
+          className: 'editor-toolbar-spacer',
           title: '',
           action: () => {},
           attributes: { 'aria-hidden': 'true', tabindex: '-1' },
         },
-        toolbarGroupLabel('output'),
         {
           name: 'side-by-side',
           action: () => {
@@ -23765,6 +23788,7 @@ function formatTextWithMarkup(rawText) {
 
   function bootPublicPage() {
     document.body.classList.add('public-page');
+    syncVisualViewportHeight();
     userCanEdit = false;
     initMarked();
     try {
@@ -23788,12 +23812,25 @@ function formatTextWithMarkup(rawText) {
     }
     document.getElementById('toc-toggle')?.addEventListener('click', toggleFloatingToc);
     document.getElementById('mobile-toc-backdrop')?.addEventListener('click', closeFloatingToc);
+    const settlePublicLayout = () => {
+      syncVisualViewportHeight();
+      const wasMobile = document.body.classList.contains('mobile-layout');
+      syncMobileLayoutClass();
+      const preview = document.getElementById('preview-content');
+      const needsPaint = preview && preview.clientHeight < 48;
+      if (!isEditing && (wasMobile !== isMobileLayout() || needsPaint)) switchMode('preview');
+    };
     window.addEventListener('resize', () => {
       clearTimeout(window.__notesproResizeTimer);
-      window.__notesproResizeTimer = setTimeout(() => {
-        syncMobileLayoutClass();
-        if (!isEditing) switchMode('preview');
-      }, 150);
+      window.__notesproResizeTimer = setTimeout(settlePublicLayout, 150);
+    });
+    window.addEventListener('orientationchange', () => {
+      settlePublicLayout();
+      setTimeout(settlePublicLayout, 250);
+    });
+    requestAnimationFrame(() => {
+      settlePublicLayout();
+      setTimeout(settlePublicLayout, 300);
     });
   }
 

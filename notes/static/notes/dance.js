@@ -20,12 +20,83 @@
       bpm: 104,
       music: 'rumba',
       steps: [
-        { n: '1', foot: 'L', x: 78, y: 168, rot: -8, beats: 1, label: 'Left side' },
-        { n: '2', foot: 'R', x: 138, y: 176, rot: 6, beats: 1, label: 'Right closes' },
-        { n: '3', foot: 'L', x: 124, y: 78, rot: 0, beats: 2, label: 'Left forward' },
-        { n: '4', foot: 'R', x: 206, y: 168, rot: 8, beats: 1, label: 'Right side' },
-        { n: '5', foot: 'L', x: 150, y: 180, rot: -4, beats: 1, label: 'Left closes' },
-        { n: '6', foot: 'R', x: 168, y: 268, rot: 180, beats: 2, label: 'Right back' },
+        { n: '2', foot: 'L', x: 130, y: 70, rot: 0, beats: 1, label: 'Left forward' },
+        { n: '3', foot: 'R', x: 200, y: 130, rot: 8, beats: 1, label: 'Right side' },
+        { n: '4', foot: 'L', x: 152, y: 142, rot: 0, beats: 2, label: 'Left closes, slow' },
+        { n: '2', foot: 'R', x: 168, y: 255, rot: 180, beats: 1, label: 'Right back' },
+        { n: '3', foot: 'L', x: 80, y: 205, rot: 172, beats: 1, label: 'Left side' },
+        { n: '4', foot: 'R', x: 128, y: 192, rot: 180, beats: 2, label: 'Right closes, slow' },
+      ],
+    },
+    {
+      id: 'chacha',
+      name: 'Cha-Cha-Cha',
+      meter: '4/4',
+      bpm: 124,
+      music: 'chacha',
+      figures: [
+        {
+          id: 'basic',
+          name: 'Basic',
+          steps: [
+            { n: '2', foot: 'L', x: 128, y: 68, rot: 0, beats: 1, label: 'Left forward' },
+            { n: '3', foot: 'R', x: 162, y: 155, rot: 0, beats: 1, label: 'Right replace' },
+            { n: '4', foot: 'L', x: 72, y: 158, rot: -10, beats: 0.5, label: 'Left side' },
+            { n: '&', foot: 'R', x: 116, y: 166, rot: 6, beats: 0.5, label: 'Right closes' },
+            { n: '1', foot: 'L', x: 58, y: 150, rot: -8, beats: 1, label: 'Left side' },
+            { n: '2', foot: 'R', x: 172, y: 252, rot: 180, beats: 1, label: 'Right back' },
+            { n: '3', foot: 'L', x: 118, y: 168, rot: 0, beats: 1, label: 'Left replace' },
+            { n: '4', foot: 'R', x: 210, y: 158, rot: 12, beats: 0.5, label: 'Right side' },
+            { n: '&', foot: 'L', x: 164, y: 166, rot: -6, beats: 0.5, label: 'Left closes' },
+            { n: '1', foot: 'R', x: 222, y: 150, rot: 10, beats: 1, label: 'Right side' },
+          ],
+        },
+        {
+          id: 'newyork',
+          name: 'New York',
+          steps: [
+            { n: '2', foot: 'L', x: 96, y: 86, rot: -28, beats: 1, label: 'Left check' },
+            { n: '3', foot: 'R', x: 158, y: 162, rot: 0, beats: 1, label: 'Right replace' },
+            { n: '4', foot: 'L', x: 78, y: 158, rot: -8, beats: 0.5, label: 'Left side' },
+            { n: '&', foot: 'R', x: 122, y: 166, rot: 4, beats: 0.5, label: 'Right closes' },
+            { n: '1', foot: 'L', x: 70, y: 150, rot: -6, beats: 1, label: 'Left side' },
+            { n: '2', foot: 'R', x: 186, y: 84, rot: 28, beats: 1, label: 'Right check' },
+            { n: '3', foot: 'L', x: 122, y: 164, rot: 0, beats: 1, label: 'Left replace' },
+            { n: '4', foot: 'R', x: 204, y: 158, rot: 10, beats: 0.5, label: 'Right side' },
+            { n: '&', foot: 'L', x: 160, y: 166, rot: -4, beats: 0.5, label: 'Left closes' },
+            { n: '1', foot: 'R', x: 212, y: 150, rot: 8, beats: 1, label: 'Right side' },
+          ],
+          woman: [
+            { n: '2', foot: 'R', x: 184, y: 86, rot: 28, beats: 1, label: 'Right check' },
+            { n: '3', foot: 'L', x: 122, y: 162, rot: 0, beats: 1, label: 'Left replace' },
+            { n: '4', foot: 'R', x: 202, y: 158, rot: 8, beats: 0.5, label: 'Right side' },
+            { n: '&', foot: 'L', x: 158, y: 166, rot: -4, beats: 0.5, label: 'Left closes' },
+            { n: '1', foot: 'R', x: 210, y: 150, rot: 6, beats: 1, label: 'Right side' },
+            { n: '2', foot: 'L', x: 94, y: 84, rot: -28, beats: 1, label: 'Left check' },
+            { n: '3', foot: 'R', x: 158, y: 164, rot: 0, beats: 1, label: 'Right replace' },
+            { n: '4', foot: 'L', x: 76, y: 158, rot: -10, beats: 0.5, label: 'Left side' },
+            { n: '&', foot: 'R', x: 120, y: 166, rot: 4, beats: 0.5, label: 'Right closes' },
+            { n: '1', foot: 'L', x: 68, y: 150, rot: -8, beats: 1, label: 'Left side' },
+          ],
+        },
+        {
+          id: 'spot',
+          name: 'Spot turn',
+          steps: [
+            { n: '2', foot: 'L', x: 118, y: 100, rot: -20, beats: 1, label: 'Left turn', turn: true },
+            { n: '3', foot: 'R', x: 176, y: 148, rot: -120, beats: 1, label: 'Right around', turn: true },
+            { n: '4', foot: 'L', x: 150, y: 210, rot: -200, beats: 0.5, label: 'Left side', turn: true },
+            { n: '&', foot: 'R', x: 168, y: 176, rot: -250, beats: 0.5, label: 'Right closes', turn: true },
+            { n: '1', foot: 'L', x: 128, y: 152, rot: 0, beats: 1, label: 'Left faces partner' },
+          ],
+          woman: [
+            { n: '2', foot: 'R', x: 162, y: 100, rot: 20, beats: 1, label: 'Right turn', turn: true },
+            { n: '3', foot: 'L', x: 104, y: 148, rot: 120, beats: 1, label: 'Left around', turn: true },
+            { n: '4', foot: 'R', x: 130, y: 210, rot: 200, beats: 0.5, label: 'Right side', turn: true },
+            { n: '&', foot: 'L', x: 112, y: 176, rot: 250, beats: 0.5, label: 'Left closes', turn: true },
+            { n: '1', foot: 'R', x: 152, y: 152, rot: 0, beats: 1, label: 'Right faces partner' },
+          ],
+        },
       ],
     },
     {
@@ -267,6 +338,184 @@
     },
   ];
 
+  function variationSteps(source, points, labels, turns) {
+    return source.map((step, index) => {
+      const point = points[index] || points[points.length - 1] || [step.x, step.y, step.rot || 0];
+      return {
+        ...step,
+        x: point[0],
+        y: point[1],
+        rot: point[2] || 0,
+        label: labels[index] || step.label,
+        turn: Boolean(turns?.includes(index)),
+      };
+    });
+  }
+
+  function addDanceFigures(id, figures) {
+    const dance = DANCES.find((item) => item.id === id);
+    if (!dance || dance.figures?.length) return;
+    dance.figures = [{ id: 'basic', name: 'Basic', steps: dance.steps }, ...figures];
+    delete dance.steps;
+  }
+
+  addDanceFigures('rumba', [
+    {
+      id: 'newyork',
+      name: 'New York',
+      steps: variationSteps(
+        DANCES.find((item) => item.id === 'rumba').steps,
+        [[94, 84, -28], [154, 162, 0], [76, 158, -8], [188, 84, 28], [126, 164, 0], [204, 158, 8]],
+        ['Left check', 'Right replace', 'Left side, slow', 'Right check', 'Left replace', 'Right side, slow'],
+      ),
+    },
+    {
+      id: 'spot',
+      name: 'Spot turn',
+      steps: variationSteps(
+        DANCES.find((item) => item.id === 'rumba').steps,
+        [[116, 92, -25], [180, 134, -115], [154, 204, -205], [164, 236, 205], [102, 190, 115], [128, 150, 0]],
+        ['Left starts turn', 'Right around', 'Left completes, slow', 'Right starts turn', 'Left around', 'Right faces partner, slow'],
+        [0, 1, 2, 3, 4],
+      ),
+    },
+  ]);
+
+  addDanceFigures('salsa', [
+    {
+      id: 'right-turn',
+      name: 'Right turn',
+      steps: variationSteps(
+        DANCES.find((item) => item.id === 'salsa').steps,
+        [[116, 82, 0], [174, 142, 55], [198, 198, 130], [166, 222, 190], [116, 204, 245], [88, 150, 310], [126, 138, 360], [140, 160, 0]],
+        ['Left forward', 'Right starts turn', 'Left around', 'Hold turn', 'Right continues', 'Left around', 'Right faces partner', 'Hold'],
+        [1, 2, 3, 4, 5, 6],
+      ),
+    },
+    {
+      id: 'cross-body',
+      name: 'Cross-body lead',
+      steps: variationSteps(
+        DANCES.find((item) => item.id === 'salsa').steps,
+        [[120, 82, 0], [160, 154, 0], [118, 162, 0], [140, 170, 0], [190, 226, 155], [218, 158, 90], [176, 98, 25], [148, 92, 0]],
+        ['Left opens', 'Right replace', 'Left clears path', 'Hold', 'Right passes', 'Left crosses', 'Right arrives', 'Hold'],
+        [4, 5, 6],
+      ),
+    },
+  ]);
+
+  addDanceFigures('waltz', [
+    {
+      id: 'left-turn',
+      name: 'Left turn',
+      steps: variationSteps(
+        DANCES.find((item) => item.id === 'waltz').steps,
+        [[120, 78, -15], [190, 120, -55], [178, 182, -95], [154, 254, 165], [82, 210, 125], [98, 146, 80]],
+        ['Left forward turning', 'Right side', 'Left closes', 'Right back turning', 'Left side', 'Right closes'],
+        [0, 1, 2, 3, 4, 5],
+      ),
+    },
+    {
+      id: 'underarm',
+      name: 'Underarm turn',
+      steps: variationSteps(
+        DANCES.find((item) => item.id === 'waltz').steps,
+        [[122, 82, 0], [172, 132, 10], [142, 150, 0], [166, 244, 180], [116, 198, 170], [140, 166, 180]],
+        ['Left leads forward', 'Right side', 'Left closes', 'Right back', 'Left side', 'Right faces partner'],
+      ),
+      woman: variationSteps(
+        DANCES.find((item) => item.id === 'waltz').steps.map((step) => ({
+          ...step,
+          foot: step.foot === 'L' ? 'R' : 'L',
+        })),
+        [[160, 238, 180], [112, 198, 130], [92, 142, 70], [132, 88, 10], [188, 126, -55], [154, 170, -180]],
+        ['Right back', 'Left starts turn', 'Right around', 'Left continues', 'Right side', 'Left faces partner'],
+        [1, 2, 3, 4, 5],
+      ),
+    },
+  ]);
+
+  addDanceFigures('tango', [
+    {
+      id: 'promenade',
+      name: 'Promenade',
+      steps: variationSteps(
+        DANCES.find((item) => item.id === 'tango').steps,
+        [[96, 82, -25], [142, 126, -25], [188, 158, -18], [146, 172, 0]],
+        ['Left promenade, slow', 'Right promenade, slow', 'Left side, quick', 'Right closes, quick'],
+      ),
+    },
+    {
+      id: 'rock-turn',
+      name: 'Rock turn',
+      steps: variationSteps(
+        DANCES.find((item) => item.id === 'tango').steps,
+        [[116, 82, -15], [174, 142, 55], [194, 202, 135], [150, 174, 180]],
+        ['Left rock forward, slow', 'Right recover turning, slow', 'Left side, quick', 'Right closes, quick'],
+        [1, 2, 3],
+      ),
+    },
+  ]);
+
+  addDanceFigures('foxtrot', [
+    {
+      id: 'progressive',
+      name: 'Progressive',
+      steps: variationSteps(
+        DANCES.find((item) => item.id === 'foxtrot').steps,
+        [[118, 62, -6], [154, 120, 2], [192, 162, 12], [152, 172, 2]],
+        ['Left forward, slow', 'Right forward, slow', 'Left diagonal, quick', 'Right closes, quick'],
+      ),
+    },
+    {
+      id: 'promenade',
+      name: 'Promenade',
+      steps: variationSteps(
+        DANCES.find((item) => item.id === 'foxtrot').steps,
+        [[92, 80, -28], [132, 128, -25], [184, 158, -18], [146, 170, 0]],
+        ['Left promenade, slow', 'Right promenade, slow', 'Left side, quick', 'Right closes, quick'],
+      ),
+    },
+  ]);
+
+  addDanceFigures('discofox', [
+    {
+      id: 'underarm',
+      name: 'Underarm turn',
+      steps: variationSteps(
+        DANCES.find((item) => item.id === 'discofox').steps,
+        [[92, 164, -8], [138, 166, 0], [174, 154, 8], [148, 166, 0]],
+        ['Left leads, slow', 'Right closes, slow', 'Left side, quick', 'Right faces partner, quick'],
+      ),
+      woman: variationSteps(
+        DANCES.find((item) => item.id === 'discofox').steps.map((step) => ({
+          ...step,
+          foot: step.foot === 'L' ? 'R' : 'L',
+        })),
+        [[188, 218, 180], [142, 174, 110], [104, 132, 35], [142, 158, 0]],
+        ['Right back, slow', 'Left starts turn, slow', 'Right around, quick', 'Left faces partner, quick'],
+        [1, 2, 3],
+      ),
+    },
+    {
+      id: 'change',
+      name: 'Change of places',
+      steps: variationSteps(
+        DANCES.find((item) => item.id === 'discofox').steps,
+        [[116, 230, 180], [158, 172, 0], [82, 108, -18], [48, 158, 0]],
+        ['Left back, slow', 'Right replace, slow', 'Left passes, quick', 'Right arrives, quick'],
+      ),
+      woman: variationSteps(
+        DANCES.find((item) => item.id === 'discofox').steps.map((step) => ({
+          ...step,
+          foot: step.foot === 'L' ? 'R' : 'L',
+        })),
+        [[164, 230, 180], [122, 172, 0], [198, 108, 18], [232, 158, 0]],
+        ['Right back, slow', 'Left replace, slow', 'Right passes, quick', 'Left arrives, quick'],
+      ),
+    },
+  ]);
+
   const BY_ID = Object.fromEntries(DANCES.map((dance) => [dance.id, dance]));
 
   function escapeHtml(text) {
@@ -303,6 +552,7 @@
     const compact = raw.replace(/[\s'"’\-]+/g, '');
     if (compact === 'rocknroll' || compact === 'rockandroll' || raw === 'rock' || raw === 'jive') return 'rock';
     if (compact === 'blues' || compact === 'slowblues') return 'blues';
+    if (compact === 'chacha' || compact === 'chachacha') return 'chacha';
     return BY_ID[raw] ? raw : 'rumba';
   }
 
@@ -628,6 +878,15 @@
       if (beatIndex % 8 === 3) tone(ctx, master, time, midi(72), beatDur, 0.045, 'sine', 1800);
       return;
     }
+    if (dance.music === 'chacha') {
+      const notes = [48, 51, 55, 53];
+      tone(ctx, master, time, midi(notes[beatIndex % notes.length]), beatDur * 0.7, beat === 0 ? 0.16 : 0.1, 'triangle', 500);
+      noiseHit(ctx, master, state, time, 0.04, 0.04, 5000);
+      noiseHit(ctx, master, state, time + beatDur * 0.5, 0.035, 0.045, 2800);
+      if (beat === 0) kick(ctx, master, time, 0.16);
+      if (beat === 3) tone(ctx, master, time, midi(76), 0.08, 0.06, 'square', 2200);
+      return;
+    }
     if (dance.music === 'salsa') {
       const pos = beatIndex % 8;
       if (pos === 0 || pos === 3 || pos === 5 || pos === 6) {
@@ -736,6 +995,7 @@
       else if (music === 'tango' && (beat === 1 || beat === 3)) hit(ctx, master, samples.wood, time, 0.16, 1.15);
       else if (music === 'waltz') hit(ctx, master, samples.hat, time, 0.04, 1.2);
       else if (music === 'rumba' || music === 'foxtrot') hit(ctx, master, samples.shaker, time, 0.12, 1);
+      else if (music === 'chacha') hit(ctx, master, samples.wood, time, 0.16, 1.25);
       else if (music === 'blues') hit(ctx, master, samples.hat, time, 0.04, 0.85);
       else hit(ctx, master, samples.hat, time, music === 'rock' || music === 'disco' ? 0.14 : 0.08, 1);
       return;
@@ -757,6 +1017,15 @@
       hit(ctx, master, samples.shaker, time, 0.16, 1);
       if (beat === 1 || beat === 3) hit(ctx, master, samples.stab, time, 0.22, 1);
       if (beatIndex % 8 === 0 || beatIndex % 8 === 3) hit(ctx, master, samples.wood, time, 0.1, 1.4);
+      return;
+    }
+    if (music === 'chacha') {
+      const notes = [48, 51, 55, 53, 48, 51, 58, 55];
+      hit(ctx, master, samples.bass, time, beat === 0 ? 0.55 : 0.36, bassRate(notes[beatIndex % notes.length]));
+      hit(ctx, master, samples.shaker, time, 0.14, 1);
+      if (beat === 0) hit(ctx, master, samples.kick, time, 0.28, 1);
+      if (beat === 3) hit(ctx, master, samples.wood, time, 0.22, 1.1);
+      if (beat === 0 || beat === 2) hit(ctx, master, samples.stab, time, 0.1, 1);
       return;
     }
     if (music === 'salsa') {
