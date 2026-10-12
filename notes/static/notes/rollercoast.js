@@ -329,7 +329,7 @@
       `<div class="rollercoast-overlay">`,
       `<p class="rollercoast-hint">${spec.draft
         ? 'Paste your photos to hang them along the track'
-        : 'Ego or chase · C / View · auto-ride · ⛶ fullscreen'}</p>`,
+        : 'Lift hill, first drop, loop, helix · C / View · ⛶ fullscreen'}</p>`,
       `<div class="rollercoast-warn" aria-live="assertive" hidden></div>`,
       `<div class="rollercoast-caption" aria-live="polite"></div>`,
       `</div>`,
@@ -357,57 +357,292 @@
     ].join('');
   }
 
-  function buildTrackCurve(THREE, mode) {
-    const pts = [];
-    const segs = 96;
-    const heightScale = mode === 'dune' ? 0.72 : mode === 'alps' ? 1.18 : mode === 'snow' ? 1.05 : 1;
-    for (let i = 0; i < segs; i += 1) {
-      const u = i / segs;
-      const ang = u * Math.PI * 2;
-      let radius = 17.5;
-      let twist = ang;
-      let y = 2.15;
-      if (u < 0.10) {
-        y = 2.15;
-        radius = 17.2;
-      } else if (u < 0.26) {
-        const t = (u - 0.10) / 0.16;
-        y = 2.15 + t * t * (11.8 * heightScale);
-        radius = 17.2 - t * 1.4;
-      } else if (u < 0.38) {
-        const t = (u - 0.26) / 0.12;
-        const drop = t * t * (0.35 + t);
-        y = 2.15 + 11.8 * heightScale * (1 - drop);
-        radius = 15.8 + t * 2.4;
-      } else if (u < 0.50) {
-        const t = (u - 0.38) / 0.12;
-        y = 3.2 * heightScale + Math.sin(t * Math.PI) * 4.6 * heightScale;
-        radius = 18.2;
-      } else if (u < 0.70) {
-        const t = (u - 0.50) / 0.20;
-        const ease = t * t * (3 - 2 * t);
-        twist = ang + ease * Math.PI * 2.2;
-        const tight = 9.8 + Math.sin(t * Math.PI) * 1.8;
-        radius = 18.2 + (tight - 18.2) * Math.sin(Math.min(1, t * 1.35) * Math.PI * 0.5);
-        y = 5.4 * heightScale + Math.sin(t * Math.PI * 2) * 1.45 * heightScale;
-      } else if (u < 0.86) {
-        const t = (u - 0.70) / 0.16;
-        y = 3.8 * heightScale + Math.sin(t * Math.PI) * 5.8 * heightScale;
-        radius = 16.5 + Math.sin(t * Math.PI) * 1.2;
-      } else {
-        const t = (u - 0.86) / 0.14;
-        const ease = t * t * (3 - 2 * t);
-        y = (3.8 * (1 - ease) + 2.15 * ease) * (mode === 'alps' ? 1 : 1);
-        radius = 17.2;
-      }
-      const x = Math.cos(twist) * radius;
-      const z = Math.sin(twist) * radius * 0.9;
-      pts.push(new THREE.Vector3(x, Math.max(1.25, y), z));
-    }
-    return new THREE.CatmullRomCurve3(pts, true, 'catmullrom', 0.28);
+  function lerp(a, b, t) {
+    return a + (b - a) * t;
   }
 
-  function addTerrain(THREE, scene, palette, mode) {
+  function smoothstep(t) {
+    const x = Math.max(0, Math.min(1, t));
+    return x * x * (3 - 2 * x);
+  }
+
+  const GRAVITY = 9.81;
+  const STATION_Y = 1.8;
+  const TRACK_SAMPLES = 1200;
+  const LOOP_SHAPE = 0.6;
+  const LOOP_SHIFT = 3.6;
+
+  /* Teardrop loop of length 1: heading turns 2*pi*s - m*sin(2*pi*s), tightest at the top. */
+  function loopProfile(steps) {
+    const pts = [];
+    let f = 0;
+    let h = 0;
+    let hMax = 0;
+    for (let i = 0; i < steps; i += 1) {
+      const s = (i + 0.5) / steps;
+      const ph = 2 * Math.PI * s - LOOP_SHAPE * Math.sin(2 * Math.PI * s);
+      f += Math.cos(ph) / steps;
+      h += Math.sin(ph) / steps;
+      hMax = Math.max(hMax, h);
+      pts.push([(i + 1) / steps, f, h]);
+    }
+    return { pts, hMax };
+  }
+
+  function pitchRun(segs, onStep) {
+    let f = 0;
+    let h = 0;
+    let pitch = 0;
+    segs.forEach(([len, to]) => {
+      const from = pitch;
+      const n = Math.max(1, Math.ceil(len / 0.1));
+      for (let i = 0; i < n; i += 1) {
+        const a = lerp(from, to, smoothstep((i + 0.5) / n));
+        f += Math.cos(a) * len / n;
+        h += Math.sin(a) * len / n;
+        if (onStep) onStep(f, h, len / n);
+      }
+      pitch = to;
+    });
+    return { f, h };
+  }
+
+  /* Lift and first drop as eased pitch changes, so the pull-out stays under about 4.5 g. */
+  function liftAndDrop(start, topY, bottomY) {
+    const lift = 0.7;
+    const dive = 0.96;
+    const up = pitchRun([[6, lift], [7, 0]]);
+    const hold = (topY - start[1] - up.h) / Math.sin(lift);
+    const down = pitchRun([[7, -dive], [15, 0]]);
+    const fall = (topY - bottomY + down.h) / Math.sin(dive);
+    const segs = [[6, lift], [hold, lift], [7, 0], [1.5, 0], [7, -dive], [fall, -dive], [15, 0]];
+    const keys = [];
+    let since = 0;
+    const end = pitchRun(segs, (f, h, step) => {
+      since += step;
+      if (since >= 1.5) {
+        keys.push([start[0], start[1] + h, start[2] + f]);
+        since = 0;
+      }
+    });
+    if (since < 0.75) keys.pop();
+    keys.push([start[0], start[1] + end.h, start[2] + end.f]);
+    return keys;
+  }
+
+  /*
+   * Circuit seen from above (x right, z up the page):
+   * station heading +z at x=8, chain lift, first drop, a left turnaround at the far end,
+   * a vertical loop heading back down at x=-21, a climb into a downward helix (cx -12, cz -6)
+   * and a right hand turn into the brake run that ends in the station again.
+   */
+  function trackKeys(mode) {
+    const hs = mode === 'dune' ? 0.8 : mode === 'alps' ? 1.2 : mode === 'snow' ? 1.08 : 1;
+    const tall = (y) => (y > 7 ? 7 + (y - 7) * hs : y);
+    const keys = [
+      [8, 1.8, -26], [8, 1.8, -21], [8, 1.85, -16],
+      ...liftAndDrop([8, 1.85, -16], tall(17), 2.3),
+    ];
+    const turnZ = Math.max(38.5, keys[keys.length - 1][2] + 3);
+    for (let i = 0; i <= 10; i += 1) {
+      const a = Math.PI * (i / 10);
+      keys.push([-6.5 + Math.cos(a) * 14.5, lerp(2.3, 2.7, i / 10) + Math.sin(a) ** 2 * 3.3, turnZ + Math.sin(a) * 14.5]);
+    }
+    keys.push([-21, 2.6, Math.min(34.5, turnZ - 4)]);
+
+    const entry = [-21, 2.5, 30.5];
+    const { pts, hMax } = loopProfile(800);
+    const loopLen = (0.6 * (tall(17) - entry[1])) / hMax;
+    const loopStart = keys.length;
+    keys.push(entry);
+    const loopKeys = Math.round(loopLen / 0.8);
+    for (let k = 1; k <= loopKeys; k += 1) {
+      const [s, f, h] = pts[Math.round((k / loopKeys) * pts.length) - 1];
+      keys.push([entry[0] + LOOP_SHIFT * smoothstep(s), entry[1] + h * loopLen, entry[2] - f * loopLen]);
+    }
+    const loopEnd = keys.length - 1;
+    const exit = keys[loopEnd];
+
+    const climb = exit[2] - 0.5;
+    for (let s = 3; s <= climb; s += 3) {
+      const w = s / climb;
+      keys.push([lerp(exit[0], -21, smoothstep(w)), 2.5 + 4.3 * (0.5 - 0.5 * Math.cos(Math.PI * w)), exit[2] - s]);
+    }
+    keys.push([-21, 6.8, 0.5]);
+
+    const cx = -12;
+    const cz = -6;
+    const turns = 1.25;
+    const steps = 16;
+    for (let i = 0; i <= steps; i += 1) {
+      const f = i / steps;
+      const a = Math.PI + f * turns * Math.PI * 2;
+      const r = lerp(9, 6, f);
+      keys.push([cx + Math.cos(a) * r, lerp(6.8, 2.5, f), cz + Math.sin(a) * r]);
+    }
+    keys.push([-6.5, 2.5, -13.2], [-3, 2.4, -17.5], [-0.8, 2.3, -22.5], [0, 2.2, -26.5]);
+    for (let i = 0; i <= 8; i += 1) {
+      const a = Math.PI * (1 + i / 8);
+      keys.push([4 + Math.cos(a) * 4, lerp(2.1, 1.8, i / 8), -30.5 + Math.sin(a) * 4]);
+    }
+    return {
+      keys,
+      loop: { entry: keys[loopStart], exit: keys[loopEnd], forward: [0, 0, -1] },
+    };
+  }
+
+  function buildTrack(THREE, mode) {
+    const { keys, loop } = trackKeys(mode);
+    const curve = new THREE.CatmullRomCurve3(
+      keys.map(([x, y, z]) => new THREE.Vector3(x, y, z)),
+      true,
+      'centripetal',
+    );
+    curve.arcLengthDivisions = 2400;
+    curve.updateArcLengths();
+    const len = Math.max(1, curve.getLength());
+    const N = TRACK_SAMPLES;
+    const ds = len / N;
+    const pos = [];
+    const tan = [];
+    for (let i = 0; i < N; i += 1) {
+      pos.push(curve.getPointAt(i / N));
+      tan.push(curve.getTangentAt(i / N).normalize());
+    }
+
+    function nearestSample(key) {
+      let best = 0;
+      let bestD = Infinity;
+      for (let i = 0; i < N; i += 1) {
+        const d = pos[i].distanceToSquared(new THREE.Vector3(key[0], key[1], key[2]));
+        if (d < bestD) {
+          bestD = d;
+          best = i;
+        }
+      }
+      return best;
+    }
+    const loopA = nearestSample(loop.entry);
+    const loopB = nearestSample(loop.exit);
+    const inLoop = (i, pad = 0) => i >= loopA - pad && i <= loopB + pad;
+    const loopSide = new THREE.Vector3(...loop.forward).cross(new THREE.Vector3(0, 1, 0)).normalize();
+
+    let peak = 0;
+    for (let i = 0; i < N / 2; i += 1) if (pos[i].y > pos[peak].y) peak = i;
+    let liftStart = peak;
+    while (liftStart > 1 && tan[liftStart - 1].y <= 0.05 && (peak - liftStart) * ds < 8) liftStart -= 1;
+    while (liftStart > 1 && tan[liftStart - 1].y > 0.05) liftStart -= 1;
+    const brakeStart = Math.max(peak + 1, Math.round(N - 30 / ds));
+    const peakY = pos[peak].y;
+    const vTop = 3.2;
+    const loss = GRAVITY * Math.max(1, peakY - STATION_Y) / Math.max(1, (brakeStart - peak) * ds);
+    const speed = new Array(N);
+    for (let i = 0; i < N; i += 1) {
+      if (i < liftStart) speed[i] = 3.6;
+      else if (i <= peak) speed[i] = vTop;
+      else {
+        const v2 = vTop * vTop + 2 * GRAVITY * (peakY - pos[i].y) - loss * (i - peak) * ds;
+        let v = Math.sqrt(Math.max(6.25, v2));
+        if (i >= brakeStart) v = lerp(v, 3.6, smoothstep((i - brakeStart) * ds / 14));
+        speed[i] = v;
+      }
+    }
+
+    const lean = [];
+    const span = 5;
+    for (let i = 0; i < N; i += 1) {
+      const a = tan[(i - span + N) % N];
+      const b = tan[(i + span) % N];
+      const ah = new THREE.Vector3(a.x, 0, a.z);
+      const bh = new THREE.Vector3(b.x, 0, b.z);
+      const v = new THREE.Vector3();
+      if (!inLoop(i, span + 2) && ah.lengthSq() > 0.04 && bh.lengthSq() > 0.04) {
+        v.copy(bh.normalize()).sub(ah.normalize()).divideScalar(2 * span * ds);
+        const k = v.length();
+        if (k > 1e-6) {
+          const angle = Math.min(1.15, Math.atan2(speed[i] * speed[i] * k, GRAVITY));
+          v.multiplyScalar(angle / k);
+        }
+      }
+      lean.push(v);
+    }
+    const Y = new THREE.Vector3(0, 1, 0);
+    const up = [];
+    const bank = [];
+    for (let i = 0; i < N; i += 1) {
+      const avg = new THREE.Vector3();
+      for (let d = -17; d <= 17; d += 1) avg.add(lean[(i + d + N) % N]);
+      avg.divideScalar(35);
+      const T = tan[i];
+      if (inLoop(i)) {
+        up.push(loopSide.clone().cross(T).normalize());
+        bank.push(0);
+        continue;
+      }
+      const up0 = Y.clone().sub(T.clone().multiplyScalar(T.y)).normalize();
+      const angle = avg.length();
+      const dir = avg.clone().sub(T.clone().multiplyScalar(avg.dot(T)));
+      dir.sub(up0.clone().multiplyScalar(dir.dot(up0)));
+      if (angle < 1e-4 || dir.lengthSq() < 1e-8) {
+        up.push(up0);
+        bank.push(0);
+        continue;
+      }
+      dir.normalize();
+      up.push(up0.multiplyScalar(Math.cos(angle)).add(dir.multiplyScalar(Math.sin(angle))).normalize());
+      bank.push(angle);
+    }
+
+    function wrap(u) {
+      return ((u % 1) + 1) % 1;
+    }
+    function speedAt(u) {
+      const f = wrap(u) * N;
+      const i0 = Math.floor(f) % N;
+      return lerp(speed[i0], speed[(i0 + 1) % N], f - Math.floor(f));
+    }
+    function frameAt(u) {
+      const w = wrap(u);
+      const f = w * N;
+      const i0 = Math.floor(f) % N;
+      const tangent = curve.getTangentAt(w).normalize();
+      const upv = up[i0].clone().lerp(up[(i0 + 1) % N], f - Math.floor(f));
+      upv.sub(tangent.clone().multiplyScalar(upv.dot(tangent))).normalize();
+      const x = upv.clone().cross(tangent).normalize();
+      return { pos: curve.getPointAt(w), tangent, up: upv, x };
+    }
+
+    return {
+      keys,
+      curve,
+      len,
+      N,
+      pos,
+      tan,
+      up,
+      bank,
+      speed,
+      liftStartU: liftStart / N,
+      liftPeakU: peak / N,
+      brakeU: brakeStart / N,
+      loopU: [loopA / N, loopB / N],
+      speedAt,
+      frameAt,
+    };
+  }
+
+  function trackClearance(track, x, z) {
+    let min = Infinity;
+    for (let i = 0; i < track.N; i += 2) {
+      const p = track.pos[i];
+      min = Math.min(min, Math.hypot(p.x - x, p.z - z));
+    }
+    return min;
+  }
+
+  function addTerrain(THREE, scene, palette, mode, track) {
+    const trackPts = [];
+    for (let k = 0; k < track.N; k += 3) trackPts.push(track.pos[k]);
     const geo = new THREE.PlaneGeometry(120, 120, 96, 96);
     const pos = geo.attributes.position;
     const colors = [];
@@ -437,6 +672,13 @@
       }
       if (mode === 'jungle') {
         h += Math.sin(x * 0.38) * Math.cos(y * 0.33) * 0.55;
+      }
+      for (let k = 0; k < trackPts.length; k += 1) {
+        const p = trackPts[k];
+        const d = Math.hypot(p.x - x, p.z + y);
+        if (d > 16) continue;
+        const limit = p.y + 0.55 - 1.2 + Math.max(0, d - 3.2) * 0.85;
+        if (h > limit) h = limit;
       }
       pos.setZ(i, h);
       const blend = Math.max(0, Math.min(1, (h + 1.5) / 10));
@@ -496,22 +738,33 @@
     return mesh;
   }
 
-  function addScenery(THREE, scene, palette, mode, curve, obstacles) {
+  function findClearSpot(THREE, track, i, count, near, far, need) {
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const u = ((i + Math.random() * 0.8) / count) % 1;
+      const p = track.curve.getPointAt(u);
+      const tangent = track.curve.getTangentAt(u);
+      const sideVec = new THREE.Vector3(-tangent.z, 0, tangent.x);
+      if (sideVec.lengthSq() < 1e-6) sideVec.set(1, 0, 0);
+      sideVec.normalize();
+      const side = (i + attempt) % 2 === 0 ? 1 : -1;
+      const dist = near + Math.random() * (far - near) + attempt * 1.5;
+      const x = p.x + sideVec.x * side * dist;
+      const z = p.z + sideVec.z * side * dist;
+      if (Math.abs(x) > 58 || Math.abs(z) > 58) continue;
+      if (trackClearance(track, x, z) >= need) {
+        return { pos: new THREE.Vector3(x, 0, z), p, sideVec, side };
+      }
+    }
+    return null;
+  }
+
+  function addScenery(THREE, scene, palette, mode, track, obstacles) {
     const count = mode === 'jungle' ? 95 : mode === 'alps' ? 70 : mode === 'snow' ? 55 : 36;
+    const need = mode === 'jungle' ? 5.8 : mode === 'dune' ? 4.8 : mode === 'alps' ? 4.6 : 4.2;
     for (let i = 0; i < count; i += 1) {
-      const t = (i + Math.random() * 0.4) / count;
-      const p = curve.getPointAt(t % 1);
-      const side = i % 2 === 0 ? 1 : -1;
-      const tangent = curve.getTangentAt(t % 1).normalize();
-      const sideVec = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
-      const dist = 6.5 + Math.random() * 16;
-      const pos = clearOfTrack(
-        THREE,
-        curve,
-        p.clone().add(sideVec.clone().multiplyScalar(side * dist)),
-        mode === 'jungle' ? 5.2 : 4.8,
-      );
-      pos.y = 0;
+      const spot = findClearSpot(THREE, track, i, count, 6.5, 22.5, need);
+      if (!spot) continue;
+      const { pos, p, sideVec, side } = spot;
 
       if (mode === 'jungle') {
         const trunkH = 3.2 + Math.random() * 5.5;
@@ -563,7 +816,9 @@
           obstacles.push(cactus);
         }
       } else if (mode === 'alps') {
-        if (i % 2 === 0) {
+        const far = sideVec.clone().multiplyScalar(side * (18 + Math.random() * 24));
+        const peakPos = new THREE.Vector3(p.x + far.x, 0, p.z + far.z);
+        if (i % 2 === 0 && trackClearance(track, peakPos.x, peakPos.z) >= 9) {
           const peakH = 9 + Math.random() * 14;
           const peak = new THREE.Mesh(
             new THREE.ConeGeometry(3.2 + Math.random() * 3.5, peakH, 6),
@@ -572,13 +827,6 @@
               roughness: 0.93,
               flatShading: true,
             }),
-          );
-          const far = sideVec.clone().multiplyScalar(side * (18 + Math.random() * 24));
-          const peakPos = clearOfTrack(
-            THREE,
-            curve,
-            new THREE.Vector3(p.x + far.x, 0, p.z + far.z),
-            10,
           );
           peak.position.set(peakPos.x, peakH * 0.32, peakPos.z);
           tagObstacle(peak, 4.5, 'peak');
@@ -650,34 +898,35 @@
     }
   }
 
-  function trackSide(frames, i, fallbackNormal) {
-    const n = frames.normals[i] || fallbackNormal;
-    const b = frames.binormals[i] || fallbackNormal;
-    let side = b.clone();
-    if (Math.abs(side.y) > 0.82) side.copy(n);
-    side.y *= 0.18;
-    if (side.lengthSq() < 1e-6) side.set(1, 0, 0);
-    return side.normalize();
+  function supportBlocked(track, foot, topY, uSelf) {
+    const { N, pos, len } = track;
+    for (let j = 0; j < N; j += 2) {
+      const p = pos[j];
+      if (p.y > topY - 0.6) continue;
+      const du = Math.abs(j / N - uSelf);
+      if (Math.min(du, 1 - du) * len < 6) continue;
+      if (Math.hypot(p.x - foot.x, p.z - foot.z) < 1.7) return true;
+    }
+    return false;
   }
 
-  function addRails(THREE, scene, curve, palette) {
-    const segments = 360;
-    const frames = curve.computeFrenetFrames(segments, true);
+  function addRails(THREE, scene, track, palette) {
+    const segments = TRACK_SAMPLES;
     const left = [];
     const right = [];
     const spine = [];
     const gauge = 0.48;
-    for (let i = 0; i <= segments; i += 1) {
-      const t = i / segments;
-      const p = curve.getPointAt(t);
-      const side = trackSide(frames, Math.min(i, frames.normals.length - 1), new THREE.Vector3(1, 0, 0)).multiplyScalar(gauge);
-      left.push(p.clone().add(side));
-      right.push(p.clone().sub(side));
-      spine.push(p.clone().add(new THREE.Vector3(0, -0.16, 0)));
+    for (let i = 0; i < track.N; i += 2) {
+      const p = track.pos[i];
+      const up = track.up[i];
+      const x = up.clone().cross(track.tan[i]).normalize().multiplyScalar(gauge);
+      left.push(p.clone().add(x));
+      right.push(p.clone().sub(x));
+      spine.push(p.clone().addScaledVector(up, -0.2));
     }
-    const leftCurve = new THREE.CatmullRomCurve3(left, true);
-    const rightCurve = new THREE.CatmullRomCurve3(right, true);
-    const spineCurve = new THREE.CatmullRomCurve3(spine, true);
+    const leftCurve = new THREE.CatmullRomCurve3(left, true, 'centripetal');
+    const rightCurve = new THREE.CatmullRomCurve3(right, true, 'centripetal');
+    const spineCurve = new THREE.CatmullRomCurve3(spine, true, 'centripetal');
     const railMat = new THREE.MeshStandardMaterial({
       color: 0xb8c0cc,
       metalness: 0.88,
@@ -688,91 +937,146 @@
       metalness: 0.62,
       roughness: 0.38,
     });
-    scene.add(new THREE.Mesh(new THREE.TubeGeometry(leftCurve, segments, 0.048, 10, true), railMat));
-    scene.add(new THREE.Mesh(new THREE.TubeGeometry(rightCurve, segments, 0.048, 10, true), railMat));
-    scene.add(new THREE.Mesh(new THREE.TubeGeometry(spineCurve, segments, 0.07, 8, true), spineMat));
+    scene.add(new THREE.Mesh(new THREE.TubeGeometry(leftCurve, segments, 0.055, 10, true), railMat));
+    scene.add(new THREE.Mesh(new THREE.TubeGeometry(rightCurve, segments, 0.055, 10, true), railMat));
+    scene.add(new THREE.Mesh(new THREE.TubeGeometry(spineCurve, Math.floor(segments / 2), 0.085, 8, true), spineMat));
 
     const tieMat = new THREE.MeshStandardMaterial({ color: 0x3f2a18, roughness: 0.9, metalness: 0.08 });
     const postMat = new THREE.MeshStandardMaterial({ color: 0x4b5563, metalness: 0.55, roughness: 0.4 });
-    const tieCount = 160;
+    const basis = new THREE.Matrix4();
+    const tieGeo = new THREE.BoxGeometry(gauge * 2 + 0.22, 0.07, 0.16);
+    const tieCount = Math.round(track.len / 1.3);
     for (let i = 0; i < tieCount; i += 1) {
-      const t = i / tieCount;
-      const p = curve.getPointAt(t);
-      const tangent = curve.getTangentAt(t);
-      const idx = Math.min(frames.normals.length - 1, Math.floor(t * frames.normals.length));
-      const side = trackSide(frames, idx, new THREE.Vector3(1, 0, 0));
-      const tie = new THREE.Mesh(new THREE.BoxGeometry(gauge * 2 + 0.22, 0.07, 0.16), tieMat);
-      tie.position.copy(p).add(new THREE.Vector3(0, -0.05, 0));
-      tie.up.copy(side.clone().cross(tangent).normalize());
-      tie.lookAt(p.clone().add(tangent));
+      const f = track.frameAt(i / tieCount);
+      const tie = new THREE.Mesh(tieGeo, tieMat);
+      tie.position.copy(f.pos).addScaledVector(f.up, -0.07);
+      tie.quaternion.setFromRotationMatrix(basis.makeBasis(f.x, f.up, f.tangent));
       scene.add(tie);
+    }
 
-      if (i % 2 === 0 && p.y > 1.8) {
-        const postH = p.y + 0.35;
-        [-0.55, 0.55].forEach((lat) => {
-          const foot = p.clone().add(side.clone().multiplyScalar(lat));
-          const post = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.08, postH, 6), postMat);
-          post.position.set(foot.x, postH / 2 - 0.55, foot.z);
-          scene.add(post);
-        });
-        if (i % 4 === 0) {
-          const cross = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.06, 0.06), postMat);
-          cross.position.set(p.x, Math.max(0.45, p.y * 0.42), p.z);
-          cross.lookAt(p.x + side.x, cross.position.y, p.z + side.z);
-          scene.add(cross);
-        }
+    const bottom = -8;
+    const postCount = Math.round(track.len / 3.4);
+    for (let i = 0; i < postCount; i += 1) {
+      const u = i / postCount;
+      const f = track.frameAt(u);
+      if (f.pos.y < 2.25 || f.up.y < 0.6) continue;
+      const flat = new THREE.Vector3(f.x.x, 0, f.x.z);
+      if (flat.lengthSq() < 1e-4) continue;
+      flat.normalize();
+      const top = f.pos.y - 0.24;
+      const feet = [-0.55, 0.55]
+        .map((lat) => f.pos.clone().addScaledVector(flat, lat))
+        .filter((foot) => !supportBlocked(track, foot, top, u));
+      feet.forEach((foot) => {
+        const post = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.08, top - bottom, 6), postMat);
+        post.position.set(foot.x, (top + bottom) / 2, foot.z);
+        scene.add(post);
+      });
+      if (feet.length === 2 && i % 2 === 0 && top > 3) {
+        const cross = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 1.15), postMat);
+        cross.position.set(f.pos.x, Math.max(0.6, top * 0.5), f.pos.z);
+        cross.lookAt(f.pos.x + flat.x, cross.position.y, f.pos.z + flat.z);
+        scene.add(cross);
       }
     }
+
+    loopStruts(THREE, track).forEach(({ a, b, radius }) => {
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius * 1.3, a.distanceTo(b), 8), postMat);
+      leg.position.copy(a).add(b).multiplyScalar(0.5);
+      leg.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
+      scene.add(leg);
+    });
+  }
+
+  function loopStruts(THREE, track) {
+    const [loopA, loopB] = track.loopU;
+    let topU = loopA;
+    let topY = -Infinity;
+    for (let i = Math.floor(loopA * track.N); i <= Math.ceil(loopB * track.N); i += 1) {
+      if (track.pos[i % track.N].y > topY) {
+        topY = track.pos[i % track.N].y;
+        topU = i / track.N;
+      }
+    }
+    const top = track.frameAt(topU);
+    const crown = top.pos.clone().addScaledVector(top.up, -0.3);
+    const flatX = new THREE.Vector3(top.x.x, 0, top.x.z).normalize();
+    const struts = [-1, 1].map((s) => {
+      const foot = crown.clone().addScaledVector(flatX, s * 8);
+      foot.y = -8;
+      return { a: crown.clone().addScaledVector(flatX, s * 0.7), b: foot, radius: 0.09 };
+    });
+    struts.push({
+      a: crown.clone().addScaledVector(flatX, -0.7),
+      b: crown.clone().addScaledVector(flatX, 0.7),
+      radius: 0.07,
+    });
+    return struts;
   }
 
   function createTrainCars(THREE, palette) {
-    const bodyMat = new THREE.MeshStandardMaterial({ color: 0xc41e3a, metalness: 0.42, roughness: 0.38 });
-    const darkMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.7 });
-    const chromeMat = new THREE.MeshStandardMaterial({ color: 0xd0d7e0, metalness: 0.9, roughness: 0.18 });
-    const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111827, metalness: 0.55, roughness: 0.35 });
+    const bodyMat = new THREE.MeshStandardMaterial({ color: 0xb91c1c, metalness: 0.48, roughness: 0.32 });
+    const noseMat = new THREE.MeshStandardMaterial({ color: 0x7f1d1d, metalness: 0.5, roughness: 0.3 });
+    const darkMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.68 });
+    const chromeMat = new THREE.MeshStandardMaterial({ color: 0xd0d7e0, metalness: 0.92, roughness: 0.16 });
+    const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111827, metalness: 0.6, roughness: 0.32 });
+    const yellowMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, metalness: 0.2, roughness: 0.45 });
     const cars = [];
-    for (let idx = 0; idx < 4; idx += 1) {
+    for (let idx = 0; idx < 5; idx += 1) {
       const car = new THREE.Group();
-      const hull = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.38, 1.12), bodyMat);
-      hull.position.set(0, 0.46, 0);
+      const hull = new THREE.Mesh(new THREE.BoxGeometry(0.86, 0.34, 1.05), bodyMat);
+      hull.position.set(0, 0.44, 0);
       car.add(hull);
-      const skirt = new THREE.Mesh(new THREE.BoxGeometry(0.98, 0.12, 1.16), darkMat);
-      skirt.position.set(0, 0.26, 0);
-      car.add(skirt);
+      const floor = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.08, 1.08), darkMat);
+      floor.position.set(0, 0.24, 0);
+      car.add(floor);
       if (idx === 0) {
-        const nose = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.42, 0.48, 12), bodyMat);
+        const nose = new THREE.Mesh(new THREE.ConeGeometry(0.38, 0.62, 14), noseMat);
         nose.rotation.x = Math.PI / 2;
-        nose.position.set(0, 0.44, 0.62);
+        nose.position.set(0, 0.4, 0.68);
         car.add(nose);
+        const cowling = new THREE.Mesh(new THREE.SphereGeometry(0.34, 12, 10, 0, Math.PI * 2, 0, Math.PI / 2), bodyMat);
+        cowling.rotation.x = -Math.PI / 2;
+        cowling.position.set(0, 0.42, 0.38);
+        car.add(cowling);
         const lamp = new THREE.Mesh(
-          new THREE.SphereGeometry(0.07, 10, 8),
-          new THREE.MeshStandardMaterial({ color: 0xfff3c4, emissive: 0xfbbf24, emissiveIntensity: 1.1 }),
+          new THREE.SphereGeometry(0.065, 10, 8),
+          new THREE.MeshStandardMaterial({ color: 0xfff7d6, emissive: 0xfbbf24, emissiveIntensity: 1.35 }),
         );
-        lamp.position.set(0, 0.46, 0.92);
+        lamp.position.set(0, 0.42, 0.98);
         car.add(lamp);
       }
-      const seat = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.2, 0.42), darkMat);
-      seat.position.set(0, 0.68, -0.06);
+      const backrest = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.34, 0.12), darkMat);
+      backrest.position.set(0, 0.64, -0.32);
+      car.add(backrest);
+      const seat = new THREE.Mesh(new THREE.BoxGeometry(0.76, 0.1, 0.38), yellowMat);
+      seat.position.set(0, 0.5, -0.04);
       car.add(seat);
-      const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.84, 10), chromeMat);
-      bar.rotation.z = Math.PI / 2;
-      bar.position.set(0, 0.84, 0.22);
-      car.add(bar);
-      [[-0.42, -0.34], [0.42, -0.34], [-0.42, 0.34], [0.42, 0.34]].forEach(([x, z]) => {
+      const shoulder = new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.028, 8, 16, Math.PI), chromeMat);
+      shoulder.rotation.y = Math.PI / 2;
+      shoulder.position.set(0, 0.78, 0.08);
+      car.add(shoulder);
+      const lap = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.78, 10), chromeMat);
+      lap.rotation.z = Math.PI / 2;
+      lap.position.set(0, 0.6, 0.18);
+      car.add(lap);
+      [[-0.4, -0.32], [0.4, -0.32], [-0.4, 0.32], [0.4, 0.32]].forEach(([x, z]) => {
         const truck = new THREE.Group();
-        const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.07, 12), wheelMat);
+        const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.06, 14), wheelMat);
         wheel.rotation.z = Math.PI / 2;
         truck.add(wheel);
-        const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.09, 8), chromeMat);
-        hub.rotation.z = Math.PI / 2;
-        truck.add(hub);
-        truck.position.set(x, 0.16, z);
+        const upstop = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.05, 10), chromeMat);
+        upstop.rotation.z = Math.PI / 2;
+        upstop.position.y = -0.09;
+        truck.add(upstop);
+        truck.position.set(x, 0.14, z);
         car.add(truck);
       });
-      const coupler = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.22), chromeMat);
-      coupler.position.set(0, 0.28, -0.62);
+      const coupler = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.28, 8), chromeMat);
+      coupler.rotation.x = Math.PI / 2;
+      coupler.position.set(0, 0.26, -0.58);
       car.add(coupler);
-      cars.push({ mesh: car, gap: idx * 1.22 });
+      cars.push({ mesh: car, gap: idx * 1.12 });
     }
     return cars;
   }
@@ -822,29 +1126,43 @@
     rim.position.set(0, 8, -20);
     scene.add(rim);
 
-    const curve = buildTrackCurve(THREE, spec.mode);
-    const trackFrames = curve.computeFrenetFrames(240, true);
-    addTerrain(THREE, scene, palette, spec.mode);
-    addScenery(THREE, scene, palette, spec.mode, curve, obstacles);
-    addRails(THREE, scene, curve, palette);
+    const track = buildTrack(THREE, spec.mode);
+    const curve = track.curve;
+    const trackLen = track.len;
+    addTerrain(THREE, scene, palette, spec.mode, track);
+    addScenery(THREE, scene, palette, spec.mode, track, obstacles);
+    addRails(THREE, scene, track, palette);
 
-    const stationPos = curve.getPointAt(0.02);
+    const stationPos = curve.getPointAt(0.015);
+    const stationTan = curve.getTangentAt(0.02).normalize();
+    const stationSide = new THREE.Vector3(-stationTan.z, 0, stationTan.x).normalize();
     const stationDeck = new THREE.Mesh(
-      new THREE.BoxGeometry(8.4, 0.22, 5.2),
-      new THREE.MeshStandardMaterial({ color: 0x6b7280, roughness: 0.62, metalness: 0.3 }),
+      new THREE.BoxGeometry(10.2, 0.18, 4.6),
+      new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.55, metalness: 0.28 }),
     );
-    stationDeck.position.set(stationPos.x, stationPos.y - 0.78, stationPos.z);
+    stationDeck.position.copy(stationPos).add(new THREE.Vector3(0, -0.72, 0)).add(stationSide.clone().multiplyScalar(1.4));
+    stationDeck.lookAt(stationPos.clone().add(stationTan));
     scene.add(stationDeck);
     const canopy = new THREE.Mesh(
-      new THREE.BoxGeometry(8.0, 0.08, 4.6),
-      new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.55 }),
+      new THREE.BoxGeometry(9.4, 0.08, 4.2),
+      new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.5 }),
     );
-    canopy.position.set(stationPos.x, stationPos.y + 2.1, stationPos.z);
+    canopy.position.copy(stationDeck.position).add(new THREE.Vector3(0, 2.55, 0));
+    canopy.quaternion.copy(stationDeck.quaternion);
     scene.add(canopy);
+    const chainMat = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.7, roughness: 0.35 });
+    for (let i = 0; i < 22; i += 1) {
+      const t = lerp(track.liftStartU, track.liftPeakU, i / 21);
+      const p = curve.getPointAt(t);
+      const tan = curve.getTangentAt(t);
+      const dog = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.07, 0.16), chainMat);
+      dog.position.copy(p).add(new THREE.Vector3(0, -0.18, 0));
+      dog.lookAt(p.clone().add(tan));
+      scene.add(dog);
+    }
 
     const trainCars = createTrainCars(THREE, palette);
     trainCars.forEach((car) => scene.add(car.mesh));
-    const trackLen = Math.max(1, curve.getLength());
 
     const raycaster = new THREE.Raycaster();
     raycaster.far = 22;
@@ -877,18 +1195,24 @@
     }
 
     photos.forEach((photo, i) => {
-      const t = ((i + 0.35) / Math.max(1, photos.length)) % 1;
+      let t = ((i + 0.35) / Math.max(1, photos.length)) % 1;
+      const [loopA, loopB] = track.loopU;
+      if (t > loopA - 0.02 && t < loopB + 0.02) t = (loopB + 0.03) % 1;
       const p = curve.getPointAt(t);
       const tangent = curve.getTangentAt(t).normalize();
-      const side = i % 2 === 0 ? 1 : -1;
       const sideVec = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
-      const offset = 5.2 + (i % 3) * 0.55;
-      const pos = clearOfTrack(
-        THREE,
-        curve,
-        p.clone().add(sideVec.clone().multiplyScalar(side * offset)),
-        5.8,
-      );
+      let side = i % 2 === 0 ? 1 : -1;
+      let pos = null;
+      for (let attempt = 0; attempt < 12 && !pos; attempt += 1) {
+        const s = attempt % 2 === 0 ? side : -side;
+        const offset = 5.2 + (i % 3) * 0.55 + Math.floor(attempt / 2) * 0.9;
+        const spot = p.clone().add(sideVec.clone().multiplyScalar(s * offset));
+        if (trackClearance(track, spot.x, spot.z) >= 4.6) {
+          pos = spot;
+          side = s;
+        }
+      }
+      if (!pos) pos = clearOfTrack(THREE, curve, p.clone().add(sideVec.clone().multiplyScalar(side * 9)), 5.8);
       pos.y = 2.6 + Math.sin(i * 1.7) * 0.45;
 
       const frame = new THREE.Mesh(
@@ -1080,7 +1404,7 @@
 
     let riding = spec.demo !== false;
     let meters = 0;
-    let alongSpeed = 6.5;
+    let alongSpeed = 3.6;
     let boostUntil = 0;
     let raf = 0;
     let last = performance.now();
@@ -1088,11 +1412,7 @@
     let camMode = 'ego';
     const CAM_MODES = ['ego', 'chase'];
     let camSnap = true;
-    const worldUp = new THREE.Vector3(0, 1, 0);
-    const tmpPrevTan = new THREE.Vector3();
-    const tmpNextTan = new THREE.Vector3();
-    const tmpCross = new THREE.Vector3();
-    const tmpUp = new THREE.Vector3();
+    const carBasis = new THREE.Matrix4();
 
     function syncRideButton() {
       if (!rideBtn) return;
@@ -1130,23 +1450,17 @@
 
     function poseAtDistance(distMeters) {
       const wrapped = ((distMeters % trackLen) + trackLen) % trackLen;
-      const t = curve.getUtoTmapping(wrapped / trackLen);
-      const pos = curve.getPointAt(t);
-      const lookDist = (wrapped + 1.4) % trackLen;
-      const look = curve.getPointAt(curve.getUtoTmapping(lookDist / trackLen));
-      const tangent = curve.getTangentAt(t).normalize();
-      const idx = Math.min(trackFrames.normals.length - 1, Math.floor(t * trackFrames.normals.length));
-      const normal = trackFrames.normals[idx];
-      const binormal = trackFrames.binormals[idx];
-      tmpPrevTan.copy(curve.getTangentAt((t + 0.985) % 1)).normalize();
-      tmpNextTan.copy(curve.getTangentAt((t + 0.015) % 1)).normalize();
-      tmpCross.copy(tmpPrevTan).cross(tmpNextTan);
-      const turnSign = Math.sign(tmpCross.dot(worldUp)) || 1;
-      const curvature = tmpPrevTan.angleTo(tmpNextTan) / 0.03;
-      const speedBank = Math.max(-0.7, Math.min(0.7, curvature * alongSpeed * 0.014 * turnSign));
-      tmpUp.copy(worldUp).lerp(normal, 0.5).normalize();
-      tmpUp.applyAxisAngle(tangent, speedBank + bankBias * 0.22);
-      return { t, pos, look, tangent, normal, binormal, up: tmpUp.clone(), wrapped };
+      const u = wrapped / trackLen;
+      const f = track.frameAt(u);
+      return {
+        u,
+        wrapped,
+        pos: f.pos,
+        tangent: f.tangent,
+        up: f.up,
+        x: f.x,
+        binormal: f.x.clone().negate(),
+      };
     }
 
     function placeOnTrack() {
@@ -1154,8 +1468,7 @@
       trainCars.forEach((car) => {
         const pose = car === trainCars[0] ? lead : poseAtDistance(meters - car.gap);
         car.mesh.position.copy(pose.pos);
-        car.mesh.up.copy(pose.up);
-        car.mesh.lookAt(pose.look);
+        car.mesh.quaternion.setFromRotationMatrix(carBasis.makeBasis(pose.x, pose.up, pose.tangent));
       });
 
       detectObstacles(lead.pos, lead.tangent, lead.up, lead.binormal);
@@ -1172,21 +1485,20 @@
         camera.position.lerp(egoPos, lerpAmt);
         camera.up.copy(lead.up);
         camera.lookAt(camLook);
-        camera.fov = 78 + Math.min(8, alongSpeed * 0.18);
+        camera.fov = 76 + Math.min(16, alongSpeed * 0.32);
       } else {
-        const back = lead.tangent.clone().multiplyScalar(-4.1);
-        const camPos = lead.pos.clone()
-          .add(back)
-          .add(lead.up.clone().multiplyScalar(1.55))
-          .add(lead.binormal.clone().multiplyScalar(0.12 + bankBias * 0.4));
+        const tail = poseAtDistance(meters - trainCars[trainCars.length - 1].gap - 3.2);
+        const camPos = tail.pos.clone()
+          .add(tail.up.clone().multiplyScalar(1.9))
+          .add(tail.binormal.clone().multiplyScalar(bankBias * 0.4));
         camera.position.lerp(camPos, lerpAmt);
         const camLook = lead.pos.clone()
           .add(lead.tangent.clone().multiplyScalar(7.2))
           .add(lead.up.clone().multiplyScalar(0.55))
           .add(lead.binormal.clone().multiplyScalar(bankBias * 0.28));
-        camera.up.copy(lead.up);
+        camera.up.copy(tail.up);
         camera.lookAt(camLook);
-        camera.fov = 68 + Math.min(10, alongSpeed * 0.22);
+        camera.fov = 64 + Math.min(14, alongSpeed * 0.28);
       }
       camSnap = false;
       camera.updateProjectionMatrix();
@@ -1218,21 +1530,12 @@
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
       if (riding) {
-        const uArc = ((meters / trackLen) % 1 + 1) % 1;
-        const t = curve.getUtoTmapping(uArc);
-        const tangent = curve.getTangentAt(t);
-        const boosted = now < boostUntil;
-        if (t >= 0.10 && t < 0.27) {
-          alongSpeed += (7.4 - alongSpeed) * Math.min(1, dt * 2.4);
-        } else if (t >= 0.88 || t < 0.08) {
-          alongSpeed += (5.8 - alongSpeed) * Math.min(1, dt * 1.6);
-        } else {
-          alongSpeed += -14.5 * tangent.y * dt;
-          alongSpeed *= Math.pow(0.997, dt * 60);
-        }
-        if (boosted) alongSpeed = Math.max(alongSpeed, 18);
-        alongSpeed = Math.max(3.6, Math.min(32, alongSpeed));
-        meters += alongSpeed * Math.max(0.4, speedFactor) * dt;
+        const u = ((meters / trackLen) % 1 + 1) % 1;
+        const onLift = u >= track.liftStartU && u <= track.liftPeakU;
+        let target = track.speedAt(u);
+        if (now < boostUntil && !onLift && u < track.brakeU) target += 8;
+        alongSpeed += (target - alongSpeed) * Math.min(1, dt * 4.5);
+        meters += alongSpeed * Math.max(0.35, speedFactor) * dt;
       }
       placeOnTrack();
       renderer.render(scene, camera);
@@ -1406,7 +1709,79 @@
     (root || document).querySelectorAll('.rollercoast-block[data-rollercoast-spec]').forEach(hydrateBlock);
   }
 
+  function selfTest(THREE) {
+    const lib = THREE || (typeof window !== 'undefined' ? window.THREE : null);
+    if (!lib) return ['three.js not loaded'];
+    const fails = [];
+    Object.keys(MODES).forEach((mode) => {
+      const tr = buildTrack(lib, mode);
+      const { N, pos, tan, speed, len, keys } = tr;
+      const ds = len / N;
+      const a = keys[0];
+      const b = keys[keys.length - 1];
+      if (Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]) < 0.5) fails.push(`${mode}: duplicate closing point`);
+      let minRadius = Infinity;
+      let minY = Infinity;
+      let minSpeed = Infinity;
+      let maxBank = 0;
+      let maxG = 0;
+      let loopTopG = Infinity;
+      const loopA = Math.round(tr.loopU[0] * N);
+      const loopB = Math.round(tr.loopU[1] * N);
+      for (let i = 0; i < N; i += 1) {
+        minRadius = Math.min(minRadius, ds / Math.max(1e-9, tan[i].angleTo(tan[(i + 1) % N])));
+        minY = Math.min(minY, pos[i].y);
+        minSpeed = Math.min(minSpeed, speed[i]);
+        maxBank = Math.max(maxBank, tr.bank[i]);
+        const k = tan[(i + 2) % N].clone().sub(tan[(i - 2 + N) % N]).divideScalar(4 * ds);
+        const felt = k.multiplyScalar(speed[i] * speed[i]).add(new lib.Vector3(0, GRAVITY, 0));
+        maxG = Math.max(maxG, felt.length() / GRAVITY);
+        if (i > loopA && i < loopB && tr.up[i].y < -0.9) loopTopG = Math.min(loopTopG, felt.dot(tr.up[i]) / GRAVITY);
+      }
+      if (minRadius < 2.4) fails.push(`${mode}: bend radius ${minRadius.toFixed(2)} m`);
+      if (maxG > 5) fails.push(`${mode}: ${maxG.toFixed(1)} g`);
+      if (!(loopTopG >= 0.2)) fails.push(`${mode}: riders lift off at the loop top (${loopTopG.toFixed(2)} g)`);
+      loopStruts(lib, tr).slice(0, 2).forEach(({ a, b }) => {
+        const ab = b.clone().sub(a);
+        for (let i = 0; i < N; i += 2) {
+          const p = pos[i];
+          const w = Math.max(0, Math.min(1, p.clone().sub(a).dot(ab) / ab.lengthSq()));
+          if (w < 0.12) continue;
+          const d = a.clone().addScaledVector(ab, w).distanceTo(p);
+          if (d < 1.6) {
+            fails.push(`${mode}: loop leg ${d.toFixed(2)} m from track`);
+            break;
+          }
+        }
+      });
+      if (minY < 1.3) fails.push(`${mode}: track dips to ${minY.toFixed(2)} m`);
+      if (minSpeed < 2.4) fails.push(`${mode}: train stalls (${minSpeed.toFixed(2)} m/s)`);
+      if (maxBank > 1.2) fails.push(`${mode}: bank ${maxBank.toFixed(2)} rad`);
+      const skip = Math.ceil(10 / ds);
+      let minGap = Infinity;
+      for (let i = 0; i < N; i += 2) {
+        for (let j = i + skip; j < N; j += 2) {
+          if (N - (j - i) < skip) continue;
+          minGap = Math.min(minGap, pos[i].distanceTo(pos[j]));
+        }
+      }
+      if (minGap < 2.6) fails.push(`${mode}: tracks only ${minGap.toFixed(2)} m apart`);
+      for (let i = 0; i * ds < 10; i += 1) {
+        if (Math.abs(tan[i].y) > 0.04) {
+          fails.push(`${mode}: station not level`);
+          break;
+        }
+      }
+      const peakY = pos[Math.round(tr.liftPeakU * N)].y;
+      if (peakY - STATION_Y < 10) fails.push(`${mode}: lift only ${peakY.toFixed(1)} m`);
+      if (tr.liftStartU >= tr.liftPeakU) fails.push(`${mode}: no chain lift`);
+    });
+    return fails;
+  }
+
   return {
+    buildTrack,
+    selfTest,
     parseFenceAttrs,
     parsePhotos,
     formatGalleryBody,

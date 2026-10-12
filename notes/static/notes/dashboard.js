@@ -10741,25 +10741,54 @@
     });
   }
 
+  function guestDrawKey(drawIndex) {
+    const pageId = window.APP_BOOT?.publicPage?.id || 'draw';
+    return `notespro-draw:${pageId}:${drawIndex}`;
+  }
+
+  function readGuestDraw(drawIndex) {
+    try {
+      const key = guestDrawKey(drawIndex);
+      if (localStorage.getItem(key) == null) return null;
+      return localStorage.getItem(key) || '';
+    } catch (err) {
+      return null;
+    }
+  }
+
+  function writeGuestDraw(drawIndex, strokes) {
+    try {
+      localStorage.setItem(guestDrawKey(drawIndex), strokes == null ? '' : String(strokes));
+    } catch (err) { /* private browsing */ }
+  }
+
   function hydrateDrawBlocks(root) {
     const engine = window.NotesProDraw;
     if (!engine) return;
     (root || document).querySelectorAll('.draw-block[data-draw-index]').forEach((el) => {
       const drawIndex = parseInt(el.dataset.drawIndex, 10);
+      if (publicView && Number.isFinite(drawIndex)) {
+        const guestStrokes = readGuestDraw(drawIndex);
+        const store = el.querySelector('.draw-store');
+        if (guestStrokes != null && store) store.textContent = guestStrokes;
+      }
       engine.hydrateBlock(el, {
-        editable: !!userCanEdit,
-        onPersist: userCanEdit && Number.isFinite(drawIndex) && easyMDE
-          ? (payload) => {
-            const oldMarkdown = easyMDE.value();
-            const updated = updateDrawFence(oldMarkdown, drawIndex, payload || {});
-            if (updated === oldMarkdown) return;
-            suppressPreviewRefresh += 1;
-            try { easyMDE.value(updated); } finally {
-              suppressPreviewRefresh = Math.max(0, suppressPreviewRefresh - 1);
-            }
-            scheduleSave();
+        editable: !!userCanEdit || publicView,
+        onPersist: (payload) => {
+          if (publicView && Number.isFinite(drawIndex)) {
+            writeGuestDraw(drawIndex, payload?.strokes);
+            return;
           }
-          : null,
+          if (!(userCanEdit && Number.isFinite(drawIndex) && easyMDE)) return;
+          const oldMarkdown = easyMDE.value();
+          const updated = updateDrawFence(oldMarkdown, drawIndex, payload || {});
+          if (updated === oldMarkdown) return;
+          suppressPreviewRefresh += 1;
+          try { easyMDE.value(updated); } finally {
+            suppressPreviewRefresh = Math.max(0, suppressPreviewRefresh - 1);
+          }
+          scheduleSave();
+        },
       });
     });
   }

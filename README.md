@@ -111,7 +111,7 @@ python manage.py runserver
 
 Open:
 - http://127.0.0.1:8000/login/
-- Demo user after `seed_demo`: `demo` / `password` — workspace **Docs → README** contains this guide with screenshots; **Docs → Blocks** has gantt/calendar/mindmap/kanban/calcs/panel examples; **Docs → Calendar** has day/week/month/year views with sample events; **Docs → Gallery** is a walk-in corridor of NotesPro screenshots (tap **Demo tour** on a phone); **Docs → Games** has sudoku, tic-tac-toe, chess, Connect Four, Reversi, backgammon, carambole, darts, a drawing pad, Tetris, Sokoban, Space Invaders, Breakout, Snake, marble blast, jigsaw, pinball, Pac-Man, Super Mario, Lemmings, photo cube, photo book, photo carousel, roller coaster, auto scooter, ghost train, and photo labyrinth; **Docs → NotesList** is a local ads board; **Docs → RSS Feeds** embeds BBC / DE / CH news feeds
+- Demo user after `seed_demo`: `demo` / `password` — workspace **Docs → README** contains this guide with screenshots; **Docs → Blocks** has gantt/calendar/mindmap/kanban/calcs/panel examples; **Docs → Calendar** has day/week/month/year views with sample events; **Docs → NotesList** is a local ads board; **Docs → RSS Feeds** embeds BBC / DE / CH news feeds. **Demo** is a separate public folder: games, the shop, the drawing pad (drawable without signing in), a table, and photos.
 
 Copy `.env.example` to `.env.dev` (or set `DJANGO_ENV`) for local settings. See [Email invitations](#email-invitations) and [Database encryption](#database-encryption) below.
 
@@ -1913,7 +1913,7 @@ Toolbar: **Photos → Photo carousel** adds a sample wheel.
 
 ### Roller coaster
 
-Embed a **themed roller coaster** that rides past your own photos on billboards beside the track.
+Embed a **themed roller coaster** that rides past your own photos on billboards beside the track. The layout is a closed circuit: station, chain lift, first drop, a banked turnaround, a vertical loop, a climb into a downward helix that the track later passes under, then a U-turn brake run back into the station. Rails bank with the curves, speed follows the slope, and trees, rocks, peaks and photo boards are kept clear of the track.
 
 Jungle ride:
 

@@ -117,6 +117,13 @@
     return Math.max(12, Math.min(96, 8 + clampSize(size) * 2));
   }
 
+  function clampAngle(raw) {
+    const value = Number(raw);
+    if (!Number.isFinite(value)) return 0;
+    const step = Math.round(value / 45) * 45;
+    return ((step % 360) + 360) % 360;
+  }
+
   function parseStrokes(text) {
     const strokes = [];
     String(text || '').split(/\r?\n/).forEach((line) => {
@@ -136,6 +143,7 @@
           color,
           erase: false,
           width: Math.max(8, Math.min(128, size)),
+          angle: clampAngle(bits[2]),
           points: [{ x, y }],
           text: label,
         });
@@ -176,7 +184,9 @@
       if (stroke.kind === 'text') {
         const point = stroke.points[0] || { x: 0, y: 0 };
         const label = String(stroke.text || '').replace(/[\r\n`{}]+/g, ' ').trim();
-        return `text ${stroke.color} ${round1(stroke.width)} ${round1(point.x)},${round1(point.y)} ${label}`;
+        const angle = clampAngle(stroke.angle);
+        const at = angle ? `${round1(point.x)},${round1(point.y)},${angle}` : `${round1(point.x)},${round1(point.y)}`;
+        return `text ${stroke.color} ${round1(stroke.width)} ${at} ${label}`;
       }
       const pts = stroke.points.map((p) => `${round1(p.x)},${round1(p.y)}`).join(' ');
       const ink = isErase(stroke) ? 'erase' : stroke.color;
@@ -201,9 +211,14 @@
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     if (stroke.kind === 'text') {
+      const angle = clampAngle(stroke.angle);
+      ctx.save();
       ctx.font = `600 ${stroke.width}px system-ui, sans-serif`;
       ctx.textBaseline = 'top';
-      ctx.fillText(stroke.text, pts[0].x, pts[0].y);
+      ctx.translate(pts[0].x, pts[0].y);
+      if (angle) ctx.rotate(angle * Math.PI / 180);
+      ctx.fillText(stroke.text, 0, 0);
+      ctx.restore();
       return;
     }
     if (pts.length === 1) {
@@ -281,6 +296,18 @@
       '<button type="button" class="btn btn-sm btn-outline-light" data-action="tool" data-tool="erase" aria-pressed="false">Eraser</button>',
       '<button type="button" class="btn btn-sm btn-outline-light" data-action="tool" data-tool="line" aria-pressed="false" title="Straight line">Ruler</button>',
       '<button type="button" class="btn btn-sm btn-outline-light" data-action="tool" data-tool="text" aria-pressed="false" title="Place text">Text</button>',
+      '<label class="draw-field">Angle',
+      '<select data-draw-angle aria-label="Text angle">',
+      '<option value="0">0°</option>',
+      '<option value="45">45°</option>',
+      '<option value="90">90°</option>',
+      '<option value="135">135°</option>',
+      '<option value="180">180°</option>',
+      '<option value="225">225°</option>',
+      '<option value="270">270°</option>',
+      '<option value="315">315°</option>',
+      '</select>',
+      '</label>',
       '<label class="draw-field">Size',
       `<input type="range" data-draw-size min="${MIN_SIZE}" max="${MAX_SIZE}" step="1" value="${size}" aria-label="Line thickness">`,
       `<span class="draw-size-label" data-draw-size-label>${size}</span>`,
@@ -298,7 +325,7 @@
       '<div class="draw-stage">',
       `<canvas class="draw-canvas" width="${W}" height="${H}" aria-label="${escapeHtml(title)}"></canvas>`,
       '</div>',
-      '<p class="draw-hint">Pen draws, Eraser rubs out, Ruler draws a straight line, Text places a label. Size sets the thickness or the text size.</p>',
+      '<p class="draw-hint">Pen draws, Eraser rubs out, Ruler draws a straight line, Text places a label. Drag the text box to move it. Angle turns the label in steps of 45°. Size sets the thickness or the text size.</p>',
       `<pre class="draw-store" hidden>${escapeHtml(String(source || '').trim())}</pre>`,
       '</div>',
     ].join('');
@@ -322,18 +349,31 @@
     const stage = el.querySelector('.draw-stage');
     const ctx = canvas?.getContext('2d');
     if (!canvas || !ctx || !stage) return;
+    const textPop = document.createElement('div');
+    textPop.className = 'draw-text-pop';
+    textPop.hidden = true;
+    const textGrip = document.createElement('button');
+    textGrip.type = 'button';
+    textGrip.className = 'draw-text-move';
+    textGrip.setAttribute('aria-label', 'Move text');
+    textGrip.title = 'Drag to move';
+    textGrip.textContent = '⋮⋮';
     const textInput = document.createElement('input');
     textInput.type = 'text';
     textInput.className = 'draw-text-input';
-    textInput.hidden = true;
     textInput.maxLength = 120;
     textInput.setAttribute('aria-label', 'Drawing text');
+    textInput.placeholder = 'Text';
     textInput.autocomplete = 'off';
-    stage.appendChild(textInput);
+    textPop.append(textGrip, textInput);
+    el.appendChild(textPop);
     let textAt = null;
     let textGen = 0;
+    let textHold = false;
+    let textDrag = null;
     const editable = options.editable !== false;
     let tool = 'pen';
+    let textAngle = 0;
     let pen = expandHex(el.dataset.drawPen, DEFAULT_PEN);
     let bg = expandHex(el.dataset.drawBg, DEFAULT_BG);
     let width = clampSize(el.dataset.drawSize);
@@ -345,6 +385,7 @@
     const bgInput = el.querySelector('input[data-draw-bg]');
     const sizeInput = el.querySelector('input[data-draw-size]');
     const sizeLabel = el.querySelector('[data-draw-size-label]');
+    const angleInput = el.querySelector('select[data-draw-angle]');
     if (sizeInput) width = clampSize(sizeInput.value);
     if (!editable) {
       el.querySelectorAll('input, button[data-action]').forEach((node) => {
@@ -375,27 +416,52 @@
 
     function placeTextBox(point) {
       const canvasRect = canvas.getBoundingClientRect();
-      const stageRect = stage.getBoundingClientRect();
-      const scaleX = canvasRect.width / W;
-      const scaleY = canvasRect.height / H;
-      textInput.style.left = `${canvasRect.left - stageRect.left + point.x * scaleX}px`;
-      textInput.style.top = `${canvasRect.top - stageRect.top + point.y * scaleY}px`;
+      const hostRect = el.getBoundingClientRect();
+      const scaleX = (canvasRect.width || W) / W;
+      const scaleY = (canvasRect.height || H) / H;
+      const fontPx = Math.max(16, Math.min(72, fontSize(width) * Math.min(scaleX, scaleY)));
+      textInput.style.fontSize = `${fontPx}px`;
       textInput.style.color = pen;
-      textInput.style.fontSize = `${Math.max(16, fontSize(width) * scaleY)}px`;
+      textInput.style.background = bg;
+      textInput.style.borderColor = pen;
+      textPop.style.color = pen;
+      const boxW = Math.min(280, Math.max(160, hostRect.width - 8));
+      textPop.style.width = `${boxW}px`;
+      const boxH = textPop.offsetHeight || (fontPx + 18);
+      let left = (canvasRect.left - hostRect.left) + point.x * scaleX;
+      let top = (canvasRect.top - hostRect.top) + point.y * scaleY;
+      left = Math.max(4, Math.min(left, hostRect.width - boxW - 4));
+      top = Math.max(4, Math.min(top, hostRect.height - boxH - 4));
+      textPop.style.left = `${left}px`;
+      textPop.style.top = `${top}px`;
+      textAt = {
+        x: Math.max(0, Math.min(W, (left - (canvasRect.left - hostRect.left)) / scaleX)),
+        y: Math.max(0, Math.min(H, (top - (canvasRect.top - hostRect.top)) / scaleY)),
+      };
+      stage.scrollLeft = 0;
+      stage.scrollTop = 0;
+    }
+
+    function hideTextField() {
+      textHold = false;
+      textDrag = null;
+      textPop.hidden = true;
+      textAt = null;
+      el.classList.remove('draw-block--texting');
     }
 
     function commitText() {
-      if (textInput.hidden) return;
+      if (textPop.hidden) return;
       const value = textInput.value.replace(/[\r\n`{}]+/g, ' ').trim();
       const point = textAt;
-      textInput.hidden = true;
-      textAt = null;
+      hideTextField();
       if (!value || !point) return;
       strokes.push({
         kind: 'text',
         color: pen,
         erase: false,
         width: fontSize(width),
+        angle: textAngle,
         points: [point],
         text: value,
       });
@@ -405,12 +471,14 @@
 
     function openText(point) {
       textGen += 1;
-      if (!textInput.hidden) commitText();
+      if (!textPop.hidden) commitText();
       textAt = point;
       textInput.value = '';
-      textInput.hidden = false;
+      textPop.hidden = false;
+      el.classList.add('draw-block--texting');
       placeTextBox(point);
-      textInput.focus();
+      textHold = true;
+      textInput.focus({ preventScroll: true });
     }
 
     function redraw() {
@@ -436,6 +504,8 @@
       setToolsOpen(false);
       const point = localPoint(event, canvas);
       if (tool === 'text') {
+        if (event.pointerType !== 'touch') event.preventDefault();
+        event.stopPropagation();
         openText(point);
         return;
       }
@@ -505,16 +575,71 @@
         event.preventDefault();
         textGen += 1;
         textInput.value = '';
-        textInput.hidden = true;
-        textAt = null;
+        hideTextField();
       }
+    });
+    textGrip.addEventListener('pointerdown', (event) => {
+      if (event.button > 0 || textPop.hidden) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const hostRect = el.getBoundingClientRect();
+      textDrag = {
+        pointerId: event.pointerId,
+        dx: event.clientX - hostRect.left - textPop.offsetLeft,
+        dy: event.clientY - hostRect.top - textPop.offsetTop,
+      };
+      textHold = true;
+      try { textGrip.setPointerCapture(event.pointerId); } catch (err) { /* synthetic events */ }
+    });
+    textGrip.addEventListener('pointermove', (event) => {
+      if (!textDrag || textDrag.pointerId !== event.pointerId) return;
+      event.preventDefault();
+      const hostRect = el.getBoundingClientRect();
+      const canvasRect = canvas.getBoundingClientRect();
+      const scaleX = (canvasRect.width || W) / W;
+      const scaleY = (canvasRect.height || H) / H;
+      const left = event.clientX - hostRect.left - textDrag.dx;
+      const top = event.clientY - hostRect.top - textDrag.dy;
+      placeTextBox({
+        x: (left - (canvasRect.left - hostRect.left)) / scaleX,
+        y: (top - (canvasRect.top - hostRect.top)) / scaleY,
+      });
+    });
+    function endTextDrag(event) {
+      if (!textDrag || textDrag.pointerId !== event.pointerId) return;
+      textDrag = null;
+      textHold = false;
+      textInput.focus({ preventScroll: true });
+    }
+    textGrip.addEventListener('pointerup', endTextDrag);
+    textGrip.addEventListener('pointercancel', endTextDrag);
+    textInput.addEventListener('pointerdown', (event) => {
+      event.stopPropagation();
     });
     textInput.addEventListener('blur', () => {
       const gen = textGen;
       window.setTimeout(() => {
-        if (gen !== textGen) return;
+        if (gen !== textGen || textPop.hidden) return;
+        const active = document.activeElement;
+        if (active === textInput) return;
+        if (textDrag || textHold || (active && el.contains(active))) {
+          textInput.focus({ preventScroll: true });
+          return;
+        }
         commitText();
+      }, 30);
+    });
+    window.addEventListener('pointerup', () => {
+      if (!textHold) return;
+      window.setTimeout(() => {
+        textHold = false;
+        if (!textPop.hidden && document.activeElement !== textInput) {
+          textInput.focus({ preventScroll: true });
+        }
       }, 0);
+    });
+    window.addEventListener('pointercancel', () => {
+      textHold = false;
     });
 
     penInput?.addEventListener('input', () => {
@@ -532,7 +657,12 @@
       width = clampSize(sizeInput.value);
       el.dataset.drawSize = String(width);
       if (sizeLabel) sizeLabel.textContent = String(width);
+      if (!textPop.hidden && textAt) placeTextBox(textAt);
       if (!active.size && !lineDraft) persist();
+    });
+    angleInput?.addEventListener('change', () => {
+      textAngle = clampAngle(angleInput.value);
+      if (!textPop.hidden && textAt) placeTextBox(textAt);
     });
 
     el.addEventListener('click', (event) => {
@@ -593,10 +723,14 @@
     check('eraser tool', html.indexOf('data-tool="erase"') > 0);
     check('line tool', html.indexOf('data-tool="line"') > 0);
     check('text tool', html.indexOf('data-tool="text"') > 0);
+    check('text angles', html.indexOf('data-draw-angle') > 0 && html.indexOf('>45°</option>') > 0 && html.indexOf('>90°</option>') > 0);
     check('tools popup starts closed', html.indexOf('data-action="tools"') > 0 && html.indexOf('draw-tools-pop') > 0 && html.indexOf('hidden>') > 0);
     const label = parseStrokes('text #112233 28 12,34 Hello pad');
     check('parses text', label.length === 1 && label[0].kind === 'text' && label[0].text === 'Hello pad' && label[0].points[0].x === 12);
     check('text roundtrip', serializeStrokes(label) === 'text #112233 28 12,34 Hello pad');
+    const turned = parseStrokes('text #112233 28 12,34,90 Hello pad');
+    check('parses text angle', turned.length === 1 && turned[0].angle === 90 && turned[0].text === 'Hello pad');
+    check('angle roundtrip', serializeStrokes(turned) === 'text #112233 28 12,34,90 Hello pad');
     check('stores strokes', html.indexOf('10,10') > 0);
     const attrs = buildFenceAttrsString(parseFenceAttrs('pen=#abc;bg=#fffef8;title=Sketch;size=14'));
     check('attrs keep colors', attrs.indexOf('pen=#aabbcc') > -1 && attrs.indexOf('bg=#fffef8') > -1 && attrs.indexOf('size=14') > -1);
@@ -623,6 +757,18 @@
         if (glyphs[i] > 200 && glyphs[i + 1] < 40) reds += 1;
       }
       check('text paints ink', reds > 8);
+      paint(ctx, [{ kind: 'text', color: '#ff0000', width: 48, angle: 90, points: [{ x: 200, y: 40 }], text: 'M' }], '#ffffff');
+      const down = ctx.getImageData(190, 55, 20, 40).data;
+      let downReds = 0;
+      for (let i = 0; i < down.length; i += 4) {
+        if (down[i] > 200 && down[i + 1] < 40) downReds += 1;
+      }
+      const aside = ctx.getImageData(230, 40, 30, 16).data;
+      let asideReds = 0;
+      for (let i = 0; i < aside.length; i += 4) {
+        if (aside[i] > 200 && aside[i + 1] < 40) asideReds += 1;
+      }
+      check('text angle paints downward', downReds > 8 && asideReds === 0);
     }
     return fails;
   }

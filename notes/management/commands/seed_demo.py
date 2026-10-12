@@ -793,19 +793,34 @@ GAMES_DEMO_PAGES = (
         '![Fog](https://picsum.photos/id/1044/640/480)\n'
         '```\n',
     ),
-    (
-        'draw',
-        'Drawing',
-        21,
-        '# Drawing\n\n'
-        'Draw with a finger or the mouse. Pen, eraser, and a ruler are on the pad. '
-        'Size sets the thickness. Ink and paper colors are saved with the sketch.\n\n'
-        '```draw{fullscreen;pen=#1e293b;bg=#fffef8;size=8}\n'
-        '#1e293b 8 80,400 220,180 400,320 620,150 820,280\n'
-        '#dc2626 10 140,120 280,150 420,100\n'
-        '```\n',
-    ),
 )
+
+
+PUBLIC_PAGE = {'public': True, 'contents': True, 'tags': True}
+
+DRAW_DEMO_MARKDOWN = """# Drawing
+
+Draw with a finger or the mouse. No login is required on this public page.
+Pen, eraser, ruler, and text are under **Tools**. Drag the text box to move it.
+**Angle** turns the label. The sketch stays in this browser.
+
+```draw{fullscreen;pen=#1e293b;bg=#fffef8;size=8}
+#1e293b 8 80,400 220,180 400,320 620,150 820,280
+#dc2626 10 140,120 280,150 420,100
+text #1e293b 28 80,80 Notes
+```
+"""
+
+TABLE_DEMO_MARKDOWN = """# Table
+
+```sheet
+`id=supplies
+Item	Qty	Price
+Paper	3	4.50
+Ink	2	6.00
+Ruler	1	3.20
+```
+"""
 
 
 def upsert_page(workspace, slug, **defaults):
@@ -861,6 +876,18 @@ class Command(BaseCommand):
             deleted=False,
             defaults={'slug': 'docs'},
         )
+        demo, _ = Page.objects.update_or_create(
+            workspace=ws,
+            slug='demo',
+            deleted=False,
+            defaults={
+                'parent': None,
+                'title': 'Demo',
+                'is_folder': True,
+                'sort_order': 1,
+                'markdown_content': '',
+            },
+        )
 
         readme_content = build_readme_markdown(ws, user)
         Page.objects.update_or_create(
@@ -888,11 +915,12 @@ class Command(BaseCommand):
                     'Edit in markdown, preview when you are done.\n\n'
                     'See **README** in this folder for the full project guide and screenshots.\n\n'
                     'Open **Blocks** for interactive gantt, calendar, mindmap, kanban, sheets, charts, calcs, Python, voice notes, jukebox, gallery, and panel examples.\n\n'
-                    'Open **SW Shop** for software downloads and PayPal / Visa / Mastercard checkout.\n\n'
                     'Open **NotesList** for a local ads board — search, categories, Reply by mail, and Edit if you own the page.\n\n'
                     'Open **Calendar** for day, week, month, and year views — hover a day and press **Ctrl+V** to paste a photo.\n\n'
-                    'Open **Gallery** for a walk-in corridor of NotesPro screenshots — **Demo tour** starts on load.\n\n'
-                    'Open **Games** for sudoku, tic-tac-toe, chess, Connect Four, Reversi, backgammon, carambole, darts, a drawing pad, Tetris, Sokoban, Space Invaders, Breakout, Snake, marble blast, jigsaw, pinball, Pac-Man, Super Mario, Lemmings, photo cube, photo book, photo carousel, roller coaster, auto scooter, ghost train, and photo labyrinth.\n\n'
+                    'Open the **Demo** folder for games, the shop, the drawing pad, a table, and photos. '
+                    'Those pages are public, so visitors can open them without signing in. '
+                    'A sketch made without login stays in that browser. '
+                    'Games include sudoku, tic-tac-toe, chess, Connect Four, Reversi, backgammon, carambole, darts, Tetris, Sokoban, Space Invaders, Breakout, Snake, marble blast, jigsaw, pinball, Pac-Man, Super Mario, Lemmings, photo cube, photo book, photo carousel, roller coaster, auto scooter, ghost train, and photo labyrinth.\n\n'
                     'Open **RSS Feeds** for live BBC, DE, and CH news embeds.'
                 ),
             },
@@ -913,10 +941,11 @@ class Command(BaseCommand):
         upsert_page(
             ws,
             'sw-shop',
-            parent=docs,
+            parent=demo,
             title='SW Shop',
             is_folder=False,
-            sort_order=3,
+            sort_order=1,
+            settings=PUBLIC_PAGE,
             markdown_content=(
                 '# SW Shop\n\n'
                 'Download a build, or add a license to the cart and **Checkout**. '
@@ -967,10 +996,11 @@ class Command(BaseCommand):
         upsert_page(
             ws,
             'gallery',
-            parent=docs,
-            title='Gallery',
+            parent=demo,
+            title='Photos',
             is_folder=False,
-            sort_order=7,
+            sort_order=4,
+            settings=PUBLIC_PAGE,
             markdown_content=build_gallery_markdown(ws, user),
         )
 
@@ -979,10 +1009,10 @@ class Command(BaseCommand):
             slug='games',
             deleted=False,
             defaults={
-                'parent': docs,
+                'parent': demo,
                 'title': 'Games',
                 'is_folder': True,
-                'sort_order': 8,
+                'sort_order': 0,
                 'markdown_content': '',
             },
         )
@@ -995,6 +1025,7 @@ class Command(BaseCommand):
                 title=title,
                 is_folder=False,
                 sort_order=sort_order,
+                settings=PUBLIC_PAGE,
                 markdown_content=markdown,
             )
 
@@ -1005,6 +1036,7 @@ class Command(BaseCommand):
             title='Photo labyrinth',
             is_folder=False,
             sort_order=21,
+            settings=PUBLIC_PAGE,
             markdown_content=build_labyrinth_markdown(ws, user),
         )
         upsert_page(
@@ -1014,6 +1046,7 @@ class Command(BaseCommand):
             title='Photo carousel',
             is_folder=False,
             sort_order=22,
+            settings=PUBLIC_PAGE,
             markdown_content=(
                 '# Photo carousel\n\n'
                 '**A/D** (or drag) turns the wheel. **W/S** or the mouse wheel tilts the camera. Switch to Wheel V for a vertical ring.\n\n'
@@ -1026,6 +1059,26 @@ class Command(BaseCommand):
                 '![Hills](https://picsum.photos/id/1019/960/720)\n'
                 '```\n'
             ),
+        )
+        upsert_page(
+            ws,
+            'draw',
+            parent=demo,
+            title='Drawing',
+            is_folder=False,
+            sort_order=2,
+            settings=PUBLIC_PAGE,
+            markdown_content=DRAW_DEMO_MARKDOWN,
+        )
+        upsert_page(
+            ws,
+            'table',
+            parent=demo,
+            title='Table',
+            is_folder=False,
+            sort_order=3,
+            settings=PUBLIC_PAGE,
+            markdown_content=TABLE_DEMO_MARKDOWN,
         )
         Page.objects.filter(
             workspace=ws,
@@ -1044,5 +1097,5 @@ class Command(BaseCommand):
             ))
 
         self.stdout.write(self.style.SUCCESS(
-            'Demo data ready. Login: demo / password — open Docs > README, Blocks, Calendar, Gallery, Games, or RSS Feeds',
+            'Demo data ready. Login: demo / password — Docs for the guide, Demo for public games, shop, drawing, table, and photos',
         ))
