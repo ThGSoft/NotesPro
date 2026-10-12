@@ -184,13 +184,21 @@ class DriveApiTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user('owner', password='pass')
 
-    def test_resolve_requires_login(self):
-        response = self.client.get(
-            reverse('api_drive_resolve'),
-            {'url': 'https://drive.google.com/file/d/1AbCdEfGhIjKlMnOpQrStUvWxYz12345/view'},
-            HTTP_ACCEPT='application/json',
-        )
-        self.assertEqual(response.status_code, 401)
+    def test_resolve_allows_anonymous(self):
+        payload = {
+            'type': 'file',
+            'id': '1AbCdEfGhIjKlMnOpQrStUvWxYz12345',
+            'url': 'https://drive.google.com/file/d/1AbCdEfGhIjKlMnOpQrStUvWxYz12345/view',
+            'tracks': [{'title': 'Moon', 'src': 'https://drive.google.com/file/d/1AbCdEfGhIjKlMnOpQrStUvWxYz12345/view', 'album': ''}],
+        }
+        with patch('notes.gdrive.resolve_drive', return_value=payload):
+            response = self.client.get(
+                reverse('api_drive_resolve'),
+                {'url': 'https://drive.google.com/file/d/1AbCdEfGhIjKlMnOpQrStUvWxYz12345/view'},
+                HTTP_ACCEPT='application/json',
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['tracks'][0]['title'], 'Moon')
 
     def test_resolve_requires_url(self):
         self.client.force_login(self.user)
@@ -234,6 +242,5 @@ class DriveApiTests(TestCase):
         )
 
     def test_audio_rejects_bad_id(self):
-        self.client.force_login(self.user)
         response = self.client.get(reverse('api_drive_audio', args=['not-an-id']))
         self.assertEqual(response.status_code, 400)

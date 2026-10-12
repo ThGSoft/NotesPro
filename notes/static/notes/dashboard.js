@@ -2558,7 +2558,7 @@
   }
 
   function isPreviewRichBlock(el) {
-    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .form-widget, .mindmap-block, .md-news, .md-python, .voice-block, .jukebox-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .gallery-block, .training-block, .dance-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .page-tags');
+    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .form-widget, .mindmap-block, .md-news, .md-python, .voice-block, .jukebox-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .backgammon-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .carambole-block, .dart-block, .draw-block, .snake-block, .marbleblast-block, .gallery-block, .training-block, .dance-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .page-tags');
   }
 
   function getPreviewBlockSourceLine(node) {
@@ -9348,6 +9348,7 @@
   const CONNECT4_BLOCK_RE = /```(?:connect4|connect-4|connectfour|c4)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
   const REVERSI_BLOCK_RE = /```(?:reversi|othello)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
   const MUHLE_BLOCK_RE = /```(?:muhle|mühle|muehle|mills|nine-mens-morris)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+  const BACKGAMMON_BLOCK_RE = /```(?:backgammon|back-gammon|bgammon|bg)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
 
   function updateStrategyFence(markdown, re, engine, fenceName, index, payload) {
     if (!engine) return markdown;
@@ -9357,13 +9358,32 @@
       idx += 1;
       if (thisIndex !== index) return match;
       const cfg = engine.parseFenceAttrs(fenceAttrs || '');
-      ['mode', 'difficulty', 'score', 'turn', 'castle', 'ep', 'xleft', 'oleft', 'takes'].forEach((key) => {
+      ['mode', 'difficulty', 'score', 'turn', 'castle', 'ep', 'xleft', 'oleft', 'takes', 'bar', 'off', 'dice', 'rolled'].forEach((key) => {
         if (payload[key] != null && payload[key] !== '') cfg[key] = payload[key];
       });
       const board = payload.board || engine.serializeBoard?.([]) || '';
       const attrs = engine.buildFenceAttrsString(cfg, board);
       const fence = attrs ? `${fenceName}{${attrs}}` : fenceName;
       return `\`\`\`${fence}\n${content || ''}\`\`\``;
+    });
+  }
+
+  function updateDrawFence(markdown, index, payload) {
+    const engine = window.NotesProDraw;
+    if (!engine) return markdown;
+    let idx = 0;
+    return String(markdown || '').replace(/```(?:draw|sketch|doodle|drawing)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (match, fenceAttrs) => {
+      const thisIndex = idx;
+      idx += 1;
+      if (thisIndex !== index) return match;
+      const cfg = engine.parseFenceAttrs(fenceAttrs || '');
+      if (payload.pen) cfg.pen = payload.pen;
+      if (payload.bg) cfg.bg = payload.bg;
+      if (payload.size != null && payload.size !== '') cfg.size = String(payload.size);
+      const attrs = engine.buildFenceAttrsString(cfg);
+      const body = payload.strokes != null ? String(payload.strokes) : '';
+      const fence = attrs ? `draw{${attrs}}` : 'draw';
+      return `\`\`\`${fence}\n${body}\n\`\`\``;
     });
   }
 
@@ -9488,6 +9508,38 @@
           ? (payload) => {
             const oldMarkdown = easyMDE.value();
             const updated = updateStrategyFence(oldMarkdown, /```(?:muhle|mühle|muehle|mills|nine-mens-morris)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, engine, 'muhle', muhleIndex, payload || {});
+            if (updated === oldMarkdown) return;
+            easyMDE.value(updated);
+            scheduleSave();
+          }
+          : null,
+      });
+    });
+  }
+
+  function parseBackgammonBlocks(text, options = {}) {
+    let backgammonIndex = 0;
+    BACKGAMMON_BLOCK_RE.lastIndex = 0;
+    return text.replace(BACKGAMMON_BLOCK_RE, (_, fenceAttrs, content) => {
+      const engine = window.NotesProBackgammon;
+      const idx = backgammonIndex++;
+      const html = engine?.renderBlock
+        ? engine.renderBlock(content || '', fenceAttrs || '', { backgammonIndex: idx, editable: !!options.sheetEditable })
+        : '<div class="backgammon-block backgammon-block--error">Backgammon engine not loaded.</div>';
+      return wrapRichPreviewBlock(html);
+    });
+  }
+
+  function hydrateBackgammonBlocks(root) {
+    const engine = window.NotesProBackgammon;
+    if (!engine) return;
+    (root || document).querySelectorAll('.backgammon-block[data-backgammon-index]').forEach((el) => {
+      const backgammonIndex = parseInt(el.dataset.backgammonIndex, 10);
+      engine.hydrateBlock(el, {
+        onPersist: userCanEdit && Number.isFinite(backgammonIndex) && easyMDE
+          ? (payload) => {
+            const oldMarkdown = easyMDE.value();
+            const updated = updateStrategyFence(oldMarkdown, /```(?:backgammon|back-gammon|bgammon|bg)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, engine, 'backgammon', backgammonIndex, payload || {});
             if (updated === oldMarkdown) return;
             easyMDE.value(updated);
             scheduleSave();
@@ -10634,6 +10686,82 @@
 
   function hydrateBreakoutBlocks(root) {
     window.NotesProBreakout?.hydrate?.(root);
+  }
+
+  const CARAMBOLE_BLOCK_RE = /```(?:carambole|carom|billiards|billard)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function parseCaramboleBlocks(text) {
+    let caramboleIndex = 0;
+    CARAMBOLE_BLOCK_RE.lastIndex = 0;
+    return text.replace(CARAMBOLE_BLOCK_RE, (_, fenceAttrs, content) => {
+      const engine = window.NotesProCarambole;
+      const idx = caramboleIndex++;
+      const html = engine?.renderBlock
+        ? engine.renderBlock(content || '', fenceAttrs || '', { caramboleIndex: idx })
+        : '<div class="carambole-block carambole-block--error">Carambole engine not loaded.</div>';
+      return wrapRichPreviewBlock(html);
+    });
+  }
+
+  function hydrateCaramboleBlocks(root) {
+    window.NotesProCarambole?.hydrate?.(root);
+  }
+
+  const DART_BLOCK_RE = /```(?:dart|darts|dartgame)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function parseDartBlocks(text) {
+    let dartIndex = 0;
+    DART_BLOCK_RE.lastIndex = 0;
+    return text.replace(DART_BLOCK_RE, (_, fenceAttrs, content) => {
+      const engine = window.NotesProDart;
+      const idx = dartIndex++;
+      const html = engine?.renderBlock
+        ? engine.renderBlock(content || '', fenceAttrs || '', { dartIndex: idx })
+        : '<div class="dart-block dart-block--error">Darts engine not loaded.</div>';
+      return wrapRichPreviewBlock(html);
+    });
+  }
+
+  function hydrateDartBlocks(root) {
+    window.NotesProDart?.hydrate?.(root);
+  }
+
+  const DRAW_BLOCK_RE = /```(?:draw|sketch|doodle|drawing)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function parseDrawBlocks(text) {
+    let drawIndex = 0;
+    DRAW_BLOCK_RE.lastIndex = 0;
+    return text.replace(DRAW_BLOCK_RE, (_, fenceAttrs, content) => {
+      const engine = window.NotesProDraw;
+      const idx = drawIndex++;
+      const html = engine?.renderBlock
+        ? engine.renderBlock(content || '', fenceAttrs || '', { drawIndex: idx })
+        : '<div class="draw-block draw-block--error">Drawing engine not loaded.</div>';
+      return wrapRichPreviewBlock(html);
+    });
+  }
+
+  function hydrateDrawBlocks(root) {
+    const engine = window.NotesProDraw;
+    if (!engine) return;
+    (root || document).querySelectorAll('.draw-block[data-draw-index]').forEach((el) => {
+      const drawIndex = parseInt(el.dataset.drawIndex, 10);
+      engine.hydrateBlock(el, {
+        editable: !!userCanEdit,
+        onPersist: userCanEdit && Number.isFinite(drawIndex) && easyMDE
+          ? (payload) => {
+            const oldMarkdown = easyMDE.value();
+            const updated = updateDrawFence(oldMarkdown, drawIndex, payload || {});
+            if (updated === oldMarkdown) return;
+            suppressPreviewRefresh += 1;
+            try { easyMDE.value(updated); } finally {
+              suppressPreviewRefresh = Math.max(0, suppressPreviewRefresh - 1);
+            }
+            scheduleSave();
+          }
+          : null,
+      });
+    });
   }
 
   const SNAKE_BLOCK_RE = /```snake(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
@@ -12520,7 +12648,7 @@ function formatTextWithMarkup(rawText) {
     if (!root) return;
     root.querySelectorAll('pre').forEach(pre => {
       if (pre.closest('.md-code-block')) return;
-      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .form-widget, .mindmap-block, .md-news, .md-python, .voice-block, .jukebox-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .gallery-block, .training-block, .dance-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block')) {
+      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .form-widget, .mindmap-block, .md-news, .md-python, .voice-block, .jukebox-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .backgammon-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .carambole-block, .dart-block, .draw-block, .snake-block, .marbleblast-block, .gallery-block, .training-block, .dance-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block')) {
         return;
       }
       const wrap = document.createElement('div');
@@ -13077,6 +13205,11 @@ function formatTextWithMarkup(rawText) {
       const label = cfg.title || 'Mühle';
       return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
     });
+    md = md.replace(/```(?:backgammon|back-gammon|bgammon|bg)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const cfg = window.NotesProBackgammon?.parseFenceAttrs?.(fenceAttrs) || {};
+      const label = cfg.title || 'Backgammon';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
     md = md.replace(/```(?:tetris|tetrix|tetric)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
       const cfg = window.NotesProTetris?.parseFenceAttrs?.(fenceAttrs) || {};
       const label = cfg.title || 'Tetris';
@@ -13095,6 +13228,21 @@ function formatTextWithMarkup(rawText) {
     md = md.replace(/```(?:breakout|arkanoid)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
       const cfg = window.NotesProBreakout?.parseFenceAttrs?.(fenceAttrs) || {};
       const label = cfg.title || 'Breakout';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
+    md = md.replace(/```(?:carambole|carom|billiards|billard)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const cfg = window.NotesProCarambole?.parseFenceAttrs?.(fenceAttrs) || {};
+      const label = cfg.title || 'Carambole';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
+    md = md.replace(/```(?:dart|darts|dartgame)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const cfg = window.NotesProDart?.parseFenceAttrs?.(fenceAttrs) || {};
+      const label = cfg.title || 'Darts';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
+    md = md.replace(/```(?:draw|sketch|doodle|drawing)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const cfg = window.NotesProDraw?.parseFenceAttrs?.(fenceAttrs) || {};
+      const label = cfg.title || 'Drawing';
       return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
     });
     md = md.replace(/```snake(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
@@ -13227,6 +13375,7 @@ function formatTextWithMarkup(rawText) {
       md = parseConnect4Blocks(md, options);
       md = parseReversiBlocks(md, options);
       md = parseMuhleBlocks(md, options);
+      md = parseBackgammonBlocks(md, options);
       md = parseTetrisBlocks(md);
       md = parseSokobanBlocks(md);
       md = parseSpeisekarteBlocks(md, options);
@@ -13234,6 +13383,9 @@ function formatTextWithMarkup(rawText) {
       md = parseCraigslistBlocks(md);
       md = parseInvadersBlocks(md);
       md = parseBreakoutBlocks(md);
+      md = parseCaramboleBlocks(md);
+      md = parseDartBlocks(md);
+      md = parseDrawBlocks(md);
       md = parseSnakeBlocks(md);
       md = parseMarbleblastBlocks(md);
       md = parseGalleryBlocks(md, options);
@@ -13689,6 +13841,7 @@ function formatTextWithMarkup(rawText) {
     hydrateConnect4Blocks(preview);
     hydrateReversiBlocks(preview);
     hydrateMuhleBlocks(preview);
+    hydrateBackgammonBlocks(preview);
     hydrateTetrisBlocks(preview);
     hydrateSokobanBlocks(preview);
     hydrateSpeisekarteBlocks(preview);
@@ -13696,6 +13849,9 @@ function formatTextWithMarkup(rawText) {
     hydrateCraigslistBlocks(preview);
     hydrateInvadersBlocks(preview);
     hydrateBreakoutBlocks(preview);
+    hydrateCaramboleBlocks(preview);
+    hydrateDartBlocks(preview);
+    hydrateDrawBlocks(preview);
     hydrateSnakeBlocks(preview);
     hydrateMarbleblastBlocks(preview);
     hydrateGalleryBlocks(preview);
@@ -15203,6 +15359,24 @@ function formatTextWithMarkup(rawText) {
           text: 'Mühle',
           title: 'Insert Mühle (Nine Men\'s Morris)',
           action: (editor) => insertFenceBlock(editor, 'muhle{fullscreen;mode=cpu;difficulty=medium}', ''),
+        },
+        {
+          name: 'insert-backgammon',
+          text: 'Backgammon',
+          title: 'Insert backgammon',
+          action: (editor) => insertFenceBlock(editor, 'backgammon{fullscreen;mode=cpu;difficulty=medium}', ''),
+        },
+        {
+          name: 'insert-carambole',
+          text: 'Carambole',
+          title: 'Insert carambole',
+          action: (editor) => insertFenceBlock(editor, 'carambole{fullscreen;mode=cpu;difficulty=medium;variant=libre}', ''),
+        },
+        {
+          name: 'insert-dart',
+          text: 'Darts',
+          title: 'Insert darts',
+          action: (editor) => insertFenceBlock(editor, 'dart{fullscreen;mode=cpu;difficulty=medium;variant=501}', ''),
         },
         {
           name: 'insert-tetris',
@@ -20809,6 +20983,12 @@ function formatTextWithMarkup(rawText) {
           className: 'fa fa-microphone',
           title: 'Insert voice note (record + Whisper transcript)',
         },
+        {
+          name: 'insert-draw',
+          action: (editor) => insertFenceBlock(editor, 'draw{fullscreen;pen=#1e293b;bg=#fffef8;size=8}', ''),
+          className: 'fa fa-pencil',
+          title: 'Insert drawing area',
+        },
         ...(window.APP_BOOT?.allowPhotos !== false ? [buildPhotosToolbarDropdown()] : []),
         ...(window.APP_BOOT?.allowGames !== false ? [buildGamesToolbarDropdown()] : []),
         {
@@ -21700,7 +21880,7 @@ function formatTextWithMarkup(rawText) {
     if (suppressPreviewRefresh) return;
     const active = document.activeElement;
     if (active?.classList?.contains('sheet-cell-editable')) return;
-    if (active?.closest?.('.voice-block, .jukebox-block, .checklist-block, .form-widget')) return;
+    if (active?.closest?.('.voice-block, .jukebox-block, .checklist-block, .form-widget, .draw-block')) return;
     capturePreviewScrollPosition();
     clearTimeout(previewRefreshTimer);
     previewRefreshTimer = setTimeout(() => {
@@ -24133,7 +24313,7 @@ function formatTextWithMarkup(rawText) {
     if (tryPasteImageUrlsIntoKeep(event)) return;
     const data = event.clipboardData || event.originalEvent?.clipboardData;
     const pasteFiles = clipboardImageFiles(data);
-    if (event.target.closest?.('.puzzle-block, .gallery-block, .training-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .snake-block, .marbleblast-block, .voice-block, .jukebox-block, .calendar-block, #calendar-note-modal')) return;
+    if (event.target.closest?.('.puzzle-block, .gallery-block, .training-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .backgammon-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .carambole-block, .dart-block, .draw-block, .snake-block, .marbleblast-block, .voice-block, .jukebox-block, .calendar-block, #calendar-note-modal')) return;
     if (!pasteFiles.length) {
       const text = data?.getData?.('text/plain') || '';
       const fromText = pastedPlainImageUrls(text);

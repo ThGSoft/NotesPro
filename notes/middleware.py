@@ -26,7 +26,8 @@ class ApiLoginRequiredJsonMiddleware:
         path = request.path or ''
         if not path.startswith('/api/'):
             return self.get_response(request)
-        if '/api/public/' in path:
+        # Public pages play jukebox / gallery media without a session.
+        if '/api/public/' in path or path.startswith('/api/drive/'):
             return self.get_response(request)
 
         user = getattr(request, 'user', None)

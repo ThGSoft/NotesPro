@@ -639,6 +639,39 @@ GAMES_DEMO_PAGES = (
         '```\n',
     ),
     (
+        'backgammon',
+        'Backgammon',
+        9,
+        '# Backgammon\n\n'
+        'You play white. Roll, click a checker, then a highlighted point. '
+        'Hit blots, enter from the bar, and bear off all fifteen. '
+        'A gammon or backgammon is worth extra.\n\n'
+        '```backgammon{fullscreen;mode=cpu;difficulty=medium}\n'
+        '```\n',
+    ),
+    (
+        'carambole',
+        'Carambole',
+        9,
+        '# Carambole\n\n'
+        'Three balls, no pockets. You and the CPU both shoot the white ball. '
+        'Drag back from it and release. A carom scores when it touches yellow and red. '
+        'Switch to 3-cushion when you want the rails to count.\n\n'
+        '```carambole{fullscreen;mode=cpu;difficulty=medium;variant=libre}\n'
+        '```\n',
+    ),
+    (
+        'dart',
+        'Darts',
+        9,
+        '# Darts\n\n'
+        '501, double-out. Pull back from the dart like a cue, then release. A longer pull throws harder. '
+        'Three darts a visit. The inner bull counts as a double. '
+        'Switch to 301 for a shorter leg.\n\n'
+        '```dart{fullscreen;mode=cpu;difficulty=medium;variant=501}\n'
+        '```\n',
+    ),
+    (
         'tetris',
         'Tetris',
         10,
@@ -760,6 +793,18 @@ GAMES_DEMO_PAGES = (
         '![Fog](https://picsum.photos/id/1044/640/480)\n'
         '```\n',
     ),
+    (
+        'draw',
+        'Drawing',
+        21,
+        '# Drawing\n\n'
+        'Draw with a finger or the mouse. Pen, eraser, and a ruler are on the pad. '
+        'Size sets the thickness. Ink and paper colors are saved with the sketch.\n\n'
+        '```draw{fullscreen;pen=#1e293b;bg=#fffef8;size=8}\n'
+        '#1e293b 8 80,400 220,180 400,320 620,150 820,280\n'
+        '#dc2626 10 140,120 280,150 420,100\n'
+        '```\n',
+    ),
 )
 
 
@@ -847,7 +892,7 @@ class Command(BaseCommand):
                     'Open **NotesList** for a local ads board — search, categories, Reply by mail, and Edit if you own the page.\n\n'
                     'Open **Calendar** for day, week, month, and year views — hover a day and press **Ctrl+V** to paste a photo.\n\n'
                     'Open **Gallery** for a walk-in corridor of NotesPro screenshots — **Demo tour** starts on load.\n\n'
-                    'Open **Games** for sudoku, tic-tac-toe, chess, Connect Four, Reversi, Tetris, Sokoban, Space Invaders, Breakout, Snake, marble blast, jigsaw, pinball, Pac-Man, Super Mario, Lemmings, photo cube, photo book, photo carousel, roller coaster, auto scooter, ghost train, and photo labyrinth.\n\n'
+                    'Open **Games** for sudoku, tic-tac-toe, chess, Connect Four, Reversi, backgammon, carambole, darts, a drawing pad, Tetris, Sokoban, Space Invaders, Breakout, Snake, marble blast, jigsaw, pinball, Pac-Man, Super Mario, Lemmings, photo cube, photo book, photo carousel, roller coaster, auto scooter, ghost train, and photo labyrinth.\n\n'
                     'Open **RSS Feeds** for live BBC, DE, and CH news embeds.'
                 ),
             },

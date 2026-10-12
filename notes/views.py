@@ -2227,10 +2227,9 @@ async def link_preview(request):
     return JsonResponse(data)
 
 
-@login_required
 @require_GET
 def gdrive_resolve(request):
-    """List a public Google Drive file or folder for the jukebox."""
+    """List a publicly shared Google Drive file or folder (jukebox / gallery)."""
     from urllib.error import HTTPError, URLError
 
     from .gdrive import resolve_drive
@@ -2249,10 +2248,9 @@ def gdrive_resolve(request):
     return JsonResponse(data)
 
 
-@login_required
 @require_GET
 def gdrive_audio(request, file_id):
-    """Stream a shared Google Drive audio file (Anyone with the link)."""
+    """Stream a shared Google Drive file (Anyone with the link) for public playback."""
     from urllib.error import HTTPError, URLError
 
     from .gdrive import stream_drive_file

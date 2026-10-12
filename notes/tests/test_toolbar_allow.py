@@ -33,6 +33,17 @@ class ToolbarAllowFlagsTests(TestCase):
         self.assertContains(response, 'allowGames: true')
         self.assertContains(response, 'allowPhotos: false')
 
+    def test_dashboard_includes_backgammon_engine(self):
+        from notes.game_scores import GAMES
+        self.assertIn('backgammon', GAMES)
+        self.assertIn('carambole', GAMES)
+        self.assertIn('dart', GAMES)
+        response = self.client.get(reverse('dashboard'))
+        self.assertContains(response, 'backgammon.js')
+        self.assertContains(response, 'carambole.js')
+        self.assertContains(response, 'dart.js')
+        self.assertContains(response, 'draw.js')
+
     @override_settings(ALLOW_OFFLINE=False)
     def test_allow_offline_false_in_boot(self):
         response = self.client.get(reverse('dashboard'))

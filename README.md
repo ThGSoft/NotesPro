@@ -43,6 +43,10 @@ Share: [LinkedIn](https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2
 - **Chess** blocks — full-board chess vs CPU or two players
 - **Connect Four** blocks — drop discs, get four in a row
 - **Reversi** blocks — Othello disc-flipping vs CPU or two players
+- **Backgammon** blocks — race home, hit blots, and bear off vs CPU or two players
+- **Carambole** blocks — three-ball carom billiards, libre or 3-cushion
+- **Darts** blocks — 501 or 301 on a clock board, double-out, vs CPU or two players
+- **Drawing** blocks — touch sketch pad with pen, eraser, straight line, and line thickness
 - **Tetris** blocks — 7-bag Tetris with ghost piece, hold, and next preview
 - **Sokoban** blocks — crate-pushing puzzles with undo and built-in levels
 - **Space Invaders** blocks — rows of aliens, shields, waves, and a mystery UFO
@@ -107,7 +111,7 @@ python manage.py runserver
 
 Open:
 - http://127.0.0.1:8000/login/
-- Demo user after `seed_demo`: `demo` / `password` — workspace **Docs → README** contains this guide with screenshots; **Docs → Blocks** has gantt/calendar/mindmap/kanban/calcs/panel examples; **Docs → Calendar** has day/week/month/year views with sample events; **Docs → Gallery** is a walk-in corridor of NotesPro screenshots (tap **Demo tour** on a phone); **Docs → Games** has sudoku, tic-tac-toe, chess, Connect Four, Reversi, Tetris, Sokoban, Space Invaders, Breakout, Snake, marble blast, jigsaw, pinball, Pac-Man, Super Mario, Lemmings, photo cube, photo book, photo carousel, roller coaster, auto scooter, ghost train, and photo labyrinth; **Docs → NotesList** is a local ads board; **Docs → RSS Feeds** embeds BBC / DE / CH news feeds
+- Demo user after `seed_demo`: `demo` / `password` — workspace **Docs → README** contains this guide with screenshots; **Docs → Blocks** has gantt/calendar/mindmap/kanban/calcs/panel examples; **Docs → Calendar** has day/week/month/year views with sample events; **Docs → Gallery** is a walk-in corridor of NotesPro screenshots (tap **Demo tour** on a phone); **Docs → Games** has sudoku, tic-tac-toe, chess, Connect Four, Reversi, backgammon, carambole, darts, a drawing pad, Tetris, Sokoban, Space Invaders, Breakout, Snake, marble blast, jigsaw, pinball, Pac-Man, Super Mario, Lemmings, photo cube, photo book, photo carousel, roller coaster, auto scooter, ghost train, and photo labyrinth; **Docs → NotesList** is a local ads board; **Docs → RSS Feeds** embeds BBC / DE / CH news feeds
 
 Copy `.env.example` to `.env.dev` (or set `DJANGO_ENV`) for local settings. See [Email invitations](#email-invitations) and [Database encryption](#database-encryption) below.
 
@@ -1334,6 +1338,86 @@ Othello on an 8×8 green board (`reversi` / `othello`). You play **black**. Lega
 | `col` / `bkcol` | Theme colors |
 
 Toolbar: **Insert Reversi**.
+
+### Backgammon
+
+Race all fifteen checkers home (`backgammon` / `bg`). You play **white**. Roll, click a checker (or the bar), then a highlighted point or **Off**. Hitting a blot sends it to the bar; you must enter from the bar before other moves. Doubles play four times. A gammon or backgammon scores extra. Beat the CPU to post a workspace high score.
+
+````markdown
+```backgammon{fullscreen;mode=cpu;difficulty=medium}
+```
+````
+
+| Option | Description |
+|--------|-------------|
+| `fullscreen` | Edge-to-edge board (default on) |
+| `mode` | `cpu` (default) or `hotseat` |
+| `difficulty` | CPU search: `easy`, `medium`, or `hard` |
+| `title` | Block title (hidden in fullscreen) |
+| `col` / `bkcol` | Theme colors |
+
+Toolbar: **Insert Backgammon**.
+
+### Carambole
+
+Three-ball carom billiards on a pocketless table (`carambole` / `carom` / `billard`). Drag backward from the cue ball and release to shoot. Against the CPU, both sides shoot the **white** ball; yellow and red are the object balls. In two-player mode each side shoots its own ball. In **libre**, the cue ball must touch both other balls in one shot. In **3-cushion**, it must also hit three rails before the second ball. A carom lets you shoot again. First to the target wins and, against the CPU, posts a workspace high score.
+
+````markdown
+```carambole{fullscreen;mode=cpu;difficulty=medium;variant=libre}
+```
+````
+
+| Option | Description |
+|--------|-------------|
+| `fullscreen` | Edge-to-edge table (default on) |
+| `mode` | `cpu` (default) or `hotseat` |
+| `variant` | `libre` (default) or `cushion` (3-cushion) |
+| `difficulty` | CPU aim: `easy`, `medium`, or `hard` |
+| `target` | Caroms needed to win (default 5) |
+| `title` | Block title (hidden in fullscreen) |
+| `col` / `bkcol` | Theme colors |
+
+Toolbar: **Insert Carambole**.
+
+### Darts
+
+501 or 301 on a clock dartboard (`dart` / `darts`). Pull back from the dart like a cue, then release. The pull sets the aim, a longer pull throws harder, and the dart can land a little off that mark. Three darts per visit. Finish on a double, including the inner bull. A bust restores the score from the start of the visit. First to check out wins and, against the CPU, posts a workspace high score. Fewer darts and a harder setting score higher.
+
+````markdown
+```dart{fullscreen;mode=cpu;difficulty=medium;variant=501}
+```
+````
+
+| Option | Description |
+|--------|-------------|
+| `fullscreen` | Edge-to-edge board (default on) |
+| `mode` | `cpu` (default) or `hotseat` |
+| `variant` | `501` (default) or `301` |
+| `difficulty` | CPU cue error: `easy`, `medium`, or `hard` |
+| `title` | Block title (hidden in fullscreen) |
+| `col` / `bkcol` | Theme colors |
+
+Toolbar: **Insert Darts**.
+
+### Drawing
+
+A sketch pad in the note (`draw` / `sketch` / `doodle`). Draw with a finger or the mouse. **Pen** draws freehand, **Eraser** rubs out ink, and **Ruler** draws a straight line. **Size** sets the thickness. **Ink** and **Paper** set the colors. Strokes are saved in the page. **Undo** drops the last stroke, **Clear** wipes the sheet.
+
+````markdown
+```draw{fullscreen;pen=#1e293b;bg=#fffef8;size=8}
+```
+````
+
+| Option | Description |
+|--------|-------------|
+| `fullscreen` | Edge-to-edge pad (default on) |
+| `pen` | Ink color (`#1e293b` by default) |
+| `bg` | Paper color (`#fffef8` by default) |
+| `size` | Line thickness, 1–32 (`8` by default) |
+| `title` | Block title (hidden in fullscreen) |
+| `col` / `bkcol` | Theme colors |
+
+Toolbar: the pencil icon inserts a drawing area.
 
 ### Tetris
 
