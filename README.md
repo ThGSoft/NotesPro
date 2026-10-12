@@ -46,7 +46,7 @@ Share: [LinkedIn](https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2
 - **Backgammon** blocks — race home, hit blots, and bear off vs CPU or two players
 - **Carambole** blocks — three-ball carom billiards, libre or 3-cushion
 - **Darts** blocks — 501 or 301 on a clock board, double-out, vs CPU or two players
-- **Drawing** blocks — touch sketch pad with pen, eraser, straight line, and line thickness
+- **Drawing** blocks — touch sketch pad with pen, eraser, straight line, text, and line thickness
 - **Tetris** blocks — 7-bag Tetris with ghost piece, hold, and next preview
 - **Sokoban** blocks — crate-pushing puzzles with undo and built-in levels
 - **Space Invaders** blocks — rows of aliens, shields, waves, and a mystery UFO
@@ -1401,7 +1401,7 @@ Toolbar: **Insert Darts**.
 
 ### Drawing
 
-A sketch pad in the note (`draw` / `sketch` / `doodle`). Draw with a finger or the mouse. **Pen** draws freehand, **Eraser** rubs out ink, and **Ruler** draws a straight line. **Size** sets the thickness. **Ink** and **Paper** set the colors. Strokes are saved in the page. **Undo** drops the last stroke, **Clear** wipes the sheet.
+A sketch pad in the note (`draw` / `sketch` / `doodle`). Draw with a finger or the mouse. **Tools** opens and closes the tool popup. **Pen** draws freehand, **Eraser** rubs out ink, **Ruler** draws a straight line, and **Text** places a label. **Size** sets the thickness, or the text size. **Ink** and **Paper** set the colors. Strokes are saved in the page. **Undo** drops the last stroke, **Clear** wipes the sheet.
 
 ````markdown
 ```draw{fullscreen;pen=#1e293b;bg=#fffef8;size=8}

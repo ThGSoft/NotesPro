@@ -1814,6 +1814,35 @@ body.editing #preview-content:focus {
   color: var(--text);
 }
 
+@media (pointer: coarse), (max-width: 768px) {
+  .dashboard-modal .form-check {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 44px;
+    margin-bottom: 0.35rem;
+    padding-left: 0;
+  }
+
+  .dashboard-modal .form-check .form-check-input {
+    float: none;
+    position: static;
+    flex: 0 0 22px;
+    width: 22px;
+    height: 22px;
+    min-width: 22px;
+    min-height: 22px;
+    margin: 0;
+    font-size: 16px;
+  }
+
+  .dashboard-modal .form-check-label {
+    font-size: 1rem;
+    line-height: 1.3;
+    padding-top: 0;
+  }
+}
+
 .dashboard-modal .form-control,
 .dashboard-modal .form-select {
   background: var(--panel-2);
@@ -2916,6 +2945,9 @@ a.md-news-channel:hover {
 }
 
 .jukebox-playlist {
+  --jukebox-song-rows: 5;
+  --jukebox-song-row: 50px;
+  --jukebox-song-gap: 10px;
   width: 100%;
   margin: 0;
   border: 2px solid #ccc;
@@ -2923,12 +2955,23 @@ a.md-news-channel:hover {
   overflow-y: auto;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr));
-  gap: 10px;
+  grid-auto-rows: var(--jukebox-song-row);
+  gap: var(--jukebox-song-gap);
   padding: 10px;
-  min-height: 280px;
-  max-height: min(52vh, 560px);
-  height: auto;
-  flex: 1 1 auto;
+  min-height: 0;
+  height: calc(
+    var(--jukebox-song-rows) * var(--jukebox-song-row)
+    + (var(--jukebox-song-rows) - 1) * var(--jukebox-song-gap)
+    + 20px
+    + 4px
+  );
+  max-height: calc(
+    var(--jukebox-song-rows) * var(--jukebox-song-row)
+    + (var(--jukebox-song-rows) - 1) * var(--jukebox-song-gap)
+    + 20px
+    + 4px
+  );
+  flex: 0 0 auto;
   box-sizing: border-box;
 }
 
@@ -3133,13 +3176,6 @@ body.jukebox-standalone.has-jukebox-dock {
   }
 }
 
-@media (max-width: 900px) {
-  .jukebox-playlist {
-    min-height: 240px;
-    max-height: 360px;
-  }
-}
-
 @media (max-width: 600px) {
   .jukebox-block {
     min-height: 0;
@@ -3186,8 +3222,6 @@ body.jukebox-standalone.has-jukebox-dock {
 
   .jukebox-playlist {
     grid-template-columns: 1fr;
-    height: auto;
-    max-height: 280px;
   }
 }
 
@@ -3235,8 +3269,7 @@ body.jukebox-standalone.has-jukebox-dock {
 .jukebox-block--fullscreen .jukebox-playlist,
 .jukebox-block:fullscreen .jukebox-playlist,
 .jukebox-block:-webkit-full-screen .jukebox-playlist {
-  max-height: none;
-  height: 100%;
+  flex: 0 0 auto;
 }
 
 .jukebox-block:fullscreen .game-fullscreen-btn__icon--enter,
@@ -12590,11 +12623,29 @@ body.mobile-layout .sokoban-tips__controls--mobile {
 }
 .draw-block-title { font-weight: 700; color: var(--draw-title); }
 .draw-toolbar {
+  position: relative;
+  z-index: 4;
+  display: flex;
+  margin-bottom: 8px;
+}
+.draw-tools-pop {
+  position: absolute;
+  z-index: 6;
+  top: calc(100% + 6px);
+  left: 0;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 10px 14px;
-  margin-bottom: 10px;
+  width: min(100%, 560px);
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.96);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+}
+.draw-tools-pop[hidden] {
+  display: none !important;
 }
 .draw-field {
   display: inline-flex;
@@ -12631,11 +12682,31 @@ body.mobile-layout .sokoban-tips__controls--mobile {
 }
 .draw-canvas--erase { cursor: cell; }
 .draw-canvas--line { cursor: crosshair; }
+.draw-canvas--text { cursor: text; }
 .draw-stage {
+  position: relative;
+  z-index: 1;
   width: 100%;
   border-radius: 12px;
   overflow: hidden;
   box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.18);
+}
+.draw-text-input {
+  position: absolute;
+  z-index: 3;
+  min-width: 6rem;
+  max-width: calc(100% - 12px);
+  margin: 0;
+  padding: 2px 6px;
+  border: 0;
+  border-bottom: 2px solid currentColor;
+  border-radius: 0;
+  background: transparent;
+  color: #1e293b;
+  font: 600 16px/1.2 system-ui, sans-serif;
+}
+.draw-text-input[hidden] {
+  display: none !important;
 }
 .draw-canvas {
   display: block;
@@ -12680,27 +12751,34 @@ body.mobile-layout .sokoban-tips__controls--mobile {
 .draw-block:fullscreen .draw-stage,
 .draw-block:-webkit-full-screen .draw-stage,
 .draw-block--fullscreen .draw-stage {
-  flex: 1;
+  flex: 1 1 0;
   min-height: 0;
   display: flex;
+  align-items: stretch;
 }
 .draw-block:fullscreen .draw-canvas,
 .draw-block:-webkit-full-screen .draw-canvas,
 .draw-block--fullscreen .draw-canvas {
+  flex: 1 1 auto;
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  min-height: 0;
+  align-self: stretch;
+  object-fit: fill;
 }
-.editor-wrap--preview-only .preview-content:has(> .draw-block--fullscreen:only-child) {
+.editor-wrap--preview-only .preview-content:has(> .draw-block--fullscreen:only-child),
+.editor-wrap--split .preview-content:has(> .draw-block--fullscreen:only-child) {
   padding: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
 }
-.editor-wrap--preview-only .preview-content > .draw-block--fullscreen:only-child {
-  flex: 1;
+.editor-wrap--preview-only .preview-content > .draw-block--fullscreen:only-child,
+.editor-wrap--split .preview-content > .draw-block--fullscreen:only-child {
+  flex: 1 1 auto;
   min-height: 0;
   height: 100%;
+  max-height: 100%;
 }
 @media (pointer: coarse), (max-width: 900px) {
   .draw-block { width: 100%; }
@@ -17901,4 +17979,61 @@ body.mobile-layout .labyrinth-toolbar [data-action="walk-demo"] {
   width: 100%;
   height: auto;
   max-height: 70vh;
+}
+
+/* iPhone Safari has no element fullscreen API. This class covers the screen instead. */
+html.notespro-pseudo-fullscreen,
+html.notespro-pseudo-fullscreen body {
+  overflow: hidden;
+  height: 100%;
+}
+
+html.notespro-pseudo-fullscreen body {
+  position: fixed;
+  width: 100%;
+}
+
+html.notespro-pseudo-fullscreen .game-block--monitor-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  width: 100%;
+  height: 100%;
+  height: 100dvh;
+  max-width: none;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  padding:
+    env(safe-area-inset-top)
+    env(safe-area-inset-right)
+    env(safe-area-inset-bottom)
+    env(safe-area-inset-left);
+  -webkit-overflow-scrolling: touch;
+}
+
+html.notespro-pseudo-fullscreen .game-block--monitor-fullscreen .game-fullscreen-btn {
+  top: max(10px, env(safe-area-inset-top));
+  right: max(10px, env(safe-area-inset-right));
+  width: 44px;
+  height: 44px;
+}
+
+html.notespro-pseudo-fullscreen .game-block--monitor-fullscreen [class*="-play-area"],
+html.notespro-pseudo-fullscreen .game-block--monitor-fullscreen [class*="-stage"] {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  max-width: none;
+}
+
+@media (pointer: coarse) {
+  .game-fullscreen-btn {
+    width: 44px;
+    height: 44px;
+  }
 }

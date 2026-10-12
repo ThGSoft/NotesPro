@@ -5,13 +5,14 @@
     .venv\\Scripts\\python.exe docs/promo/build_feature_promos.py insert-kanban insert-menu
 
 Writes gallery-25s.mp4, games-25s.mp4, shop-noteslist-25s.mp4,
-insert-kanban-25s.mp4, and insert-menu-25s.mp4
+insert-kanban-25s.mp4, insert-menu-25s.mp4, carambole-25s.mp4,
+backgammon-25s.mp4, draw-25s.mp4, and darts-25s.mp4
 """
 
 from __future__ import annotations
 
+import array
 import math
-import struct
 import subprocess
 import sys
 import wave
@@ -472,32 +473,199 @@ def swshop_card() -> Image.Image:
     return img
 
 
+def dashed_line(draw, x0, y0, x1, y1, fill, width=3, dash=16, gap=10) -> None:
+    dist = math.hypot(x1 - x0, y1 - y0) or 1
+    ux, uy = (x1 - x0) / dist, (y1 - y0) / dist
+    t = 0.0
+    while t < dist:
+        t2 = min(dist, t + dash)
+        draw.line((x0 + ux * t, y0 + uy * t, x0 + ux * t2, y0 + uy * t2), fill=fill, width=width)
+        t += dash + gap
+
+
+def carambole_card() -> Image.Image:
+    img = base()
+    draw = ImageDraw.Draw(img)
+    draw.rounded_rectangle((340, 110, 1580, 860), radius=36, fill=(120, 53, 15))
+    draw.rounded_rectangle((390, 156, 1530, 814), radius=18, fill=(20, 83, 45))
+    draw.ellipse((760, 430, 836, 506), fill=WHITE, outline=INK, width=3)
+    draw.ellipse((1040, 340, 1116, 416), fill=(250, 204, 21), outline=INK, width=3)
+    draw.ellipse((1160, 560, 1236, 636), fill=RED, outline=INK, width=3)
+    draw.line((798, 468, 520, 760), fill=(243, 210, 164), width=14)
+    draw.ellipse((500, 744, 536, 780), fill=(180, 83, 9))
+    dashed_line(draw, 798, 468, 1320, 300, WHITE, 3)
+    caption(img, "Carambole", "Pull the cue back. The shot goes forward.")
+    return img
+
+
+def backgammon_card() -> Image.Image:
+    img = base()
+    draw = ImageDraw.Draw(img)
+    x0, y0, x1, y1 = 280, 100, 1640, 860
+    draw.rounded_rectangle((x0, y0, x1, y1), radius=20, fill=(92, 51, 23))
+    draw.rounded_rectangle((x0 + 22, y0 + 22, x1 - 22, y1 - 22), radius=10, fill=(214, 176, 120))
+    mid = (x0 + x1) // 2
+    draw.rectangle((mid - 26, y0 + 22, mid + 26, y1 - 22), fill=(72, 40, 18))
+    cream, red_pt = (245, 236, 220), (185, 48, 40)
+
+    def points(origin, base_y, downward):
+        for i in range(6):
+            x = origin + i * 78
+            tip = base_y + (240 if downward else -240)
+            draw.polygon([(x, base_y), (x + 66, base_y), (x + 33, tip)], fill=red_pt if i % 2 == 0 else cream)
+
+    points(x0 + 48, y0 + 36, True)
+    points(mid + 48, y0 + 36, True)
+    points(x0 + 48, y1 - 36, False)
+    points(mid + 48, y1 - 36, False)
+
+    def stack(cx, cy, n, dark, downward):
+        for i in range(n):
+            cy_i = cy + (i * 36 if downward else -i * 36)
+            fill = INK if dark else WHITE
+            draw.ellipse((cx - 22, cy_i - 22, cx + 22, cy_i + 22), fill=fill, outline=(120, 53, 15), width=2)
+
+    stack(x0 + 81, y0 + 70, 5, False, True)
+    stack(mid + 81, y0 + 70, 3, True, True)
+    stack(x0 + 81 + 78 * 4, y1 - 70, 5, True, False)
+    stack(mid + 81 + 78 * 5, y1 - 70, 2, False, False)
+    draw.rounded_rectangle((mid - 118, 430, mid - 48, 500), radius=10, fill=WHITE)
+    draw.rounded_rectangle((mid + 48, 430, mid + 118, 500), radius=10, fill=WHITE)
+    draw.ellipse((mid - 96, 452, mid - 80, 468), fill=INK)
+    draw.ellipse((mid - 78, 470, mid - 62, 486), fill=INK)
+    draw.ellipse((mid + 70, 452, mid + 86, 468), fill=INK)
+    caption(img, "Backgammon", "Race home, hit a blot, and bear off.")
+    return img
+
+
+def drawpad_card() -> Image.Image:
+    img = base()
+    draw = ImageDraw.Draw(img)
+    paper = (255, 254, 248)
+    draw.rounded_rectangle((400, 130, 1520, 860), radius=18, fill=paper, outline=(30, 41, 59), width=4)
+    labels = ("Pen", "Eraser", "Ruler", "Size 8")
+    for i, label in enumerate(labels):
+        x = 440 + i * 200
+        fill = BLUE if i == 0 else (226, 232, 240)
+        ink = WHITE if i == 0 else INK
+        draw.rounded_rectangle((x, 164, x + 170, 220), radius=12, fill=fill)
+        center_text(draw, (x + 85, 192), label, font(24, True), ink)
+    stroke = (30, 41, 59)
+    draw.line([(500, 420), (680, 340), (860, 500), (1040, 390)], fill=stroke, width=10, joint="curve")
+    draw.line((1040, 390, 1180, 460), fill=paper, width=28)
+    draw.line([(1180, 460), (1360, 360)], fill=stroke, width=10, joint="curve")
+    draw.line((520, 680, 1380, 620), fill=BLUE, width=6)
+    for i in range(14):
+        x = 540 + i * 58
+        y = 676 - i * 4
+        draw.line((x, y - 14, x, y + 14), fill=BLUE, width=3)
+    caption(img, "Drawing pad", "Pen, eraser, ruler, and line size.")
+    return img
+
+
+def darts_card() -> Image.Image:
+    img = base()
+    draw = ImageDraw.Draw(img)
+    cx, cy, radius = 820, 430, 250
+    numbers = (20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5)
+    dark, light = (23, 23, 23), (243, 230, 200)
+    draw.ellipse((cx - radius * 1.22, cy - radius * 1.22, cx + radius * 1.22, cy + radius * 1.22), fill=(28, 25, 23))
+    for i in range(20):
+        a0 = -90 + i * 18 - 9
+        base_c = dark if i % 2 == 0 else light
+        ring = RED if i % 2 == 0 else GREEN
+        draw.pieslice((cx - radius, cy - radius, cx + radius, cy + radius), a0, a0 + 18, fill=ring)
+        inner = int(radius * 0.93)
+        draw.pieslice((cx - inner, cy - inner, cx + inner, cy + inner), a0, a0 + 18, fill=base_c)
+        tri = int(radius * 0.63)
+        draw.pieslice((cx - tri, cy - tri, cx + tri, cy + tri), a0, a0 + 18, fill=ring)
+        core = int(radius * 0.56)
+        draw.pieslice((cx - core, cy - core, cx + core, cy + core), a0, a0 + 18, fill=base_c)
+        deg = math.radians(-90 + i * 18)
+        nx = cx + math.cos(deg) * radius * 1.12
+        ny = cy + math.sin(deg) * radius * 1.12
+        draw.text((nx, ny), str(numbers[i]), font=font(22, True), fill=WHITE, anchor="mm")
+    bull = int(radius * 0.09)
+    draw.ellipse((cx - bull, cy - bull, cx + bull, cy + bull), fill=GREEN)
+    inner_bull = int(radius * 0.04)
+    draw.ellipse((cx - inner_bull, cy - inner_bull, cx + inner_bull, cy + inner_bull), fill=RED)
+    draw.ellipse((cx - 8, cy - radius * 0.6 - 8, cx + 8, cy - radius * 0.6 + 8), fill=(250, 204, 21))
+    hand_y = cy + radius * 1.28
+    draw.line((cx, hand_y, cx, hand_y + 150), fill=(243, 210, 164), width=10)
+    draw.ellipse((cx - 8, hand_y + 142, cx + 8, hand_y + 158), fill=(180, 83, 9))
+    dashed_line(draw, cx, hand_y, cx, cy - radius * 0.6, (255, 255, 255), 2, 8, 7)
+    draw.rectangle((cx + 24, hand_y, cx + 40, hand_y + 90), fill=(255, 255, 255))
+    draw.rectangle((cx + 24, hand_y + 18, cx + 40, hand_y + 90), fill=ORANGE)
+    caption(img, "Darts", "The cue starts by the 3. A longer pull throws harder.")
+    return img
+
+
 def write_bed(path: Path, chords: tuple[tuple[float, float, float], ...]) -> None:
+    """Original bed: held chords, a bass note, and a soft pulse. No third-party music."""
     sr = 44100
     n = int(DURATION * sr)
     span = DURATION / len(chords)
-    frames = []
+    beat = 60.0 / 96.0
+    eighth = beat / 2.0
+    buf = array.array("f", (0.0,)) * n
+    sin = math.sin
+    tau = 2.0 * math.pi
+
+    def pad(notes: tuple[float, float, float], sec: float) -> float:
+        acc = 0.0
+        for freq in notes:
+            w = tau * freq * sec
+            acc += sin(w) + 0.22 * sin(w * 2.0) + 0.14 * sin(w * 1.003)
+        return acc
+
     for i in range(n):
         sec = i / sr
-        chord = chords[min(int(sec / span), len(chords) - 1)]
-        local = (sec % span) / span
-        env = smooth(min(1.0, local / 0.08)) * (1 - smooth(max(0.0, (local - 0.82) / 0.18)))
-        master = 0.12 * env
-        if sec < 0.08:
-            master *= smooth(sec / 0.08)
-        if sec > DURATION - 0.8:
-            master *= smooth((DURATION - sec) / 0.8)
-        sample = 0.0
-        for freq in chord:
-            sample += math.sin(2 * math.pi * freq * sec)
-            sample += 0.35 * math.sin(2 * math.pi * freq * 2 * sec)
-        sample = max(-1.0, min(1.0, sample / 4.2 * master))
-        frames.append(struct.pack("<h", int(sample * 32767)))
+        pos = sec / span
+        ci = min(int(pos), len(chords) - 1)
+        frac = pos - int(pos)
+        blend = 0.0
+        nxt = ci
+        if frac > 0.8 and ci + 1 < len(chords):
+            blend = smooth((frac - 0.8) / 0.2)
+            nxt = ci + 1
+        voices = pad(chords[ci], sec) * (1.0 - blend)
+        if blend:
+            voices += pad(chords[nxt], sec) * blend
+        root = chords[ci][0] * (1.0 - blend) + chords[nxt][0] * blend
+        bass = sin(tau * (root * 0.5) * sec) + 0.28 * sin(tau * (root * 0.75) * sec)
+
+        step = int(sec / beat)
+        pluck_t = sec - step * beat
+        tone = chords[ci][step % 3] * 2.0
+        pluck = sin(tau * tone * sec) * math.exp(-pluck_t / 0.16)
+
+        hat = 0.0
+        off = sec / eighth
+        off_i = int(off)
+        off_t = off - off_i
+        if off_i % 2 == 1 and off_t < 0.35:
+            hat = sin(tau * 1760.0 * sec) * (1.0 - off_t / 0.35) ** 2
+
+        thump = 0.0
+        bar_t = sec / beat - step
+        if step % 2 == 0 and bar_t < 0.18:
+            thump = sin(tau * 55.0 * sec) * (1.0 - bar_t / 0.18) ** 2
+
+        master = 0.2
+        if sec < 0.18:
+            master *= smooth(sec / 0.18)
+        if sec > DURATION - 1.2:
+            master *= smooth((DURATION - sec) / 1.2)
+        buf[i] = (voices * 0.22 + bass * 0.72 + pluck * 0.38 + hat * 0.07 + thump * 0.55) * master
+
+    peak = max(abs(sample) for sample in buf) or 1.0
+    scale = 0.88 / peak * 32767.0
+    pcm = array.array("h", (max(-32767, min(32767, int(sample * scale))) for sample in buf))
     with wave.open(str(path), "w") as wf:
         wf.setnchannels(1)
         wf.setsampwidth(2)
         wf.setframerate(sr)
-        wf.writeframes(b"".join(frames))
+        wf.writeframes(pcm.tobytes())
 
 
 def encode(frames, wav: Path, mp4: Path) -> None:
@@ -638,6 +806,58 @@ def main() -> None:
         (3.5, ads_card()),
         (4.0, end_card("Insert menu", "Menu, shop, SW shop, and NotesList.", "Open the live demo")),
     ]
+    carambole = lambda: [
+        (5.5, title_card("NotesPro", "Carambole", "Three balls. No pockets.")),
+        (7.0, carambole_card()),
+        (6.5, pill_card("On the table", "A carom in the note", [
+            "Libre or 3-cushion",
+            "Pull the cue back",
+            "CPU or two players",
+            "Shoot again on a carom",
+            "White, yellow, and red",
+            "A workspace high score",
+        ])),
+        (6.0, end_card("Carambole", "Drag back from the cue ball and release.", "Open the live demo")),
+    ]
+    backgammon = lambda: [
+        (5.5, title_card("NotesPro", "Backgammon", "Race home. Hit. Bear off.")),
+        (7.0, backgammon_card()),
+        (6.5, pill_card("On the board", "A full game in the note", [
+            "Fifteen checkers a side",
+            "Roll and move",
+            "Hit a blot",
+            "Bear off to finish",
+            "CPU or two players",
+            "A workspace high score",
+        ])),
+        (6.0, end_card("Backgammon", "Play a game without leaving the page.", "Open the live demo")),
+    ]
+    drawpad = lambda: [
+        (5.5, title_card("NotesPro", "Drawing pad", "Pen, eraser, and a ruler.")),
+        (7.0, drawpad_card()),
+        (6.5, pill_card("On the page", "A sketch that stays in the note", [
+            "Pen for freehand ink",
+            "Eraser rubs out a stroke",
+            "Ruler for a straight line",
+            "Size from 1 to 32",
+            "Ink and paper colors",
+            "Saved with the page",
+        ])),
+        (6.0, end_card("Drawing pad", "Sketch on the page. It stays in the note.", "Open the live demo")),
+    ]
+    darts = lambda: [
+        (5.5, title_card("NotesPro", "Darts", "501. Finish on a double.")),
+        (7.0, darts_card()),
+        (6.5, pill_card("At the oche", "Aim with a cue", [
+            "501 or 301",
+            "Cue starts by the 3",
+            "A longer pull throws harder",
+            "The dart can miss the mark",
+            "CPU or two players",
+            "Checkout on a double",
+        ])),
+        (6.0, end_card("Darts", "Pull back from the dart, then release.", "Open the live demo")),
+    ]
     pad_a = ((220.0, 261.63, 329.63), (174.61, 220.0, 261.63), (261.63, 329.63, 392.0), (196.0, 246.94, 293.66), (220.0, 261.63, 329.63))
     pad_b = ((196.0, 246.94, 293.66), (220.0, 277.18, 329.63), (174.61, 220.0, 261.63), (246.94, 311.13, 370.0), (196.0, 246.94, 293.66))
     pad_c = ((174.61, 220.0, 261.63), (196.0, 246.94, 293.66), (220.0, 261.63, 329.63), (164.81, 196.0, 246.94), (174.61, 220.0, 261.63))
@@ -647,6 +867,10 @@ def main() -> None:
         "shop-noteslist": (shop, pad_c),
         "insert-kanban": (insert_kanban, pad_a),
         "insert-menu": (insert_menu, pad_b),
+        "carambole": (carambole, pad_a),
+        "backgammon": (backgammon, pad_b),
+        "draw": (drawpad, pad_c),
+        "darts": (darts, pad_a),
     }
     chosen = sys.argv[1:] or list(jobs)
     for name in chosen:

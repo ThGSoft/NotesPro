@@ -1,6 +1,6 @@
 /**
  * NotesPro ```draw``` block — touch drawing pad.
- * Pen, eraser, and straight-line tools. Size, ink, and paper are saved on the fence.
+ * Pen, eraser, straight-line, and text tools. Size, ink, and paper are saved on the fence.
  */
 (function (root, factory) {
   const api = factory();
@@ -113,11 +113,34 @@
     return Math.round(n * 10) / 10;
   }
 
+  function fontSize(size) {
+    return Math.max(12, Math.min(96, 8 + clampSize(size) * 2));
+  }
+
   function parseStrokes(text) {
     const strokes = [];
     String(text || '').split(/\r?\n/).forEach((line) => {
       const parts = line.trim().split(/\s+/);
       if (parts.length < 3) return;
+      if (parts[0].toLowerCase() === 'text') {
+        if (parts.length < 5) return;
+        const color = expandHex(parts[1], '');
+        const size = Number(parts[2]);
+        const bits = parts[3].split(',');
+        const x = Number(bits[0]);
+        const y = Number(bits[1]);
+        const label = parts.slice(4).join(' ').replace(/[`{}]/g, '').trim();
+        if (!color || !label || !Number.isFinite(size) || !Number.isFinite(x) || !Number.isFinite(y)) return;
+        strokes.push({
+          kind: 'text',
+          color,
+          erase: false,
+          width: Math.max(8, Math.min(128, size)),
+          points: [{ x, y }],
+          text: label,
+        });
+        return;
+      }
       const erase = parts[0].toLowerCase() === 'erase';
       const color = erase ? 'erase' : expandHex(parts[0], '');
       const width = Number(parts[1]);
@@ -150,6 +173,11 @@
 
   function serializeStrokes(strokes) {
     return strokes.map((stroke) => {
+      if (stroke.kind === 'text') {
+        const point = stroke.points[0] || { x: 0, y: 0 };
+        const label = String(stroke.text || '').replace(/[\r\n`{}]+/g, ' ').trim();
+        return `text ${stroke.color} ${round1(stroke.width)} ${round1(point.x)},${round1(point.y)} ${label}`;
+      }
       const pts = stroke.points.map((p) => `${round1(p.x)},${round1(p.y)}`).join(' ');
       const ink = isErase(stroke) ? 'erase' : stroke.color;
       return `${ink} ${round1(stroke.width)} ${pts}`;
@@ -172,6 +200,12 @@
     ctx.lineWidth = stroke.width;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
+    if (stroke.kind === 'text') {
+      ctx.font = `600 ${stroke.width}px system-ui, sans-serif`;
+      ctx.textBaseline = 'top';
+      ctx.fillText(stroke.text, pts[0].x, pts[0].y);
+      return;
+    }
     if (pts.length === 1) {
       ctx.beginPath();
       ctx.arc(pts[0].x, pts[0].y, Math.max(1, stroke.width / 2), 0, Math.PI * 2);
@@ -240,10 +274,13 @@
       ` data-draw-size="${size}" tabindex="0">`,
       window.NotesProGameFullscreen?.renderButton?.() || '',
       chrome,
-      '<div class="draw-toolbar" role="toolbar" aria-label="Drawing tools">',
+      '<div class="draw-toolbar">',
+      '<button type="button" class="btn btn-sm btn-outline-light draw-tools-btn" data-action="tools" aria-expanded="false" aria-haspopup="true" title="Drawing tools">Tools</button>',
+      '<div class="draw-tools-pop" role="toolbar" aria-label="Drawing tools" hidden>',
       '<button type="button" class="btn btn-sm btn-outline-light is-active" data-action="tool" data-tool="pen" aria-pressed="true">Pen</button>',
       '<button type="button" class="btn btn-sm btn-outline-light" data-action="tool" data-tool="erase" aria-pressed="false">Eraser</button>',
       '<button type="button" class="btn btn-sm btn-outline-light" data-action="tool" data-tool="line" aria-pressed="false" title="Straight line">Ruler</button>',
+      '<button type="button" class="btn btn-sm btn-outline-light" data-action="tool" data-tool="text" aria-pressed="false" title="Place text">Text</button>',
       '<label class="draw-field">Size',
       `<input type="range" data-draw-size min="${MIN_SIZE}" max="${MAX_SIZE}" step="1" value="${size}" aria-label="Line thickness">`,
       `<span class="draw-size-label" data-draw-size-label>${size}</span>`,
@@ -257,10 +294,11 @@
       '<button type="button" class="btn btn-sm btn-outline-light" data-action="undo">Undo</button>',
       '<button type="button" class="btn btn-sm btn-outline-light" data-action="clear">Clear</button>',
       '</div>',
+      '</div>',
       '<div class="draw-stage">',
       `<canvas class="draw-canvas" width="${W}" height="${H}" aria-label="${escapeHtml(title)}"></canvas>`,
       '</div>',
-      '<p class="draw-hint">Pen draws, Eraser rubs out, Ruler draws a straight line. Size sets the thickness.</p>',
+      '<p class="draw-hint">Pen draws, Eraser rubs out, Ruler draws a straight line, Text places a label. Size sets the thickness or the text size.</p>',
       `<pre class="draw-store" hidden>${escapeHtml(String(source || '').trim())}</pre>`,
       '</div>',
     ].join('');
@@ -281,8 +319,19 @@
     el.dataset.drawHydrated = '1';
     window.NotesProGameFullscreen?.bind?.(el);
     const canvas = el.querySelector('.draw-canvas');
+    const stage = el.querySelector('.draw-stage');
     const ctx = canvas?.getContext('2d');
-    if (!canvas || !ctx) return;
+    if (!canvas || !ctx || !stage) return;
+    const textInput = document.createElement('input');
+    textInput.type = 'text';
+    textInput.className = 'draw-text-input';
+    textInput.hidden = true;
+    textInput.maxLength = 120;
+    textInput.setAttribute('aria-label', 'Drawing text');
+    textInput.autocomplete = 'off';
+    stage.appendChild(textInput);
+    let textAt = null;
+    let textGen = 0;
     const editable = options.editable !== false;
     let tool = 'pen';
     let pen = expandHex(el.dataset.drawPen, DEFAULT_PEN);
@@ -303,6 +352,16 @@
       });
     }
 
+    const toolsPop = el.querySelector('.draw-tools-pop');
+    const toolsBtn = el.querySelector('[data-action="tools"]');
+
+    function setToolsOpen(open) {
+      if (!toolsPop || !toolsBtn) return;
+      toolsPop.hidden = !open;
+      toolsBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      toolsBtn.classList.toggle('is-active', open);
+    }
+
     function applyTool() {
       el.querySelectorAll('[data-tool]').forEach((btn) => {
         const on = btn.dataset.tool === tool;
@@ -311,6 +370,47 @@
       });
       canvas.classList.toggle('draw-canvas--erase', tool === 'erase');
       canvas.classList.toggle('draw-canvas--line', tool === 'line');
+      canvas.classList.toggle('draw-canvas--text', tool === 'text');
+    }
+
+    function placeTextBox(point) {
+      const canvasRect = canvas.getBoundingClientRect();
+      const stageRect = stage.getBoundingClientRect();
+      const scaleX = canvasRect.width / W;
+      const scaleY = canvasRect.height / H;
+      textInput.style.left = `${canvasRect.left - stageRect.left + point.x * scaleX}px`;
+      textInput.style.top = `${canvasRect.top - stageRect.top + point.y * scaleY}px`;
+      textInput.style.color = pen;
+      textInput.style.fontSize = `${Math.max(16, fontSize(width) * scaleY)}px`;
+    }
+
+    function commitText() {
+      if (textInput.hidden) return;
+      const value = textInput.value.replace(/[\r\n`{}]+/g, ' ').trim();
+      const point = textAt;
+      textInput.hidden = true;
+      textAt = null;
+      if (!value || !point) return;
+      strokes.push({
+        kind: 'text',
+        color: pen,
+        erase: false,
+        width: fontSize(width),
+        points: [point],
+        text: value,
+      });
+      redraw();
+      persist();
+    }
+
+    function openText(point) {
+      textGen += 1;
+      if (!textInput.hidden) commitText();
+      textAt = point;
+      textInput.value = '';
+      textInput.hidden = false;
+      placeTextBox(point);
+      textInput.focus();
     }
 
     function redraw() {
@@ -333,8 +433,13 @@
 
     canvas.addEventListener('pointerdown', (event) => {
       if (!editable || event.button > 0) return;
-      event.preventDefault();
+      setToolsOpen(false);
       const point = localPoint(event, canvas);
+      if (tool === 'text') {
+        openText(point);
+        return;
+      }
+      event.preventDefault();
       if (tool === 'line') {
         if (lineDraft) return;
         lineDraft = { pointerId: event.pointerId, color: pen, width, start: point, end: point };
@@ -392,6 +497,25 @@
     }
     canvas.addEventListener('pointerup', endPointer);
     canvas.addEventListener('pointercancel', endPointer);
+    textInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        commitText();
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        textGen += 1;
+        textInput.value = '';
+        textInput.hidden = true;
+        textAt = null;
+      }
+    });
+    textInput.addEventListener('blur', () => {
+      const gen = textGen;
+      window.setTimeout(() => {
+        if (gen !== textGen) return;
+        commitText();
+      }, 0);
+    });
 
     penInput?.addEventListener('input', () => {
       pen = expandHex(penInput.value, pen);
@@ -415,9 +539,13 @@
       const node = event.target.closest('[data-action]');
       const action = node?.dataset.action;
       if (!editable || !action || active.size || lineDraft) return;
+      if (action === 'tools') {
+        setToolsOpen(toolsPop.hidden);
+        return;
+      }
       if (action === 'tool') {
         const next = node.dataset.tool;
-        if (next !== 'pen' && next !== 'erase' && next !== 'line') return;
+        if (next !== 'pen' && next !== 'erase' && next !== 'line' && next !== 'text') return;
         tool = next;
         applyTool();
       } else if (action === 'undo') {
@@ -431,6 +559,11 @@
       }
     });
 
+    document.addEventListener('pointerdown', (event) => {
+      if (!toolsPop || toolsPop.hidden) return;
+      if (el.contains(event.target)) return;
+      setToolsOpen(false);
+    });
     el.addEventListener('notespro:monitor-fullscreen', () => {
       window.requestAnimationFrame(redraw);
     });
@@ -459,6 +592,11 @@
     check('size slider', html.indexOf('data-draw-size') > 0 && html.indexOf('value="14"') > 0);
     check('eraser tool', html.indexOf('data-tool="erase"') > 0);
     check('line tool', html.indexOf('data-tool="line"') > 0);
+    check('text tool', html.indexOf('data-tool="text"') > 0);
+    check('tools popup starts closed', html.indexOf('data-action="tools"') > 0 && html.indexOf('draw-tools-pop') > 0 && html.indexOf('hidden>') > 0);
+    const label = parseStrokes('text #112233 28 12,34 Hello pad');
+    check('parses text', label.length === 1 && label[0].kind === 'text' && label[0].text === 'Hello pad' && label[0].points[0].x === 12);
+    check('text roundtrip', serializeStrokes(label) === 'text #112233 28 12,34 Hello pad');
     check('stores strokes', html.indexOf('10,10') > 0);
     const attrs = buildFenceAttrsString(parseFenceAttrs('pen=#abc;bg=#fffef8;title=Sketch;size=14'));
     check('attrs keep colors', attrs.indexOf('pen=#aabbcc') > -1 && attrs.indexOf('bg=#fffef8') > -1 && attrs.indexOf('size=14') > -1);
@@ -478,6 +616,13 @@
       ], '#ffffff');
       const rubbed = ctx.getImageData(40, 40, 1, 1).data;
       check('eraser restores paper', rubbed[0] > 240 && rubbed[1] > 240 && rubbed[2] > 240);
+      paint(ctx, [{ kind: 'text', color: '#ff0000', width: 48, points: [{ x: 8, y: 8 }], text: 'M' }], '#ffffff');
+      const glyphs = ctx.getImageData(0, 0, 80, 70).data;
+      let reds = 0;
+      for (let i = 0; i < glyphs.length; i += 4) {
+        if (glyphs[i] > 200 && glyphs[i + 1] < 40) reds += 1;
+      }
+      check('text paints ink', reds > 8);
     }
     return fails;
   }
