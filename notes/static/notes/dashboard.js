@@ -2558,7 +2558,7 @@
   }
 
   function isPreviewRichBlock(el) {
-    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .form-widget, .mindmap-block, .md-news, .md-python, .voice-block, .jukebox-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .backgammon-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .carambole-block, .dart-block, .draw-block, .snake-block, .marbleblast-block, .gallery-block, .training-block, .dance-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .page-tags');
+    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .form-widget, .mindmap-block, .md-news, .md-python, .voice-block, .jukebox-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .backgammon-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .carambole-block, .carrom-block, .dart-block, .draw-block, .snake-block, .marbleblast-block, .gallery-block, .training-block, .dance-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .page-tags');
   }
 
   function getPreviewBlockSourceLine(node) {
@@ -6651,8 +6651,12 @@
     const columns = spec.columns || [];
     const cards = spec.cards || [];
 
-    const colsHtml = columns.map(column => {
+      const colsHtml = columns.map(column => {
       const colCards = cards.filter(c => c.col === column);
+      const isTodoCol = String(column).trim().toLowerCase() === 'todo';
+      const addBtn = editable && isTodoCol
+        ? `<button type="button" class="kanban-column-add" data-kanban-add-col="${escapeHtml(column)}" title="Add card to ${escapeHtml(column)}" aria-label="Add card to ${escapeHtml(column)}">+</button>`
+        : '';
       const cardsHtml = colCards.map(card => {
         const hasNote = !!(card.text || card.image);
         const mdAttr = card.text ? ` data-kanban-markdown="${escapeHtml(card.text)}"` : '';
@@ -6672,7 +6676,10 @@
         `<div class="kanban-column" data-kanban-col="${escapeHtml(column)}">`,
         `<div class="kanban-column-header">`,
         `<span class="kanban-column-title">${escapeHtml(column)}</span>`,
+        `<span class="kanban-column-header-end">`,
         `<span class="kanban-column-count">${colCards.length}</span>`,
+        addBtn,
+        `</span>`,
         `</div>`,
         `<div class="kanban-column-cards">${cardsHtml || '<div class="kanban-column-empty">Drop cards here</div>'}</div>`,
         `</div>`,
@@ -6726,6 +6733,49 @@
         ? `kanban{${nextAttrs}}`
         : 'kanban';
       return `\`\`\`${fence}${body}\`\`\``;
+    });
+  }
+
+  function addKanbanCardInMarkdown(markdown, kanbanIndex, cardData = {}) {
+    return rewriteKanbanBlock(markdown, kanbanIndex, (spec) => {
+      const col = String(cardData.col || '').trim() || spec.columns[0] || KANBAN_DEFAULT_COLS[0];
+      if (!spec.columns.includes(col)) spec.columns.push(col);
+      const label = String(cardData.label || '').replace(/\r?\n/g, ' ').trim() || `Card ${spec.cards.length + 1}`;
+      const card = {
+        id: `c${spec.cards.length + 1}`,
+        col,
+        label,
+        text: String(cardData.text || '').replace(/\r?\n/g, ' ').trim(),
+        image: String(cardData.image || '').trim(),
+      };
+      let insertAt = spec.cards.length;
+      const hasCol = spec.cards.some(c => c.col === col);
+      if (hasCol) {
+        for (let i = spec.cards.length - 1; i >= 0; i -= 1) {
+          if (spec.cards[i].col === col) {
+            insertAt = i + 1;
+            break;
+          }
+        }
+      } else {
+        const colIdx = spec.columns.indexOf(col);
+        insertAt = 0;
+        for (let i = 0; i < colIdx; i += 1) {
+          const cName = spec.columns[i];
+          const last = spec.cards.map((c, idx) => (c.col === cName ? idx : -1)).filter(n => n >= 0).pop();
+          if (last != null) insertAt = last + 1;
+        }
+      }
+      spec.cards.splice(insertAt, 0, card);
+      return { spec };
+    });
+  }
+
+  function deleteKanbanCardInMarkdown(markdown, kanbanIndex, cardId) {
+    return rewriteKanbanBlock(markdown, kanbanIndex, (spec) => {
+      const idx = spec.cards.findIndex(c => c.id === cardId);
+      if (idx >= 0) spec.cards.splice(idx, 1);
+      return { spec };
     });
   }
 
@@ -6847,6 +6897,14 @@
     String(body || '').split('\n').forEach((line) => {
       const trimmed = line.trim();
       if (!trimmed) return;
+      if (items.length && /^[ \t]+\S/.test(line)) {
+        const cont = line.replace(/^[ \t]+/, '');
+        if (!/^(?:[-*+]\s+)?\[[ xX]\]/.test(cont) && !/^[☐□☑☒✓✔■●★]/.test(cont)) {
+          const prev = items[items.length - 1];
+          prev.text = prev.text ? `${prev.text}\n${cont}` : cont;
+          return;
+        }
+      }
       if (expectingTitle) {
         expectingTitle = false;
         if (trimmed.match(/^#\s+(.+)/) && !trimmed.startsWith('##')) {
@@ -6892,11 +6950,23 @@
   }
 
   function serializeChecklistItems(items) {
-    return (items || []).map((item) => {
+    const lines = [];
+    (items || []).forEach((item) => {
       const mark = item.checked ? '- [x]' : '- [ ]';
-      const text = String(item.text || '').replace(/\r?\n/g, ' ');
-      return text ? `${mark} ${text}` : mark;
+      const rawLines = String(item.text || '').replace(/\r\n/g, '\n').split('\n');
+      const first = rawLines[0] ?? '';
+      lines.push(String(first).trim() ? `${mark} ${first}` : mark);
+      rawLines.slice(1).forEach((line) => {
+        lines.push(`  ${line}`);
+      });
     });
+    return lines;
+  }
+
+  function renderChecklistItemHtml(text) {
+    const raw = String(text || '');
+    if (!raw.trim()) return '';
+    return renderCardMarkdown(raw, { inline: false }) || escapeHtml(raw).replace(/\n/g, '<br>');
   }
 
   function buildChecklistFenceBody(spec, fenceAttrs) {
@@ -6929,24 +6999,34 @@
     });
   }
 
-  function checklistItemMarkup(item, { editable = false } = {}) {
+  function checklistItemMarkup(item, { editable = false, recoverable = false, archiveIndex = 0, itemIndex = 0 } = {}) {
     const checked = !!item.checked;
-    const text = escapeHtml(item.text || '');
+    const raw = String(item.text || '');
+    const text = escapeHtml(raw);
+    const rendered = raw.trim()
+      ? renderChecklistItemHtml(raw)
+      : (editable ? '<span class="checklist-text-placeholder">List item</span>' : '&nbsp;');
     const check = `<input type="checkbox" class="checklist-check"${checked ? ' checked' : ''}${editable ? '' : ' disabled'} aria-label="Toggle item">`;
-    const body = editable
-      ? `<input type="text" class="checklist-text" value="${text}" placeholder="List item">`
-      : `<span class="checklist-text">${text || '&nbsp;'}</span>`;
+    const view = `<div class="checklist-text-view">${rendered}</div>`;
+    const field = editable
+      ? `<textarea class="checklist-text" rows="1" placeholder="List item">${text}</textarea>`
+      : '';
     const del = editable
       ? '<button type="button" class="checklist-delete" title="Delete item" aria-label="Delete item">✕</button>'
+      : '';
+    const recover = recoverable
+      ? `<button type="button" class="checklist-recover" data-archive-index="${archiveIndex}" data-item-index="${itemIndex}" title="Put this item back on the checklist">Recover</button>`
       : '';
     const handle = editable
       ? '<span class="checklist-drag" draggable="true" title="Drag to reorder" aria-label="Drag to reorder">⠿</span>'
       : '';
     return [
-      `<div class="checklist-item${checked ? ' is-checked' : ''}${editable ? ' checklist-item--draggable' : ''}" data-item-id="${escapeHtml(item.id || '')}">`,
+      `<div class="checklist-item${checked ? ' is-checked' : ''}${editable ? ' checklist-item--draggable' : ''}${recoverable ? ' checklist-item--archived' : ''}" data-item-id="${escapeHtml(item.id || '')}">`,
       handle,
       check,
-      body,
+      view,
+      field,
+      recover,
       del,
       '</div>',
     ].join('');
@@ -6961,7 +7041,14 @@
     const done = items.filter((item) => item.checked).length;
     const colClass = spec.col ? ` checklist-block--${escapeHtml(spec.col)}` : '';
     const colStyle = spec.colCss ? ` style="--checklist-bg:${escapeHtml(spec.colCss)}"` : '';
-    const itemsHtml = items.map((item) => checklistItemMarkup(item, { editable })).join('');
+    const recoverable = !!options.recoverable;
+    const archiveIndex = options.archiveIndex ?? 0;
+    const itemsHtml = items.map((item, itemIndex) => checklistItemMarkup(item, {
+      editable,
+      recoverable,
+      archiveIndex,
+      itemIndex,
+    })).join('');
     const empty = items.length
       ? ''
       : '<div class="checklist-empty">No items yet</div>';
@@ -6978,7 +7065,7 @@
       : `<div class="checklist-block-meta">${done}/${items.length}</div>`;
 
     return [
-      `<div class="checklist-block${colClass} checklist-block--align-${align}${editable ? ' checklist-block--editable' : ''}" data-checklist-index="${options.checklistIndex ?? 0}" data-checklist-title="${escapeHtml(customTitle)}" data-checklist-align="${align}"${colStyle}>`,
+      `<div class="checklist-block${colClass} checklist-block--align-${align}${editable ? ' checklist-block--editable' : ''}${recoverable ? ' checklist-block--archived' : ''}" data-checklist-index="${options.checklistIndex ?? 0}" data-checklist-title="${escapeHtml(customTitle)}" data-checklist-align="${align}"${colStyle}>`,
       '<div class="checklist-block-header">',
       `<div class="checklist-block-title${editable ? ' checklist-block-title--editable' : ''}"${editable ? ' contenteditable="true" spellcheck="false"' : ''}>${escapeHtml(title)}</div>`,
       alignBtns,
@@ -7009,10 +7096,14 @@
   }
 
   function appendChecklistDonesToPageArchive(title, texts) {
-    const lines = (Array.isArray(texts) ? texts : [texts])
-      .map((text) => String(text || '').replace(/\r?\n/g, ' ').trim())
-      .filter(Boolean)
-      .map((text) => `- [x] ${text}`);
+    const lines = (Array.isArray(texts) ? texts : [texts]).flatMap((text) => {
+      const rawLines = String(text || '').replace(/\r\n/g, '\n').split('\n');
+      while (rawLines.length && !rawLines[0].trim()) rawLines.shift();
+      while (rawLines.length && !rawLines[rawLines.length - 1].trim()) rawLines.pop();
+      if (!rawLines.some((line) => line.trim())) return [];
+      const [first, ...rest] = rawLines;
+      return [`- [x] ${first.trim()}`, ...rest.map((line) => `  ${line}`)];
+    });
     if (!lines.length || !currentPage) return;
     const titleKey = checklistDoneTitleKey(title);
     let merged = false;
@@ -7046,6 +7137,8 @@
     let changed = false;
     CHECKLIST_BLOCK_RE.lastIndex = 0;
     const next = String(markdown || '').replace(CHECKLIST_BLOCK_RE, (match, fenceAttrs, content = '') => {
+      const keepConfig = parseBacktickConfig(`\`${String(fenceAttrs || '').replace(/`/g, '')}\``);
+      if (keepConfig.keepdone === '1' || keepConfig.keepdone === 'true') return match;
       const spec = parseChecklistSpec(fenceAttrs, content);
       const done = [];
       const open = [];
@@ -7070,26 +7163,125 @@
     return { markdown: next, changed: true };
   }
 
-  function renderArchivedChecklistsSection(archiveMarkdown) {
+  function visibleChecklistDoneItems(spec) {
+    return (spec.items || [])
+      .map((item) => ({ ...item, text: String(item.text || '').trim(), checked: true }))
+      .filter((item) => item.text);
+  }
+
+  function tidyChecklistArchive(text) {
+    return String(text || '').replace(/\n{3,}/g, '\n\n').trim();
+  }
+
+  function removeChecklistDoneItem(archive, blockIndex, itemIndex) {
+    let removed = null;
+    let idx = 0;
+    CHECKLIST_DONE_RE.lastIndex = 0;
+    const next = String(archive || '').replace(CHECKLIST_DONE_RE, (match, fenceAttrs, content = '') => {
+      const thisIndex = idx;
+      idx += 1;
+      if (thisIndex !== blockIndex || removed) return match;
+      const spec = parseChecklistSpec(fenceAttrs, content);
+      const visible = visibleChecklistDoneItems(spec);
+      if (itemIndex < 0 || itemIndex >= visible.length) return match;
+      removed = {
+        title: spec.title,
+        text: visible[itemIndex].text,
+      };
+      const kept = visible.filter((_, i) => i !== itemIndex);
+      if (!kept.length) return '';
+      spec.items = kept;
+      const body = buildChecklistFenceBody(spec, fenceAttrs);
+      const fence = fenceAttrs != null && String(fenceAttrs).length
+        ? `checklistdone{${fenceAttrs}}`
+        : 'checklistdone';
+      return `\`\`\`${fence}${body}\`\`\``;
+    });
+    CHECKLIST_DONE_RE.lastIndex = 0;
+    if (!removed) return null;
+    return {
+      archive: tidyChecklistArchive(next),
+      title: removed.title,
+      text: removed.text,
+    };
+  }
+
+  function appendOpenItemToChecklistMarkdown(markdown, title, text) {
+    const safeText = String(text || '').replace(/\r?\n/g, ' ').trim();
+    if (!safeText) return String(markdown || '');
+    const titleKey = checklistDoneTitleKey(title);
+    let placed = false;
+    CHECKLIST_BLOCK_RE.lastIndex = 0;
+    const next = String(markdown || '').replace(CHECKLIST_BLOCK_RE, (match, fenceAttrs, content = '') => {
+      if (placed) return match;
+      const spec = parseChecklistSpec(fenceAttrs, content);
+      if (checklistDoneTitleKey(spec.title) !== titleKey) return match;
+      placed = true;
+      spec.items = [...(spec.items || []), { text: safeText, checked: false }];
+      const body = buildChecklistFenceBody(spec, fenceAttrs);
+      const fence = fenceAttrs != null && String(fenceAttrs).length
+        ? `checklist{${fenceAttrs}}`
+        : 'checklist';
+      return `\`\`\`${fence}${body}\`\`\``;
+    });
+    CHECKLIST_BLOCK_RE.lastIndex = 0;
+    if (placed) return next;
+    const titleLine = titleKey ? `# ${titleKey}` : '';
+    const block = `\`\`\`checklist\n${[titleLine, `- [ ] ${safeText}`].filter(Boolean).join('\n')}\n\`\`\``;
+    const existing = String(markdown || '').replace(/\s+$/, '');
+    return existing ? `${existing}\n\n${block}` : block;
+  }
+
+  function recoverChecklistArchiveItem(blockIndex, itemIndex) {
+    if (!userCanEdit || !currentPage || !Number.isFinite(blockIndex) || !Number.isFinite(itemIndex)) return;
+    const taken = removeChecklistDoneItem(currentPage.archive, blockIndex, itemIndex);
+    if (!taken) return;
+    const markdown = easyMDE ? easyMDE.value() : (currentPage.markdown_content || '');
+    const nextMarkdown = appendOpenItemToChecklistMarkdown(markdown, taken.title, taken.text);
+    currentPage.archive = taken.archive;
+    if (easyMDE) {
+      suppressPreviewRefresh += 1;
+      try {
+        if (easyMDE.value() !== nextMarkdown) easyMDE.value(nextMarkdown);
+      } finally {
+        suppressPreviewRefresh = Math.max(0, suppressPreviewRefresh - 1);
+      }
+    } else {
+      currentPage.markdown_content = nextMarkdown;
+    }
+    scheduleSave();
+    renderPreview();
+    setStatus('Checklist item restored');
+  }
+
+  function renderArchivedChecklistsSection(archiveMarkdown, options = {}) {
     const trimmed = String(archiveMarkdown || '').trim();
     if (!trimmed || !/```checklistdone\b/i.test(trimmed)) return '';
     CHECKLIST_DONE_RE.lastIndex = 0;
     const blocks = [];
     let count = 0;
+    let archiveIndex = 0;
     trimmed.replace(CHECKLIST_DONE_RE, (_, fenceAttrs, content) => {
+      const thisIndex = archiveIndex;
+      archiveIndex += 1;
       const spec = parseChecklistSpec(fenceAttrs, content);
-      spec.items = (spec.items || [])
-        .filter((item) => String(item.text || '').trim())
-        .map((item) => ({ ...item, checked: true }));
+      spec.items = visibleChecklistDoneItems(spec);
       count += spec.items.length;
-      if (spec.items.length) blocks.push(renderChecklistBlockHtml(spec, { editable: false }));
+      if (spec.items.length) {
+        blocks.push(renderChecklistBlockHtml(spec, {
+          editable: false,
+          recoverable: !!userCanEdit,
+          archiveIndex: thisIndex,
+        }));
+      }
       return '';
     });
     CHECKLIST_DONE_RE.lastIndex = 0;
     if (!blocks.length) return '';
     const label = count === 1 ? 'Archived checklist · 1 done' : `Archived checklist · ${count} dones`;
+    const openAttr = options.open ? ' open' : '';
     return [
-      '<details class="calendar-archive-section checklist-archive-section">',
+      `<details class="calendar-archive-section checklist-archive-section"${openAttr}>`,
       `<summary>${escapeHtml(label)}</summary>`,
       '<div class="calendar-archive-section-body">',
       blocks.join(''),
@@ -10688,7 +10880,7 @@
     window.NotesProBreakout?.hydrate?.(root);
   }
 
-  const CARAMBOLE_BLOCK_RE = /```(?:carambole|carom|billiards|billard)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+  const CARAMBOLE_BLOCK_RE = /```(?:carambole|carom(?!m)|billiards|billard)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
 
   function parseCaramboleBlocks(text) {
     let caramboleIndex = 0;
@@ -10705,6 +10897,59 @@
 
   function hydrateCaramboleBlocks(root) {
     window.NotesProCarambole?.hydrate?.(root);
+  }
+
+  const CARROM_BLOCK_RE = /```(?:carrom|carromgame)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function parseCarromBlocks(text) {
+    let carromIndex = 0;
+    CARROM_BLOCK_RE.lastIndex = 0;
+    return text.replace(CARROM_BLOCK_RE, (_, fenceAttrs, content) => {
+      const engine = window.NotesProCarrom;
+      const idx = carromIndex++;
+      const html = engine?.renderBlock
+        ? engine.renderBlock(content || '', fenceAttrs || '', { carromIndex: idx })
+        : '<div class="carrom-block carrom-block--error">Carrom engine not loaded.</div>';
+      return wrapRichPreviewBlock(html);
+    });
+  }
+
+  function updateCarromFence(markdown, index, payload) {
+    const engine = window.NotesProCarrom;
+    if (!engine?.buildFenceAttrsString) return markdown;
+    let idx = 0;
+    CARROM_BLOCK_RE.lastIndex = 0;
+    const next = String(markdown || '').replace(CARROM_BLOCK_RE, (match, fenceAttrs, content = '') => {
+      const thisIndex = idx;
+      idx += 1;
+      if (thisIndex !== index) return match;
+      const cfg = engine.parseFenceAttrs(fenceAttrs || '');
+      if (payload.size) cfg.size = payload.size;
+      const attrs = engine.buildFenceAttrsString(cfg);
+      const fence = attrs ? `carrom{${attrs}}` : 'carrom';
+      const body = content ? `\n${content}` : '';
+      return `\`\`\`${fence}${body}\`\`\``;
+    });
+    CARROM_BLOCK_RE.lastIndex = 0;
+    return next;
+  }
+
+  function hydrateCarromBlocks(root) {
+    const engine = window.NotesProCarrom;
+    if (!engine) return;
+    engine.hydrate(root, {
+      onPersist(index, payload) {
+        if (!(userCanEdit && Number.isFinite(index) && easyMDE)) return;
+        const oldMarkdown = easyMDE.value();
+        const updated = updateCarromFence(oldMarkdown, index, payload || {});
+        if (updated === oldMarkdown) return;
+        suppressPreviewRefresh += 1;
+        try { easyMDE.value(updated); } finally {
+          suppressPreviewRefresh = Math.max(0, suppressPreviewRefresh - 1);
+        }
+        scheduleSave();
+      },
+    });
   }
 
   const DART_BLOCK_RE = /```(?:dart|darts|dartgame)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
@@ -12677,7 +12922,7 @@ function formatTextWithMarkup(rawText) {
     if (!root) return;
     root.querySelectorAll('pre').forEach(pre => {
       if (pre.closest('.md-code-block')) return;
-      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .form-widget, .mindmap-block, .md-news, .md-python, .voice-block, .jukebox-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .backgammon-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .carambole-block, .dart-block, .draw-block, .snake-block, .marbleblast-block, .gallery-block, .training-block, .dance-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block')) {
+      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .form-widget, .mindmap-block, .md-news, .md-python, .voice-block, .jukebox-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .backgammon-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .carambole-block, .carrom-block, .dart-block, .draw-block, .snake-block, .marbleblast-block, .gallery-block, .training-block, .dance-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block')) {
         return;
       }
       const wrap = document.createElement('div');
@@ -13259,9 +13504,14 @@ function formatTextWithMarkup(rawText) {
       const label = cfg.title || 'Breakout';
       return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
     });
-    md = md.replace(/```(?:carambole|carom|billiards|billard)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+    md = md.replace(/```(?:carambole|carom(?!m)|billiards|billard)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
       const cfg = window.NotesProCarambole?.parseFenceAttrs?.(fenceAttrs) || {};
       const label = cfg.title || 'Carambole';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
+    md = md.replace(/```(?:carrom|carromgame)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const cfg = window.NotesProCarrom?.parseFenceAttrs?.(fenceAttrs) || {};
+      const label = cfg.title || 'Carrom';
       return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
     });
     md = md.replace(/```(?:dart|darts|dartgame)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
@@ -13413,6 +13663,7 @@ function formatTextWithMarkup(rawText) {
       md = parseInvadersBlocks(md);
       md = parseBreakoutBlocks(md);
       md = parseCaramboleBlocks(md);
+      md = parseCarromBlocks(md);
       md = parseDartBlocks(md);
       md = parseDrawBlocks(md);
       md = parseSnakeBlocks(md);
@@ -13846,7 +14097,9 @@ function formatTextWithMarkup(rawText) {
     html += renderArchivedCalendarsSection(currentPage?.archive, {
       sheetEditable: isPreviewInteractionEnabled(),
     });
-    html += renderArchivedChecklistsSection(currentPage?.archive);
+    html += renderArchivedChecklistsSection(currentPage?.archive, {
+      open: !!preview.querySelector('.checklist-archive-section')?.open,
+    });
     window.NotesProJukebox?.parkPlayback?.();
     preview.innerHTML = html;
     enhanceBareImageLinks(preview);
@@ -13879,6 +14132,7 @@ function formatTextWithMarkup(rawText) {
     hydrateInvadersBlocks(preview);
     hydrateBreakoutBlocks(preview);
     hydrateCaramboleBlocks(preview);
+    hydrateCarromBlocks(preview);
     hydrateDartBlocks(preview);
     hydrateDrawBlocks(preview);
     hydrateSnakeBlocks(preview);
@@ -14146,6 +14400,9 @@ function formatTextWithMarkup(rawText) {
     document.getElementById('keep-composer')?.classList.toggle('d-none', !userCanEdit);
     document.getElementById('issues-new-btn')?.classList.toggle('d-none', !userCanEdit);
     document.getElementById('issues-table-new-btn')?.classList.toggle('d-none', !userCanEdit);
+    ['issues-kanban-btn', 'issues-checklist-btn', 'issues-table-kanban-btn', 'issues-table-checklist-btn'].forEach((id) => {
+      document.getElementById(id)?.classList.toggle('d-none', !userCanEdit);
+    });
     if (mainView === 'keep') renderKeepGrid();
     if (isMobileLayout() && !isEditing) renderPreview();
   }
@@ -15400,6 +15657,12 @@ function formatTextWithMarkup(rawText) {
           text: 'Carambole',
           title: 'Insert carambole',
           action: (editor) => insertFenceBlock(editor, 'carambole{fullscreen;mode=cpu;difficulty=medium;variant=libre}', ''),
+        },
+        {
+          name: 'insert-carrom',
+          text: 'Carrom',
+          title: 'Insert carrom',
+          action: (editor) => insertFenceBlock(editor, 'carrom{fullscreen;mode=cpu;difficulty=medium;size=medium}', ''),
         },
         {
           name: 'insert-dart',
@@ -17980,7 +18243,8 @@ function formatTextWithMarkup(rawText) {
     const image = cardEl.querySelector('.kanban-card-image')?.getAttribute('src') || '';
     const col = cardEl.dataset.kanbanCol || columns[0] || '';
 
-    kanbanCardContext = { kanbanIndex, cardId, label, col };
+    kanbanCardContext = { kanbanIndex, cardId, label, col, isNew: false };
+    document.getElementById('kanban-card-delete-btn')?.classList.remove('d-none');
     const title = document.getElementById('kanban-card-modal-title');
     if (title) title.textContent = `Kanban card · ${label || cardId}`;
     const labelInput = document.getElementById('kanban-card-label');
@@ -17996,19 +18260,64 @@ function formatTextWithMarkup(rawText) {
     if (modalEl) openDashboardModal(modalEl);
   }
 
+  function openKanbanNewCardModal(block, col) {
+    if (!isPreviewInteractionEnabled() || !block) return;
+    const kanbanIndex = parseInt(block.dataset.kanbanIndex, 10);
+    if (!Number.isFinite(kanbanIndex)) return;
+    const columns = parseKanbanColumns(block.dataset.kanbanCols || '');
+    const targetCol = String(col || '').trim() || columns[0] || KANBAN_DEFAULT_COLS[0];
+    kanbanCardContext = { kanbanIndex, cardId: null, label: '', col: targetCol, isNew: true };
+    document.getElementById('kanban-card-delete-btn')?.classList.add('d-none');
+    const title = document.getElementById('kanban-card-modal-title');
+    if (title) title.textContent = `New card · ${targetCol}`;
+    const labelInput = document.getElementById('kanban-card-label');
+    const colSelect = document.getElementById('kanban-card-col');
+    const textInput = document.getElementById('kanban-card-text');
+    const imageInput = document.getElementById('kanban-card-image');
+    if (labelInput) labelInput.value = '';
+    fillKanbanColumnSelect(colSelect, columns, targetCol);
+    if (textInput) textInput.value = '';
+    if (imageInput) imageInput.value = '';
+    refreshKanbanCardImagePreview();
+    const modalEl = document.getElementById('kanban-card-modal');
+    if (modalEl) openDashboardModal(modalEl);
+    labelInput?.focus();
+  }
+
   function saveKanbanCardFromModal({ clear = false } = {}) {
     if (!easyMDE || !kanbanCardContext) return;
+    const ctx = kanbanCardContext;
+    if (ctx.isNew && clear) {
+      bootstrap.Modal.getInstance(document.getElementById('kanban-card-modal'))?.hide();
+      kanbanCardContext = null;
+      return;
+    }
     const label = clear ? null : (document.getElementById('kanban-card-label')?.value || '');
     const col = clear ? null : (document.getElementById('kanban-card-col')?.value || '');
     const text = clear ? '' : (document.getElementById('kanban-card-text')?.value || '');
     const image = clear ? '' : (document.getElementById('kanban-card-image')?.value || '');
     const oldMarkdown = easyMDE.value();
-    const updated = updateKanbanCardInMarkdown(
-      oldMarkdown,
-      kanbanCardContext.kanbanIndex,
-      kanbanCardContext.cardId,
-      { label, col, text, image },
-    );
+    const updated = ctx.isNew
+      ? addKanbanCardInMarkdown(oldMarkdown, ctx.kanbanIndex, { label, col: col || ctx.col, text, image })
+      : updateKanbanCardInMarkdown(oldMarkdown, ctx.kanbanIndex, ctx.cardId, { label, col, text, image });
+    if (updated !== oldMarkdown) {
+      easyMDE.value(updated);
+      scheduleSave();
+      schedulePreviewRefresh();
+    }
+    bootstrap.Modal.getInstance(document.getElementById('kanban-card-modal'))?.hide();
+    kanbanCardContext = null;
+  }
+
+  function deleteKanbanCardFromModal() {
+    if (!easyMDE || !kanbanCardContext || kanbanCardContext.isNew || !kanbanCardContext.cardId) return;
+    const label = document.getElementById('kanban-card-label')?.value?.trim()
+      || kanbanCardContext.label
+      || 'this card';
+    if (!confirm(`Delete card “${label}”?`)) return;
+    const ctx = kanbanCardContext;
+    const oldMarkdown = easyMDE.value();
+    const updated = deleteKanbanCardInMarkdown(oldMarkdown, ctx.kanbanIndex, ctx.cardId);
     if (updated !== oldMarkdown) {
       easyMDE.value(updated);
       scheduleSave();
@@ -18062,6 +18371,13 @@ function formatTextWithMarkup(rawText) {
 
     preview.addEventListener('click', e => {
       if (!isPreviewInteractionEnabled()) return;
+      const addBtn = e.target.closest?.('.kanban-column-add');
+      if (addBtn && preview.contains(addBtn)) {
+        e.preventDefault();
+        e.stopPropagation();
+        openKanbanNewCardModal(addBtn.closest('.kanban-block'), addBtn.dataset.kanbanAddCol);
+        return;
+      }
       if (e.target.closest('a, button, input, textarea, img.md-image-link')) return;
       const title = e.target.closest?.('.kanban-block-title--editable');
       if (title && preview.contains(title)) {
@@ -18159,6 +18475,9 @@ function formatTextWithMarkup(rawText) {
     document.getElementById('kanban-card-save-btn')?.addEventListener('click', () => {
       saveKanbanCardFromModal();
     });
+    document.getElementById('kanban-card-delete-btn')?.addEventListener('click', () => {
+      deleteKanbanCardFromModal();
+    });
     document.getElementById('kanban-card-clear-btn')?.addEventListener('click', () => {
       saveKanbanCardFromModal({ clear: true });
     });
@@ -18183,12 +18502,38 @@ function formatTextWithMarkup(rawText) {
   let checklistDragState = null;
 
   function checklistItemsFromDom(block) {
-    return [...block.querySelectorAll('.checklist-item')].map((row) => ({
+    return [...block.querySelectorAll('.checklist-items > .checklist-item')].map((row) => ({
       id: row.dataset.itemId || '',
-      text: row.querySelector('input.checklist-text')?.value
-        ?? String(row.querySelector('span.checklist-text')?.textContent || '').replace('\u00a0', ''),
+      text: row.querySelector('textarea.checklist-text')?.value
+        ?? '',
       checked: !!row.querySelector('.checklist-check')?.checked,
     }));
+  }
+
+  function refreshChecklistItemView(row) {
+    const view = row?.querySelector('.checklist-text-view');
+    const field = row?.querySelector('textarea.checklist-text');
+    if (!view || !field) return;
+    const raw = field.value;
+    view.innerHTML = raw.trim()
+      ? renderChecklistItemHtml(raw)
+      : '<span class="checklist-text-placeholder">List item</span>';
+  }
+
+  function sizeChecklistTextarea(field) {
+    if (!field) return;
+    field.style.height = 'auto';
+    field.style.height = `${Math.max(field.scrollHeight, 28)}px`;
+  }
+
+  function beginChecklistItemEdit(row) {
+    const field = row?.querySelector('textarea.checklist-text');
+    if (!field) return;
+    row.classList.add('is-editing');
+    sizeChecklistTextarea(field);
+    field.focus();
+    const len = field.value.length;
+    try { field.setSelectionRange(len, len); } catch (_) { /* ignore */ }
   }
 
   function applyChecklistDomToMarkdown(block) {
@@ -18273,6 +18618,7 @@ function formatTextWithMarkup(rawText) {
     list.querySelector('.checklist-empty')?.remove();
     if (afterRow?.parentNode === list) afterRow.after(row);
     else list.appendChild(row);
+    row.classList.add('is-editing');
     return row;
   }
 
@@ -18293,6 +18639,15 @@ function formatTextWithMarkup(rawText) {
     preview.dataset.checklistEditBound = '1';
 
     preview.addEventListener('click', (e) => {
+      const recoverBtn = e.target.closest?.('.checklist-recover');
+      if (recoverBtn && preview.contains(recoverBtn)) {
+        e.preventDefault();
+        e.stopPropagation();
+        const archiveIndex = parseInt(recoverBtn.dataset.archiveIndex, 10);
+        const itemIndex = parseInt(recoverBtn.dataset.itemIndex, 10);
+        recoverChecklistArchiveItem(archiveIndex, itemIndex);
+        return;
+      }
       if (!isChecklistEditEnabled()) return;
       const block = e.target.closest?.('.checklist-block');
       if (!block || !preview.contains(block)) return;
@@ -18311,7 +18666,7 @@ function formatTextWithMarkup(rawText) {
         e.stopPropagation();
         const row = insertChecklistItemRow(block);
         applyChecklistDomToMarkdown(block);
-        row?.querySelector('.checklist-text')?.focus();
+        beginChecklistItemEdit(row);
         return;
       }
 
@@ -18320,11 +18675,7 @@ function formatTextWithMarkup(rawText) {
         e.preventDefault();
         e.stopPropagation();
         const row = delBtn.closest('.checklist-item');
-        const label = String(
-          row?.querySelector('input.checklist-text')?.value
-          || row?.querySelector('.checklist-text')?.textContent
-          || '',
-        ).trim();
+        const label = String(row?.querySelector('textarea.checklist-text')?.value || '').split('\n')[0].trim();
         const ask = label
           ? `Delete checklist item “${label}”?`
           : 'Delete this checklist item?';
@@ -18338,8 +18689,18 @@ function formatTextWithMarkup(rawText) {
         return;
       }
 
+      if (e.target.closest('a')) return;
+
+      const view = e.target.closest('.checklist-text-view');
+      if (view && block.contains(view)) {
+        e.preventDefault();
+        e.stopPropagation();
+        beginChecklistItemEdit(view.closest('.checklist-item'));
+        return;
+      }
+
       const item = e.target.closest('.checklist-item');
-      if (item && !e.target.closest('input, button, textarea, .checklist-drag')) {
+      if (item && !e.target.closest('input, button, textarea, a, .checklist-drag, .checklist-text-view')) {
         if (checklistDragState?.moved) return;
         const check = item.querySelector('.checklist-check');
         if (check && !check.disabled) {
@@ -18372,8 +18733,9 @@ function formatTextWithMarkup(rawText) {
 
     preview.addEventListener('input', (e) => {
       if (!isChecklistEditEnabled()) return;
-      const field = e.target.closest?.('.checklist-text, .checklist-block-title');
+      const field = e.target.closest?.('textarea.checklist-text, .checklist-block-title');
       if (!field || !preview.contains(field)) return;
+      if (field.matches?.('textarea.checklist-text')) sizeChecklistTextarea(field);
       const block = field.closest('.checklist-block');
       if (block) scheduleChecklistMarkdownSync(block);
     });
@@ -18386,16 +18748,16 @@ function formatTextWithMarkup(rawText) {
         title.blur();
         return;
       }
-      const field = e.target.closest?.('input.checklist-text');
+      const field = e.target.closest?.('textarea.checklist-text');
       if (!field || !preview.contains(field)) return;
       const row = field.closest('.checklist-item');
       const block = field.closest('.checklist-block');
       if (!row || !block) return;
-      if (e.key === 'Enter') {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
         const next = insertChecklistItemRow(block, row);
         applyChecklistDomToMarkdown(block);
-        next?.querySelector('.checklist-text')?.focus();
+        beginChecklistItemEdit(next);
         return;
       }
       if (e.key === 'Backspace' && !field.value && block.querySelectorAll('.checklist-item').length > 1) {
@@ -18405,17 +18767,21 @@ function formatTextWithMarkup(rawText) {
           : row.nextElementSibling;
         row.remove();
         applyChecklistDomToMarkdown(block);
-        const prevField = prev?.querySelector?.('.checklist-text');
-        if (prevField) {
-          prevField.focus();
-          const len = prevField.value.length;
-          prevField.setSelectionRange(len, len);
-        }
+        if (prev?.classList?.contains('checklist-item')) beginChecklistItemEdit(prev);
       }
     });
 
     preview.addEventListener('blur', (e) => {
       if (!isChecklistEditEnabled()) return;
+      const field = e.target.closest?.('textarea.checklist-text');
+      if (field && preview.contains(field)) {
+        const row = field.closest('.checklist-item');
+        const block = field.closest('.checklist-block');
+        row?.classList.remove('is-editing');
+        refreshChecklistItemView(row);
+        if (block) applyChecklistDomToMarkdown(block);
+        return;
+      }
       const title = e.target.closest?.('.checklist-block-title--editable');
       if (!title || !preview.contains(title)) return;
       const block = title.closest('.checklist-block');
@@ -24342,7 +24708,7 @@ function formatTextWithMarkup(rawText) {
     if (tryPasteImageUrlsIntoKeep(event)) return;
     const data = event.clipboardData || event.originalEvent?.clipboardData;
     const pasteFiles = clipboardImageFiles(data);
-    if (event.target.closest?.('.puzzle-block, .gallery-block, .training-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .backgammon-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .carambole-block, .dart-block, .draw-block, .snake-block, .marbleblast-block, .voice-block, .jukebox-block, .calendar-block, #calendar-note-modal')) return;
+    if (event.target.closest?.('.puzzle-block, .gallery-block, .training-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .backgammon-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .carambole-block, .carrom-block, .dart-block, .draw-block, .snake-block, .marbleblast-block, .voice-block, .jukebox-block, .calendar-block, #calendar-note-modal')) return;
     if (!pasteFiles.length) {
       const text = data?.getData?.('text/plain') || '';
       const fromText = pastedPlainImageUrls(text);
@@ -25016,6 +25382,113 @@ function formatTextWithMarkup(rawText) {
     });
   }
 
+  const ISSUE_KANBAN_COLUMNS = ['Todo', 'Doing', 'Review', 'Done'];
+
+  function issueKanbanColumn(status) {
+    if (status === 'in_progress') return 'Doing';
+    if (status === 'review') return 'Review';
+    if (status === 'closed') return 'Done';
+    return 'Todo';
+  }
+
+  function issueExportPlain(value) {
+    return String(value || '')
+      .replace(/```/g, "'''")
+      .replace(/\|/g, '/')
+      .replace(/\r?\n/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function issueExportLabel(issue) {
+    const num = issue.number ? `#${issue.number}` : '';
+    const title = issueExportPlain(issue.title) || '(untitled)';
+    return [num, title].filter(Boolean).join(' ');
+  }
+
+  function issueExportNote(issue) {
+    const parts = [];
+    if (issue.status && issue.status !== 'open' && issue.status !== 'closed') {
+      parts.push(ISSUE_STATUS_LABELS[issue.status] || issue.status);
+    }
+    if (issue.priority && issue.priority !== 'normal') {
+      parts.push(ISSUE_PRIORITY_LABELS[issue.priority] || issue.priority);
+    }
+    if (issue.assignee_username) parts.push(`@${issue.assignee_username}`);
+    if (issue.page_title) parts.push(issue.page_title);
+    const labels = Array.isArray(issue.labels) ? issue.labels.filter(Boolean) : [];
+    if (labels.length) parts.push(labels.join(', '));
+    return issueExportPlain(parts.join(' · '));
+  }
+
+  function issuesForExport(source) {
+    if (source === 'table') return sortedIssuesTable();
+    return issuesCache.slice();
+  }
+
+  function kanbanBodyFromIssues(issues) {
+    const lines = ['# Issues'];
+    ISSUE_KANBAN_COLUMNS.forEach((col) => {
+      issues.forEach((issue) => {
+        if (issueKanbanColumn(issue.status) !== col) return;
+        const note = issueExportNote(issue);
+        lines.push(note
+          ? `${col} | ${issueExportLabel(issue)} | ${note}`
+          : `${col} | ${issueExportLabel(issue)}`);
+      });
+    });
+    return lines.join('\n');
+  }
+
+  function checklistBodyFromIssues(issues) {
+    const lines = ['# Issues'];
+    issues.forEach((issue) => {
+      const note = issueExportNote(issue);
+      const text = note ? `${issueExportLabel(issue)}\n${note}` : issueExportLabel(issue);
+      serializeChecklistItems([{ text, checked: issue.status === 'closed' }]).forEach((line) => {
+        lines.push(line);
+      });
+    });
+    return lines.join('\n');
+  }
+
+  function appendFenceToPage(fence, body) {
+    const cm = easyMDE?.codemirror;
+    if (!cm) return false;
+    const snippet = `\n\`\`\`${fence}\n${body}\n\`\`\`\n`;
+    const end = cm.lastLine();
+    cm.replaceRange(snippet, { line: end, ch: cm.getLine(end).length });
+    const insertedAt = cm.lastLine();
+    cm.scrollIntoView({ line: Math.max(0, insertedAt - 8), ch: 0 }, 80);
+    return true;
+  }
+
+  function insertIssuesAsBlock(kind, source) {
+    if (!userCanEdit) return;
+    if (!currentPageId || !currentPage || currentPage.is_folder) {
+      showToast('Open a page to insert the block.', 'warning');
+      return;
+    }
+    const issues = issuesForExport(source);
+    if (!issues.length) {
+      showToast('No issues in this list.', 'warning');
+      return;
+    }
+    if (issuesTableOpen) hideIssuesTable();
+    ensureEditingForInsert();
+    const fence = kind === 'kanban'
+      ? 'kanban{cols=Todo,Doing,Review,Done;col=info}'
+      : 'checklist{col=info;keepdone=1}';
+    const body = kind === 'kanban' ? kanbanBodyFromIssues(issues) : checklistBodyFromIssues(issues);
+    if (!appendFenceToPage(fence, body)) {
+      showToast('Editor is not ready.', 'warning');
+      return;
+    }
+    scheduleSave();
+    setEditing(false);
+    showToast(kind === 'kanban' ? 'Kanban added from issues.' : 'Checklist added from issues.', 'success');
+  }
+
   function renderIssuesTable() {
     const body = document.getElementById('issues-table-body');
     const countEl = document.getElementById('issues-table-count');
@@ -25086,6 +25559,8 @@ function formatTextWithMarkup(rawText) {
     issuesTableOpen = true;
     document.getElementById('issues-table-wrap')?.classList.remove('d-none');
     document.getElementById('issues-table-new-btn')?.classList.toggle('d-none', !userCanEdit);
+    document.getElementById('issues-table-kanban-btn')?.classList.toggle('d-none', !userCanEdit);
+    document.getElementById('issues-table-checklist-btn')?.classList.toggle('d-none', !userCanEdit);
     applyRecordTableChrome('Issues');
     syncIssuesTableButton();
     loadIssuesTable();
@@ -25102,8 +25577,15 @@ function formatTextWithMarkup(rawText) {
   function initIssues() {
     document.getElementById('issues-new-btn')?.classList.toggle('d-none', !userCanEdit);
     document.getElementById('issues-table-new-btn')?.classList.toggle('d-none', !userCanEdit);
+    ['issues-kanban-btn', 'issues-checklist-btn', 'issues-table-kanban-btn', 'issues-table-checklist-btn'].forEach((id) => {
+      document.getElementById(id)?.classList.toggle('d-none', !userCanEdit);
+    });
     document.getElementById('issues-new-btn')?.addEventListener('click', () => openIssueModal(null));
     document.getElementById('issues-table-new-btn')?.addEventListener('click', () => openIssueModal(null));
+    document.getElementById('issues-kanban-btn')?.addEventListener('click', () => insertIssuesAsBlock('kanban', 'list'));
+    document.getElementById('issues-checklist-btn')?.addEventListener('click', () => insertIssuesAsBlock('checklist', 'list'));
+    document.getElementById('issues-table-kanban-btn')?.addEventListener('click', () => insertIssuesAsBlock('kanban', 'table'));
+    document.getElementById('issues-table-checklist-btn')?.addEventListener('click', () => insertIssuesAsBlock('checklist', 'table'));
     document.getElementById('issues-all-btn')?.addEventListener('click', () => {
       if (issuesTableOpen) hideIssuesTable();
       else showIssuesTable();

@@ -5199,12 +5199,47 @@ body.mobile-layout .sheet-structure-menu-btn {
   color: var(--kanban-column-title);
 }
 
+.kanban-column-header-end {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
 .kanban-column-count {
   font-size: 11px;
   color: var(--kanban-meta);
   background: color-mix(in srgb, #fff 70%, transparent);
   border-radius: 999px;
   padding: 1px 7px;
+}
+
+.kanban-column-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px dashed color-mix(in srgb, var(--kanban-border) 85%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, #fff 55%, transparent);
+  color: var(--kanban-meta);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.kanban-column-add:hover {
+  background: #fff;
+  border-color: var(--kanban-accent);
+  color: var(--kanban-accent);
+}
+
+.kanban-column-add:focus-visible {
+  outline: 2px solid var(--kanban-accent);
+  outline-offset: 2px;
 }
 
 .kanban-column-cards {
@@ -5419,7 +5454,7 @@ body.mobile-layout .sheet-structure-menu-btn {
 
 .checklist-item {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   min-height: 32px;
   padding: 4px 8px;
@@ -5434,6 +5469,7 @@ body.mobile-layout .sheet-structure-menu-btn {
   align-items: center;
   justify-content: center;
   width: 1.2rem;
+  margin-top: 0.2rem;
   color: var(--checklist-meta);
   cursor: grab;
   user-select: none;
@@ -5469,28 +5505,88 @@ body.mobile-layout .sheet-structure-menu-btn {
   flex-shrink: 0;
   width: 1.1rem;
   height: 1.1rem;
-  margin: 0;
+  margin: 0.25rem 0 0;
   accent-color: var(--checklist-accent);
   cursor: pointer;
 }
 
-.checklist-text {
+.checklist-text-view {
   order: 1;
   flex: 1;
   min-width: 0;
+  font-size: 14px;
+  line-height: 1.45;
+  padding: 2px 0;
+  cursor: text;
+  overflow-wrap: anywhere;
+}
+
+.checklist-text-view p,
+.checklist-text-view ul,
+.checklist-text-view ol {
+  margin: 0;
+}
+
+.checklist-text-view a {
+  color: var(--checklist-accent);
+  text-decoration: underline;
+}
+
+.checklist-text-placeholder {
+  color: var(--checklist-meta);
+}
+
+textarea.checklist-text {
+  display: none;
+  order: 1;
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  min-height: 1.6rem;
+  resize: none;
+  overflow: hidden;
   border: 0;
   background: transparent;
   outline: none;
   color: inherit;
   font: inherit;
   font-size: 14px;
-  line-height: 1.4;
+  line-height: 1.45;
   padding: 2px 0;
 }
 
-.checklist-delete {
+.checklist-item.is-editing textarea.checklist-text {
+  display: block;
+}
+
+.checklist-item.is-editing .checklist-text-view {
+  display: none;
+}
+
+.checklist-recover {
   order: 2;
   flex-shrink: 0;
+  margin-top: 0.1rem;
+  border: 1px solid var(--checklist-border);
+  background: var(--checklist-bg);
+  color: var(--checklist-meta);
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.checklist-recover:hover {
+  border-color: var(--checklist-accent);
+  color: var(--checklist-title);
+}
+
+.checklist-delete {
+  order: 3;
+  flex-shrink: 0;
+  margin-top: 0.05rem;
   width: 1.6rem;
   height: 1.6rem;
   border: 0;
@@ -5507,13 +5603,20 @@ body.mobile-layout .sheet-structure-menu-btn {
 }
 
 .checklist-block--align-right .checklist-drag { order: -1; }
-.checklist-block--align-right .checklist-text { order: 0; }
+.checklist-block--align-right .checklist-text-view,
+.checklist-block--align-right textarea.checklist-text { order: 0; }
 .checklist-block--align-right .checklist-check { order: 1; }
-.checklist-block--align-right .checklist-delete { order: 2; }
+.checklist-block--align-right .checklist-recover { order: 2; }
+.checklist-block--align-right .checklist-delete { order: 3; }
 
-.checklist-item.is-checked .checklist-text {
+.checklist-item.is-checked .checklist-text-view,
+.checklist-item.is-checked textarea.checklist-text {
   text-decoration: line-through;
   opacity: 0.65;
+}
+
+.checklist-item.is-checked .checklist-text-view a {
+  opacity: 1;
 }
 
 .checklist-empty {
@@ -12968,6 +13071,154 @@ body.mobile-layout .sokoban-tips__controls--mobile {
   .carambole-block .btn { min-height: 44px; }
 }
 
+/* --- Carrom --- */
+.carrom-block {
+  --carrom-bg: var(--panel, #1e1e2e);
+  --carrom-border: var(--line, #3b3b52);
+  --carrom-title: var(--text, #e2e8f0);
+  --carrom-meta: var(--muted, #94a3b8);
+  --carrom-accent: #f59e0b;
+  position: relative;
+  border: 1px solid var(--carrom-border);
+  border-left: 4px solid var(--carrom-accent);
+  background: var(--carrom-bg);
+  border-radius: 14px;
+  padding: 14px 16px 16px;
+  margin: 16px 0;
+  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.carrom-block--info { --carrom-accent: #38bdf8; }
+.carrom-block--success { --carrom-accent: #4ade80; }
+.carrom-block--warning { --carrom-accent: #fbbf24; }
+.carrom-block--danger { --carrom-accent: #f87171; }
+.carrom-block--note { --carrom-accent: #94a3b8; }
+.carrom-block--custom { background: var(--carrom-bg); }
+.carrom-block--error { color: #f87171; padding: 12px 14px; }
+.carrom-block:focus {
+  outline: 2px solid var(--carrom-accent);
+  outline-offset: 2px;
+}
+.carrom-block-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+.carrom-block-title { font-weight: 700; color: var(--carrom-title); }
+.carrom-block-meta {
+  font-size: 12px;
+  color: var(--carrom-meta);
+  text-transform: capitalize;
+}
+.carrom-play-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: var(--carrom-size, 560px);
+  max-width: 100%;
+}
+.carrom-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: min(100%, 640px);
+}
+.carrom-toolbar-gap { width: 8px; }
+.carrom-chip {
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: rgba(15, 23, 42, 0.65);
+  color: #cbd5e1;
+  border-radius: 999px;
+  min-height: 32px;
+  padding: 6px 14px;
+  font: 600 12px/1.2 system-ui, sans-serif;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.carrom-chip.is-active {
+  background: rgba(245, 158, 11, 0.22);
+  border-color: rgba(245, 158, 11, 0.75);
+  color: #fde68a;
+}
+.carrom-score {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 14px;
+  font: 600 13px/1.2 system-ui, sans-serif;
+  color: var(--carrom-meta);
+}
+.carrom-stage {
+  width: 100%;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 2px solid #3f2412;
+  background: #3b1d0c;
+}
+.carrom-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  touch-action: none;
+  cursor: crosshair;
+}
+.carrom-hint {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--carrom-meta);
+}
+.carrom-actions { display: flex; gap: 8px; }
+.carrom-status {
+  min-height: 1.25rem;
+  margin-top: 8px;
+  font-size: 0.85rem;
+  color: var(--carrom-meta);
+}
+.carrom-status--success { color: #4ade80; }
+.carrom-status--warn { color: #fbbf24; }
+.carrom-status--info { color: var(--carrom-meta); }
+.carrom-block--fullscreen {
+  background: #1c1008;
+  min-height: min(90vh, 960px);
+}
+.carrom-block:fullscreen,
+.carrom-block:-webkit-full-screen {
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+  background: #1c1008;
+}
+.carrom-block:fullscreen .carrom-play-area,
+.carrom-block:-webkit-full-screen .carrom-play-area,
+.carrom-block--fullscreen .carrom-play-area {
+  flex: 1;
+  justify-content: center;
+  padding: 12px 0;
+}
+.carrom-block:fullscreen .carrom-stage,
+.carrom-block:-webkit-full-screen .carrom-stage,
+.carrom-block.game-block--monitor-fullscreen .carrom-stage {
+  width: min(92vw, 92vh, 920px);
+}
+@media (pointer: coarse), (max-width: 900px) {
+  .carrom-block { width: 100%; max-width: 100%; }
+  .carrom-chip,
+  .carrom-block .btn { min-height: 44px; }
+}
+
 /* --- Darts --- */
 .dart-block {
   --dart-bg: var(--panel, #1e1e2e);
@@ -13716,6 +13967,7 @@ body.mobile-layout .sokoban-tips__controls--mobile {
 .invaders-block--fullscreen .invaders-status,
 .breakout-block--fullscreen .breakout-status,
 .carambole-block--fullscreen .carambole-status,
+.carrom-block--fullscreen .carrom-status,
 .dart-block--fullscreen .dart-status,
 .snake-block--fullscreen .snake-status,
 .marbleblast-block--fullscreen .marbleblast-status {

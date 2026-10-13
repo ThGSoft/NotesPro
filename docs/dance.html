@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="de">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Let's Dance App</title>
+    <style>
+        :root {
+            --primary: #e91e63;
+            --primary-dark: #c2185b;
+            --bg: #121212;
+            --surface: #1e1e1e;
+            --text: #ffffff;
+            --text-muted: #aaaaaa;
+            --cyan: #00e5ff;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .app-container {
+            width: 100%;
+            max-width: 600px;
+            background-color: var(--surface);
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+        }
+
+        h1 {
+            text-align: center;
+            color: var(--primary);
+            margin-top: 0;
+        }
+
+        .section {
+            background-color: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 20px;
+        }
+
+        .section-title {
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+            margin-top: 0;
+        }
+
+        /* Controls Grid */
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+
+        button {
+            flex: 1;
+            background-color: #333;
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.2s;
+        }
+
+        button.active {
+            background-color: var(--primary);
+            box-shadow: 0 0 10px rgba(233, 30, 99, 0.5);
+        }
+
+        /* Select styling */
+        select {
+            width: 100%;
+            padding: 12px;
+            background-color: #333;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        /* Metronome visualizer */
+        .metronome-display {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 15px;
+            margin: 15px 0;
+        }
+
+        .beat-dot {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background-color: #444;
+            transition: background-color 0.1s ease;
+        }
+
+        .beat-dot.active {
+            background-color: var(--cyan);
+            box-shadow: 0 0 15px var(--cyan);
+        }
+
+        .info-text {
+            text-align: center;
+            font-size: 0.9rem;
+            color: var(--text-muted);
+        }
+
+        /* Footstep canvas simulator */
+        .dance-floor {
+            width: 100%;
+            height: 250px;
+            background-color: #1a1a1a;
+            border: 2px dashed #444;
+            border-radius: 12px;
+            position: relative;
+            overflow: hidden;
+            margin-top: 15px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .footprint {
+            position: absolute;
+            width: 30px;
+            height: 60px;
+            background-color: rgba(255, 255, 255, 0.15);
+            border-radius: 15px 15px 5px 5px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 10px;
+            font-weight: bold;
+            color: #000;
+        }
+
+        .footprint.left {
+            border-left: 3px solid var(--cyan);
+        }
+
+        .footprint.right {
+            border-right: 3px solid var(--primary);
+        }
+
+        .footprint.active-step {
+            background-color: rgba(0, 229, 255, 0.8);
+            transform: scale(1.1);
+            box-shadow: 0 0 15px var(--cyan);
+        }
+
+        /* Audio status bar */
+        .audio-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background-color: #252525;
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 10px;
+            font-size: 0.85rem;
+        }
+
+        .audio-pulse {
+            width: 8px;
+            height: 8px;
+            background-color: #4caf50;
+            border-radius: 50%;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% {
+                transform: scale(0.8);
+                opacity: 0.5;
+            }
+
+            50% {
+                transform: scale(1.3);
+                opacity: 1;
+            }
+
+            100% {
+                transform: scale(0.8);
+                opacity: 0.5;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="app-container">
+        <h1>💃 Let's Dance App</h1>
+
+        <!-- 1. Tanzstil-Auswahl -->
+        <div class="section">
+            <p class="section-title">1. Tanzstil wählen</p>
+            <select id="dance-select">
+                <option value="rumba">Rumba (Box-Step)</option>
+                <option value="salsa">Salsa (Basic Mambo)</option>
+                <option value="waltz">Walzer (Rechtsdrehung)</option>
+                <option value="tango">Tango (Standard Basic)</option>
+                <option value="foxtrot">Foxtrott (Grundschritt)</option>
+                <option value="discofox">Discofox (1, 2, Tap)</option>
+                <option value="blues">Blues (Slow-Rock)</option>
+                <option value="rocknroll">Rock 'n' Roll (Damen-Solodrehung)</option>
+            </select>
+        </div>
+
+        <!-- 2. Interface Einstellungen -->
+        <div class="section">
+            <p class="section-title">2. Steuerung & Perspektive</p>
+            <div class="btn-group">
+                <button id="btn-leader" class="active">🧑 Leader (Herr)</button>
+                <button id="btn-follower">👩 Follower (Dame)</button>
+            </div>
+            <div class="btn-group">
+                <button id="btn-loop" class="active">🔁 Loop: Aktiv</button>
+            </div>
+        </div>
+
+        <!-- 3. BPM & Tempo -->
+        <div class="section">
+            <p class="section-title">3. Tempo (BPM)</p>
+            <div class="btn-group">
+                <button id="btn-slow">🐢 Langsamer (-15%)</button>
+                <button id="btn-normal" class="active">🔄 Original</button>
+                <button id="btn-fast">⚡ Schneller (+10%)</button>
+            </div>
+            <div class="info-text" id="bpm-display">Aktuelles Tempo: 26 BPM</div>
+        </div>
+
+        <!-- 4. Virtuelles Parkett & Audio -->
+        <div class="section">
+            <p class="section-title">4. Interaktive Schrittfolge</p>
+
+            <div class="metronome-display" id="metronome">
+                <div class="beat-dot"></div>
+                <div class="beat-dot"></div>
+                <div class="beat-dot"></div>
+                <div class="beat-dot"></div>
+            </div>
+
+            <div class="dance-floor" id="dance-floor">
+                <!-- Fußabdrücke werden dynamisch per JS generiert -->
+            </div>
+
+            <div class="audio-bar">
+                <span id="track-name">🎵 Track: Rumba Classic Beat</span>
+                <div class="audio-pulse"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 1. Tanzdaten Konfiguration
+        const dances = {
+            rumba: {
+                name: "Rumba Classic Beat", bpm: 26, beats: 4, steps: [
+                    { id: 1, foot: 'L', x: 40, y: 60, label: '1 (Vor)' },
+                    { id: 2, foot: 'R', x: 60, y: 30, label: '2 (Seit)' },
+                    { id: 3, foot: 'L', x: 40, y: 30, label: '3 (Schluss)' },
+                    { id: 4, foot: 'R', x: 60, y: 60, label: '4 (Pause)' }
+                ]
+            },
+            salsa: {
+                name: "Salsa Caliente Live", bpm: 50, beats: 4, steps: [
+                    { id: 1, foot: 'L', x: 40, y: 30, label: '1 (Vor)' },
+                    { id: 2, foot: 'R', x: 60, y: 50, label: '2 (Platz)' },
+                    { id: 3, foot: 'L', x: 40, y: 50, label: '3 (Rück)' },
+                    { id: 4, foot: 'R', x: 60, y: 50, label: '4 (Pause)' }
+                ]
+            },
+            waltz: {
+                name: "Wiener & Langsamer Walzer", bpm: 30, beats: 3, steps: [
+                    { id: 1, foot: 'L', x: 40, y: 30, label: '1 (Vor)' },
+                    { id: 2, foot: 'R', x: 70, y: 25, label: '2 (Seit)' },
+                    { id: 3, foot: 'L', x: 55, y: 25, label: '3 (Schluss)' }
+                ]
+            },
+            tango: {
+                name: "Tango Argentino Bandoneon", bpm: 32, beats: 4, steps: [
+                    { id: 1, foot: 'L', x: 40, y: 40, label: 'T (Slow)' },
+                    { id: 2, foot: 'R', x: 60, y: 30, label: 'A (Slow)' },
+                    { id: 3, foot: 'L', x: 40, y: 20, label: 'N (Quick)' },
+                    { id: 4, foot: 'R', x: 65, y: 20, label: 'G (Quick)' }
+                ]
+            },
+            foxtrot: {
+                name: "Big Band Foxtrot Jazz", bpm: 48, beats: 4, steps: [
+                    { id: 1, foot: 'L', x: 40, y: 40, label: '1 (Slow)' },
+                    { id: 2, foot: 'R', x: 60, y: 30, label: '2 (Slow)' },
+                    { id: 3, foot: 'L', x: 35, y: 20, label: '3 (Quick)' },
+                    { id: 4, foot: 'R', x: 55, y: 20, label: '4 (Schluss)' }
+                ]
+            },
+            discofox: {
+                name: "Eurodance Synth-Beat", bpm: 120, beats: 3, steps: [
+                    { id: 1, foot: 'L', x: 40, y: 50, label: '1 (Schritt)' },
+                    { id: 2, foot: 'R', x: 60, y: 50, label: '2 (Schritt)' },
+                    { id: 3, foot: 'L', x: 40, y: 55, label: '3 (Tap)' }
+                ]
+            },
+            blues: {
+                name: "Slow Mississippi Delta Blues", bpm: 22, beats: 4, steps: [
+                    { id: 1, foot: 'L', x: 35, y: 50, label: '1 (Seit)' },
+                    { id: 2, foot: 'R', x: 60, y: 50, label: '2 (Slow)' },
+                    { id: 3, foot: 'L', x: 35, y: 60, label: '3 (Wiege)' },
+                    { id: 4, foot: 'R', x: 60, y: 60, label: '4 (Wiege)' }
+                ]
+            },
+            rocknroll: {
+                name: "Upbeat 50s Rockabilly", bpm: 44, beats: 4, steps: [
+                    { id: 1, foot: 'L', x: 35, y: 65, label: '1' },
+                    { id: 2, foot: 'L', x: 35, y: 50, label: '2' },
+                    { id: 3, foot: 'R', x: 65, y: 40, label: '3' },
+                    { id: 4, foot: 'R', x: 65, y: 65, label: '4' }
+                ]
+            }
+        };
+        let currentDanceKey = 'rumba';
+        let perspective = 'leader';
+        let loopActive = true;
+        let speedModifier = 1.0;
+        let currentBeat = 0;
+        let metronomeInterval = null;
+        // Web Audio API State
+        let audioCtx = null;
+        let audioEnabled = false;
+        const danceSelect = document.getElementById('dance-select');
+        const btnLeader = document.getElementById('btn-leader');
+        const btnFollower = document.getElementById('btn-follower');
+        const btnLoop = document.getElementById('btn-loop');
+        const btnSlow = document.getElementById('btn-slow');
+        const btnNormal = document.getElementById('btn-normal');
+        const btnFast = document.getElementById('btn-fast');
+        const btnAudioToggle = document.getElementById('btn-audio-toggle');
+        const bpmDisplay = document.getElementById('bpm-display');
+        const trackName = document.getElementById('track-name');
+        const metronomeContainer = document.getElementById('metronome');
+        const danceFloor = document.getElementById('dance-floor');
+        const audioStatusBar = document.getElementById('audio-bar');
+        function initApp() {
+            setupMetronomeDots();
+            renderFloorLayout();
+            startMetronome();
+        }
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            audioEnabled = true;
+            btnAudioToggle.style.backgroundColor = "#336633";
+            btnAudioToggle.innerText = "🔊 Audio Engine Aktiv";
+            audioStatusBar.classList.add('audio-active');
+        }
+        function playClickSound(isFirstBeat) {
+            if (!audioEnabled || !audioCtx) return;
+            // Oszillator für synthetischen Sound erzeugen
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            osc.type = 'sine';
+            // Erster Beat höherer Ton für Orientierung
+            osc.frequency.setValueAtTime(isFirstBeat ? 880 : 440, audioCtx.currentTime);
+            gainNode.gain.setValueAtTime(0.15, audioCtx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+            osc.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.1);
+        }
+        function setupMetronomeDots() {
+            metronomeContainer.innerHTML = '';
+            const dance = dances[currentDanceKey];
+            for (let i = 0; i < dance.beats; i++) {
+                const dot = document.createElement('div');
+                dot.classList.add('beat-dot');
+                metronomeContainer.appendChild(dot);
+            }
+        }
+        function renderFloorLayout() {
+            danceFloor.innerHTML = '';
+            const dance = dances[currentDanceKey];
+            const processedSteps = [];
+            // 1. Koordinaten basierend auf Perspektive berechnen
+            dance.steps.forEach((step) => {
+                let finalX = step.x;
+                let finalY = step.y;
+                let finalFoot = step.foot;
+                if (perspective === 'follower') {
+                    finalX = 100 - step.x;
+                    finalY = 100 - step.y;
+                    finalFoot = step.foot === 'L' ? 'R' : 'L';
+                }
+                processedSteps.push({ x: finalX, y: finalY, foot: finalFoot, label: step.label });
+            });
+            // 2. Richtungspfeile zeichnen (Verbindungslinien)
+            for (let i = 0; i < processedSteps.length; i++) {
+                const current = processedSteps[i];
+                const next = processedSteps[(i + 1) % processedSteps.length];
+                if (processedSteps.length > 1) {
+                    drawArrow(current.x, current.y, next.x, next.y);
+                }
+            }
+            // 3. Schritte/Füsse platzieren
+            processedSteps.forEach((step, index) => {
+                const foot = document.createElement('div');
+                foot.classList.add('footprint');
+                foot.classList.add(step.foot === 'L' ? 'left' : 'right');
+                foot.style.left = `${step.x }`;
+                foot.style.top = `${step.y }`;
+                foot.innerText = step.label;
+                foot.setAttribute('data-step-index', index);
+                danceFloor.appendChild(foot);
+            });
+        }
+        function drawArrow(x1, y1, x2, y2) {
+            const arrow = document.createElement('div');
+            arrow.classList.add('step-arrow');
+            // Prozentuale Koordinaten in Pixel-Äquivalente des Containers umrechnen
+            const w = danceFloor.offsetWidth || 460;
+            const h = danceFloor.offsetHeight || 280;
+            const px1 = (x1 / 100) * w;
+            const py1 = (y1 / 100) * h;
+            const px2 = (x2 / 100) * w;
+            const py2 = (y2 / 100) * h;
+            const distance = Math.sqrt((px2 - px1) ** 2 + (py2 - py1) ** 2);
+            const angle = Math.atan2(py2 - py1, px2 - px1) * (180 / Math.PI);
+            arrow.style.width = `${ distance } px`;
+            arrow.style.left = `${ x1 }%`;
+            arrow.style.top = `${ y1 }%`;
+            arrow.style.transform = `rotate(${ angle }deg)`;
+            danceFloor.appendChild(arrow);
+        }
+        function startMetronome() {
+            if (metronomeInterval) clearInterval(metronomeInterval);
+            const dance = dances[currentDanceKey];
+            const effectiveBpm = Math.round(dance.bpm * speedModifier);
+            bpmDisplay.innerText = `Tempo: ${ effectiveBpm } BPM`;
+            if (audioEnabled) {
+                trackName.innerText = `🎵 Live Track: ${ dance.name }`;
+            }
+            const intervalMs = (60 / effectiveBpm) * 1000;
+            metronomeInterval = setInterval(() => {
+                const dots = document.querySelectorAll('.beat-dot');
+                const footprints = document.querySelectorAll('.footprint');
+                dots.forEach(d => d.classList.remove('active'));
+                footprints.forEach(f => f.classList.remove('active-step'));
+                if (dots[currentBeat]) dots[currentBeat].classList.add('active');
+                if (footprints[currentBeat]) footprints[currentBeat].classList.add('active-step');
+                // Sound abspielen (Erster Schlag bekommt Akzent)
+                playClickSound(currentBeat === 0);
+                currentBeat++;
+                if (currentBeat >= dance.beats) {
+                    if (!loopActive) clearInterval(metronomeInterval);
+                    currentBeat = 0;
+                }
+            }, intervalMs);
+        }
+        // Event Handler
+        // btnAudioToggle.addEventListener('click', `initAudio`);
+        danceSelect.addEventListener('change', (e) => {
+            currentDanceKey = e.target.value;
+            currentBeat = 0;
+            setupMetronomeDots();
+            renderFloorLayout();
+            startMetronome();
+        });
+        btnLeader.addEventListener('click', () => {
+            perspective = 'leader';
+            btnLeader.classList.add('active');
+            btnFollower.classList.remove('active');
+            renderFloorLayout();
+        });
+        btnFollower.addEventListener('click', () => {
+            perspective = 'follower';
+            btnFollower.classList.add('active');
+            btnLeader.classList.remove('active');
+            renderFloorLayout();
+        });
+        btnLoop.addEventListener('click', () => {
+            loopActive = !loopActive;
+            btnLoop.classList.toggle('active', loopActive);
+            btnLoop.innerText = loopActive ? '🔁 Loop: An' : '🔓 Loop: Aus';
+            currentBeat = 0;
+            startMetronome();
+        });
+        btnSlow.addEventListener('click', () => { speedModifier = 0.85; updateSpeedUI(btnSlow); });
+        btnNormal.addEventListener('click', () => { speedModifier = 1.0; updateSpeedUI(btnNormal); });
+        btnFast.addEventListener('click', () => { speedModifier = 1.10; updateSpeedUI(btnFast); });
+        function updateSpeedUI(activeBtn) {
+            [btnSlow, btnNormal, btnFast].forEach(btn => btn.classList.remove('active'));
+            activeBtn.classList.add('active');
+            startMetronome();
+        }
+        // Responsive Anpassung bei Display-Drehung
+        window.addEventListener('resize', renderFloorLayout);
+        window.onload = initApp;
+
+    </script>
+
+
+

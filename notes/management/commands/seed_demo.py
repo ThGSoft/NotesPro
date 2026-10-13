@@ -661,6 +661,17 @@ GAMES_DEMO_PAGES = (
         '```\n',
     ),
     (
+        'carrom',
+        'Carrom',
+        9,
+        '# Carrom\n\n'
+        'You play white from the near baseline. Slide the striker along the line, '
+        'pull back, and release. Pocket your coins. Cover the red queen with one of yours '
+        'before the last coin. The striker in a pocket is a foul.\n\n'
+        '```carrom{fullscreen;mode=cpu;difficulty=medium;size=medium}\n'
+        '```\n',
+    ),
+    (
         'dart',
         'Darts',
         9,
@@ -920,7 +931,7 @@ class Command(BaseCommand):
                     'Open the **Demo** folder for games, the shop, the drawing pad, a table, and photos. '
                     'Those pages are public, so visitors can open them without signing in. '
                     'A sketch made without login stays in that browser. '
-                    'Games include sudoku, tic-tac-toe, chess, Connect Four, Reversi, backgammon, carambole, darts, Tetris, Sokoban, Space Invaders, Breakout, Snake, marble blast, jigsaw, pinball, Pac-Man, Super Mario, Lemmings, photo cube, photo book, photo carousel, roller coaster, auto scooter, ghost train, and photo labyrinth.\n\n'
+                    'Games include sudoku, tic-tac-toe, chess, Connect Four, Reversi, backgammon, carambole, carrom, darts, Tetris, Sokoban, Space Invaders, Breakout, Snake, marble blast, jigsaw, pinball, Pac-Man, Super Mario, Lemmings, photo cube, photo book, photo carousel, roller coaster, auto scooter, ghost train, and photo labyrinth.\n\n'
                     'Open **RSS Feeds** for live BBC, DE, and CH news embeds.'
                 ),
             },
