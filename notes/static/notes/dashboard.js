@@ -17476,7 +17476,7 @@ function formatTextWithMarkup(rawText) {
 
   function photoPasteBlockAtPoint(clientX, clientY) {
     const preview = document.getElementById('preview-content');
-    if (!preview) return null;
+    if (!preview || !Number.isFinite(clientX) || !Number.isFinite(clientY)) return null;
     const stack = typeof document.elementsFromPoint === 'function'
       ? document.elementsFromPoint(clientX, clientY)
       : [document.elementFromPoint(clientX, clientY)].filter(Boolean);

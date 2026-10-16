@@ -222,11 +222,25 @@ def hostname_for_ip(ip):
 
 
 def log_ip_visit(request, *, event_type='visit', user=None, site='', screen='', color_depth='', path_override=''):
+    from django.db.utils import OperationalError
+
     from .models import IpVisitLog
 
     ip = get_client_ip(request)
     if not ip:
         return None
+    try:
+        return _create_ip_visit(
+            request, ip, event_type=event_type, user=user, site=site,
+            screen=screen, color_depth=color_depth, path_override=path_override,
+            model=IpVisitLog,
+        )
+    except OperationalError:
+        # A read-only database must not turn inbox polling into a 500.
+        return None
+
+
+def _create_ip_visit(request, ip, *, event_type, user, site, screen, color_depth, path_override, model):
     geo = resolve_ip_geo(ip)
     auth_user = user
     if auth_user is None:
@@ -237,7 +251,7 @@ def log_ip_visit(request, *, event_type='visit', user=None, site='', screen='', 
     query = '' if path_override else (request.META.get('QUERY_STRING') or '')
     path = (path_override or request.path or '')[:512]
     site_value = (site or path)[:512]
-    return IpVisitLog.objects.create(
+    return model.objects.create(
         ip_address=ip[:45],
         user=auth_user,
         method=(request.method or '')[:10],
