@@ -45,6 +45,7 @@ class Workspace(models.Model):
         blank=True,
         help_text='Override the site default quota for this workspace. Leave empty to inherit. 0 = unlimited.',
     )
+    settings = models.JSONField(default=dict, blank=True)
 
     members = models.ManyToManyField(
         User,
@@ -65,6 +66,44 @@ class Workspace(models.Model):
 
     def __str__(self):
         return self.name
+
+    def normalized_settings(self):
+        raw = self.settings if isinstance(self.settings, dict) else {}
+        return {
+            'public': Page._setting_bool(raw.get('public'), False),
+            'root': Page._setting_bool(raw.get('root'), False),
+            'ws': Page._setting_bool(raw.get('ws'), False),
+        }
+
+    def public_path(self):
+        settings = self.normalized_settings()
+        if not settings.get('public'):
+            return ''
+        if settings.get('root'):
+            return '/'
+        from django.urls import reverse
+        return reverse(
+            'public_workspace',
+            kwargs={'owner': self.owner.username, 'workspace_slug': self.slug},
+        )
+
+    def release_other_site_roots(self):
+        for other in Workspace.objects.exclude(pk=self.pk).filter(settings__root=True):
+            data = other.normalized_settings()
+            if not data.get('root'):
+                continue
+            data['root'] = False
+            data['ws'] = False
+            other.settings = data
+            other.save(update_fields=['settings'])
+        for page in Page.objects.filter(settings__root=True):
+            data = page.normalized_settings()
+            if not data.get('root'):
+                continue
+            data['root'] = False
+            data['ws'] = False
+            page.settings = data
+            page.save(update_fields=['settings'])
 
     def effective_storage_quota_mb(self):
         if self.storage_quota_mb is not None:
@@ -445,6 +484,12 @@ class Page(models.Model):
             settings__root=True,
             settings__public=True,
             settings__ws=True,
+        ).exists() or Workspace.objects.filter(
+            pk=workspace_id,
+            deleted=False,
+            settings__root=True,
+            settings__public=True,
+            settings__ws=True,
         ).exists()
 
     def release_other_site_roots(self):
@@ -457,6 +502,14 @@ class Page(models.Model):
             data['ws'] = False
             other.settings = data
             other.save(update_fields=['settings'])
+        for workspace in Workspace.objects.filter(settings__root=True):
+            data = workspace.normalized_settings()
+            if not data.get('root'):
+                continue
+            data['root'] = False
+            data['ws'] = False
+            workspace.settings = data
+            workspace.save(update_fields=['settings'])
 
     @staticmethod
     def _setting_bool(value, default=True):

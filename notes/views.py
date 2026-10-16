@@ -318,6 +318,30 @@ def _restore_workspace(workspace):
     workspace.save(update_fields=['deleted'])
     workspace.pages.update(deleted=False)
 
+def _public_workspace_path(workspace):
+    if workspace.normalized_settings().get('root'):
+        return _site_root_path()
+    path = reverse(
+        'public_workspace',
+        kwargs={
+            'owner': workspace.owner.username,
+            'workspace_slug': workspace.slug,
+        },
+    )
+    base = (getattr(django_settings, 'FORCE_SCRIPT_NAME', None) or '').rstrip('/')
+    if base and not path.startswith(f'{base}/'):
+        return f'{base}{path}'
+    return path
+
+
+def _page_visible_without_login(page):
+    if not page or page.deleted or page.is_folder or page.workspace.deleted:
+        return False
+    if page.normalized_settings().get('public'):
+        return True
+    return bool(page.workspace.normalized_settings().get('public'))
+
+
 def _site_root_path():
     base = (getattr(django_settings, 'FORCE_SCRIPT_NAME', None) or '').rstrip('/')
     return f'{base}/' if base else '/'
@@ -358,6 +382,40 @@ def _root_public_page():
     if not settings.get('root') or not settings.get('public'):
         return None
     return page
+
+
+def _root_public_workspace():
+    workspace = (
+        Workspace.objects.filter(
+            deleted=False,
+            settings__root=True,
+            settings__public=True,
+        )
+        .select_related('owner')
+        .order_by('-id')
+        .first()
+    )
+    if not workspace:
+        return None
+    settings = workspace.normalized_settings()
+    if not settings.get('root') or not settings.get('public'):
+        return None
+    return workspace
+
+
+def _public_workspace_or_404(owner, workspace_slug):
+    workspace = (
+        Workspace.objects.filter(
+            deleted=False,
+            slug=workspace_slug,
+            owner__username=owner,
+        )
+        .select_related('owner')
+        .first()
+    )
+    if not workspace or not workspace.normalized_settings().get('public'):
+        raise Http404('Workspace not found')
+    return workspace
 
 
 def _page_to_dict(page):
@@ -409,7 +467,7 @@ def _public_page_or_404(owner, workspace_slug, page_slug):
         .select_related('workspace', 'workspace__owner')
         .first()
     )
-    if not page or not page.normalized_settings().get('public'):
+    if not page or not _page_visible_without_login(page):
         raise Http404('Page not found')
     return page
 
@@ -740,6 +798,8 @@ def _tree_data(user, workspace):
                     'slug': page.slug,
                     'is_folder': page.is_folder,
                     'workspace': page.workspace_id,
+                    'owner': workspace.owner.username,
+                    'workspace_slug': workspace.slug,
                 },
             })
             emit(page.id)
@@ -911,6 +971,16 @@ def site_entry(request):
     page = _root_public_page()
     if page:
         return _render_public_page(request, page)
+    workspace = _root_public_workspace()
+    if workspace:
+        page = _active_pages(workspace).filter(is_folder=False).order_by('sort_order', 'id').first()
+        if page:
+            return _render_public_page(
+                request,
+                page,
+                public_tree=_tree_data(None, workspace),
+                public_workspace=True,
+            )
     return redirect_to_login(request.get_full_path() or '/')
 
 
@@ -995,14 +1065,15 @@ def dashboard(request):
     })
 
 
-def _render_public_page(request, page):
-    owner_settings, _ = UserSettings.objects.get_or_create(user=page.workspace.owner)
+def _render_public_page(request, page, *, public_tree=None, public_workspace=False):
+    workspace = page.workspace
+    owner_settings, _ = UserSettings.objects.get_or_create(user=workspace.owner)
     extra = owner_settings.extra_configs if isinstance(owner_settings.extra_configs, dict) else {}
     public_settings = SimpleNamespace(
         extra_configs={'shop': normalize_shop_settings(extra.get('shop'))},
         workspace_pages={},
         sidebar_width=None,
-        left_panel_expanded=False,
+        left_panel_expanded=bool(public_tree),
         right_panel_width=None,
         right_panel_expanded=False,
         font_size=16,
@@ -1011,9 +1082,11 @@ def _render_public_page(request, page):
     app_language = django_settings.LANGUAGE_CODE or 'en'
     return render(request, 'notes/dashboard.html', {
         'public_view': True,
+        'public_workspace': public_workspace,
+        'public_tree': public_tree or [],
         'public_page': _public_page_boot(page),
-        'workspaces': [page.workspace],
-        'current_workspace': page.workspace,
+        'workspaces': [workspace],
+        'current_workspace': workspace,
         'page': page,
         'user_settings': public_settings,
         'app_language': app_language,
@@ -1021,7 +1094,7 @@ def _render_public_page(request, page):
         'app_language_choices': APP_LANGUAGE_CHOICES,
         'app_base': (getattr(django_settings, 'FORCE_SCRIPT_NAME', None) or request.META.get('SCRIPT_NAME') or '').rstrip('/'),
         'local_file_open_enabled': False,
-        'tag_websocket_enabled': _public_page_ws_enabled(page),
+        'tag_websocket_enabled': _public_page_ws_enabled(page) or _public_workspace_ws_enabled(workspace),
         'allow_games': getattr(django_settings, 'ALLOW_GAMES', True),
         'allow_photos': getattr(django_settings, 'ALLOW_PHOTOS', True),
         'allow_offline': False,
@@ -1033,7 +1106,10 @@ def _render_public_page(request, page):
         'game_highscores': {},
         'public_login_next': (
             _editor_login_next(request, page)
-            if page.normalized_settings().get('root')
+            if page and (
+                page.normalized_settings().get('root')
+                or (public_workspace and workspace.normalized_settings().get('root'))
+            )
             else ''
         ),
     })
@@ -1048,6 +1124,27 @@ def public_page(request, owner, workspace_slug, page_slug):
     """
     page = _public_page_or_404(owner, workspace_slug, page_slug)
     return _render_public_page(request, page)
+
+
+@require_GET
+def public_workspace(request, owner, workspace_slug):
+    """Read-only workspace. The tree is visible and cannot be changed."""
+    workspace = _public_workspace_or_404(owner, workspace_slug)
+    page = _active_pages(workspace).filter(is_folder=False).order_by('sort_order', 'id').first()
+    if not page:
+        raise Http404('Workspace not found')
+    return _render_public_page(
+        request,
+        page,
+        public_tree=_tree_data(None, workspace),
+        public_workspace=True,
+    )
+
+
+@require_GET
+def public_page_json(request, owner, workspace_slug, page_slug):
+    page = _public_page_or_404(owner, workspace_slug, page_slug)
+    return JsonResponse(_public_page_boot(page))
 
 
 @require_POST
@@ -1274,9 +1371,40 @@ def workspace_update(request, pk):
         data = json.loads(request.body)
         
         ws = get_object_or_404(Workspace, pk=pk, owner=request.user, deleted=False)
-        ws.name = data.get('name', ws.name)
+        if 'name' in data:
+            ws.name = (data.get('name') or '').strip() or ws.name
+        if 'settings' in data:
+            incoming = data.get('settings') if isinstance(data.get('settings'), dict) else {}
+            merged = ws.normalized_settings()
+            if 'public' in incoming:
+                merged['public'] = Page._setting_bool(incoming.get('public'), False)
+            if 'root' in incoming and request.user.is_superuser:
+                merged['root'] = Page._setting_bool(incoming.get('root'), False)
+            if 'ws' in incoming and request.user.is_superuser:
+                merged['ws'] = Page._setting_bool(incoming.get('ws'), False)
+            if merged.get('ws'):
+                merged['root'] = True
+            if merged.get('root'):
+                merged['public'] = True
+            else:
+                merged['ws'] = False
+            ws.settings = merged
+            claim_root = bool(merged.get('root'))
+        else:
+            claim_root = False
         ws.save()
-        return JsonResponse({'status': 'success'})
+        if claim_root:
+            ws.release_other_site_roots()
+            ws.refresh_from_db()
+        settings = ws.normalized_settings()
+        return JsonResponse({
+            'status': 'success',
+            'id': ws.id,
+            'name': ws.name,
+            'slug': ws.slug,
+            'settings': settings,
+            'public_url': _public_workspace_path(ws) if settings.get('public') else '',
+        })
     return JsonResponse({'status': 'error'}, status=400)
 
 @login_required
@@ -1517,6 +1645,16 @@ def tree_data(request, workspace_id):
     return JsonResponse( _tree_data(request.user, workspace), safe=False)
 
 
+def _public_workspace_ws_enabled(workspace):
+    settings = workspace.normalized_settings()
+    return bool(
+        getattr(django_settings, 'ENABLE_TAG_WEBSOCKET', False)
+        and settings.get('ws')
+        and settings.get('root')
+        and settings.get('public')
+    )
+
+
 def _public_page_ws_enabled(page):
     settings = page.normalized_settings()
     return bool(
@@ -1524,7 +1662,7 @@ def _public_page_ws_enabled(page):
         and settings.get('ws')
         and settings.get('root')
         and settings.get('public')
-    )
+    ) or _public_workspace_ws_enabled(page.workspace)
 
 
 def _tag_read_access(request, workspace_id):

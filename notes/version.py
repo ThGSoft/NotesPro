@@ -46,6 +46,11 @@ CREDITS = (
         'url': 'https://d3js.org/',
     },
     {
+        'name': 'diagrams.net (draw.io)',
+        'role': 'Self-hosted diagram editor',
+        'url': 'https://github.com/jgraph/drawio',
+    },
+    {
         'name': 'Three.js',
         'role': '3D gallery, roller coaster, and scooter blocks',
         'url': 'https://threejs.org/',

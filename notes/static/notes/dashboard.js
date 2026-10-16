@@ -2558,7 +2558,7 @@
   }
 
   function isPreviewRichBlock(el) {
-    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .form-widget, .mindmap-block, .md-news, .md-python, .voice-block, .jukebox-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .backgammon-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .carambole-block, .carrom-block, .dart-block, .draw-block, .snake-block, .marbleblast-block, .gallery-block, .training-block, .dance-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .page-tags');
+    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .form-widget, .mindmap-block, .md-news, .md-python, .voice-block, .jukebox-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .backgammon-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .carambole-block, .carrom-block, .dart-block, .draw-block, .drawio-block, .snake-block, .marbleblast-block, .gallery-block, .training-block, .dance-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .page-tags');
   }
 
   function getPreviewBlockSourceLine(node) {
@@ -4331,16 +4331,38 @@
     return `${location.origin}${value.startsWith('/') ? '' : '/'}${value}`;
   }
 
+  function selectedWorkspaceOption() {
+    const select = document.getElementById('workspace-select');
+    return select?.selectedOptions?.[0] || null;
+  }
+
+  function previewPublicPath() {
+    const rootOn = !!document.getElementById('page-settings-root')?.checked
+      || !!document.getElementById('page-settings-ws')?.checked;
+    if (rootOn) return '/';
+    const saved = String(currentPage?.public_url || '');
+    if (currentPage?.settings?.public && saved && saved !== '/') return saved;
+    const option = selectedWorkspaceOption();
+    const owner = option?.dataset?.owner || currentUserName || '';
+    const workspaceSlug = option?.dataset?.slug || '';
+    const pageSlug = currentPage?.slug || '';
+    if (owner && workspaceSlug && pageSlug) {
+      return `/p/${encodeURIComponent(owner)}/${encodeURIComponent(workspaceSlug)}/${encodeURIComponent(pageSlug)}/`;
+    }
+    return saved && saved !== '/' ? saved : '';
+  }
+
   function syncPageSettingsPublicLink() {
     const box = document.getElementById('page-settings-public');
     const wrap = document.getElementById('page-settings-public-link');
     const input = document.getElementById('page-settings-public-url');
     const pending = document.getElementById('page-settings-public-pending');
     const on = !!box?.checked;
-    const savedUrl = currentPage?.settings?.public ? (currentPage.public_url || '') : '';
-    if (wrap) wrap.classList.toggle('d-none', !(on && savedUrl));
-    if (input) input.value = savedUrl ? absolutePublicUrl(savedUrl) : '';
-    if (pending) pending.classList.toggle('d-none', !(on && !savedUrl));
+    const shown = on ? previewPublicPath() : '';
+    const saved = currentPage?.settings?.public ? String(currentPage.public_url || '') : '';
+    if (wrap) wrap.classList.toggle('d-none', !on);
+    if (input) input.value = shown ? absolutePublicUrl(shown) : '';
+    if (pending) pending.classList.toggle('d-none', !(on && absolutePublicUrl(shown) !== absolutePublicUrl(saved)));
   }
 
   function fillPageSettingsForm() {
@@ -4468,6 +4490,142 @@
     });
     document.getElementById('page-settings-public-copy')?.addEventListener('click', async () => {
       const input = document.getElementById('page-settings-public-url');
+      const value = input?.value || '';
+      if (!value) return;
+      try {
+        await navigator.clipboard.writeText(value);
+        showToast('Public link copied.', 'success');
+      } catch (_) {
+        input?.focus();
+        input?.select();
+        showToast('Select the link and copy it.', 'warning');
+      }
+    });
+  }
+
+  function previewWorkspacePublicPath() {
+    const rootOn = !!document.getElementById('ws-settings-root')?.checked
+      || !!document.getElementById('ws-settings-ws')?.checked;
+    if (rootOn) return '/';
+    const option = selectedWorkspaceOption();
+    const saved = String(option?.dataset?.publicUrl || '');
+    if (option?.dataset?.public === '1' && saved && saved !== '/') return saved;
+    const owner = option?.dataset?.owner || currentUserName || '';
+    const workspaceSlug = option?.dataset?.slug || '';
+    if (owner && workspaceSlug) {
+      return `/p/${encodeURIComponent(owner)}/${encodeURIComponent(workspaceSlug)}/`;
+    }
+    return saved && saved !== '/' ? saved : '';
+  }
+
+  function syncWorkspaceSettingsPublicLink() {
+    const box = document.getElementById('ws-settings-public');
+    const wrap = document.getElementById('ws-settings-public-link');
+    const input = document.getElementById('ws-settings-public-url');
+    const pending = document.getElementById('ws-settings-public-pending');
+    const option = selectedWorkspaceOption();
+    const on = !!box?.checked;
+    const shown = on ? previewWorkspacePublicPath() : '';
+    const saved = option?.dataset?.public === '1' ? String(option.dataset.publicUrl || '') : '';
+    if (wrap) wrap.classList.toggle('d-none', !on);
+    if (input) input.value = shown ? absolutePublicUrl(shown) : '';
+    if (pending) pending.classList.toggle('d-none', !(on && absolutePublicUrl(shown) !== absolutePublicUrl(saved)));
+  }
+
+  function fillWorkspaceSettingsForm() {
+    const option = selectedWorkspaceOption();
+    const publicBox = document.getElementById('ws-settings-public');
+    if (publicBox) publicBox.checked = option?.dataset?.public === '1';
+    const rootBox = document.getElementById('ws-settings-root');
+    if (rootBox) rootBox.checked = option?.dataset?.root === '1';
+    const wsBox = document.getElementById('ws-settings-ws');
+    if (wsBox) wsBox.checked = option?.dataset?.ws === '1';
+    syncWorkspaceSettingsPublicLink();
+  }
+
+  function openWorkspaceSettingsModal() {
+    const option = selectedWorkspaceOption();
+    const isOwner = option?.dataset?.ownerId
+      && String(option.dataset.ownerId) === String(currentUserId);
+    if (!isOwner) return;
+    fillWorkspaceSettingsForm();
+    const modalEl = document.getElementById('ws-settings-modal');
+    if (modalEl) openDashboardModal(modalEl);
+  }
+
+  async function saveWorkspaceSettings() {
+    const select = document.getElementById('workspace-select');
+    const option = selectedWorkspaceOption();
+    const wsId = select?.value;
+    if (!wsId || !option) return false;
+    const isPublic = !!document.getElementById('ws-settings-public')?.checked;
+    const rootBox = document.getElementById('ws-settings-root');
+    const wsBox = document.getElementById('ws-settings-ws');
+    const settings = { public: isPublic };
+    if (rootBox) settings.root = !!rootBox.checked;
+    if (wsBox) settings.ws = !!wsBox.checked;
+    if (settings.ws) {
+      settings.root = true;
+      settings.public = true;
+    } else if (settings.root) {
+      settings.public = true;
+    }
+    try {
+      const result = await api(`api/workspaces/${wsId}/update/`, 'POST', { settings });
+      const saved = result.settings || {};
+      option.dataset.public = saved.public ? '1' : '0';
+      option.dataset.root = saved.root ? '1' : '0';
+      option.dataset.ws = saved.ws ? '1' : '0';
+      option.dataset.publicUrl = result.public_url || '';
+      const modalEl = document.getElementById('ws-settings-modal');
+      if (modalEl && window.bootstrap?.Modal) {
+        bootstrap.Modal.getInstance(modalEl)?.hide();
+      }
+      setStatus(result.public_url ? 'Public workspace link ready' : 'Workspace settings saved');
+      return true;
+    } catch (err) {
+      showToast(err.message || 'Could not save workspace settings.', 'danger');
+      return false;
+    }
+  }
+
+  function initWorkspaceSettings() {
+    document.getElementById('ws-settings-btn')?.addEventListener('click', () => {
+      openWorkspaceSettingsModal();
+    });
+    document.getElementById('ws-settings-save')?.addEventListener('click', () => {
+      void saveWorkspaceSettings();
+    });
+    document.getElementById('ws-settings-public')?.addEventListener('change', () => {
+      const publicBox = document.getElementById('ws-settings-public');
+      const rootBox = document.getElementById('ws-settings-root');
+      const wsBox = document.getElementById('ws-settings-ws');
+      if (publicBox && !publicBox.checked) {
+        if (rootBox) rootBox.checked = false;
+        if (wsBox) wsBox.checked = false;
+      }
+      syncWorkspaceSettingsPublicLink();
+    });
+    document.getElementById('ws-settings-root')?.addEventListener('change', () => {
+      const rootBox = document.getElementById('ws-settings-root');
+      const publicBox = document.getElementById('ws-settings-public');
+      const wsBox = document.getElementById('ws-settings-ws');
+      if (rootBox?.checked && publicBox) publicBox.checked = true;
+      if (rootBox && !rootBox.checked && wsBox) wsBox.checked = false;
+      syncWorkspaceSettingsPublicLink();
+    });
+    document.getElementById('ws-settings-ws')?.addEventListener('change', () => {
+      const wsBox = document.getElementById('ws-settings-ws');
+      const rootBox = document.getElementById('ws-settings-root');
+      const publicBox = document.getElementById('ws-settings-public');
+      if (wsBox?.checked) {
+        if (rootBox) rootBox.checked = true;
+        if (publicBox) publicBox.checked = true;
+      }
+      syncWorkspaceSettingsPublicLink();
+    });
+    document.getElementById('ws-settings-public-copy')?.addEventListener('click', async () => {
+      const input = document.getElementById('ws-settings-public-url');
       const value = input?.value || '';
       if (!value) return;
       try {
@@ -9564,7 +9722,7 @@
     const engine = window.NotesProDraw;
     if (!engine) return markdown;
     let idx = 0;
-    return String(markdown || '').replace(/```(?:draw|sketch|doodle|drawing)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (match, fenceAttrs) => {
+    return String(markdown || '').replace(/```(?:draw(?!io|\.io)|sketch|doodle|drawing)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (match, fenceAttrs) => {
       const thisIndex = idx;
       idx += 1;
       if (thisIndex !== index) return match;
@@ -9572,10 +9730,31 @@
       if (payload.pen) cfg.pen = payload.pen;
       if (payload.bg) cfg.bg = payload.bg;
       if (payload.size != null && payload.size !== '') cfg.size = String(payload.size);
+      if (payload.height != null && payload.height !== '') cfg.height = String(payload.height);
+      if (payload.freeze) cfg.freeze = '';
+      else delete cfg.freeze;
+      delete cfg.frozen;
       const attrs = engine.buildFenceAttrsString(cfg);
       const body = payload.strokes != null ? String(payload.strokes) : '';
       const fence = attrs ? `draw{${attrs}}` : 'draw';
       return `\`\`\`${fence}\n${body}\n\`\`\``;
+    });
+  }
+
+  function insertDrawAfter(markdown, index) {
+    const engine = window.NotesProDraw;
+    if (!engine) return markdown;
+    let idx = 0;
+    return String(markdown || '').replace(/```(?:draw(?!io|\.io)|sketch|doodle|drawing)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (match, fenceAttrs) => {
+      const thisIndex = idx;
+      idx += 1;
+      if (thisIndex !== index) return match;
+      const cfg = engine.parseFenceAttrs(fenceAttrs || '');
+      delete cfg.freeze;
+      delete cfg.frozen;
+      const attrs = engine.buildFenceAttrsString(cfg);
+      const fence = attrs ? `draw{${attrs}}` : 'draw';
+      return `${match}\n\n\`\`\`${fence}\n\n\`\`\``;
     });
   }
 
@@ -10971,7 +11150,10 @@
     window.NotesProDart?.hydrate?.(root);
   }
 
-  const DRAW_BLOCK_RE = /```(?:draw|sketch|doodle|drawing)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+  const openedDrawBlocks = new Set();
+  const openedDrawioBlocks = new Set();
+
+  const DRAW_BLOCK_RE = /```(?:draw(?!io|\.io)|sketch|doodle|drawing)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
 
   function parseDrawBlocks(text) {
     let drawIndex = 0;
@@ -10980,7 +11162,7 @@
       const engine = window.NotesProDraw;
       const idx = drawIndex++;
       const html = engine?.renderBlock
-        ? engine.renderBlock(content || '', fenceAttrs || '', { drawIndex: idx })
+        ? engine.renderBlock(content || '', fenceAttrs || '', { drawIndex: idx, preview: !isEditing && !openedDrawBlocks.has(idx) })
         : '<div class="draw-block draw-block--error">Drawing engine not loaded.</div>';
       return wrapRichPreviewBlock(html);
     });
@@ -11027,6 +11209,58 @@
           if (!(userCanEdit && Number.isFinite(drawIndex) && easyMDE)) return;
           const oldMarkdown = easyMDE.value();
           const updated = updateDrawFence(oldMarkdown, drawIndex, payload || {});
+          if (updated === oldMarkdown) return;
+          suppressPreviewRefresh += 1;
+          try { easyMDE.value(updated); } finally {
+            suppressPreviewRefresh = Math.max(0, suppressPreviewRefresh - 1);
+          }
+          scheduleSave();
+        },
+        onNewDraw: userCanEdit && Number.isFinite(drawIndex) && easyMDE
+          ? () => {
+            const oldMarkdown = easyMDE.value();
+            const updated = insertDrawAfter(oldMarkdown, drawIndex);
+            if (updated === oldMarkdown) return;
+            suppressPreviewRefresh += 1;
+            try { easyMDE.value(updated); } finally {
+              suppressPreviewRefresh = Math.max(0, suppressPreviewRefresh - 1);
+            }
+            scheduleSave();
+            renderPreview();
+            document.querySelector(`#preview-content .draw-block[data-draw-index="${drawIndex + 1}"]`)
+              ?.scrollIntoView({ block: 'nearest' });
+          }
+          : null,
+      });
+    });
+  }
+
+  const DRAWIO_BLOCK_RE = /```(?:drawio|draw\.io|diagrams\.net)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function parseDrawioBlocks(text) {
+    let drawioIndex = 0;
+    DRAWIO_BLOCK_RE.lastIndex = 0;
+    return text.replace(DRAWIO_BLOCK_RE, (_, fenceAttrs, content) => {
+      const engine = window.NotesProDrawio;
+      const idx = drawioIndex++;
+      const html = engine?.renderBlock
+        ? engine.renderBlock(content || '', fenceAttrs || '', { drawioIndex: idx, preview: !isEditing && !openedDrawioBlocks.has(idx) })
+        : '<div class="drawio-block drawio-block--error">Draw.io engine not loaded.</div>';
+      return wrapRichPreviewBlock(html);
+    });
+  }
+
+  function hydrateDrawioBlocks(root) {
+    const engine = window.NotesProDrawio;
+    if (!engine) return;
+    (root || document).querySelectorAll('.drawio-block[data-drawio-index]').forEach((el) => {
+      const drawioIndex = parseInt(el.dataset.drawioIndex, 10);
+      engine.hydrateBlock(el, {
+        editable: !!((isEditing || openedDrawioBlocks.has(drawioIndex)) && userCanEdit && Number.isFinite(drawioIndex) && easyMDE),
+        onPersist: (payload) => {
+          if (!(userCanEdit && Number.isFinite(drawioIndex) && easyMDE)) return;
+          const oldMarkdown = easyMDE.value();
+          const updated = engine.rewriteFence(oldMarkdown, drawioIndex, payload || {});
           if (updated === oldMarkdown) return;
           suppressPreviewRefresh += 1;
           try { easyMDE.value(updated); } finally {
@@ -12922,7 +13156,7 @@ function formatTextWithMarkup(rawText) {
     if (!root) return;
     root.querySelectorAll('pre').forEach(pre => {
       if (pre.closest('.md-code-block')) return;
-      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .form-widget, .mindmap-block, .md-news, .md-python, .voice-block, .jukebox-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .backgammon-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .carambole-block, .carrom-block, .dart-block, .draw-block, .snake-block, .marbleblast-block, .gallery-block, .training-block, .dance-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block')) {
+      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .form-widget, .mindmap-block, .md-news, .md-python, .voice-block, .jukebox-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .backgammon-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .carambole-block, .carrom-block, .dart-block, .draw-block, .drawio-block, .snake-block, .marbleblast-block, .gallery-block, .training-block, .dance-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block')) {
         return;
       }
       const wrap = document.createElement('div');
@@ -13203,6 +13437,39 @@ function formatTextWithMarkup(rawText) {
     });
   }
 
+  function openDataImage(src) {
+    const parsed = dataUrlToBlob(src);
+    if (!parsed?.blob) return false;
+    const url = URL.createObjectURL(parsed.blob);
+    const opened = window.open(url, '_blank', 'noopener,noreferrer');
+    if (!opened) {
+      URL.revokeObjectURL(url);
+      return false;
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    return true;
+  }
+
+  function openClickedPreviewPicture(img) {
+    const drawBlock = img.closest('.draw-block--preview');
+    if (drawBlock) {
+      const idx = parseInt(drawBlock.dataset.drawIndex, 10);
+      if (!Number.isFinite(idx) || !(userCanEdit || publicView)) return false;
+      openedDrawBlocks.add(idx);
+      renderPreviewWithScrollPreserved();
+      return true;
+    }
+    const drawioBlock = img.closest('.drawio-block--preview');
+    if (drawioBlock) {
+      const idx = parseInt(drawioBlock.dataset.drawioIndex, 10);
+      if (!Number.isFinite(idx) || !userCanEdit) return false;
+      openedDrawioBlocks.add(idx);
+      renderPreviewWithScrollPreserved();
+      return true;
+    }
+    return false;
+  }
+
   function onPreviewImageClick(e) {
     const img = e.target.closest('img');
     if (!img || !img.closest('#preview-content, .editor-preview-side, .editor-preview, #chat-messages')) return;
@@ -13210,10 +13477,19 @@ function formatTextWithMarkup(rawText) {
     if (img.closest('.calendar-unit-thumbs')) return;
     if (img.closest('.training-block, .dance-block')) return;
     if (img.closest('a[href][target="_blank"]')) return;
-    const src = img.currentSrc || img.getAttribute('src');
+    const src = img.getAttribute('src') || img.currentSrc || img.src;
     if (!src) return;
     e.preventDefault();
     e.stopPropagation();
+    if (img.classList.contains('draw-png') || img.classList.contains('drawio-png')) {
+      if (openClickedPreviewPicture(img)) return;
+      if (/^data:image\//i.test(src)) openDataImage(src);
+      return;
+    }
+    if (/^data:image\//i.test(src)) {
+      openDataImage(src);
+      return;
+    }
     const absoluteSrc = resolveFileHrefAbsolute(src);
     if (absoluteSrc) openManagedFileDirect(absoluteSrc);
   }
@@ -13519,9 +13795,14 @@ function formatTextWithMarkup(rawText) {
       const label = cfg.title || 'Darts';
       return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
     });
-    md = md.replace(/```(?:draw|sketch|doodle|drawing)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+    md = md.replace(/```(?:draw(?!io|\.io)|sketch|doodle|drawing)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
       const cfg = window.NotesProDraw?.parseFenceAttrs?.(fenceAttrs) || {};
       const label = cfg.title || 'Drawing';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
+    md = md.replace(/```(?:drawio|draw\.io|diagrams\.net)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const cfg = window.NotesProDrawio?.parseFenceAttrs?.(fenceAttrs) || {};
+      const label = cfg.title || 'Draw.io';
       return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
     });
     md = md.replace(/```snake(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
@@ -13666,6 +13947,7 @@ function formatTextWithMarkup(rawText) {
       md = parseCarromBlocks(md);
       md = parseDartBlocks(md);
       md = parseDrawBlocks(md);
+      md = parseDrawioBlocks(md);
       md = parseSnakeBlocks(md);
       md = parseMarbleblastBlocks(md);
       md = parseGalleryBlocks(md, options);
@@ -14135,6 +14417,7 @@ function formatTextWithMarkup(rawText) {
     hydrateCarromBlocks(preview);
     hydrateDartBlocks(preview);
     hydrateDrawBlocks(preview);
+    hydrateDrawioBlocks(preview);
     hydrateSnakeBlocks(preview);
     hydrateMarbleblastBlocks(preview);
     hydrateGalleryBlocks(preview);
@@ -14323,7 +14606,11 @@ function formatTextWithMarkup(rawText) {
     }
     if (editing && !userCanEdit) editing = false;
     isEditing = editing;
-    if (!editing) clearSheetBandSelection();
+    if (!editing) {
+      clearSheetBandSelection();
+      openedDrawBlocks.clear();
+      openedDrawioBlocks.clear();
+    }
     document.body.classList.toggle('editing', editing);
     const btn = document.getElementById('edit-toggle');
     if (btn) btn.textContent = editing ? 'Preview' : 'Edit';
@@ -21384,6 +21671,12 @@ function formatTextWithMarkup(rawText) {
           className: 'fa fa-pencil',
           title: 'Insert drawing area',
         },
+        {
+          name: 'insert-drawio',
+          action: (editor) => insertFenceBlock(editor, 'drawio{fullscreen;title=Diagram;ui=dark}', ''),
+          className: 'fa fa-sitemap',
+          title: 'Insert Draw.io diagram',
+        },
         ...(window.APP_BOOT?.allowPhotos !== false ? [buildPhotosToolbarDropdown()] : []),
         ...(window.APP_BOOT?.allowGames !== false ? [buildGamesToolbarDropdown()] : []),
         {
@@ -21565,6 +21858,7 @@ function formatTextWithMarkup(rawText) {
 
   async function updateUserSettings(settingsDelta = {}) {
     try {
+      if (publicView) return false;
       syncWorkspaceIdFromDom();
       if (!workspaceId) return false;
 
@@ -22129,6 +22423,8 @@ function formatTextWithMarkup(rawText) {
 
     try {
       setStatus('Loading...');
+      openedDrawBlocks.clear();
+      openedDrawioBlocks.clear();
       currentPage = await api(`api/pages/${pageId}/`);
       applyPageToEditor(currentPage, { fromHistory });
       await offlineCachePage(currentPage);
@@ -22275,7 +22571,7 @@ function formatTextWithMarkup(rawText) {
     if (suppressPreviewRefresh) return;
     const active = document.activeElement;
     if (active?.classList?.contains('sheet-cell-editable')) return;
-    if (active?.closest?.('.voice-block, .jukebox-block, .checklist-block, .form-widget, .draw-block')) return;
+    if (active?.closest?.('.voice-block, .jukebox-block, .checklist-block, .form-widget, .draw-block, .drawio-block')) return;
     capturePreviewScrollPosition();
     clearTimeout(previewRefreshTimer);
     previewRefreshTimer = setTimeout(() => {
@@ -22510,6 +22806,15 @@ function formatTextWithMarkup(rawText) {
     return true;
   }
 
+  function dragHasMailPayload(event) {
+    const types = [...(event.dataTransfer?.types || [])];
+    return types.includes('text/html') || types.includes('text/uri-list') || types.includes('text/x-moz-url');
+  }
+
+  function editorDropBlockedTarget(event) {
+    return event.target?.closest?.('.calendar-unit, .calendar-week-header, .gallery-block, .puzzle-block, .ghosttrain-block, .rollercoast-block, .scooter-block, .photocube-block, .photobook-block, .carousel-block, .labyrinth-block, .shop-block');
+  }
+
   function bindEditorFileDrop() {
     const wrap = document.getElementById('markdown-wrap');
     const preview = document.getElementById('preview-content');
@@ -22520,24 +22825,34 @@ function formatTextWithMarkup(rawText) {
       if (!userCanEdit) return;
       const fromList = Boolean(managedFileDrag);
       const fromOs = dragHasFiles(event);
-      if (!fromList && !fromOs) return;
-      if (fromOs && event.currentTarget === preview && event.target?.closest?.('.calendar-unit, .calendar-week-header, .gallery-block, .puzzle-block, .ghosttrain-block, .rollercoast-block, .scooter-block, .photocube-block, .photobook-block, .carousel-block, .labyrinth-block, .shop-block')) {
+      const mailDrag = dragHasMailPayload(event);
+      if (!fromList && !fromOs && !mailDrag) return;
+      if ((fromOs || mailDrag) && event.currentTarget === preview && editorDropBlockedTarget(event)) {
         return;
       }
       event.preventDefault();
       if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
-      mark(true);
+      if (fromList || fromOs) mark(true);
     };
     const onDrop = async (event) => {
       const fromList = Boolean(managedFileDrag);
       const fromOs = dragHasFiles(event);
-      if (!fromList && !fromOs) return;
-      if (fromOs && event.currentTarget === preview && event.target?.closest?.('.calendar-unit, .calendar-week-header, .gallery-block, .puzzle-block, .ghosttrain-block, .rollercoast-block, .scooter-block, .photocube-block, .photobook-block, .carousel-block, .labyrinth-block, .shop-block')) {
+      const mailDrag = dragHasMailPayload(event);
+      if (!fromList && !fromOs && !mailDrag) return;
+      if ((fromOs || mailDrag) && event.currentTarget === preview && editorDropBlockedTarget(event)) {
         return;
       }
       mark(false);
       if (fromList) {
         dropManagedFileIntoEditor(event);
+        return;
+      }
+      if (await tryDropMailMessage(event)) return;
+      if (!fromOs) {
+        if (event.currentTarget === preview) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
         return;
       }
       event.preventDefault();
@@ -22608,7 +22923,7 @@ function formatTextWithMarkup(rawText) {
   function syncWorkspaceOwnerControls(selectedOption) {
     const isOwner = selectedOption?.dataset?.ownerId
       && String(selectedOption.dataset.ownerId) === String(currentUserId);
-    ['ws-rename-btn', 'ws-delete-btn'].forEach(id => {
+    ['ws-settings-btn', 'ws-rename-btn', 'ws-delete-btn'].forEach(id => {
       document.getElementById(id)?.classList.toggle('d-none', !isOwner);
     });
   }
@@ -23661,6 +23976,11 @@ function formatTextWithMarkup(rawText) {
       option.textContent = ws.name;
       if (ws.slug) option.dataset.slug = ws.slug;
       if (currentUserId) option.dataset.ownerId = String(currentUserId);
+      if (currentUserName) option.dataset.owner = currentUserName;
+      option.dataset.public = '0';
+      option.dataset.root = '0';
+      option.dataset.ws = '0';
+      option.dataset.publicUrl = '';
       select.appendChild(option);
       sortWorkspaceSelect();
       select.value = ws.id;
@@ -23695,7 +24015,12 @@ function formatTextWithMarkup(rawText) {
             newOption.textContent = result.name || name.trim();
             newOption.dataset.name = result.name || name.trim();
             if (currentUserId) newOption.dataset.ownerId = String(currentUserId);
+            if (currentUserName) newOption.dataset.owner = currentUserName;
             if (result.slug) newOption.dataset.slug = result.slug;
+            newOption.dataset.public = '0';
+            newOption.dataset.root = '0';
+            newOption.dataset.ws = '0';
+            newOption.dataset.publicUrl = '';
             select.appendChild(newOption);
             sortWorkspaceSelect();
             select.value = String(result.id);
@@ -23778,6 +24103,11 @@ function formatTextWithMarkup(rawText) {
       option.dataset.name = result.name || wsName;
       if (result.slug) option.dataset.slug = result.slug;
       if (currentUserId) option.dataset.ownerId = String(currentUserId);
+      if (currentUserName) option.dataset.owner = currentUserName;
+      option.dataset.public = '0';
+      option.dataset.root = '0';
+      option.dataset.ws = '0';
+      option.dataset.publicUrl = '';
       select.appendChild(option);
       sortWorkspaceSelect();
       select.value = option.value;
@@ -24361,8 +24691,77 @@ function formatTextWithMarkup(rawText) {
     if (isOwner) syncUserEditAccess(true, 'write');
   }
 
+  function publicTreeNodeMeta(node) {
+    return node?.data || node?.original?.data || {};
+  }
+
+  async function loadPublicTreePage(node) {
+    const meta = publicTreeNodeMeta(node);
+    const owner = meta.owner || '';
+    const workspaceSlug = meta.workspace_slug || '';
+    const pageSlug = meta.slug || '';
+    const pageId = parsePageId(node?.id);
+    if (!owner || !workspaceSlug || !pageSlug || !pageId) return;
+    if (String(currentPageId) === String(pageId)) {
+      openTreeAncestors(node.id);
+      return;
+    }
+    try {
+      setStatus('Loading...');
+      const page = await api(
+        `api/public/${encodeURIComponent(owner)}/${encodeURIComponent(workspaceSlug)}/${encodeURIComponent(pageSlug)}/`
+      );
+      applyPageToEditor(page, { fromHistory: true, statusText: '' });
+      openTreeAncestors(node.id);
+    } catch (err) {
+      setStatus(err.message || 'Failed to load page');
+    }
+  }
+
+  function bootPublicTree(data) {
+    const select = document.getElementById('workspace-select');
+    if (select) select.disabled = true;
+    const pageId = window.APP_BOOT?.publicPage?.id || window.APP_BOOT?.pageId;
+    $('#tree').on('ready.jstree', () => {
+      if (pageId) selectTreeNode(pageId, true);
+    });
+    $('#tree').on('select_node.jstree', (_event, payload) => {
+      const node = payload?.node;
+      if (!node) return;
+      const tree = $('#tree').jstree(true);
+      if (isTreeFolder(node)) {
+        tree?.open_node(node.id);
+        return;
+      }
+      void loadPublicTreePage(node);
+    });
+    $('#tree').jstree({
+      core: {
+        data,
+        check_callback: () => false,
+        multiple: false,
+      },
+      plugins: ['types', 'search'],
+      types: {
+        default: { valid_children: ['folder', 'page'] },
+        folder: { icon: 'jstree-folder', valid_children: ['folder', 'page'] },
+        page: { icon: 'jstree-file', valid_children: [] },
+      },
+    });
+    let searchTimer = null;
+    document.getElementById('tree-search')?.addEventListener('keyup', function () {
+      if (searchTimer) clearTimeout(searchTimer);
+      const value = this.value;
+      searchTimer = setTimeout(() => $('#tree').jstree(true)?.search(value), 200);
+    });
+  }
+
   function bootPublicPage() {
     document.body.classList.add('public-page');
+    const publicTree = window.APP_BOOT?.publicTree;
+    if (Array.isArray(publicTree) && publicTree.length) {
+      document.body.classList.add('public-tree');
+    }
     syncVisualViewportHeight();
     userCanEdit = false;
     initMarked();
@@ -24380,6 +24779,16 @@ function formatTextWithMarkup(rawText) {
     setEditing(false);
     const page = window.APP_BOOT?.publicPage;
     if (page) applyPageToEditor(page, { fromHistory: true, statusText: '' });
+    if (Array.isArray(publicTree) && publicTree.length) {
+      applyLayoutFromSettings();
+      if (isMobileLayout()) {
+        const shell = document.querySelector('.app-shell');
+        shell?.style.setProperty('--sidebar-width', `${getMobileSidebarWidth(SIDEBAR_DEFAULT)}px`);
+      }
+      initLeftSplitter();
+      document.getElementById('toggle-left')?.addEventListener('click', toggleLeftPanel);
+      bootPublicTree(publicTree);
+    }
     if (window.APP_BOOT?.tagWebSocketEnabled) {
       syncWorkspaceIdFromDom();
       resetTagTransport();
@@ -24435,6 +24844,7 @@ function formatTextWithMarkup(rawText) {
   initCalendarNoteEditors();
   initAppSettings();
   initPageSettings();
+  initWorkspaceSettings();
   initLeavePageGuard();
   initGanttNoteEditors();
   initKanbanEditors();
@@ -24580,12 +24990,19 @@ function formatTextWithMarkup(rawText) {
     const mime = match[1] || 'image/png';
     const payload = match[3] || '';
     let bytes;
-    if (match[2]) {
-      const binary = atob(payload.replace(/\s/g, ''));
-      bytes = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-    } else {
-      bytes = new TextEncoder().encode(decodeURIComponent(payload));
+    try {
+      if (match[2]) {
+        let b64 = payload.replace(/\s/g, '').replace(/-/g, '+').replace(/_/g, '/');
+        const pad = b64.length % 4;
+        if (pad) b64 += '='.repeat(4 - pad);
+        const binary = atob(b64);
+        bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+      } else {
+        bytes = new TextEncoder().encode(decodeURIComponent(payload));
+      }
+    } catch (err) {
+      return null;
     }
     const ext = /jpe?g/i.test(mime) ? 'jpg' : /gif/i.test(mime) ? 'gif' : /webp/i.test(mime) ? 'webp' : 'png';
     return { blob: new Blob([bytes], { type: mime }), name: `paste.${ext}` };
@@ -24655,14 +25072,89 @@ function formatTextWithMarkup(rawText) {
     return output.replace(/[ \t]+\n/g, '\n').replace(/\n{4,}/g, '\n\n\n').trim();
   }
 
+  function mailTransferParts(data) {
+    return {
+      html: data?.getData?.('text/html') || '',
+      plain: data?.getData?.('text/plain') || '',
+      uri: data?.getData?.('text/uri-list') || data?.getData?.('URL') || '',
+    };
+  }
+
+  function mailMarkdownFromTransfer(data) {
+    const engine = window.NotesProOutlookPaste;
+    const parts = mailTransferParts(data);
+    if (!engine?.shouldHandle?.(parts.html, parts.plain, parts.uri)) return null;
+    if (engine.isWordOrOutlookHtml?.(parts.html) || engine.isGmailHtml?.(parts.html)) {
+      const converted = engine.htmlToMarkdown(parts.html);
+      return {
+        markdown: converted.markdown || engine.formatPlainHeaders?.(parts.plain) || parts.plain,
+        images: converted.images || [],
+        plain: parts.plain,
+      };
+    }
+    const link = engine.mailClientLinkMarkdown?.(parts.html, parts.plain, parts.uri);
+    if (link) return { markdown: link, images: [], plain: parts.plain };
+    return {
+      markdown: engine.formatPlainHeaders?.(parts.plain) || parts.plain,
+      images: [],
+      plain: parts.plain,
+    };
+  }
+
+  async function writeMailMarkdown(doc, startMark, endMark, prepared, data) {
+    const engine = window.NotesProOutlookPaste;
+    let markdown = prepared?.markdown || '';
+    if (prepared?.images?.length) {
+      markdown = await resolveOutlookImages(markdown, prepared.images, data);
+    }
+    if (!insertOutlookMarkdown(doc, startMark, endMark, markdown)) {
+      insertOutlookMarkdown(doc, startMark, endMark, engine?.formatPlainHeaders?.(prepared?.plain) || prepared?.plain || '');
+    }
+  }
+
+  function isEmlFile(file) {
+    const name = String(file?.name || '');
+    const type = String(file?.type || '');
+    return /\.eml$/i.test(name) || /message\/rfc822/i.test(type);
+  }
+
+  async function insertDroppedEmlFiles(files, point) {
+    const engine = window.NotesProOutlookPaste;
+    if (!engine?.emlToMarkdown || !easyMDE?.codemirror) return false;
+    ensureEditingForInsert();
+    if (point) moveEditorCursorToPoint(point.x, point.y);
+    const doc = easyMDE.codemirror.getDoc();
+    const startMark = doc.setBookmark(doc.getCursor('from'), { insertLeft: true });
+    const endMark = doc.setBookmark(doc.getCursor('to'), { insertLeft: false });
+    try {
+      const blocks = [];
+      const images = [];
+      for (const file of files) {
+        const converted = engine.emlToMarkdown(await file.text());
+        let block = converted?.markdown || '';
+        (converted?.images || []).forEach((image) => {
+          const next = images.length;
+          block = block.split(`%%NPIMG${image.id}%%`).join(`%%NPIMG${next}%%`);
+          images.push({ ...image, id: next });
+        });
+        if (block) blocks.push(block);
+      }
+      let markdown = blocks.join('\n\n');
+      if (images.length) markdown = await resolveOutlookImages(markdown, images, null);
+      if (!insertOutlookMarkdown(doc, startMark, endMark, markdown)) return false;
+      return true;
+    } finally {
+      startMark.clear();
+      endMark.clear();
+    }
+  }
+
   function tryPasteOutlookMessage(event) {
     if (!userCanEdit || !easyMDE?.codemirror) return false;
     if (!isEditorSurface(event.target)) return false;
     const data = event.clipboardData || event.originalEvent?.clipboardData;
-    const html = data?.getData?.('text/html') || '';
-    const plain = data?.getData?.('text/plain') || '';
-    const engine = window.NotesProOutlookPaste;
-    if (!engine?.shouldHandle?.(html, plain)) return false;
+    const prepared = mailMarkdownFromTransfer(data);
+    if (!prepared) return false;
     event.preventDefault();
     event.stopPropagation();
     event.codemirrorIgnore = true;
@@ -24671,28 +25163,49 @@ function formatTextWithMarkup(rawText) {
     const endMark = doc.setBookmark(doc.getCursor('to'), { insertLeft: false });
     void (async () => {
       try {
-        let markdown = plain;
-        let images = [];
-        if (engine.isWordOrOutlookHtml(html)) {
-          const converted = engine.htmlToMarkdown(html);
-          markdown = converted.markdown || engine.formatPlainHeaders(plain) || plain;
-          images = converted.images || [];
-        } else {
-          markdown = engine.formatPlainHeaders(plain) || plain;
-        }
-        if (images.length) markdown = await resolveOutlookImages(markdown, images, data);
-        if (!insertOutlookMarkdown(doc, startMark, endMark, markdown)) {
-          insertOutlookMarkdown(doc, startMark, endMark, plain);
-        }
+        await writeMailMarkdown(doc, startMark, endMark, prepared, data);
       } catch (err) {
-        showToast(err.message || 'Could not paste the Outlook message.', 'danger');
-        insertOutlookMarkdown(doc, startMark, endMark, engine.formatPlainHeaders(plain) || plain);
+        showToast(err.message || 'Could not paste the mail message.', 'danger');
+        insertOutlookMarkdown(doc, startMark, endMark, window.NotesProOutlookPaste?.formatPlainHeaders?.(prepared.plain) || prepared.plain);
       } finally {
         startMark.clear();
         endMark.clear();
       }
     })();
     return true;
+  }
+
+  async function tryDropMailMessage(event) {
+    if (!userCanEdit || !easyMDE?.codemirror) return false;
+    const data = event.dataTransfer;
+    if (!data) return false;
+    const prepared = mailMarkdownFromTransfer(data);
+    const files = [...(data.files || [])];
+    const emlFiles = files.filter(isEmlFile);
+    if (!prepared && !emlFiles.length) return false;
+    event.preventDefault();
+    event.stopPropagation();
+    const point = { x: event.clientX, y: event.clientY };
+    try {
+      if (prepared) {
+        ensureEditingForInsert();
+        moveEditorCursorToPoint(point.x, point.y);
+        const doc = easyMDE.codemirror.getDoc();
+        const startMark = doc.setBookmark(doc.getCursor('from'), { insertLeft: true });
+        const endMark = doc.setBookmark(doc.getCursor('to'), { insertLeft: false });
+        try {
+          await writeMailMarkdown(doc, startMark, endMark, prepared, data);
+        } finally {
+          startMark.clear();
+          endMark.clear();
+        }
+        return true;
+      }
+      return await insertDroppedEmlFiles(emlFiles, point);
+    } catch (err) {
+      showToast(err.message || 'Could not drop the mail message.', 'danger');
+      return false;
+    }
   }
 
   document.addEventListener('paste', function (event) {
@@ -24708,7 +25221,7 @@ function formatTextWithMarkup(rawText) {
     if (tryPasteImageUrlsIntoKeep(event)) return;
     const data = event.clipboardData || event.originalEvent?.clipboardData;
     const pasteFiles = clipboardImageFiles(data);
-    if (event.target.closest?.('.puzzle-block, .gallery-block, .training-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .backgammon-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .carambole-block, .carrom-block, .dart-block, .draw-block, .snake-block, .marbleblast-block, .voice-block, .jukebox-block, .calendar-block, #calendar-note-modal')) return;
+    if (event.target.closest?.('.puzzle-block, .gallery-block, .training-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .backgammon-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .carambole-block, .carrom-block, .dart-block, .draw-block, .drawio-block, .snake-block, .marbleblast-block, .voice-block, .jukebox-block, .calendar-block, #calendar-note-modal')) return;
     if (!pasteFiles.length) {
       const text = data?.getData?.('text/plain') || '';
       const fromText = pastedPlainImageUrls(text);

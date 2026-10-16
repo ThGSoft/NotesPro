@@ -13,9 +13,19 @@ from . import ip_logging
 urlpatterns = [
     path('', views.site_entry, name='dashboard'),
     path(
+        'p/<str:owner>/<slug:workspace_slug>/',
+        views.public_workspace,
+        name='public_workspace',
+    ),
+    path(
         'p/<str:owner>/<slug:workspace_slug>/<slug:page_slug>/',
         views.public_page,
         name='public_page',
+    ),
+    path(
+        'api/public/<str:owner>/<slug:workspace_slug>/<slug:page_slug>/',
+        views.public_page_json,
+        name='public_page_json',
     ),
     path(
         'api/public/<str:owner>/<slug:workspace_slug>/<slug:page_slug>/shop-order/',

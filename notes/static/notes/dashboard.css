@@ -3352,19 +3352,41 @@ body.jukebox-standalone.has-jukebox-dock {
   padding-bottom: 0;
 }
 
-body.public-page .sidebar,
-body.public-page #left-panel,
-body.public-page #left-splitter,
+body.public-page:not(.public-tree) .sidebar,
+body.public-page:not(.public-tree) #left-panel,
+body.public-page:not(.public-tree) #left-splitter,
+body.public-page:not(.public-tree) #toggle-left,
 body.public-page .right-panel,
 body.public-page #right-panel,
 body.public-page #right-splitter,
-body.public-page #toggle-left,
 body.public-page #quick-notes-wrap,
 body.public-page .mobile-page-fabs {
   display: none !important;
 }
 
-body.public-page .app-shell {
+body.public-page.public-tree .tree-actions,
+body.public-page.public-tree #ws-add-btn,
+body.public-page.public-tree #ws-settings-btn,
+body.public-page.public-tree #ws-rename-btn,
+body.public-page.public-tree #ws-delete-btn,
+body.public-page.public-tree #tag-search,
+body.public-page.public-tree #tag-rebuild-btn,
+body.public-page.public-tree #tag-search-results,
+body.public-page.public-tree #tag-suggestions,
+body.public-page.public-tree .sidebar .panel-card ~ .panel-card {
+  display: none !important;
+}
+
+body.public-page.public-tree #workspace-select,
+body.public-page.public-tree .workspace-row .btn-group {
+  pointer-events: none;
+}
+
+body.public-page.public-tree .workspace-row .btn-group {
+  display: none !important;
+}
+
+body.public-page:not(.public-tree) .app-shell {
   --sidebar-width: 0px;
   --splitter-width: 0px;
   --right-width: 0px;
@@ -3376,15 +3398,24 @@ body.public-page .app-shell {
   max-height: var(--vvh, 100dvh);
 }
 
+body.public-page.public-tree .app-shell {
+  --right-width: 0px;
+  --right-splitter-width: 0px;
+  grid-template-columns: var(--sidebar-width) var(--splitter-width) minmax(0, 1fr) !important;
+  height: 100vh;
+  height: var(--vvh, 100dvh);
+  max-height: var(--vvh, 100dvh);
+}
+
 body.public-page .preview-content {
   padding-bottom: calc(28px + env(safe-area-inset-bottom));
   -webkit-overflow-scrolling: touch;
 }
 
-body.public-page .main-pane,
-body.public-page:not(.editing) .main-pane,
-body.public-page .app-shell:has(.editor-wrap--preview-only) .main-pane,
-body.public-page .app-shell:has(.right-panel:not(.collapsed)) .main-pane {
+body.public-page:not(.public-tree) .main-pane,
+body.public-page:not(.public-tree):not(.editing) .main-pane,
+body.public-page:not(.public-tree) .app-shell:has(.editor-wrap--preview-only) .main-pane,
+body.public-page:not(.public-tree) .app-shell:has(.right-panel:not(.collapsed)) .main-pane {
   grid-column: 1 !important;
   grid-row: 2 !important;
 }
@@ -12729,7 +12760,14 @@ body.mobile-layout .sokoban-tips__controls--mobile {
   position: relative;
   z-index: 4;
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
   margin-bottom: 8px;
+}
+.draw-height-label {
+  font: 600 13px/1 system-ui, sans-serif;
+  color: var(--draw-meta);
 }
 .draw-tools-pop {
   position: absolute;
@@ -12793,8 +12831,12 @@ body.mobile-layout .sokoban-tips__controls--mobile {
   border-color: var(--draw-accent);
   color: #111;
 }
+.draw-canvas--fill { cursor: crosshair; }
 .draw-canvas--erase { cursor: cell; }
 .draw-canvas--line { cursor: crosshair; }
+.draw-canvas--rect { cursor: crosshair; }
+.draw-canvas--rect-move { cursor: move; }
+.draw-canvas--move { cursor: move; }
 .draw-canvas--text { cursor: text; touch-action: manipulation; }
 .draw-block--texting { z-index: 8; }
 .draw-stage {
@@ -12849,13 +12891,33 @@ body.mobile-layout .sokoban-tips__controls--mobile {
   color: #1e293b;
   font: 600 16px/1.2 system-ui, sans-serif;
 }
-.draw-canvas {
+.draw-canvas,
+.draw-png {
   display: block;
   width: 100%;
   height: auto;
+  aspect-ratio: 960 / var(--draw-sheet-h, 540);
+}
+.draw-canvas {
   touch-action: none;
   cursor: crosshair;
   user-select: none;
+}
+.draw-block--preview {
+  padding-top: 0;
+  padding-bottom: 0;
+  background: transparent;
+  border-color: transparent;
+}
+.draw-block--preview .draw-stage {
+  box-shadow: none;
+}
+.draw-block--preview .game-fullscreen-btn { display: none; }
+.draw-block--preview .draw-png { cursor: pointer; }
+.draw-block--frozen .draw-canvas {
+  cursor: default;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 2px rgba(148, 163, 184, 0.7);
 }
 .draw-hint {
   margin: 8px 0 0;
@@ -12870,7 +12932,8 @@ body.mobile-layout .sokoban-tips__controls--mobile {
   border: none;
   border-radius: 0;
   border-left: none;
-  min-height: min(85vh, 900px);
+  min-height: 0;
+  height: auto;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -12887,43 +12950,200 @@ body.mobile-layout .sokoban-tips__controls--mobile {
   border-radius: 0;
   display: flex;
   flex-direction: column;
+  overflow: auto;
   background: var(--draw-chrome, #1e1e2e);
 }
 .draw-block:fullscreen .draw-stage,
 .draw-block:-webkit-full-screen .draw-stage,
 .draw-block--fullscreen .draw-stage {
-  flex: 1 1 0;
+  flex: 0 0 auto;
   min-height: 0;
+  height: auto;
   display: flex;
+  flex-direction: column;
   align-items: stretch;
 }
 .draw-block:fullscreen .draw-canvas,
 .draw-block:-webkit-full-screen .draw-canvas,
-.draw-block--fullscreen .draw-canvas {
-  flex: 1 1 auto;
+.draw-block--fullscreen .draw-canvas,
+.draw-block:fullscreen .draw-png,
+.draw-block:-webkit-full-screen .draw-png,
+.draw-block--fullscreen .draw-png {
+  flex: 0 0 auto;
   width: 100%;
-  height: 100%;
+  height: auto;
   min-height: 0;
   align-self: stretch;
-  object-fit: fill;
+  object-fit: contain;
+}
+.draw-block--preview.draw-block--fullscreen {
+  padding: 0 12px;
 }
 .editor-wrap--preview-only .preview-content:has(> .draw-block--fullscreen:only-child),
 .editor-wrap--split .preview-content:has(> .draw-block--fullscreen:only-child) {
   padding: 0;
-  overflow: hidden;
+  overflow: auto;
   display: flex;
   flex-direction: column;
 }
 .editor-wrap--preview-only .preview-content > .draw-block--fullscreen:only-child,
 .editor-wrap--split .preview-content > .draw-block--fullscreen:only-child {
-  flex: 1 1 auto;
-  min-height: 0;
-  height: 100%;
-  max-height: 100%;
+  flex: 0 0 auto;
+  min-height: 100%;
+  height: auto;
+  max-height: none;
 }
 @media (pointer: coarse), (max-width: 900px) {
   .draw-block { width: 100%; }
   .draw-toolbar .btn { min-height: 44px; }
+}
+
+/* --- Draw.io --- */
+.drawio-block {
+  --drawio-chrome: var(--panel, #1e1e2e);
+  --drawio-border: var(--line, #3b3b52);
+  --drawio-title: var(--text, #e2e8f0);
+  --drawio-meta: var(--muted, #94a3b8);
+  --drawio-accent: #38bdf8;
+  --drawio-h: 640px;
+  position: relative;
+  border: 1px solid var(--drawio-border);
+  border-left: 4px solid var(--drawio-accent);
+  background: var(--drawio-chrome);
+  border-radius: 14px;
+  padding: 14px 16px 16px;
+  margin: 16px 0;
+  width: min(100%, 1100px);
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.drawio-block--info { --drawio-accent: #38bdf8; }
+.drawio-block--success { --drawio-accent: #4ade80; }
+.drawio-block--warning { --drawio-accent: #fbbf24; }
+.drawio-block--danger { --drawio-accent: #f87171; }
+.drawio-block--note { --drawio-accent: #94a3b8; }
+.drawio-block--custom { background: var(--drawio-chrome); }
+.drawio-block--error {
+  color: var(--drawio-meta);
+  padding: 16px;
+}
+.drawio-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin: 0 44px 8px 0;
+  min-height: 1.4rem;
+}
+.drawio-title {
+  font-weight: 700;
+  color: var(--drawio-title);
+}
+.drawio-status {
+  font-size: 0.82rem;
+  color: var(--drawio-meta);
+}
+.drawio-stage {
+  height: var(--drawio-h, 640px);
+  min-height: 320px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #0f172a;
+}
+.drawio-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #0f172a;
+}
+.drawio-store { display: none; }
+.drawio-block--preview {
+  position: relative;
+  overflow: hidden;
+  width: min(100%, 1100px);
+  padding: 0;
+  border: none;
+  border-left: none;
+  background: transparent;
+}
+.drawio-block--preview .game-fullscreen-btn { display: none; }
+.drawio-block--preview .drawio-stage {
+  position: relative;
+  height: var(--drawio-h, 640px);
+  min-height: 320px;
+  background: transparent;
+  overflow: hidden;
+}
+.drawio-block--preview .drawio-status {
+  position: absolute;
+  z-index: 1;
+  margin: 0;
+}
+.drawio-block--preview .drawio-status:empty { display: none; }
+.drawio-block--preview .drawio-png {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  cursor: pointer;
+}
+.drawio-block--preview .drawio-png:not([src]) { display: none; }
+.drawio-block--preview .drawio-frame {
+  position: absolute;
+  width: 960px;
+  height: 640px;
+  left: -12000px;
+  top: 0;
+  opacity: 0;
+  border: 0;
+  pointer-events: none;
+}
+.drawio-block--fullscreen {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  border-left: none;
+}
+.drawio-block:fullscreen,
+.drawio-block:-webkit-full-screen,
+.drawio-block.game-block--monitor-fullscreen {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--drawio-chrome, #1e1e2e);
+}
+.drawio-block:fullscreen .drawio-stage,
+.drawio-block:-webkit-full-screen .drawio-stage,
+.drawio-block.game-block--monitor-fullscreen .drawio-stage {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
+}
+.editor-wrap--preview-only .preview-content:has(> .drawio-block--fullscreen:only-child),
+.editor-wrap--split .preview-content:has(> .drawio-block--fullscreen:only-child) {
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.editor-wrap--preview-only .preview-content > .drawio-block--fullscreen:only-child,
+.editor-wrap--split .preview-content > .drawio-block--fullscreen:only-child {
+  flex: 1 1 auto;
+  min-height: var(--drawio-h, 640px);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.editor-wrap--preview-only .preview-content > .drawio-block--fullscreen:only-child .drawio-stage,
+.editor-wrap--split .preview-content > .drawio-block--fullscreen:only-child .drawio-stage {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: var(--drawio-h, 640px);
+}
+@media (pointer: coarse), (max-width: 900px) {
+  .drawio-block { width: 100%; }
 }
 
 /* --- Carambole --- */

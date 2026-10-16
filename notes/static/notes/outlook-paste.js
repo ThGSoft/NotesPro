@@ -1,5 +1,5 @@
 /**
- * Paste an Outlook / Word message the way Word does:
+ * Paste or drop an Outlook / Gmail message the way Word does:
  * bold header lines, formatted body, lists, tables, links, and inline images.
  */
 (function (root, factory) {
@@ -16,6 +16,8 @@
   const SKIP_TAGS = new Set(['STYLE', 'SCRIPT', 'HEAD', 'META', 'LINK', 'TITLE', 'XML', 'NOSCRIPT']);
   const HEADER_LINE = /^(from|von|de|van|da|od|från|fra|lähettäjä|feladó|sent|gesendet|envoyé|envoye|enviado|inviato|verzonden|skickat|sendt|lähetetty|elküldve|date|datum|to|an|à|para|aan|till|til|vastaanottaja|címzett|cc|bcc|kopie|blindkopie|reply-to|antwort-an|subject|betreff|objet|asunto|oggetto|onderwerp|ämne|emne|aihe|tárgy|tema)\s*:\s*\S/i;
   const SUBJECT_LABEL = /^(subject|betreff|objet|asunto|oggetto|onderwerp|ämne|emne|aihe|tárgy|tema)$/i;
+  const FORWARD_BANNER = /^(?:-{5,}\s*(?:forwarded message|weitergeleitete nachricht)\s*-{5,}|-{5}\s*original message\s*-{5}|begin forwarded message:)$/i;
+  const MAIL_CLIENT_URL = /https?:\/\/(?:mail\.google\.com|outlook\.office(?:365)?\.com|outlook\.live\.com)\/[^\s"'<>\\]+/i;
   const SENT_LABEL = /^(sent|gesendet|envoyé|envoye|enviado|inviato|verzonden|skickat|sendt|lähetetty|elküldve|date|datum)$/i;
   const MAIL_LABEL = /^(from|von|de|van|da|od|sent|gesendet|envoyé|envoye|enviado|inviato|verzonden|skickat|sendt|to|an|à|para|cc|bcc|subject|betreff|objet|asunto|oggetto|date|datum)$/i;
   const NO_FLAGS = { bold: false, italic: false, strike: false, underline: false, code: false, style: '' };
@@ -77,11 +79,43 @@
     return /schemas-microsoft-com:(?:office|vml)|mso-|MsoNormal|MsoList|WordSection\d|elementToProof|Word\.Document|content\s*=\s*["']Microsoft (?:Word|Outlook)|class\s*=\s*["']?Mso/i.test(raw);
   }
 
+  function isGmailHtml(html) {
+    const raw = String(html || '');
+    if (!/<[a-z!/]/i.test(raw)) return false;
+    return /gmail_(?:quote|attr|signature|default|chip|sendername)|data-smartmail\s*=|id\s*=\s*["']gmail-/i.test(raw);
+  }
+
+  function firstMailClientUrl(value) {
+    const match = String(value || '').match(MAIL_CLIENT_URL);
+    if (!match) return '';
+    return match[0].replace(/&amp;/gi, '&').replace(/[)\].,>]+$/g, '');
+  }
+
+  function mailClientLinkMarkdown(html, plain, uri) {
+    if (isWordOrOutlookHtml(html) || isGmailHtml(html)) return '';
+    const url = firstMailClientUrl(uri) || firstMailClientUrl(html) || firstMailClientUrl(plain);
+    if (!url) return '';
+    const text = String(html || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    const label = String(plain || '').trim();
+    if (text && label && text !== label && text.length > label.length + 80) return '';
+    const safe = (label && !firstMailClientUrl(label) ? label : (text || 'Mail'))
+      .replace(/[\[\]]/g, '')
+      .trim()
+      .slice(0, 180) || 'Mail';
+    return `[${safe}](${url})`;
+  }
+
   function formatPlainHeaders(plain) {
     const lines = String(plain || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
     let i = 0;
     if (lines[0] && lines[0].charCodeAt(0) === 0xFEFF) lines[0] = lines[0].slice(1);
-    if (lines[i] && !lines[i].trim()) i += 1;
+    while (lines[i] && !lines[i].trim()) i += 1;
+    let banner = '';
+    if (lines[i] && FORWARD_BANNER.test(lines[i].trim())) {
+      banner = lines[i].trim();
+      i += 1;
+      while (lines[i] && !lines[i].trim()) i += 1;
+    }
     const header = [];
     while (i < lines.length && header.length < 8) {
       const line = lines[i].trim();
@@ -99,11 +133,13 @@
     if (!hasSubject || !looksMail) return null;
     while (i < lines.length && !lines[i].trim()) i += 1;
     const body = lines.slice(i).join('\n').trim();
-    return body ? `${blob}\n\n${body}` : blob;
+    const head = banner ? `${banner}\n${blob}` : blob;
+    return body ? `${head}\n\n${body}` : head;
   }
 
-  function shouldHandle(html, plain) {
-    if (isWordOrOutlookHtml(html)) return true;
+  function shouldHandle(html, plain, uri) {
+    if (isWordOrOutlookHtml(html) || isGmailHtml(html)) return true;
+    if (mailClientLinkMarkdown(html, plain, uri)) return true;
     if (String(html || '').trim()) return false;
     return Boolean(formatPlainHeaders(plain));
   }
@@ -592,6 +628,49 @@
     return chunks;
   }
 
+  function simplifyHeaderValue(value) {
+    return String(value || '')
+      .replace(/\*\*([^*]+)\*\*/g, '$1')
+      .replace(/\[([^\]]+)\]\(mailto:[^)]+\)/gi, '$1')
+      .replace(/[ \t]{2,}/g, ' ')
+      .trim();
+  }
+
+  function styleLooseMailHeaders(markdown) {
+    const lines = String(markdown || '').split('\n');
+    let i = 0;
+    while (i < lines.length) {
+      const trimmed = lines[i].trim();
+      if (!trimmed || FORWARD_BANNER.test(trimmed) || /^\s*(?:>\s*)*\*\*/.test(lines[i])) {
+        i += 1;
+        continue;
+      }
+      if (!HEADER_LINE.test(trimmed)) {
+        i += 1;
+        continue;
+      }
+      const idxs = [];
+      while (i < lines.length && idxs.length < 8) {
+        const line = lines[i].trim();
+        if (!line || !HEADER_LINE.test(line) || /^\s*(?:>\s*)*\*\*/.test(lines[i])) break;
+        idxs.push(i);
+        i += 1;
+      }
+      if (idxs.length < 2) continue;
+      const blob = idxs.map((idx) => lines[idx]).join('\n');
+      const labels = idxs.map((idx) => (lines[idx].match(/^\s*(?:>\s*)*([^:]{1,40}?)\s*:/) || [])[1] || '');
+      const hasSubject = labels.some((label) => SUBJECT_LABEL.test(label.trim()));
+      const looksMail = /@/.test(blob) || labels.some((label) => SENT_LABEL.test(label.trim()));
+      if (!hasSubject || !looksMail) continue;
+      idxs.forEach((idx) => {
+        const match = lines[idx].match(/^(\s*(?:>\s*)*)([^:]{1,40}?)\s*:\s*(.*)$/);
+        if (!match) return;
+        lines[idx] = `${match[1]}**${match[2].trim()}:** ${simplifyHeaderValue(match[3])}`;
+      });
+    }
+    return lines.join('\n');
+  }
+
   function htmlToMarkdown(html) {
     const ctx = { images: [] };
     convertCtx = ctx;
@@ -601,12 +680,211 @@
       const root = doc.body || doc.documentElement;
       if (!root) return { markdown: '', images: [] };
       hoistListMarkers(root);
-      const markdown = joinBlocks(collectBlocks(root)).replace(/\n{4,}/g, '\n\n\n').trim();
+      const markdown = styleLooseMailHeaders(
+        joinBlocks(collectBlocks(root)).replace(/\n{4,}/g, '\n\n\n').trim(),
+      );
       return { markdown, images: ctx.images };
     } catch (err) {
       return { markdown: '', images: [] };
     } finally {
       convertCtx = null;
+    }
+  }
+
+  function decodeMimeWords(value) {
+    return String(value || '').replace(/=\?([^?]+)\?([BbQq])\?([^?]*)\?=/g, (_, charset, enc, data) => {
+      try {
+        if (String(enc).toUpperCase() === 'B') {
+          const bytes = Uint8Array.from(atob(data), (ch) => ch.charCodeAt(0));
+          return decodeBytes(bytes, charset);
+        }
+        const qp = data.replace(/_/g, ' ');
+        const bytes = [];
+        for (let i = 0; i < qp.length; i += 1) {
+          if (qp[i] === '=' && /[0-9A-Fa-f]{2}/.test(qp.slice(i + 1, i + 3))) {
+            bytes.push(parseInt(qp.slice(i + 1, i + 3), 16));
+            i += 2;
+          } else {
+            bytes.push(qp.charCodeAt(i));
+          }
+        }
+        return decodeBytes(new Uint8Array(bytes), charset);
+      } catch (_) {
+        return data;
+      }
+    });
+  }
+
+  function decodeBytes(bytes, charset) {
+    let name = String(charset || 'utf-8').trim().toLowerCase().replace(/^utf8$/, 'utf-8');
+    if (!name || name === 'ascii' || name === 'us-ascii') name = 'utf-8';
+    try {
+      return new TextDecoder(name).decode(bytes);
+    } catch (_) {
+      return new TextDecoder('utf-8').decode(bytes);
+    }
+  }
+
+  function decodeTransfer(body, encoding, charset) {
+    const enc = String(encoding || '').trim().toLowerCase();
+    const raw = String(body || '').replace(/\r\n/g, '\n').replace(/\n$/, '');
+    if (enc === 'base64') {
+      const clean = raw.replace(/\s/g, '');
+      if (!clean) return '';
+      const bytes = Uint8Array.from(atob(clean), (ch) => ch.charCodeAt(0));
+      return decodeBytes(bytes, charset);
+    }
+    if (enc === 'quoted-printable') {
+      const normalized = raw.replace(/=\n/g, '');
+      const bytes = [];
+      for (let i = 0; i < normalized.length; i += 1) {
+        if (normalized[i] === '=' && /[0-9A-Fa-f]{2}/.test(normalized.slice(i + 1, i + 3))) {
+          bytes.push(parseInt(normalized.slice(i + 1, i + 3), 16));
+          i += 2;
+        } else {
+          bytes.push(normalized.charCodeAt(i) & 0xff);
+        }
+      }
+      return decodeBytes(new Uint8Array(bytes), charset);
+    }
+    return raw;
+  }
+
+  function parseHeaderBlock(block) {
+    const headers = {};
+    const unfolded = String(block || '').replace(/\r\n/g, '\n').replace(/\n[ \t]+/g, ' ');
+    unfolded.split('\n').forEach((line) => {
+      const match = line.match(/^([^:]+):\s*(.*)$/);
+      if (!match) return;
+      const key = match[1].trim().toLowerCase();
+      const value = decodeMimeWords(match[2].trim());
+      headers[key] = headers[key] ? `${headers[key]}, ${value}` : value;
+    });
+    return headers;
+  }
+
+  function splitHeaderBody(raw) {
+    const text = String(raw || '').replace(/^\uFEFF/, '');
+    const match = /\r?\n\r?\n/.exec(text);
+    if (!match) return { headers: parseHeaderBlock(text), body: '' };
+    return {
+      headers: parseHeaderBlock(text.slice(0, match.index)),
+      body: text.slice(match.index + match[0].length),
+    };
+  }
+
+  function contentTypeParts(value) {
+    const parts = String(value || '').split(';').map((part) => part.trim()).filter(Boolean);
+    const type = (parts.shift() || 'text/plain').toLowerCase();
+    const params = {};
+    parts.forEach((part) => {
+      const match = part.match(/^([^=]+)=(?:"([^"]*)"|(.+))$/);
+      if (!match) return;
+      params[match[1].trim().toLowerCase()] = (match[2] != null ? match[2] : match[3] || '').trim();
+    });
+    return { type, params };
+  }
+
+  function splitMultipart(body, boundary) {
+    if (!boundary) return [];
+    const marker = `--${boundary}`;
+    return String(body || '').split(marker).slice(1).map((chunk) => chunk.replace(/^\r?\n/, '')).filter((chunk) => {
+      const trimmed = chunk.replace(/^\s+/, '');
+      return trimmed && !trimmed.startsWith('--');
+    }).map((chunk) => chunk.replace(/\r?\n--\s*$/, '').replace(/--\s*$/, ''));
+  }
+
+  function parseMimeEntity(raw) {
+    const { headers, body } = splitHeaderBody(raw);
+    const ct = contentTypeParts(headers['content-type'] || 'text/plain');
+    const encoding = headers['content-transfer-encoding'] || '';
+    if (ct.type.startsWith('multipart/')) {
+      return {
+        headers,
+        type: ct.type,
+        parts: splitMultipart(body, ct.params.boundary).map(parseMimeEntity),
+        body: '',
+        contentId: '',
+        base64: '',
+      };
+    }
+    const contentId = String(headers['content-id'] || '').replace(/^<|>$/g, '').trim();
+    if (ct.type.startsWith('image/') && String(encoding).toLowerCase() === 'base64') {
+      return {
+        headers,
+        type: ct.type,
+        parts: [],
+        body: '',
+        contentId,
+        base64: String(body || '').replace(/\s/g, ''),
+      };
+    }
+    return {
+      headers,
+      type: ct.type,
+      parts: [],
+      body: decodeTransfer(body, encoding, ct.params.charset || 'utf-8').trim(),
+      contentId,
+      base64: '',
+    };
+  }
+
+  function walkMime(entity, visit) {
+    if (!entity) return;
+    visit(entity);
+    (entity.parts || []).forEach((part) => walkMime(part, visit));
+  }
+
+  function findMimePart(entity, type) {
+    let found = null;
+    walkMime(entity, (part) => {
+      if (!found && part.type === type && part.body) found = part;
+    });
+    return found;
+  }
+
+  function formatMimeHeaders(headers) {
+    const order = ['from', 'date', 'to', 'cc', 'bcc', 'subject'];
+    const lines = [];
+    order.forEach((key) => {
+      const value = String(headers?.[key] || '').trim();
+      if (!value) return;
+      const label = key.charAt(0).toUpperCase() + key.slice(1);
+      lines.push(`**${label}:** ${value}`);
+    });
+    return lines.join('\n');
+  }
+
+  function applyCidImages(html, entity) {
+    let output = String(html || '');
+    walkMime(entity, (part) => {
+      if (!part.contentId || !part.base64 || !part.type.startsWith('image/')) return;
+      const dataUrl = `data:${part.type};base64,${part.base64}`;
+      const id = part.contentId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      output = output.replace(new RegExp(`cid:${id}`, 'gi'), dataUrl);
+    });
+    return output;
+  }
+
+  function emlToMarkdown(raw) {
+    try {
+      const message = parseMimeEntity(raw);
+      const headers = formatMimeHeaders(message.headers);
+      const htmlPart = findMimePart(message, 'text/html');
+      const plainPart = findMimePart(message, 'text/plain');
+      let body = '';
+      let images = [];
+      if (htmlPart) {
+        const converted = htmlToMarkdown(applyCidImages(htmlPart.body, message));
+        body = converted.markdown || '';
+        images = converted.images || [];
+      } else if (plainPart) {
+        body = plainPart.body || '';
+      }
+      const markdown = [headers, body].filter(Boolean).join('\n\n').trim();
+      return { markdown, images };
+    } catch (_) {
+      return { markdown: '', images: [] };
     }
   }
 
@@ -635,6 +913,52 @@
     check('skip web html', shouldHandle('<p>From: a@b.c</p><p>Subject: Hi</p>', plain) === false);
     check('handle plain mail', shouldHandle('', plain) === true);
     check('handle outlook html', shouldHandle('<p class="MsoNormal">Hi</p>', 'Hi') === true);
+    check('handle gmail html', shouldHandle('<div class="gmail_quote">Hi</div>', 'Hi') === true);
+    check('gmail link', mailClientLinkMarkdown(
+      '<a href="https://mail.google.com/mail/u/0/#inbox/abc">Notes from today</a>',
+      'Notes from today',
+      'https://mail.google.com/mail/u/0/#inbox/abc',
+    ) === '[Notes from today](https://mail.google.com/mail/u/0/#inbox/abc)');
+    check('handle gmail link', shouldHandle(
+      '<a href="https://mail.google.com/mail/u/0/#inbox/abc">Notes from today</a>',
+      'Notes from today',
+      'https://mail.google.com/mail/u/0/#inbox/abc',
+    ) === true);
+    const gmailPlain = [
+      '---------- Forwarded message ---------',
+      'From: Alice Example <alice@example.com>',
+      'Date: Friday, October 3, 2026 8:00 AM',
+      'Subject: Notes from today',
+      'To: Bob <bob@example.com>',
+      '',
+      'Hi Bob,',
+    ].join('\n');
+    check('gmail forwarded plain', formatPlainHeaders(gmailPlain) === [
+      '---------- Forwarded message ---------',
+      '**From:** Alice Example <alice@example.com>',
+      '**Date:** Friday, October 3, 2026 8:00 AM',
+      '**Subject:** Notes from today',
+      '**To:** Bob <bob@example.com>',
+      '',
+      'Hi Bob,',
+    ].join('\n'));
+    const eml = [
+      'From: Alice Example <alice@example.com>',
+      'Date: Friday, October 3, 2026 8:00 AM',
+      'To: Bob <bob@example.com>',
+      'Subject: Notes from today',
+      'Content-Type: text/plain; charset=utf-8',
+      '',
+      'Hi Bob,',
+    ].join('\r\n');
+    check('gmail eml', emlToMarkdown(eml).markdown === [
+      '**From:** Alice Example <alice@example.com>',
+      '**Date:** Friday, October 3, 2026 8:00 AM',
+      '**To:** Bob <bob@example.com>',
+      '**Subject:** Notes from today',
+      '',
+      'Hi Bob,',
+    ].join('\n'));
     check('local page ref', localPageRef('https://notes.example/p/demo/main/welcome/') === 'main:welcome');
     check('local page ref subpath', localPageRef('/DjangoNotesPro/p/demo/docs/read-me') === 'docs:read-me');
     check('local page ref already', localPageRef('main:welcome') === 'main:welcome');
@@ -709,6 +1033,33 @@
     const pageLink = htmlToMarkdown('<p class="MsoNormal">See the <a href="https://notes.example/p/demo/main/welcome/">welcome page</a>.</p>');
     check('outlook page link', pageLink.markdown === 'See the [welcome page](main:welcome).');
 
+    const gmailHtml = htmlToMarkdown(`
+      <div dir="ltr">
+        <div class="gmail_attr">---------- Forwarded message ---------<br>
+        From: <strong>Alice Example</strong> &lt;<a href="mailto:alice@example.com">alice@example.com</a>&gt;<br>
+        Date: Friday, October 3, 2026 8:00 AM<br>
+        To: Bob &lt;<a href="mailto:bob@example.com">bob@example.com</a>&gt;<br>
+        Subject: Notes from today<br></div>
+        <div>Hi Bob,</div>
+        <div>Please see the <b>notes</b> and the <a href="https://example.com/doc">doc</a>.</div>
+        <div><ul><li>One</li><li>Two</li></ul></div>
+      </div>`);
+    check('gmail html', gmailHtml.markdown === [
+      '---------- Forwarded message ---------',
+      '**From:** Alice Example &lt;alice@example.com&gt;',
+      '**Date:** Friday, October 3, 2026 8:00 AM',
+      '**To:** Bob &lt;bob@example.com&gt;',
+      '**Subject:** Notes from today',
+      '',
+      'Hi Bob,',
+      '',
+      'Please see the **notes** and the [doc](https://example.com/doc).',
+      '',
+      '- One',
+      '- Two',
+    ].join('\n'));
+    if (gmailHtml.markdown && fails.indexOf('gmail html') >= 0) selfTest.gmail = gmailHtml.markdown;
+
     if (fails.length) {
       fails.forEach((name) => {
         if (name === 'classic outlook') {
@@ -723,10 +1074,13 @@
 
   return {
     isWordOrOutlookHtml,
+    isGmailHtml,
+    mailClientLinkMarkdown,
     formatPlainHeaders,
     shouldHandle,
     localPageRef,
     htmlToMarkdown,
+    emlToMarkdown,
     selfTest,
   };
 }));
@@ -739,6 +1093,10 @@ if (typeof require !== 'undefined' && typeof module !== 'undefined' && require.m
     if (module.exports.selfTest.classic) {
       console.error('--- classic markdown ---');
       console.error(module.exports.selfTest.classic);
+    }
+    if (module.exports.selfTest.gmail) {
+      console.error('--- gmail markdown ---');
+      console.error(module.exports.selfTest.gmail);
     }
     process.exit(1);
   }

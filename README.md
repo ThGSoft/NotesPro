@@ -46,7 +46,8 @@ Share: [LinkedIn](https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2
 - **Backgammon** blocks — race home, hit blots, and bear off vs CPU or two players
 - **Carambole** blocks — three-ball carom billiards, libre or 3-cushion
 - **Darts** blocks — 501 or 301 on a clock board, double-out, vs CPU or two players
-- **Drawing** blocks — touch sketch pad with pen, eraser, straight line, text, and line thickness
+- **Drawing** blocks — touch sketch pad with pen, eraser, straight line, rectangle, move, text, and line thickness
+- **Draw.io** blocks — self-hosted diagrams.net editor, with the diagram XML saved in the note
 - **Tetris** blocks — 7-bag Tetris with ghost piece, hold, and next preview
 - **Sokoban** blocks — crate-pushing puzzles with undo and built-in levels
 - **Space Invaders** blocks — rows of aliens, shields, waves, and a mystery UFO
@@ -93,6 +94,7 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 python manage.py migrate
+python manage.py fetch_drawio   # local diagrams.net editor for Draw.io blocks
 python manage.py createsuperuser
 python manage.py seed_demo   # optional demo workspace + README page with screenshots
 python manage.py runserver
@@ -104,6 +106,7 @@ python manage.py runserver
 .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 python manage.py migrate
+python manage.py fetch_drawio   # local diagrams.net editor for Draw.io blocks
 python manage.py createsuperuser
 python manage.py seed_demo   # optional demo workspace + README page with screenshots
 python manage.py runserver
@@ -1401,7 +1404,7 @@ Toolbar: **Insert Darts**.
 
 ### Drawing
 
-A sketch pad in the note (`draw` / `sketch` / `doodle`). Draw with a finger or the mouse. **Tools** opens and closes the tool popup. **Pen** draws freehand, **Eraser** rubs out ink, **Ruler** draws a straight line, and **Text** places a label. **Size** sets the thickness, or the text size. **Ink** and **Paper** set the colors. Strokes are saved in the page. **Undo** drops the last stroke, **Clear** wipes the sheet.
+A sketch pad in the note (`draw` / `sketch` / `doodle`). Draw with a finger or the mouse. **Tools** opens and closes the tool popup. **Pen** draws freehand, **Eraser** rubs out ink, **Ruler** draws a straight line, **Rectangle** sizes a box while the button is held and then lets you drag that box to move it, **Move** drags everything on the sheet, and **Text** places a label. **Size** sets the thickness, or the text size. **Ink** and **Paper** set the colors. Strokes are saved in the page. **Freeze** locks the sheet. **−** and **+** shorten or lengthen the paper. **Keep** saves this drawing and asks whether to start a new one. **Undo** drops the last stroke and **Clear** wipes the sheet; both sit on the toolbar with Keep.
 
 ````markdown
 ```draw{fullscreen;pen=#1e293b;bg=#fffef8;size=8}
@@ -1414,10 +1417,32 @@ A sketch pad in the note (`draw` / `sketch` / `doodle`). Draw with a finger or t
 | `pen` | Ink color (`#1e293b` by default) |
 | `bg` | Paper color (`#fffef8` by default) |
 | `size` | Line thickness, 1–32 (`8` by default) |
+| `height` | Paper height in pixels, 180–2160 in steps of 90 (`540` by default) |
+| `freeze` | Lock the sheet |
 | `title` | Block title (hidden in fullscreen) |
 | `col` / `bkcol` | Theme colors |
 
 Toolbar: the pencil icon inserts a drawing area.
+
+### Draw.io
+
+Embed a [diagrams.net](https://www.diagrams.net/) editor with a fenced `drawio` block (`draw.io` and `diagrams.net` work too). The diagram XML is saved in the page. NotesPro serves the editor from the [jgraph/drawio](https://github.com/jgraph/drawio) `src/main/webapp` folder (`py manage.py fetch_drawio`), so the canvas opens from this server. Edits autosave back into the note. This is separate from the sketch pad (`draw`).
+
+````markdown
+```drawio{fullscreen;title=Diagram;ui=dark}
+```
+````
+
+| Option | Description |
+|--------|-------------|
+| `fullscreen` | Edge-to-edge editor (default on). **⛶** is monitor fullscreen. |
+| `ui` | diagrams.net theme: `dark` (default), `atlas`, `min`, `kennedy`, or `sketch` |
+| `height` | Editor height in pixels, 320–1600 (`640` by default) |
+| `libs` | Shape libraries (`1` by default; `libs=0` hides them) |
+| `title` | Block title |
+| `col` / `bkcol` | Theme colors |
+
+Toolbar: the sitemap icon inserts a Draw.io diagram.
 
 ### Tetris
 
