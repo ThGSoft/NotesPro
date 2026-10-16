@@ -165,6 +165,8 @@ def should_log_anonymous_html(request, response):
     path = request.path or ''
     if is_pixel_path(path) or path.startswith('/api/'):
         return False
+    if _normalized_path(path).startswith('/drawio/'):
+        return False
     skip_prefixes = getattr(
         django_settings,
         'IP_VISIT_LOG_SKIP_PREFIXES',

@@ -21047,6 +21047,19 @@ function formatTextWithMarkup(rawText) {
     return typeof cm.getSearchCursor === 'function';
   }
 
+  /** EasyMDE keeps CodeMirror inside its bundle, so the search addon must load after an editor exists. */
+  function ensureSearchCursor(cm) {
+    if (!cm || cmCanSearch(cm)) return;
+    const CodeMirror = cm.constructor;
+    if (typeof CodeMirror?.defineExtension !== 'function') return;
+    window.CodeMirror = CodeMirror;
+    if (document.querySelector('script[data-cm-searchcursor]')) return;
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/search/searchcursor.js';
+    script.dataset.cmSearchcursor = '1';
+    document.head.appendChild(script);
+  }
+
   function editorFindNext(backward = false) {
     const cm = getEditorCm();
     const query = document.getElementById('editor-find-input')?.value;
@@ -21771,6 +21784,8 @@ function formatTextWithMarkup(rawText) {
           return wrap.innerHTML;
         }
     });
+
+    ensureSearchCursor(easyMDE.codemirror);
 
     easyMDE.codemirror.setOption("extraKeys", {
         "Tab": function(cm) {
