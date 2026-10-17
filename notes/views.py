@@ -1294,6 +1294,19 @@ def public_noteslist(request, owner, workspace_slug, page_slug):
     })
 
 
+def drawio_editor(request, path):
+    """Serve the self-hosted diagrams.net webapp.
+
+    Collected /static/ files do not include this tree unless collectstatic was
+    run after fetch_drawio, so the editor is served from the checkout directly.
+    """
+    root = Path(django_settings.BASE_DIR) / 'vendor' / 'drawio' / 'src' / 'main' / 'webapp'
+    if not (root / 'index.html').is_file():
+        raise Http404('Draw.io editor is not installed.')
+    from django.views.static import serve
+    return serve(request, path, document_root=root)
+
+
 @require_GET
 def service_worker(request):
     """Serve the offline service worker at /sw.js with a root scope."""

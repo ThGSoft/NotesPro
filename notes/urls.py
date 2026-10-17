@@ -43,6 +43,7 @@ urlpatterns = [
         name='public_noteslist',
     ),
     path('sw.js', views.service_worker, name='service_worker'),
+    path('drawio/<path:path>', views.drawio_editor, name='drawio_editor'),
     path('pixel/', ip_logging.visit_pixel, name='visit_pixel'),
     path('favicon.ico', RedirectView.as_view(url=settings.STATIC_URL + 'images/favicon.ico')),
 

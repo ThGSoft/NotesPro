@@ -2558,7 +2558,7 @@
   }
 
   function isPreviewRichBlock(el) {
-    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .form-widget, .mindmap-block, .md-news, .md-python, .voice-block, .jukebox-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .backgammon-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .carambole-block, .carrom-block, .dart-block, .draw-block, .drawio-block, .snake-block, .marbleblast-block, .gallery-block, .training-block, .dance-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .page-tags');
+    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .form-widget, .mindmap-block, .md-news, .md-python, .voice-block, .jukebox-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .backgammon-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .carambole-block, .carrom-block, .dart-block, .draw-block, .drawio-block, .snake-block, .marbleblast-block, .gallery-block, .training-block, .worldclock-block, .alarm-block, .countdowntimer-block, .hp15c-block, .dance-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .page-tags');
   }
 
   function getPreviewBlockSourceLine(node) {
@@ -11507,6 +11507,82 @@
     });
   }
 
+  const WORLDCLOCK_BLOCK_RE = /```(?:worldclock|world-clock)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function parseWorldclockBlocks(text) {
+    let worldclockIndex = 0;
+    WORLDCLOCK_BLOCK_RE.lastIndex = 0;
+    return text.replace(WORLDCLOCK_BLOCK_RE, (_, fenceAttrs, content) => {
+      const engine = window.NotesProWorldclock;
+      const idx = worldclockIndex++;
+      const html = engine?.renderBlock
+        ? engine.renderBlock(content || '', fenceAttrs || '', { worldclockIndex: idx, kind: 'clock' })
+        : '<div class="worldclock-block">World clock not loaded.</div>';
+      return wrapRichPreviewBlock(html);
+    });
+  }
+
+  const ALARM_BLOCK_RE = /```(?:alarms?)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function parseAlarmBlocks(text) {
+    let alarmIndex = 0;
+    ALARM_BLOCK_RE.lastIndex = 0;
+    return text.replace(ALARM_BLOCK_RE, (_, fenceAttrs, content) => {
+      const engine = window.NotesProWorldclock;
+      const idx = alarmIndex++;
+      const html = engine?.renderBlock
+        ? engine.renderBlock(content || '', fenceAttrs || '', { worldclockIndex: idx, kind: 'alarm' })
+        : '<div class="alarm-block">Alarm not loaded.</div>';
+      return wrapRichPreviewBlock(html);
+    });
+  }
+
+  const COUNTDOWN_BLOCK_RE = /```(?:countdowntimer|countdown-timer|countdowns?)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function parseCountdownBlocks(text) {
+    let countdownIndex = 0;
+    COUNTDOWN_BLOCK_RE.lastIndex = 0;
+    return text.replace(COUNTDOWN_BLOCK_RE, (_, fenceAttrs, content) => {
+      const engine = window.NotesProWorldclock;
+      const idx = countdownIndex++;
+      const html = engine?.renderBlock
+        ? engine.renderBlock(content || '', fenceAttrs || '', { worldclockIndex: idx, kind: 'countdown' })
+        : '<div class="countdowntimer-block">Countdown timer not loaded.</div>';
+      return wrapRichPreviewBlock(html);
+    });
+  }
+
+  function hydrateWorldclockBlocks(root) {
+    const engine = window.NotesProWorldclock;
+    if (!engine) return;
+    (root || document).querySelectorAll('.worldclock-block, .alarm-block, .countdowntimer-block').forEach((el) => {
+      engine.hydrateBlock(el);
+    });
+  }
+
+  const HP15C_BLOCK_RE = /```(?:hp15c|hp-15c)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function parseHp15cBlocks(text) {
+    let hp15cIndex = 0;
+    HP15C_BLOCK_RE.lastIndex = 0;
+    return text.replace(HP15C_BLOCK_RE, (_, fenceAttrs, content) => {
+      const engine = window.NotesProHp15c;
+      const idx = hp15cIndex++;
+      const html = engine?.renderBlock
+        ? engine.renderBlock(content || '', fenceAttrs || '', { hp15cIndex: idx })
+        : '<div class="hp15c-block">HP-15C not loaded.</div>';
+      return wrapRichPreviewBlock(html);
+    });
+  }
+
+  function hydrateHp15cBlocks(root) {
+    const engine = window.NotesProHp15c;
+    if (!engine) return;
+    (root || document).querySelectorAll('.hp15c-block').forEach((el) => {
+      engine.hydrateBlock(el);
+    });
+  }
+
   function hydrateTrainingBlocks(root) {
     const engine = window.NotesProTraining;
     if (!engine) return;
@@ -13156,7 +13232,7 @@ function formatTextWithMarkup(rawText) {
     if (!root) return;
     root.querySelectorAll('pre').forEach(pre => {
       if (pre.closest('.md-code-block')) return;
-      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .form-widget, .mindmap-block, .md-news, .md-python, .voice-block, .jukebox-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .backgammon-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .carambole-block, .carrom-block, .dart-block, .draw-block, .drawio-block, .snake-block, .marbleblast-block, .gallery-block, .training-block, .dance-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block')) {
+      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .form-widget, .mindmap-block, .md-news, .md-python, .voice-block, .jukebox-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .backgammon-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .carambole-block, .carrom-block, .dart-block, .draw-block, .drawio-block, .snake-block, .marbleblast-block, .gallery-block, .training-block, .worldclock-block, .alarm-block, .countdowntimer-block, .hp15c-block, .dance-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block')) {
         return;
       }
       const wrap = document.createElement('div');
@@ -13825,6 +13901,26 @@ function formatTextWithMarkup(rawText) {
       const label = cfg.title || 'Training';
       return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
     });
+    md = md.replace(/```(?:worldclock|world-clock)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const cfg = window.NotesProWorldclock?.parseFenceAttrs?.(fenceAttrs) || {};
+      const label = cfg.title || 'World clock';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
+    md = md.replace(/```(?:alarms?)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const cfg = window.NotesProWorldclock?.parseFenceAttrs?.(fenceAttrs) || {};
+      const label = cfg.title || 'Alarm';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
+    md = md.replace(/```(?:countdowntimer|countdown-timer|countdowns?)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const cfg = window.NotesProWorldclock?.parseFenceAttrs?.(fenceAttrs) || {};
+      const label = cfg.title || 'Countdown';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
+    md = md.replace(/```(?:hp15c|hp-15c)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const cfg = window.NotesProHp15c?.parseFenceAttrs?.(fenceAttrs) || {};
+      const label = cfg.title || 'HP-15C';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
     md = md.replace(/```dance(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
       const cfg = window.NotesProDance?.parseFenceAttrs?.(fenceAttrs) || {};
       const label = cfg.title || 'Dance';
@@ -13952,6 +14048,10 @@ function formatTextWithMarkup(rawText) {
       md = parseMarbleblastBlocks(md);
       md = parseGalleryBlocks(md, options);
       md = parseTrainingBlocks(md, options);
+      md = parseWorldclockBlocks(md);
+      md = parseAlarmBlocks(md);
+      md = parseCountdownBlocks(md);
+      md = parseHp15cBlocks(md);
       md = parseDanceBlocks(md);
       md = parsePhotocubeBlocks(md, options);
       md = parsePhotobookBlocks(md, options);
@@ -14422,6 +14522,8 @@ function formatTextWithMarkup(rawText) {
     hydrateMarbleblastBlocks(preview);
     hydrateGalleryBlocks(preview);
     hydrateTrainingBlocks(preview);
+    hydrateWorldclockBlocks(preview);
+    hydrateHp15cBlocks(preview);
     hydrateDanceBlocks(preview);
     hydratePhotocubeBlocks(preview);
     hydratePhotobookBlocks(preview);
@@ -17476,7 +17578,7 @@ function formatTextWithMarkup(rawText) {
 
   function photoPasteBlockAtPoint(clientX, clientY) {
     const preview = document.getElementById('preview-content');
-    if (!preview) return null;
+    if (!preview || !Number.isFinite(clientX) || !Number.isFinite(clientY)) return null;
     const stack = typeof document.elementsFromPoint === 'function'
       ? document.elementsFromPoint(clientX, clientY)
       : [document.elementFromPoint(clientX, clientY)].filter(Boolean);
@@ -21047,6 +21149,19 @@ function formatTextWithMarkup(rawText) {
     return typeof cm.getSearchCursor === 'function';
   }
 
+  /** EasyMDE keeps CodeMirror inside its bundle, so the search addon must load after an editor exists. */
+  function ensureSearchCursor(cm) {
+    if (!cm || cmCanSearch(cm)) return;
+    const CodeMirror = cm.constructor;
+    if (typeof CodeMirror?.defineExtension !== 'function') return;
+    window.CodeMirror = CodeMirror;
+    if (document.querySelector('script[data-cm-searchcursor]')) return;
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/search/searchcursor.js';
+    script.dataset.cmSearchcursor = '1';
+    document.head.appendChild(script);
+  }
+
   function editorFindNext(backward = false) {
     const cm = getEditorCm();
     const query = document.getElementById('editor-find-input')?.value;
@@ -21478,6 +21593,54 @@ function formatTextWithMarkup(rawText) {
           title: 'Insert calendar',
         },
         {
+          name: 'insert-worldclock',
+          action: (editor) => {
+            const body = [
+              'Local | local | both',
+              'London | Europe/London | analog',
+              'New York | America/New_York | digital',
+              'Tokyo | Asia/Tokyo | both',
+              'Sydney | Australia/Sydney | digital',
+              'CET | CET | digital',
+              'OESZ | OESZ | analog',
+            ].join('\n');
+            insertFenceBlock(editor, 'worldclock{title=World clock;col=info}', body);
+          },
+          className: 'fa fa-clock-o',
+          title: 'Insert world clock',
+        },
+        {
+          name: 'insert-alarm',
+          action: (editor) => {
+            const body = [
+              'Wake | 07:00 | off | analog',
+              'Standup | 09:30 | on | digital',
+            ].join('\n');
+            insertFenceBlock(editor, 'alarm{title=Alarm;col=warning}', body);
+          },
+          className: 'fa fa-bell-o',
+          title: 'Insert alarm',
+        },
+        {
+          name: 'insert-countdowntimer',
+          action: (editor) => {
+            const body = [
+              'Pomodoro | 25:00',
+              'Short break | 5:00',
+              'Tea | 3:00 | repeat',
+            ].join('\n');
+            insertFenceBlock(editor, 'countdowntimer{title=Countdown;col=info}', body);
+          },
+          className: 'fa fa-hourglass-half',
+          title: 'Insert countdown timer',
+        },
+        {
+          name: 'insert-hp15c',
+          action: (editor) => insertFenceBlock(editor, 'hp15c{title=HP-15C}', ''),
+          className: 'fa fa-calculator',
+          title: 'Insert HP-15C calculator',
+        },
+        {
           name: 'boardsMenu',
           className: 'fa fa-th-large',
           title: 'Insert kanban / gantt / mindmap / kanban gantt',
@@ -21771,6 +21934,8 @@ function formatTextWithMarkup(rawText) {
           return wrap.innerHTML;
         }
     });
+
+    ensureSearchCursor(easyMDE.codemirror);
 
     easyMDE.codemirror.setOption("extraKeys", {
         "Tab": function(cm) {
@@ -25221,7 +25386,7 @@ function formatTextWithMarkup(rawText) {
     if (tryPasteImageUrlsIntoKeep(event)) return;
     const data = event.clipboardData || event.originalEvent?.clipboardData;
     const pasteFiles = clipboardImageFiles(data);
-    if (event.target.closest?.('.puzzle-block, .gallery-block, .training-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .backgammon-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .carambole-block, .carrom-block, .dart-block, .draw-block, .drawio-block, .snake-block, .marbleblast-block, .voice-block, .jukebox-block, .calendar-block, #calendar-note-modal')) return;
+    if (event.target.closest?.('.puzzle-block, .gallery-block, .training-block, .worldclock-block, .alarm-block, .countdowntimer-block, .hp15c-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .backgammon-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .carambole-block, .carrom-block, .dart-block, .draw-block, .drawio-block, .snake-block, .marbleblast-block, .voice-block, .jukebox-block, .calendar-block, #calendar-note-modal')) return;
     if (!pasteFiles.length) {
       const text = data?.getData?.('text/plain') || '';
       const fromText = pastedPlainImageUrls(text);

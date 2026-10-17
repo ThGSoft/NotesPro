@@ -63,7 +63,11 @@ Share: [LinkedIn](https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2
 - **Ghost train** blocks — convoy on rails; photos in frames along the track
 - **Photo labyrinth** blocks — first-person maze whose walls are your pasted photos
 - **Calendar** blocks — list days, weeks, months, or years for a `from`/`to` range
+- **World clock** / **Alarm** / **Countdown** — city clocks (analog or digital, including CET and OESZ), a settable alarm, and a count-up timer with countdowns
+- **HP-15C** — RPN scientific calculator (stack, shifts, complex numbers, keystroke programs)
 - **Gantt** / **Kanban** / **Kanban Gantt** / **Mindmap** / **Speisekarte** / **Shop** / **SW Shop** / **NotesList** blocks — project timelines, boards, timed cost tracking, idea trees, click-to-order menus, cart checkout, software downloads, and local ads
+- **Jukebox** / **Dance** / **Yoga** — playlist player, social-dance footstep charts, and a timed pose routine
+- **Mühle** / **Carrom** — Nine Men's Morris, and a carrom board vs the CPU
 - File manager with drag-and-drop uploads; click images to open in a new tab
 - **Local file links** — paste Windows paths or insert via toolbar; click in preview to reveal in Explorer (local dev server)
 - Resizable dashboard panels (sidebar, editor, chat/mail)
@@ -114,7 +118,7 @@ python manage.py runserver
 
 Open:
 - http://127.0.0.1:8000/login/
-- Demo user after `seed_demo`: `demo` / `password` — workspace **Docs → README** contains this guide with screenshots; **Docs → Blocks** has gantt/calendar/mindmap/kanban/calcs/panel examples; **Docs → Calendar** has day/week/month/year views with sample events; **Docs → NotesList** is a local ads board; **Docs → RSS Feeds** embeds BBC / DE / CH news feeds. **Demo** is a separate public folder: games, the shop, the drawing pad (drawable without signing in), a table, and photos.
+- Demo user after `seed_demo`: `demo` / `password`. **Docs → README** is this guide. **Docs → Blocks** lists the app folders. **Demo** holds one public page per toolbar app. Folders follow the editor tool buttons, in the same order: Panel, Sheet, Chart, Calcs, Python, Calendar, World clock, Alarm, Countdown, HP-15C, Boards (Gantt, Kanban, Mindmap, Kanban gantt), Checklist, Apps (Jukebox, Dance, Yoga), Forms, Menu (Menu, Shop, SW Shop, NotesList), Voice, Drawing, Draw.io, Photos, Games, and News.
 
 Copy `.env.example` to `.env.dev` (or set `DJANGO_ENV`) for local settings. See [Email invitations](#email-invitations) and [Database encryption](#database-encryption) below.
 
@@ -1342,6 +1346,45 @@ Othello on an 8×8 green board (`reversi` / `othello`). You play **black**. Lega
 
 Toolbar: **Insert Reversi**.
 
+### Mühle
+
+Nine Men's Morris (`muhle`, also `mühle`, `muehle`, `mills`, `nine-mens-morris`). Place nine white stones, then slide along the lines. Three in a row is a mill: remove an opponent stone. With three stones left you may fly.
+
+````markdown
+```muhle{fullscreen;mode=cpu;difficulty=medium}
+```
+````
+
+| Option | Description |
+|--------|-------------|
+| `fullscreen` | Edge-to-edge board (default on) |
+| `mode` | `cpu` (default) or `hotseat` |
+| `difficulty` | CPU search: `easy`, `medium`, or `hard` |
+| `title` | Block title (hidden in fullscreen) |
+| `col` / `bkcol` | Theme colors |
+
+Toolbar: **Insert Mühle**.
+
+### Carrom
+
+Pocket your coins on a carrom board (`carrom`). You play white from the near baseline. Slide the striker along the line, pull back, and release. Cover the red queen with one of yours before the last coin. The striker in a pocket is a foul.
+
+````markdown
+```carrom{fullscreen;mode=cpu;difficulty=medium;size=medium}
+```
+````
+
+| Option | Description |
+|--------|-------------|
+| `fullscreen` | Edge-to-edge board (default on) |
+| `mode` | `cpu` (default) or `hotseat` |
+| `difficulty` | CPU aim: `easy`, `medium`, or `hard` |
+| `size` | Board size: `small`, `medium` (default), or `large` |
+| `title` | Block title (hidden in fullscreen) |
+| `col` / `bkcol` | Theme colors |
+
+Toolbar: **Insert carrom**.
+
 ### Backgammon
 
 Race all fifteen checkers home (`backgammon` / `bg`). You play **white**. Roll, click a checker (or the bar), then a highlighted point or **Off**. Hitting a blot sends it to the bar; you must enter from the bar before other moves. Doubles play four times. A gammon or backgammon scores extra. Beat the CPU to post a workspace high score.
@@ -2063,6 +2106,83 @@ Aliases: `photo-labyrinth`, `maze`.
 On **mobile**, **Enter labyrinth** is hidden (the first tap enters). **Demo tour** stays visible with a large tap target so you can start or stop the guided walk. On a demo maze the tour also starts on load; drag to look around (that takes over from the tour).
 
 Toolbar: **Photos → Photo labyrinth** adds a sample maze that walks itself.
+
+### World clock
+
+City clocks in one fence (`worldclock` / `world-clock`). Each line is `City | Zone | face`. Face is `analog`, `digital`, or `both`. A city name resolves to a timezone; an IANA zone such as `Europe/London` works too. **CET** follows Europe/Berlin (labeled CET or CEST). **OESZ** is a fixed UTC+3.
+
+````markdown
+```worldclock{title=World clock;col=info}
+Local | local | both
+London | Europe/London | analog
+CET | CET | digital
+OESZ | OESZ | analog
+```
+````
+
+Toolbar: **Insert world clock**.
+
+### Alarm
+
+A settable alarm (`alarm`). Each line is `Name | HH:MM | on/off | analog/digital`. It starts off and rings only during a matching minute while it is on. Switch the face between analog and digital.
+
+````markdown
+```alarm{title=Alarm;col=warning}
+Wake | 07:00 | off | analog
+Standup | 09:30 | on | digital
+```
+````
+
+Toolbar: **Insert alarm**.
+
+### Countdown
+
+A count-up timer and countdown cards (`countdowntimer`, also `countdown`). A countdown line is `Name | duration | repeat`. Duration is `25:00`, `3m`, or `90s`. **repeat** restarts the timer and beeps.
+
+````markdown
+```countdowntimer{title=Countdown;col=info}
+Pomodoro | 25:00
+Short break | 5:00
+Tea | 3:00 | repeat
+```
+````
+
+Toolbar: **Insert countdown timer**.
+
+### HP-15C
+
+An HP-15C-style RPN scientific calculator (`hp15c` / `hp-15c`). Four stack levels, gold **f** and blue **g** shifts, complex numbers, storage, statistics, and keystroke programs. **SOLVE** and **∫** run a program label. Matrix keys report Error 1.
+
+````markdown
+```hp15c{title=HP-15C}
+```
+````
+
+Toolbar: **Insert HP-15C calculator**.
+
+### Dance
+
+Social-dance footstep charts (`dance`): rumba, cha-cha-cha, salsa, waltz, tango, foxtrot, disco fox, blues, and rock 'n' roll. Rhythm comes from synthesizer one-shots in the browser.
+
+````markdown
+```dance{title=Dance;col=info}
+```
+````
+
+Toolbar: **Add → Dance**.
+
+### Yoga
+
+A timed pose routine (`training`). Each line is `![Pose](image) | 30s`. The clock shows one photo for its own time, then the next.
+
+````markdown
+```training{title=Good Morning Yoga;time=30s;col=info}
+![Mountain pose](/static/notes/yoga/morning/mountain.jpg) | 30s
+![Downward facing dog](/static/notes/yoga/morning/downward-dog.jpg) | 30s
+```
+````
+
+Toolbar: **Add → Yoga**.
 
 ### News / RSS (Magpie-style)
 

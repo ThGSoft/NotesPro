@@ -165,15 +165,10 @@
   }
 
   function embedBase() {
-    const fallback = '/static/drawio/index.html';
-    if (typeof document === 'undefined') return fallback;
-    const scripts = document.getElementsByTagName('script');
-    for (let i = 0; i < scripts.length; i += 1) {
-      const src = scripts[i].getAttribute('src') || '';
-      const at = src.indexOf('notes/drawio.js');
-      if (at >= 0) return `${src.slice(0, at)}drawio/index.html`;
-    }
-    return fallback;
+    const prefix = (typeof window !== 'undefined' && window.APP_BASE)
+      ? String(window.APP_BASE).replace(/\/$/, '')
+      : '';
+    return `${prefix}/drawio/index.html`;
   }
 
   function embedUrl(cfg, editable) {
