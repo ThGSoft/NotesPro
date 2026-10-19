@@ -1552,10 +1552,18 @@
     });
   }
 
+  function resolveFullscreen(cfg) {
+    const raw = String(cfg.fullscreen ?? cfg.full ?? '1').trim().toLowerCase();
+    if (raw === '0' || raw === 'false' || raw === 'no' || raw === 'compact') return false;
+    return true;
+  }
+
   function renderBlock(content, fenceAttrs, options = {}) {
     const cfg = parseFenceAttrs(fenceAttrs);
     const title = String(cfg.title || 'HP-15C').trim() || 'HP-15C';
     const index = Number.isFinite(options.hp15cIndex) ? options.hp15cIndex : 0;
+    const fullscreen = resolveFullscreen(cfg);
+    const fullClass = fullscreen ? ' hp15c-block--fullscreen' : '';
     const keys = KEYS.map((spec) => {
       const [id, face, gold, blue, row, col, kind, span] = spec;
       const style = `grid-row:${row}${span ? ` / span ${span}` : ''};grid-column:${col}`;
@@ -1568,7 +1576,9 @@
         + `<span class="hp-g">${escapeHtml(blue)}</span>`
         + '</button></div>';
     }).join('');
-    return `<div class="hp15c-block" data-hp-index="${index}" tabindex="0">`
+    const fsButton = (typeof globalThis !== 'undefined' && globalThis.NotesProGameFullscreen?.renderButton?.()) || '';
+    return `<div class="hp15c-block${fullClass}" data-hp-index="${index}" tabindex="0">`
+      + fsButton
       + '<div class="hp-bezel">'
       + `<div class="hp-badge">${escapeHtml(title)}</div>`
       + '<div class="hp-tag">RPN scientific</div>'
@@ -1626,7 +1636,11 @@
       event.preventDefault();
       onKey(btn.dataset.key);
     });
+    globalThis.NotesProGameFullscreen?.bind?.(el);
     el.addEventListener('keydown', (event) => {
+      const monitorFull = document.fullscreenElement === el
+        || el.classList.contains('game-block--monitor-fullscreen');
+      if (event.key === 'Escape' && monitorFull) return;
       const map = {
         Enter: 'enter',
         Backspace: 'bsp',
@@ -1707,9 +1721,11 @@ if (typeof module !== 'undefined' && require.main === module) {
   ]);
   near(integral.re[0], 1, 'integrate');
   const html = api.renderBlock('', 'title=HP-15C');
-  if (!html.includes('hp15c-block') || !html.includes('data-key="enter"') || !html.includes('SOLVE')) {
+  if (!html.includes('hp15c-block--fullscreen') || !html.includes('data-key="enter"') || !html.includes('SOLVE')) {
     throw new Error('render');
   }
+  const compact = api.renderBlock('', 'fullscreen=0');
+  if (compact.includes('hp15c-block--fullscreen')) throw new Error('compact fullscreen');
   const shown = api.formatParts(1 / 3, 'fix', 4);
   if (shown.man !== '0.3333') throw new Error(`format ${shown.man}`);
   console.log('hp15c self-test ok');

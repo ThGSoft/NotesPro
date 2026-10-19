@@ -26,6 +26,71 @@ body {
   font-family: Inter, system-ui, sans-serif;
 }
 
+/* Pinch-zoom on a phone: grow with the note instead of clipping to the visible slice. */
+html.is-zoomed {
+  height: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+html.is-zoomed body {
+  height: auto;
+  min-height: 100%;
+  overflow: visible;
+}
+
+html.is-zoomed .app-shell,
+html.is-zoomed body.public-page .app-shell,
+html.is-zoomed body.public-page:not(.public-tree) .app-shell,
+html.is-zoomed body.public-page.public-tree .app-shell {
+  height: auto !important;
+  min-height: var(--vvh, 100dvh);
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+html.is-zoomed .main-pane,
+html.is-zoomed .editor-wrap,
+html.is-zoomed .editor-wrap--preview-only,
+html.is-zoomed .editor-wrap--preview-only #preview-wrap,
+html.is-zoomed .editor-wrap--preview-only #preview-wrap .preview-layout,
+html.is-zoomed .preview-layout,
+html.is-zoomed .preview-content,
+html.is-zoomed #preview-wrap,
+html.is-zoomed #markdown-wrap,
+html.is-zoomed .CodeMirror,
+html.is-zoomed .CodeMirror-scroll,
+html.is-zoomed .editor-wrap--preview-only .preview-content:has(> .hp15c-block--fullscreen:only-child),
+html.is-zoomed .editor-wrap--split .preview-content:has(> .hp15c-block--fullscreen:only-child),
+html.is-zoomed .editor-wrap--preview-only .preview-content:has(> .hp12c-block--fullscreen:only-child),
+html.is-zoomed .editor-wrap--split .preview-content:has(> .hp12c-block--fullscreen:only-child),
+html.is-zoomed .editor-wrap--preview-only .preview-content:has(> .ti30-block--fullscreen:only-child),
+html.is-zoomed .editor-wrap--split .preview-content:has(> .ti30-block--fullscreen:only-child) {
+  height: auto !important;
+  max-height: none !important;
+  min-height: 0;
+  overflow: visible !important;
+}
+
+body.mobile-layout.editing #markdown-wrap .CodeMirror,
+body.mobile-layout.editing #markdown-wrap .CodeMirror pre,
+body.mobile-layout.editing #markdown-wrap .CodeMirror-line {
+  font-size: max(18px, var(--editor-font-size, 14px)) !important;
+}
+
+html.is-zoomed .hp15c-block--fullscreen,
+html.is-zoomed .hp12c-block--fullscreen,
+html.is-zoomed .ti30-block--fullscreen,
+html.is-zoomed .editor-wrap--preview-only .preview-content > .hp15c-block--fullscreen:only-child,
+html.is-zoomed .editor-wrap--split .preview-content > .hp15c-block--fullscreen:only-child,
+html.is-zoomed .editor-wrap--preview-only .preview-content > .hp12c-block--fullscreen:only-child,
+html.is-zoomed .editor-wrap--split .preview-content > .hp12c-block--fullscreen:only-child,
+html.is-zoomed .editor-wrap--preview-only .preview-content > .ti30-block--fullscreen:only-child,
+html.is-zoomed .editor-wrap--split .preview-content > .ti30-block--fullscreen:only-child {
+  height: auto;
+  min-height: 0;
+}
+
 .app-shell {
   --sidebar-width: 420px;
   --splitter-width: 6px;
@@ -10693,6 +10758,12 @@ button, select, input {
     -webkit-overflow-scrolling: touch;
   }
 
+  body.mobile-layout.editing #markdown-wrap .CodeMirror,
+  body.mobile-layout.editing #markdown-wrap .CodeMirror pre,
+  body.mobile-layout.editing #markdown-wrap .CodeMirror-line {
+    font-size: max(18px, var(--editor-font-size, 14px)) !important;
+  }
+
   body.mobile-layout.editing #markdown-wrap .editor-toolbar button.side-by-side,
   body.mobile-layout.editing .editor-toolbar-split-control,
   body.mobile-layout.editing .editor-toolbar-lineheight-control {
@@ -18929,9 +19000,11 @@ html.notespro-pseudo-fullscreen .game-block--monitor-fullscreen [class*="-stage"
   }
 }
 
-/* --- HP-15C --- */
-.hp15c-block {
+/* --- HP-15C / HP-12C --- */
+.hp15c-block,
+.hp12c-block {
   --hp-ink: #f4eadc;
+  position: relative;
   container-type: inline-size;
   max-width: 880px;
   margin: 16px auto;
@@ -18944,7 +19017,8 @@ html.notespro-pseudo-fullscreen .game-block--monitor-fullscreen [class*="-stage"
   outline: none;
 }
 
-.hp15c-block:focus-visible {
+.hp15c-block:focus-visible,
+.hp12c-block:focus-visible {
   box-shadow: 0 0 0 2px #e6c15a, 0 14px 32px rgba(0, 0, 0, 0.35);
 }
 
@@ -19185,4 +19259,202 @@ html.notespro-pseudo-fullscreen .game-block--monitor-fullscreen [class*="-stage"
   .hp-key--enter .hp-face { font-size: 12px; }
   .hp-f, .hp-g { font-size: 9px; }
   .hp-value { font-size: 1.85rem; }
+}
+
+.hp15c-block--fullscreen,
+.hp12c-block--fullscreen {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  min-height: min(92vh, 980px);
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
+.hp15c-block--fullscreen .hp-bezel,
+.hp12c-block--fullscreen .hp-bezel {
+  padding-right: 44px;
+}
+
+.hp15c-block--fullscreen .hp-keys,
+.hp12c-block--fullscreen .hp-keys,
+.hp15c-block:fullscreen .hp-keys,
+.hp15c-block:-webkit-full-screen .hp-keys,
+.hp15c-block.game-block--monitor-fullscreen .hp-keys,
+.hp12c-block:fullscreen .hp-keys,
+.hp12c-block:-webkit-full-screen .hp-keys,
+.hp12c-block.game-block--monitor-fullscreen .hp-keys {
+  flex: 1;
+  grid-template-rows: repeat(4, minmax(64px, 1fr));
+}
+
+.hp15c-block:fullscreen,
+.hp15c-block:-webkit-full-screen,
+.hp15c-block.game-block--monitor-fullscreen,
+.hp12c-block:fullscreen,
+.hp12c-block:-webkit-full-screen,
+.hp12c-block.game-block--monitor-fullscreen {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  min-height: 100%;
+  margin: 0;
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
+.hp15c-block:fullscreen .game-fullscreen-btn__icon--enter,
+.hp15c-block:-webkit-full-screen .game-fullscreen-btn__icon--enter,
+.hp12c-block:fullscreen .game-fullscreen-btn__icon--enter,
+.hp12c-block:-webkit-full-screen .game-fullscreen-btn__icon--enter,
+.ti30-block:fullscreen .game-fullscreen-btn__icon--enter,
+.ti30-block:-webkit-full-screen .game-fullscreen-btn__icon--enter {
+  display: none;
+}
+
+.hp15c-block:fullscreen .game-fullscreen-btn__icon--exit,
+.hp15c-block:-webkit-full-screen .game-fullscreen-btn__icon--exit,
+.hp12c-block:fullscreen .game-fullscreen-btn__icon--exit,
+.hp12c-block:-webkit-full-screen .game-fullscreen-btn__icon--exit,
+.ti30-block:fullscreen .game-fullscreen-btn__icon--exit,
+.ti30-block:-webkit-full-screen .game-fullscreen-btn__icon--exit {
+  display: inline;
+}
+
+.editor-wrap--preview-only .preview-content:has(> .hp15c-block--fullscreen:only-child),
+.editor-wrap--split .preview-content:has(> .hp15c-block--fullscreen:only-child),
+.editor-wrap--preview-only .preview-content:has(> .hp12c-block--fullscreen:only-child),
+.editor-wrap--split .preview-content:has(> .hp12c-block--fullscreen:only-child),
+.editor-wrap--preview-only .preview-content:has(> .ti30-block--fullscreen:only-child),
+.editor-wrap--split .preview-content:has(> .ti30-block--fullscreen:only-child) {
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.editor-wrap--preview-only .preview-content > .hp15c-block--fullscreen:only-child,
+.editor-wrap--split .preview-content > .hp15c-block--fullscreen:only-child,
+.editor-wrap--preview-only .preview-content > .hp12c-block--fullscreen:only-child,
+.editor-wrap--split .preview-content > .hp12c-block--fullscreen:only-child,
+.editor-wrap--preview-only .preview-content > .ti30-block--fullscreen:only-child,
+.editor-wrap--split .preview-content > .ti30-block--fullscreen:only-child {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+}
+
+.hp12c-block {
+  background:
+    radial-gradient(120% 80% at 50% 0%, #3a3228 0%, #16130f 46%, #0c0b09 100%);
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(230, 193, 90, 0.35);
+}
+
+.hp12c-block .hp-badge {
+  color: #e6c15a;
+}
+
+/* --- TI-30 --- */
+.ti30-block {
+  --hp-ink: #1c2430;
+  position: relative;
+  container-type: inline-size;
+  max-width: 520px;
+  margin: 16px auto;
+  padding: 14px 14px 16px;
+  border-radius: 28px 28px 36px 36px;
+  background: linear-gradient(180deg, #e7ebf1 0%, #c5ccd6 55%, #aeb6c2 100%);
+  color: var(--hp-ink);
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.28);
+  outline: none;
+}
+
+.ti30-block:focus-visible {
+  box-shadow: 0 0 0 2px #1d4e86, 0 14px 32px rgba(0, 0, 0, 0.28);
+}
+
+.ti30-block .hp-badge {
+  font-family: "Segoe UI", Arial, sans-serif;
+  color: #163e78;
+  letter-spacing: 0.08em;
+}
+
+.ti30-block .hp-tag {
+  color: #3d4a5c;
+  opacity: 1;
+}
+
+.ti30-block .hp-f {
+  color: #c45512;
+  font-weight: 700;
+}
+
+.ti30-block .hp-keys {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.ti30-block .hp-key {
+  background: linear-gradient(180deg, #f7f8fa, #d5dbe3);
+  color: #1c2430;
+  box-shadow: 0 2px 0 #8d97a6, inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.ti30-block .hp-key--num {
+  background: linear-gradient(180deg, #ffffff, #e6ebf2);
+  color: #1c2430;
+}
+
+.ti30-block .hp-key--op,
+.ti30-block .hp-key--eq {
+  background: linear-gradient(180deg, #4d5968, #2c3542);
+  color: #f4f7fb;
+}
+
+.ti30-block .hp-key--2nd {
+  background: linear-gradient(180deg, #3d7ec4, #1d4e86);
+  color: #f7fbff;
+}
+
+.ti30-block .hp-key--on {
+  background: linear-gradient(180deg, #f0d48a, #c4962e);
+  color: #2a2118;
+}
+
+.ti30-block--fullscreen {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  min-height: min(92vh, 980px);
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
+.ti30-block--fullscreen .hp-bezel {
+  padding-right: 44px;
+}
+
+.ti30-block--fullscreen .hp-keys,
+.ti30-block:fullscreen .hp-keys,
+.ti30-block:-webkit-full-screen .hp-keys,
+.ti30-block.game-block--monitor-fullscreen .hp-keys {
+  flex: 1;
+  grid-template-rows: repeat(7, minmax(52px, 1fr));
+}
+
+.ti30-block:fullscreen,
+.ti30-block:-webkit-full-screen,
+.ti30-block.game-block--monitor-fullscreen {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  min-height: 100%;
+  margin: 0;
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
 }

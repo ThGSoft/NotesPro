@@ -65,6 +65,8 @@ Share: [LinkedIn](https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2
 - **Calendar** blocks — list days, weeks, months, or years for a `from`/`to` range
 - **World clock** / **Alarm** / **Countdown** — city clocks (analog or digital, including CET and OESZ), a settable alarm, and a count-up timer with countdowns
 - **HP-15C** — RPN scientific calculator (stack, shifts, complex numbers, keystroke programs)
+- **HP-12C** — RPN financial calculator (TVM, cash flows, percents). Fence aliases `hp12c`, `hp-12c`, `hp12s`
+- **TI-30** — algebraic scientific calculator (AOS precedence, trig, 2nd shift)
 - **Gantt** / **Kanban** / **Kanban Gantt** / **Mindmap** / **Speisekarte** / **Shop** / **SW Shop** / **NotesList** blocks — project timelines, boards, timed cost tracking, idea trees, click-to-order menus, cart checkout, software downloads, and local ads
 - **Jukebox** / **Dance** / **Yoga** — playlist player, social-dance footstep charts, and a timed pose routine
 - **Mühle** / **Carrom** — Nine Men's Morris, and a carrom board vs the CPU
@@ -118,7 +120,7 @@ python manage.py runserver
 
 Open:
 - http://127.0.0.1:8000/login/
-- Demo user after `seed_demo`: `demo` / `password`. **Docs → README** is this guide. **Docs → Blocks** lists the app folders. **Demo** holds one public page per toolbar app. Folders follow the editor tool buttons, in the same order: Panel, Sheet, Chart, Calcs, Python, Calendar, World clock, Alarm, Countdown, HP-15C, Boards (Gantt, Kanban, Mindmap, Kanban gantt), Checklist, Apps (Jukebox, Dance, Yoga), Forms, Menu (Menu, Shop, SW Shop, NotesList), Voice, Drawing, Draw.io, Photos, Games, and News.
+- Demo user after `seed_demo`: `demo` / `password`. **Docs → README** is this guide. **Docs → Blocks** lists the app folders. **Demo** holds one public page per toolbar app. Folders follow the editor tool buttons, in the same order: Panel, Sheet, Chart, Calcs, Python, Calendar, World clock, Alarm, Countdown, HP-15C, HP-12C, TI-30, Boards (Gantt, Kanban, Mindmap, Kanban gantt), Checklist, Apps (Jukebox, Dance, Yoga), Forms, Menu (Menu, Shop, SW Shop, NotesList), Voice, Drawing, Draw.io, Photos, Games, and News.
 
 Copy `.env.example` to `.env.dev` (or set `DJANGO_ENV`) for local settings. See [Email invitations](#email-invitations) and [Database encryption](#database-encryption) below.
 
@@ -2151,14 +2153,36 @@ Toolbar: **Insert countdown timer**.
 
 ### HP-15C
 
-An HP-15C-style RPN scientific calculator (`hp15c` / `hp-15c`). Four stack levels, gold **f** and blue **g** shifts, complex numbers, storage, statistics, and keystroke programs. **SOLVE** and **∫** run a program label. Matrix keys report Error 1.
+An HP-15C-style RPN scientific calculator (`hp15c` / `hp-15c`). Four stack levels, gold **f** and blue **g** shifts, complex numbers, storage, statistics, and keystroke programs. **SOLVE** and **∫** run a program label. Matrix keys report Error 1. Fullscreen is on by default so a page that is only the calculator fills the preview; the **⛶** button fills the monitor. Set `fullscreen=0` for the compact card.
 
 ````markdown
-```hp15c{title=HP-15C}
+```hp15c{title=HP-15C;fullscreen}
 ```
 ````
 
 Toolbar: **Insert HP-15C calculator**.
+
+### HP-12C
+
+An HP-12C-style RPN financial calculator (`hp12c`, `hp-12c`, or `hp12s`). Four stack levels, gold **f** and blue **g** shifts, and the five TVM registers. Key a number and press **n**, **i**, **PV**, **PMT**, or **FV** to store it; press the same key with no new number to solve for it. **g 12×** stores a yearly rate as a monthly rate, **g 12÷** stores years as months. **BEGIN** is **g 7**, **END** is **g 8**. Cash flows use **g CF0**, **g CFj**, and **g Nj**, then **f NPV** or **f IRR**. Percents, storage, and **Σ+** statistics are on the face. Fullscreen is on by default; the **⛶** button fills the monitor. Set `fullscreen=0` for the compact card.
+
+````markdown
+```hp12c{title=HP-12C;fullscreen}
+```
+````
+
+Toolbar: **Insert HP-12C calculator**.
+
+### TI-30
+
+A TI-30-style algebraic scientific calculator (`ti30`, `ti-30`, or `ti30xa`). Operations follow algebraic precedence, so `2 + 3 × 4 =` is 14, and parentheses group a subexpression. **sin**, **cos**, **tan**, **log**, **ln**, **x²**, and **1/x** act on the displayed number. **2nd** selects the inverse printed above the key. **DRG** cycles degrees, radians, and grads. **STO** and **RCL** use registers 0–9. Fullscreen is on by default; the **⛶** button fills the monitor. Set `fullscreen=0` for the compact card.
+
+````markdown
+```ti30{title=TI-30;fullscreen}
+```
+````
+
+Toolbar: **Insert TI-30 calculator**.
 
 ### Dance
 

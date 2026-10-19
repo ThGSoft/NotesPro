@@ -684,7 +684,7 @@ Each app has its own page. Folders under **Demo** follow the editor tool buttons
 
 - **Panel**
 - **Sheet**, **Chart**, **Calcs**, **Python**
-- **Calendar**, **World clock**, **Alarm**, **Countdown**, **HP-15C**
+- **Calendar**, **World clock**, **Alarm**, **Countdown**, **HP-15C**, **HP-12C**, **TI-30**
 - **Boards** — Gantt, Kanban, Mindmap, Kanban gantt
 - **Checklist**
 - **Apps** — Jukebox, Dance, Yoga
@@ -717,6 +717,8 @@ def seed_toolbar_apps(workspace, user, demo):
     alarm = add_folder('tb-alarm', 'Alarm')
     countdown = add_folder('tb-countdown', 'Countdown')
     hp15c = add_folder('tb-hp15c', 'HP-15C')
+    hp12c = add_folder('tb-hp12c', 'HP-12C')
+    ti30 = add_folder('tb-ti30', 'TI-30')
     boards = add_folder('tb-boards', 'Boards')
     checklist = add_folder('tb-checklist', 'Checklist')
     apps = add_folder('tb-apps', 'Apps')
@@ -873,7 +875,19 @@ Tea | 3:00 | repeat
 
     seed_page(workspace, hp15c, 'hp15c', 'HP-15C', 0, """# HP-15C
 
-```hp15c{title=HP-15C}
+```hp15c{title=HP-15C;fullscreen}
+```
+""")
+
+    seed_page(workspace, hp12c, 'hp12c', 'HP-12C', 0, """# HP-12C
+
+```hp12c{title=HP-12C;fullscreen}
+```
+""")
+
+    seed_page(workspace, ti30, 'ti30', 'TI-30', 0, """# TI-30
+
+```ti30{title=TI-30;fullscreen}
 ```
 """)
 
@@ -1179,7 +1193,7 @@ class Command(BaseCommand):
                     'Edit in markdown, preview when you are done.\n\n'
                     'See **README** in this folder for the full project guide and screenshots.\n\n'
                     'Each app has its own page under **Demo**. Folders there follow the editor tool buttons, in the same order: '
-                    'Panel, Sheet, Chart, Calcs, Python, Calendar, World clock, Alarm, Countdown, HP-15C, '
+                    'Panel, Sheet, Chart, Calcs, Python, Calendar, World clock, Alarm, Countdown, HP-15C, HP-12C, TI-30, '
                     'Boards, Checklist, Apps, Forms, Menu, Voice, Drawing, Draw.io, Photos, Games, and News.\n\n'
                     'Those pages are public, so visitors can open them without signing in. '
                     'A sketch made without login stays in that browser.\n\n'
