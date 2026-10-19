@@ -19278,15 +19278,19 @@ html.notespro-pseudo-fullscreen .game-block--monitor-fullscreen [class*="-stage"
 }
 
 .hp15c-block--fullscreen .hp-keys,
-.hp12c-block--fullscreen .hp-keys,
 .hp15c-block:fullscreen .hp-keys,
 .hp15c-block:-webkit-full-screen .hp-keys,
-.hp15c-block.game-block--monitor-fullscreen .hp-keys,
+.hp15c-block.game-block--monitor-fullscreen .hp-keys {
+  flex: 1;
+  grid-template-rows: repeat(4, minmax(64px, 1fr));
+}
+
+.hp12c-block--fullscreen .hp-keys,
 .hp12c-block:fullscreen .hp-keys,
 .hp12c-block:-webkit-full-screen .hp-keys,
 .hp12c-block.game-block--monitor-fullscreen .hp-keys {
-  flex: 1;
-  grid-template-rows: repeat(4, minmax(64px, 1fr));
+  flex: none;
+  grid-template-rows: none;
 }
 
 .hp15c-block:fullscreen,
@@ -19347,14 +19351,279 @@ html.notespro-pseudo-fullscreen .game-block--monitor-fullscreen [class*="-stage"
   height: 100%;
 }
 
-.hp12c-block {
+.hp15c-block {
+  max-width: 960px;
+  padding: 0;
+  border-radius: 6px;
+  background: #1c1e22;
+  color: #f4f6f8;
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.4), inset 0 0 0 1px #3a3e46;
+}
+
+.hp15-top {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  padding: 12px 56px 12px 14px;
   background:
-    radial-gradient(120% 80% at 50% 0%, #3a3228 0%, #16130f 46%, #0c0b09 100%);
-  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(230, 193, 90, 0.35);
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.22) 0 1px, rgba(0, 0, 0, 0.04) 1px 3px),
+    linear-gradient(180deg, #f7f8fa 0%, #c5c9d0 46%, #eceff3 100%);
+  border-bottom: 1px solid #8b9098;
+}
+
+.hp15c-block .hp-lcd {
+  flex: 1;
+  min-height: 92px;
+  margin: 0;
+  border-radius: 3px;
+  border: 2px solid #6d727a;
+  background: linear-gradient(180deg, #d5dece 0%, #c3ceba 100%);
+  box-shadow: inset 0 3px 8px rgba(40, 48, 36, 0.28);
+}
+
+.hp15-logo {
+  flex: 0 0 72px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  width: 72px;
+  height: 72px;
+  background: #111214;
+  color: #e7ebf2;
+  border: 2px solid #d5d9e0;
+  box-shadow: inset 0 0 0 1px #000;
+}
+
+.hp15-logo-hp {
+  font-family: Georgia, "Times New Roman", serif;
+  font-style: italic;
+  font-weight: 700;
+  font-size: 26px;
+  line-height: 0.9;
+}
+
+.hp15-logo-model {
+  font-family: "Segoe UI", Arial, sans-serif;
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: 0.06em;
+}
+
+.hp15-plate {
+  margin: 8px;
+  padding: 8px 8px 4px;
+  background: #121418;
+  border: 1px solid #2c3038;
+  border-radius: 2px;
+}
+
+.hp15c-block .hp-f {
+  color: #e8a020;
+  font-weight: 700;
+}
+
+.hp15c-block .hp-g {
+  color: #3ec4de;
+}
+
+.hp15c-block .hp-key,
+.hp15c-block .hp-key--num,
+.hp15c-block .hp-key--op,
+.hp15c-block .hp-key--enter,
+.hp15c-block .hp-key--on {
+  background: linear-gradient(180deg, #3c4048 0%, #1a1c20 100%);
+  color: #f7f8fa;
+  border-radius: 5px;
+  box-shadow: 0 2px 0 #0a0b0d, inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+
+.hp15c-block .hp-key--num .hp-g,
+.hp15c-block .hp-key--enter .hp-g {
+  color: #3ec4de;
+}
+
+.hp15c-block .hp-key--f {
+  background: linear-gradient(180deg, #ffe14a 0%, #e6a800 100%);
+  color: #2a2208;
+  box-shadow: 0 2px 0 #8a6800, inset 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+
+.hp15c-block .hp-key--g {
+  background: linear-gradient(180deg, #7eebf2 0%, #1aa8c4 100%);
+  color: #062026;
+  box-shadow: 0 2px 0 #0c6474, inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+
+.hp15c-block .hp-key--enter .hp-face {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  letter-spacing: 0.18em;
+  font-size: 14px;
+}
+
+.hp15-foot {
+  margin: 6px 0 4px;
+  text-align: center;
+  color: #9aa1ab;
+  font-size: 11px;
+  letter-spacing: 0.42em;
+  font-weight: 650;
+}
+
+.hp15c-block--fullscreen .hp15-plate,
+.hp15c-block:fullscreen .hp15-plate,
+.hp15c-block:-webkit-full-screen .hp15-plate,
+.hp15c-block.game-block--monitor-fullscreen .hp15-plate {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.hp12c-block {
+  max-width: 440px;
+  padding: 16px 14px 18px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #4e4a45 0%, #3c3834 38%, #2e2b28 100%);
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+
+.hp12c-block--fullscreen,
+.hp12c-block:fullscreen,
+.hp12c-block:-webkit-full-screen,
+.hp12c-block.game-block--monitor-fullscreen {
+  width: min(440px, 100%);
+  max-width: 440px;
+  min-height: 0;
+  height: auto;
+  margin: 12px auto;
+}
+
+.editor-wrap--preview-only .preview-content > .hp12c-block--fullscreen:only-child,
+.editor-wrap--split .preview-content > .hp12c-block--fullscreen:only-child {
+  flex: 0 0 auto;
+  height: auto;
+  align-self: center;
+  width: min(440px, 100%);
+  max-width: 440px;
 }
 
 .hp12c-block .hp-badge {
-  color: #e6c15a;
+  color: #f3efe6;
+  font-family: "Segoe UI", Arial, sans-serif;
+  font-size: 1.15rem;
+  letter-spacing: 0.12em;
+}
+
+.hp12c-block .hp-tag {
+  color: #d9d3c8;
+  opacity: 0.8;
+}
+
+.hp12c-block .hp-lcd {
+  background: linear-gradient(180deg, #d7e4c6 0%, #c5d6b0 100%);
+  color: #1c2418;
+  border: 3px solid #2a2926;
+  border-radius: 6px;
+  min-height: 96px;
+  padding: 8px 14px 12px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55), inset 0 -6px 10px rgba(50, 60, 40, 0.12);
+}
+
+.hp12c-block .hp-ann {
+  min-height: 16px;
+  font-size: 12px;
+}
+
+.hp12c-block .hp-xy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
+}
+
+.hp12c-block .hp-xy-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: clamp(1.35rem, 5vw, 1.85rem);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  line-height: 1.25;
+}
+
+.hp12c-block .hp-xy-k {
+  flex: 0 0 auto;
+  font-weight: 650;
+}
+
+.hp12c-block .hp-xy-line span:last-child {
+  text-align: right;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.hp12c-block .hp-keys {
+  grid-template-columns: repeat(30, minmax(0, 1fr));
+  gap: 9px 6px;
+  margin-top: 14px;
+}
+
+.hp12c-block .hp-slot {
+  min-height: 64px;
+}
+
+.hp12c-block .hp-f {
+  color: #e39a3c;
+  font-weight: 700;
+  font-size: 12px;
+  min-height: 15px;
+}
+
+.hp12c-block .hp-g {
+  color: #9eb6e8;
+  font-size: 11px;
+}
+
+.hp12c-block .hp-key,
+.hp12c-block .hp-key--num,
+.hp12c-block .hp-key--op,
+.hp12c-block .hp-key--enter,
+.hp12c-block .hp-key--on {
+  background: linear-gradient(180deg, #3a3a3a 0%, #1a1a1a 100%);
+  color: #f7f7f7;
+  border-radius: 9px;
+  box-shadow: 0 2px 0 #0c0c0c, inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+.hp12c-block .hp-key--num .hp-g,
+.hp12c-block .hp-key--enter .hp-g {
+  color: #9eb6e8;
+}
+
+.hp12c-block .hp-key--f {
+  background: linear-gradient(180deg, #f0a24a 0%, #e06a14 100%);
+  color: #2a1608;
+  box-shadow: 0 2px 0 #8a3e08, inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.hp12c-block .hp-key--g {
+  background: linear-gradient(180deg, #3a3a3a 0%, #1a1a1a 100%);
+  color: #9eb6e8;
+}
+
+.hp12c-block .hp-face {
+  font-size: 17px;
+}
+
+.hp12c-block .hp-key--enter .hp-face {
+  font-size: 16px;
+  letter-spacing: 0.12em;
 }
 
 /* --- TI-30 --- */
@@ -19457,4 +19726,177 @@ html.notespro-pseudo-fullscreen .game-block--monitor-fullscreen [class*="-stage"
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
+}
+
+/* size=80% — share of the preview, and of the screen in monitor fullscreen */
+.hp15c-block.is-sized,
+.ti30-block.is-sized {
+  width: var(--calc-size);
+  max-width: var(--calc-size);
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.hp15c-block--fullscreen.is-sized,
+.ti30-block--fullscreen.is-sized {
+  height: var(--calc-size);
+  max-height: var(--calc-size);
+  min-height: 0;
+}
+
+.hp12c-block.is-sized {
+  width: min(440px, calc(440px * var(--calc-num, 1)));
+  max-width: min(440px, 100%);
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.editor-wrap--preview-only .preview-content > .hp15c-block--fullscreen.is-sized:only-child,
+.editor-wrap--split .preview-content > .hp15c-block--fullscreen.is-sized:only-child,
+.editor-wrap--preview-only .preview-content > .ti30-block--fullscreen.is-sized:only-child,
+.editor-wrap--split .preview-content > .ti30-block--fullscreen.is-sized:only-child {
+  flex: 0 1 auto;
+  align-self: center;
+  width: var(--calc-size);
+  height: var(--calc-size);
+  max-width: var(--calc-size);
+  max-height: var(--calc-size);
+  min-height: 0;
+}
+
+.editor-wrap--preview-only .preview-content > .hp12c-block--fullscreen.is-sized:only-child,
+.editor-wrap--split .preview-content > .hp12c-block--fullscreen.is-sized:only-child {
+  flex: 0 0 auto;
+  align-self: center;
+  width: min(440px, calc(440px * var(--calc-num, 1)));
+  max-width: min(440px, 100%);
+  height: auto;
+  min-height: 0;
+}
+
+.hp15c-block.is-sized:fullscreen,
+.hp15c-block.is-sized:-webkit-full-screen,
+.hp12c-block.is-sized:fullscreen,
+.hp12c-block.is-sized:-webkit-full-screen,
+.ti30-block.is-sized:fullscreen,
+.ti30-block.is-sized:-webkit-full-screen,
+html.notespro-pseudo-fullscreen .hp15c-block.is-sized.game-block--monitor-fullscreen,
+html.notespro-pseudo-fullscreen .hp12c-block.is-sized.game-block--monitor-fullscreen,
+html.notespro-pseudo-fullscreen .ti30-block.is-sized.game-block--monitor-fullscreen {
+  width: var(--calc-size);
+  height: var(--calc-size);
+  max-width: var(--calc-size);
+  max-height: var(--calc-size);
+  min-height: 0;
+  margin: 0;
+  inset: auto;
+  top: 50%;
+  left: 50%;
+  right: auto;
+  bottom: auto;
+  transform: translate(-50%, -50%);
+}
+
+.hp15c-block.is-sized,
+.hp12c-block.is-sized,
+.ti30-block.is-sized {
+  overflow: hidden;
+}
+
+.hp15c-block.is-sized .hp-slot,
+.hp12c-block.is-sized .hp-slot,
+.ti30-block.is-sized .hp-slot,
+.hp15c-block.is-sized .hp-f,
+.hp12c-block.is-sized .hp-f,
+.ti30-block.is-sized .hp-f {
+  min-height: 0;
+}
+
+.hp15c-block.is-sized .hp15-plate,
+.ti30-block.is-sized .hp-keys,
+.hp15c-block.is-sized .hp-keys {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.hp15c-block.is-sized .hp-keys,
+.hp15c-block.is-sized:fullscreen .hp-keys,
+.hp15c-block.is-sized:-webkit-full-screen .hp-keys,
+.hp15c-block.is-sized.game-block--monitor-fullscreen .hp-keys {
+  grid-template-rows: repeat(4, minmax(0, 1fr));
+  gap: calc(5px * var(--calc-num, 1)) calc(4px * var(--calc-num, 1));
+}
+
+.ti30-block.is-sized .hp-keys,
+.ti30-block.is-sized:fullscreen .hp-keys,
+.ti30-block.is-sized:-webkit-full-screen .hp-keys,
+.ti30-block.is-sized.game-block--monitor-fullscreen .hp-keys {
+  grid-template-rows: repeat(7, minmax(0, 1fr));
+  gap: calc(5px * var(--calc-num, 1)) calc(4px * var(--calc-num, 1));
+}
+
+.hp12c-block.is-sized .hp-keys {
+  gap: calc(9px * var(--calc-num, 1)) calc(6px * var(--calc-num, 1));
+}
+  min-height: calc(64px * var(--calc-num, 1));
+}
+
+.hp12c-block.is-sized:fullscreen .hp-keys,
+.hp12c-block.is-sized:-webkit-full-screen .hp-keys,
+.hp12c-block.is-sized.game-block--monitor-fullscreen .hp-keys {
+  grid-template-rows: repeat(8, minmax(0, 1fr));
+  gap: calc(9px * var(--calc-num, 1)) calc(6px * var(--calc-num, 1));
+}
+
+.hp12c-block.is-sized:fullscreen .hp-slot,
+.hp12c-block.is-sized:-webkit-full-screen .hp-slot,
+.hp12c-block.is-sized.game-block--monitor-fullscreen .hp-slot {
+  min-height: 0;
+}
+
+.hp15c-block.is-sized .hp-face,
+.hp12c-block.is-sized .hp-face,
+.ti30-block.is-sized .hp-face {
+  font-size: calc(16px * var(--calc-num, 1));
+}
+
+.hp15c-block.is-sized .hp-f,
+.hp15c-block.is-sized .hp-g,
+.hp12c-block.is-sized .hp-f,
+.hp12c-block.is-sized .hp-g,
+.ti30-block.is-sized .hp-f {
+  font-size: calc(11px * var(--calc-num, 1));
+}
+
+.hp15c-block.is-sized .hp-value,
+.ti30-block.is-sized .hp-value,
+.hp12c-block.is-sized .hp-xy-line {
+  font-size: calc(1.7rem * var(--calc-num, 1));
+}
+
+.hp15c-block.is-sized .hp15-top {
+  padding: calc(10px * var(--calc-num, 1)) calc(48px * var(--calc-num, 1)) calc(10px * var(--calc-num, 1)) calc(12px * var(--calc-num, 1));
+}
+
+.hp15c-block.is-sized .hp15-logo {
+  width: calc(72px * var(--calc-num, 1));
+  height: calc(72px * var(--calc-num, 1));
+  flex-basis: calc(72px * var(--calc-num, 1));
+}
+
+.hp15c-block.is-sized .hp15-logo-hp {
+  font-size: calc(26px * var(--calc-num, 1));
+}
+
+.hp15c-block.is-sized .hp15-logo-model {
+  font-size: calc(15px * var(--calc-num, 1));
+}
+
+.hp15c-block.is-sized .game-fullscreen-btn,
+.hp12c-block.is-sized .game-fullscreen-btn,
+.ti30-block.is-sized .game-fullscreen-btn {
+  top: calc(8px * var(--calc-num, 1));
+  right: calc(8px * var(--calc-num, 1));
+  width: calc(36px * var(--calc-num, 1));
+  height: calc(36px * var(--calc-num, 1));
 }

@@ -1558,12 +1558,25 @@
     return true;
   }
 
+  function resolveSize(cfg) {
+    const raw = String(cfg.size ?? '').trim();
+    if (!raw) return null;
+    const n = parseFloat(raw);
+    if (!Number.isFinite(n) || n <= 0) return null;
+    let pct = (!raw.includes('%') && n <= 1) ? n * 100 : n;
+    pct = Math.round(Math.min(100, Math.max(10, pct)));
+    return { css: `${pct}%`, num: (pct / 100).toFixed(2) };
+  }
+
   function renderBlock(content, fenceAttrs, options = {}) {
     const cfg = parseFenceAttrs(fenceAttrs);
     const title = String(cfg.title || 'HP-15C').trim() || 'HP-15C';
     const index = Number.isFinite(options.hp15cIndex) ? options.hp15cIndex : 0;
     const fullscreen = resolveFullscreen(cfg);
     const fullClass = fullscreen ? ' hp15c-block--fullscreen' : '';
+    const size = resolveSize(cfg);
+    const sizedClass = size ? ' is-sized' : '';
+    const sizedAttr = size ? ` style="--calc-size:${size.css};--calc-num:${size.num}"` : '';
     const keys = KEYS.map((spec) => {
       const [id, face, gold, blue, row, col, kind, span] = spec;
       const style = `grid-row:${row}${span ? ` / span ${span}` : ''};grid-column:${col}`;
@@ -1577,12 +1590,10 @@
         + '</button></div>';
     }).join('');
     const fsButton = (typeof globalThis !== 'undefined' && globalThis.NotesProGameFullscreen?.renderButton?.()) || '';
-    return `<div class="hp15c-block${fullClass}" data-hp-index="${index}" tabindex="0">`
+    const model = title.replace(/^hp[-\s]*/i, '') || '15C';
+    return `<div class="hp15c-block${fullClass}${sizedClass}"${sizedAttr} data-hp-index="${index}" tabindex="0">`
       + fsButton
-      + '<div class="hp-bezel">'
-      + `<div class="hp-badge">${escapeHtml(title)}</div>`
-      + '<div class="hp-tag">RPN scientific</div>'
-      + '</div>'
+      + '<div class="hp15-top">'
       + '<div class="hp-lcd" data-role="lcd">'
       + '<div class="hp-ann">'
       + '<span data-ann="user">USER</span><span data-ann="f">f</span><span data-ann="g">g</span>'
@@ -1594,8 +1605,14 @@
       + '<div class="hp-readout"><div class="hp-value"><span data-role="man"></span><span data-role="exp"></span></div>'
       + '<div class="hp-imag" data-role="imag"></div></div>'
       + '</div></div>'
+      + '<div class="hp15-logo" aria-label="' + escapeHtml(title) + '">'
+      + '<span class="hp15-logo-hp">hp</span>'
+      + `<span class="hp15-logo-model">${escapeHtml(model)}</span>`
+      + '</div></div>'
+      + '<div class="hp15-plate">'
       + `<div class="hp-keys">${keys}</div>`
-      + '</div>';
+      + '<div class="hp15-foot">HEWLETT · PACKARD</div>'
+      + '</div></div>';
   }
 
   function paint(el, state) {
@@ -1721,11 +1738,16 @@ if (typeof module !== 'undefined' && require.main === module) {
   ]);
   near(integral.re[0], 1, 'integrate');
   const html = api.renderBlock('', 'title=HP-15C');
-  if (!html.includes('hp15c-block--fullscreen') || !html.includes('data-key="enter"') || !html.includes('SOLVE')) {
+  if (!html.includes('hp15c-block--fullscreen') || !html.includes('data-key="enter"') || !html.includes('SOLVE') || !html.includes('hp15-logo')) {
     throw new Error('render');
   }
   const compact = api.renderBlock('', 'fullscreen=0');
   if (compact.includes('hp15c-block--fullscreen')) throw new Error('compact fullscreen');
+  const sized = api.renderBlock('', 'size=80%');
+  if (!sized.includes('is-sized') || !sized.includes('--calc-size:80%') || !sized.includes('--calc-num:0.80')) {
+    throw new Error('size');
+  }
+  if (api.renderBlock('', 'fullscreen=0').includes('is-sized')) throw new Error('default size');
   const shown = api.formatParts(1 / 3, 'fix', 4);
   if (shown.man !== '0.3333') throw new Error(`format ${shown.man}`);
   console.log('hp15c self-test ok');

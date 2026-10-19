@@ -11,44 +11,45 @@
 
   const SESSIONS = new Map();
 
+  // 30-column grid: six narrow keys on top, five wider keys below, like the portrait face.
   const KEYS = [
-    ['n', 'n', 'AMORT', '12÷', 1, 1],
-    ['i', 'i', 'INT', '12×', 1, 2],
-    ['pv', 'PV', 'NPV', 'CF0', 1, 3],
-    ['pmt', 'PMT', 'RND', 'CFj', 1, 4],
-    ['fv', 'FV', 'IRR', 'Nj', 1, 5],
-    ['chs', 'CHS', 'SL', '√x', 1, 6],
-    ['7', '7', '', 'BEG', 1, 7, 'num'],
-    ['8', '8', '', 'END', 1, 8, 'num'],
-    ['9', '9', '', '', 1, 9, 'num'],
-    ['div', '÷', '', '', 1, 10, 'op'],
-    ['yx', 'yˣ', 'SOYD', 'eˣ', 2, 1],
-    ['inv', '1/x', 'DB', 'LN', 2, 2],
-    ['pctt', '%T', '', '', 2, 3],
-    ['delta', 'Δ%', '', '', 2, 4],
-    ['pct', '%', '', '', 2, 5],
-    ['eex', 'EEX', '', '', 2, 6],
-    ['4', '4', '', '', 2, 7, 'num'],
-    ['5', '5', '', '', 2, 8, 'num'],
-    ['6', '6', '', '', 2, 9, 'num'],
-    ['mul', '×', '', '', 2, 10, 'op'],
-    ['rdown', 'R↓', '', 's', 3, 1],
-    ['swap', 'x⇄y', '', 'x̄', 3, 2],
-    ['clx', 'CLx', 'FIN', 'REG', 3, 3],
-    ['enter', 'ENTER', '', 'LSTx', 3, 4, 'enter', 3],
-    ['1', '1', '', '', 3, 7, 'num'],
-    ['2', '2', '', '', 3, 8, 'num'],
-    ['3', '3', '', '', 3, 9, 'num'],
-    ['sub', '−', '', '', 3, 10, 'op'],
-    ['on', 'ON', '', '', 4, 1, 'on'],
-    ['f', 'f', '', '', 4, 2, 'f'],
-    ['g', 'g', '', '', 4, 3, 'g'],
-    ['sto', 'STO', '', '', 4, 4],
-    ['rcl', 'RCL', '', '', 4, 5],
-    ['0', '0', '', '', 4, 7, 'num'],
-    ['dot', '·', 'FIX', '', 4, 8, 'num'],
-    ['sigma', 'Σ+', '', 'Σ−', 4, 9],
-    ['add', '+', '', '', 4, 10, 'op'],
+    ['n', 'n', 'AMORT', '12÷', 1, 1, '', 5],
+    ['i', 'i', 'INT', '12×', 1, 6, '', 5],
+    ['pv', 'PV', 'NPV', 'CF0', 1, 11, '', 5],
+    ['pmt', 'PMT', 'RND', 'CFj', 1, 16, '', 5],
+    ['fv', 'FV', 'IRR', 'Nj', 1, 21, '', 5],
+    ['chs', 'CHS', 'SL', '√x', 1, 26, '', 5],
+    ['yx', 'yˣ', 'SOYD', 'eˣ', 2, 1, '', 5],
+    ['inv', '1/x', 'DB', 'LN', 2, 6, '', 5],
+    ['pctt', '%T', '', '', 2, 11, '', 5],
+    ['delta', 'Δ%', '', '', 2, 16, '', 5],
+    ['pct', '%', '', '', 2, 21, '', 5],
+    ['eex', 'EEX', '', '', 2, 26, '', 5],
+    ['sto', 'STO', '', '', 3, 1, '', 5],
+    ['rcl', 'RCL', '', '', 3, 6, '', 5],
+    ['rdown', 'R↓', '', 's', 3, 11, '', 5],
+    ['swap', 'x⇄y', '', 'x̄', 3, 16, '', 5],
+    ['sigma', 'Σ+', '', 'Σ−', 3, 21, '', 5],
+    ['clx', 'CLx', 'FIN', 'REG', 3, 26, '', 5],
+    ['enter', 'ENTER', '', 'LSTx', 4, 1, 'enter', 10],
+    ['f', 'f', '', '', 4, 11, 'f', 5],
+    ['g', 'g', '', '', 4, 16, 'g', 5],
+    ['on', 'ON', '', '', 4, 21, 'on', 5],
+    ['div', '÷', '', '', 4, 26, 'op', 5],
+    ['7', '7', '', 'BEG', 5, 1, 'num', 8],
+    ['8', '8', '', 'END', 5, 9, 'num', 7],
+    ['9', '9', '', '', 5, 16, 'num', 8],
+    ['mul', '×', '', '', 5, 24, 'op', 7],
+    ['4', '4', '', '', 6, 1, 'num', 8],
+    ['5', '5', '', '', 6, 9, 'num', 7],
+    ['6', '6', '', '', 6, 16, 'num', 8],
+    ['sub', '−', '', '', 6, 24, 'op', 7],
+    ['1', '1', '', '', 7, 1, 'num', 8],
+    ['2', '2', '', '', 7, 9, 'num', 7],
+    ['3', '3', '', '', 7, 16, 'num', 8],
+    ['add', '+', '', '', 7, 24, 'op', 7],
+    ['0', '0', '', '', 8, 1, 'num', 15],
+    ['dot', '·', 'FIX', '', 8, 16, 'num', 15],
   ];
 
   function escapeHtml(text) {
@@ -750,18 +751,20 @@
     };
   }
 
-  function stackLines(state) {
-    return [3, 2, 1].map((i) => {
-      const parts = formatParts(state.re[i], state.digits);
-      const tag = i === 3 ? 'T' : i === 2 ? 'Z' : 'Y';
-      return `${tag} ${parts.man}${parts.exp || ''}`;
-    });
-  }
-
   function resolveFullscreen(cfg) {
     const raw = String(cfg.fullscreen ?? cfg.full ?? '1').trim().toLowerCase();
     if (raw === '0' || raw === 'false' || raw === 'no' || raw === 'compact') return false;
     return true;
+  }
+
+  function resolveSize(cfg) {
+    const raw = String(cfg.size ?? '').trim();
+    if (!raw) return null;
+    const n = parseFloat(raw);
+    if (!Number.isFinite(n) || n <= 0) return null;
+    let pct = (!raw.includes('%') && n <= 1) ? n * 100 : n;
+    pct = Math.round(Math.min(100, Math.max(10, pct)));
+    return { css: `${pct}%`, num: (pct / 100).toFixed(2) };
   }
 
   function renderBlock(content, fenceAttrs, options = {}) {
@@ -770,6 +773,9 @@
     const index = Number.isFinite(options.hp12cIndex) ? options.hp12cIndex : 0;
     const fullscreen = resolveFullscreen(cfg);
     const fullClass = fullscreen ? ' hp12c-block--fullscreen' : '';
+    const size = resolveSize(cfg);
+    const sizedClass = size ? ' is-sized' : '';
+    const sizedAttr = size ? ` style="--calc-size:${size.css};--calc-num:${size.num}"` : '';
     const keys = KEYS.map((spec) => {
       const [id, face, gold, blue, row, col, kind, span] = spec;
       const style = `grid-row:${row};grid-column:${col}${span ? ` / span ${span}` : ''}`;
@@ -783,7 +789,7 @@
         + '</button></div>';
     }).join('');
     const fsButton = (typeof globalThis !== 'undefined' && globalThis.NotesProGameFullscreen?.renderButton?.()) || '';
-    return `<div class="hp12c-block${fullClass}" data-hp12-index="${index}" tabindex="0">`
+    return `<div class="hp12c-block${fullClass}${sizedClass}"${sizedAttr} data-hp12-index="${index}" tabindex="0">`
       + fsButton
       + '<div class="hp-bezel">'
       + `<div class="hp-badge">${escapeHtml(title)}</div>`
@@ -794,24 +800,35 @@
       + '<span data-ann="f">f</span><span data-ann="g">g</span><span data-ann="begin">BEGIN</span>'
       + '<span data-ann="pend" class="hp-pend"></span>'
       + '</div>'
-      + '<div class="hp-lcd-body">'
-      + '<div class="hp-stack" data-role="stack"></div>'
-      + '<div class="hp-readout"><div class="hp-value"><span data-role="man"></span><span data-role="exp"></span></div></div>'
+      + '<div class="hp-xy">'
+      + '<div class="hp-xy-line"><span class="hp-xy-k">Y:</span><span data-role="y"></span></div>'
+      + '<div class="hp-xy-line"><span class="hp-xy-k">X:</span><span data-role="x"></span></div>'
       + '</div></div>'
       + `<div class="hp-keys">${keys}</div>`
       + '</div>';
+  }
+
+  function shown(state, value) {
+    const parts = formatParts(value, state.digits);
+    return `${parts.man}${parts.exp || ''}`;
   }
 
   function paint(el, state) {
     const view = readout(state);
     const lcd = el.querySelector('[data-role="lcd"]');
     lcd.classList.toggle('is-off', !state.on);
-    el.querySelector('[data-role="man"]').textContent = view.man;
-    el.querySelector('[data-role="exp"]').textContent = view.exp || '';
-    const stack = el.querySelector('[data-role="stack"]');
-    stack.innerHTML = state.on && !state.error
-      ? stackLines(state).map((line) => `<div>${escapeHtml(line)}</div>`).join('')
-      : '';
+    const y = el.querySelector('[data-role="y"]');
+    const x = el.querySelector('[data-role="x"]');
+    if (!state.on) {
+      y.textContent = '';
+      x.textContent = '';
+    } else if (state.error) {
+      y.textContent = '';
+      x.textContent = state.error;
+    } else {
+      y.textContent = shown(state, state.re[1]);
+      x.textContent = `${view.man}${view.exp || ''}`;
+    }
     ['f', 'g', 'begin'].forEach((name) => {
       const node = el.querySelector(`[data-ann="${name}"]`);
       if (node) node.classList.toggle('is-on', !!view.ann[name]);
@@ -910,11 +927,15 @@ if (typeof module !== 'undefined' && require.main === module) {
   ]);
   near(npv.re[0], 4.13, 'npv');
   const html = api.renderBlock('', 'title=HP-12C');
-  if (!html.includes('hp12c-block--fullscreen') || !html.includes('data-key="pv"') || !html.includes('PMT')) {
+  if (!html.includes('hp12c-block--fullscreen') || !html.includes('data-key="pv"') || !html.includes('PMT') || !html.includes('>Y:</span>')) {
     throw new Error('render');
   }
   const compact = api.renderBlock('', 'fullscreen=0');
   if (compact.includes('hp12c-block--fullscreen')) throw new Error('compact fullscreen');
+  const sized = api.renderBlock('', 'size=0.6');
+  if (!sized.includes('is-sized') || !sized.includes('--calc-size:60%') || !sized.includes('--calc-num:0.60')) {
+    throw new Error('size');
+  }
   const shown = api.formatParts(1234.5, 2);
   if (shown.man !== '1,234.50') throw new Error(`format ${shown.man}`);
   console.log('hp12c self-test ok');

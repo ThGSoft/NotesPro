@@ -21734,19 +21734,19 @@ function formatTextWithMarkup(rawText) {
         },
         {
           name: 'insert-hp15c',
-          action: (editor) => insertFenceBlock(editor, 'hp15c{title=HP-15C;fullscreen}', ''),
+          action: (editor) => insertFenceBlock(editor, 'hp15c{title=HP-15C;fullscreen;size=100%}', ''),
           className: 'fa fa-calculator',
           title: 'Insert HP-15C calculator',
         },
         {
           name: 'insert-hp12c',
-          action: (editor) => insertFenceBlock(editor, 'hp12c{title=HP-12C;fullscreen}', ''),
+          action: (editor) => insertFenceBlock(editor, 'hp12c{title=HP-12C;fullscreen;size=100%}', ''),
           className: 'fa fa-calculator',
           title: 'Insert HP-12C calculator',
         },
         {
           name: 'insert-ti30',
-          action: (editor) => insertFenceBlock(editor, 'ti30{title=TI-30;fullscreen}', ''),
+          action: (editor) => insertFenceBlock(editor, 'ti30{title=TI-30;fullscreen;size=100%}', ''),
           className: 'fa fa-calculator',
           title: 'Insert TI-30 calculator',
         },

@@ -444,12 +444,25 @@
     return true;
   }
 
+  function resolveSize(cfg) {
+    const raw = String(cfg.size ?? '').trim();
+    if (!raw) return null;
+    const n = parseFloat(raw);
+    if (!Number.isFinite(n) || n <= 0) return null;
+    let pct = (!raw.includes('%') && n <= 1) ? n * 100 : n;
+    pct = Math.round(Math.min(100, Math.max(10, pct)));
+    return { css: `${pct}%`, num: (pct / 100).toFixed(2) };
+  }
+
   function renderBlock(content, fenceAttrs, options = {}) {
     const cfg = parseFenceAttrs(fenceAttrs);
     const title = String(cfg.title || 'TI-30').trim() || 'TI-30';
     const index = Number.isFinite(options.ti30Index) ? options.ti30Index : 0;
     const fullscreen = resolveFullscreen(cfg);
     const fullClass = fullscreen ? ' ti30-block--fullscreen' : '';
+    const size = resolveSize(cfg);
+    const sizedClass = size ? ' is-sized' : '';
+    const sizedAttr = size ? ` style="--calc-size:${size.css};--calc-num:${size.num}"` : '';
     const keys = KEYS.map((spec) => {
       const [id, face, gold, , row, col, kind] = spec;
       const style = `grid-row:${row};grid-column:${col}`;
@@ -462,7 +475,7 @@
         + '</button></div>';
     }).join('');
     const fsButton = (typeof globalThis !== 'undefined' && globalThis.NotesProGameFullscreen?.renderButton?.()) || '';
-    return `<div class="ti30-block${fullClass}" data-ti30-index="${index}" tabindex="0">`
+    return `<div class="ti30-block${fullClass}${sizedClass}"${sizedAttr} data-ti30-index="${index}" tabindex="0">`
       + fsButton
       + '<div class="hp-bezel">'
       + `<div class="hp-badge">${escapeHtml(title)}</div>`
@@ -575,5 +588,7 @@ if (typeof module !== 'undefined' && require.main === module) {
   }
   const compact = api.renderBlock('', 'fullscreen=0');
   if (compact.includes('ti30-block--fullscreen')) throw new Error('compact fullscreen');
+  const sized = api.renderBlock('', 'size=75%');
+  if (!sized.includes('is-sized') || !sized.includes('--calc-size:75%')) throw new Error('size');
   console.log('ti30 self-test ok');
 }
