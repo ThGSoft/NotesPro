@@ -138,6 +138,9 @@
   let workspacePages = { ...(window.APP_BOOT?.workspacePages || {}) };
   let workspaceTreeOpen = { ...(window.APP_BOOT?.extraConfigs?.tree_open || {}) };
   let treeOpenSaveTimer = null;
+  let pageMemorySeq = 0;
+  let settingsWrite = Promise.resolve();
+  const OPEN_PAGE_KEY = 'notespro_open_page';
 
   function getWorkspacePageId(wsId) {
     if (!wsId) return null;
@@ -152,6 +155,35 @@
     const key = String(wsId);
     if (pageId) workspacePages[key] = Number(pageId);
     else delete workspacePages[key];
+  }
+
+  function readOpenPage() {
+    try {
+      const raw = sessionStorage.getItem(OPEN_PAGE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function rememberOpenPage() {
+    if (publicView || !workspaceId || !currentPageId) return;
+    try {
+      sessionStorage.setItem(OPEN_PAGE_KEY, JSON.stringify({
+        ws: String(workspaceId),
+        page: Number(currentPageId),
+        seq: pageMemorySeq,
+      }));
+    } catch (_) { /* private mode */ }
+  }
+
+  function rememberSelectedPage(pageId) {
+    const next = parsePageId(pageId);
+    if (!next) return;
+    if (String(currentPageId) !== String(next)) pageMemorySeq = Date.now();
+    currentPageId = next;
+    setWorkspacePageId(getWorkspaceId() || workspaceId, next);
+    rememberOpenPage();
   }
 
   function apiUrl(url) {
@@ -496,9 +528,11 @@
   }
 
   function applyPageToEditor(page, { fromHistory = false, statusText = 'Loaded' } = {}) {
+    if (page?.id && String(currentPageId) !== String(page.id)) pageMemorySeq = Date.now();
     currentPage = page;
     currentPageId = page.id;
     setWorkspacePageId(workspaceId, currentPageId);
+    rememberOpenPage();
     const titleInput = document.getElementById('page-title');
     const titlePreview = document.getElementById('page-title-preview');
     const slugEl = document.getElementById('page-slug');
@@ -2558,7 +2592,7 @@
   }
 
   function isPreviewRichBlock(el) {
-    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .form-widget, .mindmap-block, .md-news, .md-python, .voice-block, .jukebox-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .backgammon-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .carambole-block, .carrom-block, .dart-block, .draw-block, .drawio-block, .snake-block, .marbleblast-block, .gallery-block, .training-block, .dance-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .page-tags');
+    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .form-widget, .mindmap-block, .md-news, .md-python, .voice-block, .jukebox-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .backgammon-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .carambole-block, .carrom-block, .dart-block, .draw-block, .drawio-block, .snake-block, .marbleblast-block, .gallery-block, .training-block, .worldclock-block, .alarm-block, .countdowntimer-block, .hp15c-block, .hp12c-block, .ti30-block, .dance-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .page-tags');
   }
 
   function getPreviewBlockSourceLine(node) {
@@ -4324,6 +4358,14 @@
     renderPageSettingsTags();
   }
 
+  function withAppBase(path) {
+    const value = String(path || '');
+    if (!value.startsWith('/')) return value;
+    if (!appBase) return value;
+    if (value === appBase || value.startsWith(`${appBase}/`)) return value;
+    return `${appBase}${value}`;
+  }
+
   function absolutePublicUrl(path) {
     const value = String(path || '').trim();
     if (!value) return '';
@@ -4339,15 +4381,15 @@
   function previewPublicPath() {
     const rootOn = !!document.getElementById('page-settings-root')?.checked
       || !!document.getElementById('page-settings-ws')?.checked;
-    if (rootOn) return '/';
+    if (rootOn) return withAppBase('/');
     const saved = String(currentPage?.public_url || '');
-    if (currentPage?.settings?.public && saved && saved !== '/') return saved;
+    if (currentPage?.settings?.public && saved && saved !== '/') return withAppBase(saved);
     const option = selectedWorkspaceOption();
     const owner = option?.dataset?.owner || currentUserName || '';
     const workspaceSlug = option?.dataset?.slug || '';
     const pageSlug = currentPage?.slug || '';
     if (owner && workspaceSlug && pageSlug) {
-      return `/p/${encodeURIComponent(owner)}/${encodeURIComponent(workspaceSlug)}/${encodeURIComponent(pageSlug)}/`;
+      return withAppBase(`/p/${encodeURIComponent(owner)}/${encodeURIComponent(workspaceSlug)}/${encodeURIComponent(pageSlug)}/`);
     }
     return saved && saved !== '/' ? saved : '';
   }
@@ -4506,14 +4548,14 @@
   function previewWorkspacePublicPath() {
     const rootOn = !!document.getElementById('ws-settings-root')?.checked
       || !!document.getElementById('ws-settings-ws')?.checked;
-    if (rootOn) return '/';
+    if (rootOn) return withAppBase('/');
     const option = selectedWorkspaceOption();
     const saved = String(option?.dataset?.publicUrl || '');
-    if (option?.dataset?.public === '1' && saved && saved !== '/') return saved;
+    if (option?.dataset?.public === '1' && saved && saved !== '/') return withAppBase(saved);
     const owner = option?.dataset?.owner || currentUserName || '';
     const workspaceSlug = option?.dataset?.slug || '';
     if (owner && workspaceSlug) {
-      return `/p/${encodeURIComponent(owner)}/${encodeURIComponent(workspaceSlug)}/`;
+      return withAppBase(`/p/${encodeURIComponent(owner)}/${encodeURIComponent(workspaceSlug)}/`);
     }
     return saved && saved !== '/' ? saved : '';
   }
@@ -11507,6 +11549,128 @@
     });
   }
 
+  const WORLDCLOCK_BLOCK_RE = /```(?:worldclock|world-clock)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function parseWorldclockBlocks(text) {
+    let worldclockIndex = 0;
+    WORLDCLOCK_BLOCK_RE.lastIndex = 0;
+    return text.replace(WORLDCLOCK_BLOCK_RE, (_, fenceAttrs, content) => {
+      const engine = window.NotesProWorldclock;
+      const idx = worldclockIndex++;
+      const html = engine?.renderBlock
+        ? engine.renderBlock(content || '', fenceAttrs || '', { worldclockIndex: idx, kind: 'clock' })
+        : '<div class="worldclock-block">World clock not loaded.</div>';
+      return wrapRichPreviewBlock(html);
+    });
+  }
+
+  const ALARM_BLOCK_RE = /```(?:alarms?)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function parseAlarmBlocks(text) {
+    let alarmIndex = 0;
+    ALARM_BLOCK_RE.lastIndex = 0;
+    return text.replace(ALARM_BLOCK_RE, (_, fenceAttrs, content) => {
+      const engine = window.NotesProWorldclock;
+      const idx = alarmIndex++;
+      const html = engine?.renderBlock
+        ? engine.renderBlock(content || '', fenceAttrs || '', { worldclockIndex: idx, kind: 'alarm' })
+        : '<div class="alarm-block">Alarm not loaded.</div>';
+      return wrapRichPreviewBlock(html);
+    });
+  }
+
+  const COUNTDOWN_BLOCK_RE = /```(?:countdowntimer|countdown-timer|countdowns?)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function parseCountdownBlocks(text) {
+    let countdownIndex = 0;
+    COUNTDOWN_BLOCK_RE.lastIndex = 0;
+    return text.replace(COUNTDOWN_BLOCK_RE, (_, fenceAttrs, content) => {
+      const engine = window.NotesProWorldclock;
+      const idx = countdownIndex++;
+      const html = engine?.renderBlock
+        ? engine.renderBlock(content || '', fenceAttrs || '', { worldclockIndex: idx, kind: 'countdown' })
+        : '<div class="countdowntimer-block">Countdown timer not loaded.</div>';
+      return wrapRichPreviewBlock(html);
+    });
+  }
+
+  function hydrateWorldclockBlocks(root) {
+    const engine = window.NotesProWorldclock;
+    if (!engine) return;
+    (root || document).querySelectorAll('.worldclock-block, .alarm-block, .countdowntimer-block').forEach((el) => {
+      engine.hydrateBlock(el);
+    });
+  }
+
+  const HP15C_BLOCK_RE = /```(?:hp15c|hp-15c)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function parseHp15cBlocks(text) {
+    let hp15cIndex = 0;
+    HP15C_BLOCK_RE.lastIndex = 0;
+    return text.replace(HP15C_BLOCK_RE, (_, fenceAttrs, content) => {
+      const engine = window.NotesProHp15c;
+      const idx = hp15cIndex++;
+      const html = engine?.renderBlock
+        ? engine.renderBlock(content || '', fenceAttrs || '', { hp15cIndex: idx })
+        : '<div class="hp15c-block">HP-15C not loaded.</div>';
+      return wrapRichPreviewBlock(html);
+    });
+  }
+
+  function hydrateHp15cBlocks(root) {
+    const engine = window.NotesProHp15c;
+    if (!engine) return;
+    (root || document).querySelectorAll('.hp15c-block').forEach((el) => {
+      engine.hydrateBlock(el);
+    });
+  }
+
+  const HP12C_BLOCK_RE = /```(?:hp12c|hp-12c|hp12s)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function parseHp12cBlocks(text) {
+    let hp12cIndex = 0;
+    HP12C_BLOCK_RE.lastIndex = 0;
+    return text.replace(HP12C_BLOCK_RE, (_, fenceAttrs, content) => {
+      const engine = window.NotesProHp12c;
+      const idx = hp12cIndex++;
+      const html = engine?.renderBlock
+        ? engine.renderBlock(content || '', fenceAttrs || '', { hp12cIndex: idx })
+        : '<div class="hp12c-block">HP-12C not loaded.</div>';
+      return wrapRichPreviewBlock(html);
+    });
+  }
+
+  function hydrateHp12cBlocks(root) {
+    const engine = window.NotesProHp12c;
+    if (!engine) return;
+    (root || document).querySelectorAll('.hp12c-block').forEach((el) => {
+      engine.hydrateBlock(el);
+    });
+  }
+
+  const TI30_BLOCK_RE = /```(?:ti30xa|ti-30|ti30)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function parseTi30Blocks(text) {
+    let ti30Index = 0;
+    TI30_BLOCK_RE.lastIndex = 0;
+    return text.replace(TI30_BLOCK_RE, (_, fenceAttrs, content) => {
+      const engine = window.NotesProTi30;
+      const idx = ti30Index++;
+      const html = engine?.renderBlock
+        ? engine.renderBlock(content || '', fenceAttrs || '', { ti30Index: idx })
+        : '<div class="ti30-block">TI-30 not loaded.</div>';
+      return wrapRichPreviewBlock(html);
+    });
+  }
+
+  function hydrateTi30Blocks(root) {
+    const engine = window.NotesProTi30;
+    if (!engine) return;
+    (root || document).querySelectorAll('.ti30-block').forEach((el) => {
+      engine.hydrateBlock(el);
+    });
+  }
+
   function hydrateTrainingBlocks(root) {
     const engine = window.NotesProTraining;
     if (!engine) return;
@@ -13156,7 +13320,7 @@ function formatTextWithMarkup(rawText) {
     if (!root) return;
     root.querySelectorAll('pre').forEach(pre => {
       if (pre.closest('.md-code-block')) return;
-      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .form-widget, .mindmap-block, .md-news, .md-python, .voice-block, .jukebox-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .backgammon-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .carambole-block, .carrom-block, .dart-block, .draw-block, .drawio-block, .snake-block, .marbleblast-block, .gallery-block, .training-block, .dance-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block')) {
+      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .form-widget, .mindmap-block, .md-news, .md-python, .voice-block, .jukebox-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .backgammon-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .carambole-block, .carrom-block, .dart-block, .draw-block, .drawio-block, .snake-block, .marbleblast-block, .gallery-block, .training-block, .worldclock-block, .alarm-block, .countdowntimer-block, .hp15c-block, .hp12c-block, .ti30-block, .dance-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block')) {
         return;
       }
       const wrap = document.createElement('div');
@@ -13231,10 +13395,16 @@ function formatTextWithMarkup(rawText) {
   }
 
   function publicPageHref(wsSlug, pageSlug) {
-    const owner = window.APP_BOOT?.publicPage?.owner || window.APP_BOOT?.username || '';
+    const select = document.getElementById('workspace-select');
+    const option = [...(select?.options || [])].find(
+      (opt) => String(opt.dataset.slug || '').toLowerCase() === String(wsSlug || '').toLowerCase()
+    );
+    const owner = option?.dataset?.owner
+      || window.APP_BOOT?.publicPage?.owner
+      || window.APP_BOOT?.username
+      || '';
     if (!owner || !wsSlug || !pageSlug) return '';
-    const path = `/p/${encodeURIComponent(owner)}/${encodeURIComponent(wsSlug)}/${encodeURIComponent(pageSlug)}/`;
-    return appBase ? `${appBase}${path}` : path;
+    return withAppBase(`/p/${encodeURIComponent(owner)}/${encodeURIComponent(wsSlug)}/${encodeURIComponent(pageSlug)}/`);
   }
 
   function markPageLinks(root) {
@@ -13249,10 +13419,8 @@ function formatTextWithMarkup(rawText) {
       anchor.dataset.pageSlug = parts[1];
       anchor.removeAttribute('target');
       anchor.removeAttribute('rel');
-      if (window.APP_BOOT?.publicView) {
-        const href = publicPageHref(parts[0], parts[1]);
-        if (href) anchor.setAttribute('href', href);
-      }
+      const href = publicPageHref(parts[0], parts[1]);
+      if (href) anchor.setAttribute('href', href);
     });
   }
 
@@ -13825,6 +13993,36 @@ function formatTextWithMarkup(rawText) {
       const label = cfg.title || 'Training';
       return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
     });
+    md = md.replace(/```(?:worldclock|world-clock)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const cfg = window.NotesProWorldclock?.parseFenceAttrs?.(fenceAttrs) || {};
+      const label = cfg.title || 'World clock';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
+    md = md.replace(/```(?:alarms?)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const cfg = window.NotesProWorldclock?.parseFenceAttrs?.(fenceAttrs) || {};
+      const label = cfg.title || 'Alarm';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
+    md = md.replace(/```(?:countdowntimer|countdown-timer|countdowns?)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const cfg = window.NotesProWorldclock?.parseFenceAttrs?.(fenceAttrs) || {};
+      const label = cfg.title || 'Countdown';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
+    md = md.replace(/```(?:hp15c|hp-15c)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const cfg = window.NotesProHp15c?.parseFenceAttrs?.(fenceAttrs) || {};
+      const label = cfg.title || 'HP-15C';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
+    md = md.replace(/```(?:hp12c|hp-12c|hp12s)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const cfg = window.NotesProHp12c?.parseFenceAttrs?.(fenceAttrs) || {};
+      const label = cfg.title || 'HP-12C';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
+    md = md.replace(/```(?:ti30xa|ti-30|ti30)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const cfg = window.NotesProTi30?.parseFenceAttrs?.(fenceAttrs) || {};
+      const label = cfg.title || 'TI-30';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
     md = md.replace(/```dance(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
       const cfg = window.NotesProDance?.parseFenceAttrs?.(fenceAttrs) || {};
       const label = cfg.title || 'Dance';
@@ -13952,6 +14150,12 @@ function formatTextWithMarkup(rawText) {
       md = parseMarbleblastBlocks(md);
       md = parseGalleryBlocks(md, options);
       md = parseTrainingBlocks(md, options);
+      md = parseWorldclockBlocks(md);
+      md = parseAlarmBlocks(md);
+      md = parseCountdownBlocks(md);
+      md = parseHp15cBlocks(md);
+      md = parseHp12cBlocks(md);
+      md = parseTi30Blocks(md);
       md = parseDanceBlocks(md);
       md = parsePhotocubeBlocks(md, options);
       md = parsePhotobookBlocks(md, options);
@@ -14422,6 +14626,10 @@ function formatTextWithMarkup(rawText) {
     hydrateMarbleblastBlocks(preview);
     hydrateGalleryBlocks(preview);
     hydrateTrainingBlocks(preview);
+    hydrateWorldclockBlocks(preview);
+    hydrateHp15cBlocks(preview);
+    hydrateHp12cBlocks(preview);
+    hydrateTi30Blocks(preview);
     hydrateDanceBlocks(preview);
     hydratePhotocubeBlocks(preview);
     hydratePhotobookBlocks(preview);
@@ -14716,9 +14924,13 @@ function formatTextWithMarkup(rawText) {
   }
 
   function syncVisualViewportHeight() {
-    const height = window.visualViewport?.height || window.innerHeight;
+    const vv = window.visualViewport;
+    const scale = vv?.scale || 1;
+    const zoomed = isMobileLayout() && scale > 1.01;
+    const height = zoomed ? window.innerHeight : (vv?.height || window.innerHeight);
     if (!height) return;
     document.documentElement.style.setProperty('--vvh', `${Math.round(height)}px`);
+    document.documentElement.classList.toggle('is-zoomed', zoomed);
   }
 
   syncVisualViewportHeight();
@@ -21491,6 +21703,66 @@ function formatTextWithMarkup(rawText) {
           title: 'Insert calendar',
         },
         {
+          name: 'insert-worldclock',
+          action: (editor) => {
+            const body = [
+              'Local | local | both',
+              'London | Europe/London | analog',
+              'New York | America/New_York | digital',
+              'Tokyo | Asia/Tokyo | both',
+              'Sydney | Australia/Sydney | digital',
+              'CET | CET | digital',
+              'OESZ | OESZ | analog',
+            ].join('\n');
+            insertFenceBlock(editor, 'worldclock{title=World clock;col=info}', body);
+          },
+          className: 'fa fa-clock-o',
+          title: 'Insert world clock',
+        },
+        {
+          name: 'insert-alarm',
+          action: (editor) => {
+            const body = [
+              'Wake | 07:00 | off | analog',
+              'Standup | 09:30 | on | digital',
+            ].join('\n');
+            insertFenceBlock(editor, 'alarm{title=Alarm;col=warning}', body);
+          },
+          className: 'fa fa-bell-o',
+          title: 'Insert alarm',
+        },
+        {
+          name: 'insert-countdowntimer',
+          action: (editor) => {
+            const body = [
+              'Pomodoro | 25:00',
+              'Short break | 5:00',
+              'Tea | 3:00 | repeat',
+            ].join('\n');
+            insertFenceBlock(editor, 'countdowntimer{title=Countdown;col=info}', body);
+          },
+          className: 'fa fa-hourglass-half',
+          title: 'Insert countdown timer',
+        },
+        {
+          name: 'insert-hp15c',
+          action: (editor) => insertFenceBlock(editor, 'hp15c{title=HP-15C;fullscreen;size=100%}', ''),
+          className: 'fa fa-calculator',
+          title: 'Insert HP-15C calculator',
+        },
+        {
+          name: 'insert-hp12c',
+          action: (editor) => insertFenceBlock(editor, 'hp12c{title=HP-12C;fullscreen;size=100%}', ''),
+          className: 'fa fa-calculator',
+          title: 'Insert HP-12C calculator',
+        },
+        {
+          name: 'insert-ti30',
+          action: (editor) => insertFenceBlock(editor, 'ti30{title=TI-30;fullscreen;size=100%}', ''),
+          className: 'fa fa-calculator',
+          title: 'Insert TI-30 calculator',
+        },
+        {
           name: 'boardsMenu',
           className: 'fa fa-th-large',
           title: 'Insert kanban / gantt / mindmap / kanban gantt',
@@ -21871,29 +22143,63 @@ function formatTextWithMarkup(rawText) {
   }
 
 
-  async function updateUserSettings(settingsDelta = {}) {
-    try {
-      if (publicView) return false;
-      syncWorkspaceIdFromDom();
-      if (!workspaceId) return false;
-
-      const payload = {
-        last_workspace_id: Number(workspaceId),
-        last_page_id: currentPageId,
-        workspace_pages: workspacePages,
-        ...settingsDelta,
-      };
-      const url = `api/workspaces/${workspaceId}/updateUserSettings/`;
-      await api(url, 'POST', payload, false);
-      return true;
-    } catch (err) {
-      console.warn('updateUserSettings failed:', err);
-      if (err.network) {
-        setStatus('Server offline — last page not saved');
-      }
-      return false;
-    }
+  function userSettingsPayload(settingsDelta = {}) {
+    return {
+      last_workspace_id: Number(workspaceId),
+      last_page_id: currentPageId,
+      workspace_pages: workspacePages,
+      page_memory_seq: pageMemorySeq,
+      ...settingsDelta,
+    };
   }
+
+  async function postUserSettings(settingsDelta = {}) {
+    syncWorkspaceIdFromDom();
+    if (publicView || !workspaceId) return false;
+    const payload = userSettingsPayload(settingsDelta);
+    const url = `api/workspaces/${workspaceId}/updateUserSettings/`;
+    await api(url, 'POST', payload, false);
+    rememberOpenPage();
+    return true;
+  }
+
+  function updateUserSettings(settingsDelta = {}) {
+    if (publicView) return Promise.resolve(false);
+    syncWorkspaceIdFromDom();
+    if (!workspaceId) return Promise.resolve(false);
+    const run = settingsWrite.then(() => postUserSettings(settingsDelta)).catch((err) => {
+      console.warn('updateUserSettings failed:', err);
+      if (err.network) setStatus('Server offline — last page not saved');
+      return false;
+    });
+    settingsWrite = run.then(() => {}, () => {});
+    return run;
+  }
+
+  function persistOpenPageOnHide() {
+    if (publicView) return;
+    rememberOpenPage();
+    syncWorkspaceIdFromDom();
+    if (!workspaceId || !currentPageId) return;
+    try {
+      fetch(apiUrl(`api/workspaces/${workspaceId}/updateUserSettings/`), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrfToken,
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify(userSettingsPayload()),
+        keepalive: true,
+        credentials: 'same-origin',
+      }).catch(() => {});
+    } catch (_) { /* page is already going away */ }
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) persistOpenPageOnHide();
+  });
+  window.addEventListener('pagehide', persistOpenPageOnHide);
   
   function isTreeFolder(node) {
     if (!node) return false;
@@ -22252,6 +22558,7 @@ function formatTextWithMarkup(rawText) {
       }
       const pageId = parsePageId(node.id);
       if (!pageId) return;
+      rememberSelectedPage(pageId);
       openTreeAncestors(node.id);
       scheduleTreeOpenPersist();
       loadPage(pageId);
@@ -22451,6 +22758,7 @@ function formatTextWithMarkup(rawText) {
         const cached = await offlineGetPage(pageId);
         if (cached) {
           applyPageToEditor(cached, { fromHistory, statusText: 'Offline copy' });
+          await updateUserSettings();
           return;
         }
       }
@@ -22477,6 +22785,7 @@ function formatTextWithMarkup(rawText) {
           last_workspace_id: Number(prevWs),
           last_page_id: prevPage,
           workspace_pages: workspacePages,
+          page_memory_seq: pageMemorySeq,
         }, false);
       } catch (err) {
         console.warn('save workspace page before switch failed:', err);
@@ -24710,7 +25019,37 @@ function formatTextWithMarkup(rawText) {
     return node?.data || node?.original?.data || {};
   }
 
-  async function loadPublicTreePage(node) {
+  function publicPageLocation(page) {
+    const owner = page?.owner || window.APP_BOOT?.publicPage?.owner || '';
+    const ws = page?.workspace_slug || window.APP_BOOT?.publicPage?.workspace_slug || '';
+    const slug = page?.slug || '';
+    if (!owner || !ws || !slug) return '';
+    return withAppBase(`/p/${encodeURIComponent(owner)}/${encodeURIComponent(ws)}/${encodeURIComponent(slug)}/`);
+  }
+
+  function rememberPublicPage(page, { replace = false } = {}) {
+    const href = publicPageLocation(page);
+    if (!href || !window.history?.pushState) return;
+    const state = { notesproPublic: true, id: page.id, slug: page.slug };
+    try {
+      const here = `${location.pathname}${location.search}`;
+      if (here === href || replace) history.replaceState(state, '', href);
+      else history.pushState(state, '', href);
+    } catch (_) { /* ignore */ }
+  }
+
+  function publicTreeNodeBySlug(slug) {
+    const tree = $('#tree').jstree(true);
+    if (!tree || !slug) return null;
+    const nodes = tree.get_json('#', { flat: true }) || [];
+    for (const item of nodes) {
+      const node = tree.get_node(item.id);
+      if (publicTreeNodeMeta(node).slug === slug) return node;
+    }
+    return null;
+  }
+
+  async function loadPublicTreePage(node, { fromHistory = false } = {}) {
     const meta = publicTreeNodeMeta(node);
     const owner = meta.owner || '';
     const workspaceSlug = meta.workspace_slug || '';
@@ -24727,7 +25066,9 @@ function formatTextWithMarkup(rawText) {
         `api/public/${encodeURIComponent(owner)}/${encodeURIComponent(workspaceSlug)}/${encodeURIComponent(pageSlug)}/`
       );
       applyPageToEditor(page, { fromHistory: true, statusText: '' });
+      if (!fromHistory) rememberPublicPage(page);
       openTreeAncestors(node.id);
+      if (isMobileLayout()) collapseLeftPanel();
     } catch (err) {
       setStatus(err.message || 'Failed to load page');
     }
@@ -24793,7 +25134,20 @@ function formatTextWithMarkup(rawText) {
     syncMobileLayoutClass();
     setEditing(false);
     const page = window.APP_BOOT?.publicPage;
-    if (page) applyPageToEditor(page, { fromHistory: true, statusText: '' });
+    if (page) {
+      applyPageToEditor(page, { fromHistory: true, statusText: '' });
+      rememberPublicPage(page, { replace: true });
+    }
+    window.addEventListener('popstate', () => {
+      const match = location.pathname.match(/\/p\/[^/]+\/[^/]+\/([^/]+)\/?$/);
+      if (!match) return;
+      let slug = match[1];
+      try { slug = decodeURIComponent(slug); } catch (_) { /* keep raw */ }
+      const node = publicTreeNodeBySlug(slug);
+      if (!node) return;
+      selectTreeNode(node.id, true);
+      void loadPublicTreePage(node, { fromHistory: true });
+    });
     if (Array.isArray(publicTree) && publicTree.length) {
       applyLayoutFromSettings();
       if (isMobileLayout()) {
@@ -24883,6 +25237,22 @@ function formatTextWithMarkup(rawText) {
   initEditorSplitter();
   initRightSplitter();
   loadTree(currentPageId).then(() => {
+    const stored = readOpenPage();
+    const bootPage = window.APP_BOOT?.pageId;
+    if (
+      stored
+      && String(stored.ws) === String(workspaceId)
+      && stored.page
+      && String(stored.page) !== String(bootPage || '')
+      && String(stored.page) !== String(currentPageId || '')
+    ) {
+      const tree = $('#tree').jstree(true);
+      const node = tree?.get_node(String(stored.page));
+      if (node && !isTreeFolder(node)) {
+        pageMemorySeq = Math.max(pageMemorySeq, Number(stored.seq) || 0);
+        selectTreeNode(stored.page);
+      }
+    }
     if (!currentPageId) switchMode('preview');
     if (window.APP_BOOT?.openEditing) setEditing(true);
   });
@@ -25236,7 +25606,7 @@ function formatTextWithMarkup(rawText) {
     if (tryPasteImageUrlsIntoKeep(event)) return;
     const data = event.clipboardData || event.originalEvent?.clipboardData;
     const pasteFiles = clipboardImageFiles(data);
-    if (event.target.closest?.('.puzzle-block, .gallery-block, .training-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .backgammon-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .carambole-block, .carrom-block, .dart-block, .draw-block, .drawio-block, .snake-block, .marbleblast-block, .voice-block, .jukebox-block, .calendar-block, #calendar-note-modal')) return;
+    if (event.target.closest?.('.puzzle-block, .gallery-block, .training-block, .worldclock-block, .alarm-block, .countdowntimer-block, .hp15c-block, .hp12c-block, .ti30-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .backgammon-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .carambole-block, .carrom-block, .dart-block, .draw-block, .drawio-block, .snake-block, .marbleblast-block, .voice-block, .jukebox-block, .calendar-block, #calendar-note-modal')) return;
     if (!pasteFiles.length) {
       const text = data?.getData?.('text/plain') || '';
       const fromText = pastedPlainImageUrls(text);
@@ -25733,12 +26103,31 @@ function formatTextWithMarkup(rawText) {
     }
   }
 
+  function issuePagePath(node, byId) {
+    const parts = [];
+    const seen = new Set();
+    let current = node;
+    while (current && !seen.has(String(current.id))) {
+      seen.add(String(current.id));
+      const title = String(current.text || current.title || '').trim();
+      if (title) parts.push(title);
+      const parentId = current.parent;
+      if (!parentId || parentId === '#') break;
+      current = byId.get(String(parentId));
+    }
+    return parts.reverse().join(' / ');
+  }
+
   async function loadIssuePages() {
     if (!workspaceId) return [];
     try {
       const tree = await api(`api/workspaces/${workspaceId}/tree/`);
       const nodes = Array.isArray(tree) ? tree : [];
-      issuePagesCache = nodes.filter(n => !(n.type === 'folder' || n.data?.is_folder));
+      const byId = new Map(nodes.map((node) => [String(node.id), node]));
+      issuePagesCache = nodes
+        .filter((node) => !(node.type === 'folder' || node.data?.is_folder))
+        .map((node) => ({ ...node, path: issuePagePath(node, byId) }))
+        .sort((a, b) => (a.path || '').localeCompare(b.path || ''));
       return issuePagesCache;
     } catch (e) {
       console.warn('issue pages', e);
@@ -25767,7 +26156,7 @@ function formatTextWithMarkup(rawText) {
       pages.forEach(p => {
         const opt = document.createElement('option');
         opt.value = String(p.id);
-        opt.textContent = p.text || p.title || `Page ${p.id}`;
+        opt.textContent = p.path || p.text || p.title || `Page ${p.id}`;
         pageSel.appendChild(opt);
       });
       pageSel.value = issue?.page ? String(issue.page) : (currentPageId ? String(currentPageId) : '');
@@ -25891,7 +26280,7 @@ function formatTextWithMarkup(rawText) {
       case 'status': return ISSUE_STATUS_ORDER[issue.status] ?? 9;
       case 'priority': return ISSUE_PRIORITY_ORDER[issue.priority] ?? 9;
       case 'assignee': return (issue.assignee_username || '').toLowerCase();
-      case 'page': return (issue.page_title || '').toLowerCase();
+      case 'page': return (issue.page_path || issue.page_title || '').toLowerCase();
       case 'labels': return (Array.isArray(issue.labels) ? issue.labels.join(', ') : '').toLowerCase();
       case 'updated_at': return issue.updated_at || '';
       default: return '';
@@ -25943,7 +26332,7 @@ function formatTextWithMarkup(rawText) {
       parts.push(ISSUE_PRIORITY_LABELS[issue.priority] || issue.priority);
     }
     if (issue.assignee_username) parts.push(`@${issue.assignee_username}`);
-    if (issue.page_title) parts.push(issue.page_title);
+    if (issue.page_path || issue.page_title) parts.push(issue.page_path || issue.page_title);
     const labels = Array.isArray(issue.labels) ? issue.labels.filter(Boolean) : [];
     if (labels.length) parts.push(labels.join(', '));
     return issueExportPlain(parts.join(' · '));
@@ -26044,7 +26433,7 @@ function formatTextWithMarkup(rawText) {
         : '';
       const updated = issue.updated_at ? new Date(issue.updated_at).toLocaleString() : '';
       const pageCell = issue.page
-        ? `<button type="button" class="issues-table-page-link" data-issue-page="${issue.page}">${escapeHtml(issue.page_title || 'Page')}</button>`
+        ? `<button type="button" class="issues-table-page-link" data-issue-page="${issue.page}">${escapeHtml(issue.page_path || issue.page_title || 'Page')}</button>`
         : '';
       const desc = issueDescriptionText(issue.body);
       const tipAttr = desc ? ` data-issue-desc="${escapeHtml(desc)}"` : '';

@@ -155,243 +155,6 @@ def build_readme_markdown(workspace, user):
     return text
 
 
-BLOCKS_DEMO_MARKDOWN = """# Gantt
-
-```gantt{from=01.07.26;to=31.07.26;col=info}
-# Project plan
-Phase A | 01.07.26 | 15.07.26 | **Start**
-Phase B | 15.07.26 | 31.07.26 | Delivery
-```
-# Calendar
-```calendar{from=01.07.26;to=11.07.26;mode=day;col=primary}
-@d:07.07.26 | **Kickoff** | ![Lake](https://picsum.photos/id/1015/640/480)
-```
-```calendar{from=01.07.26;to=11.07.26;mode=day;col=danger}
-```
-```calendar{from=01.07.26;to=31.07.26;mode=week;col=primary}
-@w:2026-w27 | Ferien
-```
-# Mindmap
-```mindmap{dir=right;col=warning}
-# Ideas
-Central topic
-  Branch A | **Key point**
-    Detail A1
-    Detail A2
-  Branch B
-    Detail B1 | note
-```
-# Kanban
-```kanban{cols=Todo,Doing,Done;col=danger}
-# MidasNano Remote
-Todo | Create 488 Api | **Basis 488 Commmands**
-Todo | Build API
-Done | Kickoff | ![](media/uploads/photo.png)
-Done | Define Remote
-```
-
-# Checklist
-```checklist{align=left;col=info}
-# Packing
-- [ ] Passport
-- [x] Tickets
-- [ ] Charger
-```
-
-# Form inputs
-```radio{col=info}
-# Color
-- Red
-- (x) Green
-- Blue
-```
-```vote{col=info}
-# Lunch
-- Pizza
-- Sushi
-- Salad
-```
-```textinput{col=info}
-# Name
-```
-```textarea{col=info}
-# Notes
-```
-```number{min=0;max=100;step=1;col=info}
-# Count
-0
-```
-```enum{col=info}
-# Status
-- Open
-- (x) Doing
-- Done
-```
-
-# Sheet forms
-```sheet
-`id=sheetforms
-Field	Input
-Color	radio: Red | *Green | Blue
-Status	enum: Open | *Doing | Done
-Name	text: Ada
-Count	number[min=0,max=100]: 3
-Notes	textarea: Hello
-Lunch	vote: Pizza | Sushi
-```
-
-# Menu
-```menu{to=demo;title=Lunch menu;col=warning;tables=1-4}
-# Starters
-Soup of the day | 6.50
-Mixed salad | 7.90
-
-# Mains
-Wiener schnitzel | 18.50 | with fries
-Garlic spaghetti | 14.00
-
-# Desserts
-Tiramisu | 6.50
-```
-
-# Shop
-```shop{to=demo;title=Office shop;col=info;currency=EUR}
-# Stationery
-Notebook A5 | 4.50 | Lined, 80 pages — pocket notebook for daily notes | https://picsum.photos/id/24/400/300
-Pens (pack of 10) | 3.20 | Smooth black ink, office pack | https://picsum.photos/id/367/400/300
-
-# Snacks
-Coffee beans | 12.00 | 250g medium roast | https://picsum.photos/id/425/400/300
-Tea selection | 8.50 | Assorted herbal and black teas | https://picsum.photos/id/225/400/300
-```
-
-# NotesList
-```noteslist{to=demo;city=Main;currency=EUR}
-# for sale
-Desk lamp | 12 | Downtown | Working LED lamp, pickup only | https://picsum.photos/id/106/400/300
-Road bike | 180 | Harbor | 21-speed, recently serviced | https://picsum.photos/id/146/400/300
-```
-
-# News / RSS
-```news url=https://feeds.bbci.co.uk/news/world/rss.xml
-# BBC World
-```
-
-```panel info
-# info
-Your content here.
-```
-# Panels
-```panel success
-# success
-Your content here.
-```
-```panel danger
-# danger
-Your content here.
-```
-
-```panel note
-# note
-Your content here.
-```
-
-```panel warning
-# Warning
-Your content here.
-```
-# Sprint Board
-```sprintboard{cols=Todo,Doing,Suspended,Done;withcost=1;rate=50;currency=EUR;col=info}
-# Sprint board
-Todo | Design wireframes | status=idle;rate=60
-Doing | Build API | status=idle;rate=75
-Suspended | On hold task | status=suspended;rate=75;elapsed=1800
-Done | Kickoff | status=stopped;rate=50;elapsed=7200
-```
-
-# Calcs
-```calcs{fix=7;col=info}
-(* sample *)
-% Octave-style syntax
-FIX(7, true)
-V1 = [1 3 4 8]
-sum(V1)
-a = 3 + 4i
-sqr(1i)
-j = -10:10
-y3[j] = (j.*j)/100
-Plot([j, y3])
-```
-
-# Voice note
-Record in the browser, then Whisper tiny transcribes locally (first run downloads the open-source model).
-
-```voice{lang=auto;title=Voice note;col=info}
-```
-
-# Jukebox
-Drop MP3 files or a music folder onto the player (Edit), or use **Add tracks or folders**. Nested folders become albums. Paste a Google Drive file or folder link (**Add Drive**) — share as *Anyone with the link*. Group songs with `# Album` headings.
-
-```jukebox{title=Livia's Jukebox}
-```
-
-# Sheet & chart
-```sheet
-`id=quarterly
-Month	Sales	Costs
-Jan	100	80
-Feb	150	90
-Mar	200	110
-Apr	120	85
-```
-
-```chart
-quarterly
-bar
-Month
-Sales
-Costs
-```
-
-# Python
-```python{title=Pandas;col=info}
-import pandas as pd
-
-df = pd.DataFrame({
-    "name": ["Ada", "Grace", "Alan"],
-    "score": [98, 91, 87],
-})
-print(df)
-print()
-print("mean score:", df["score"].mean())
-print(df.describe())
-```
-
-```python{title=Plot;col=info}
-import matplotlib.pyplot as plt
-import numpy as np
-
-x = np.linspace(0, 2 * np.pi, 200)
-print("points:", len(x))
-plt.plot(x, np.sin(x))
-plt.show()
-```
-
-# Gallery
-Hover and press **Ctrl+V** to add a photo. **Demo tour** auto-walks the hall.
-
-```gallery{title=Demo walk;front=Welcome;back=Demo walk;mode=walk;demo;col=info}
-![Mountain lake](https://picsum.photos/id/1015/960/720)
-![Flower video](https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4)
-![Forest path](https://picsum.photos/id/1018/960/720)
-![YouTube](https://www.youtube.com/embed/N9jBlg-GUYM)
-![Coast](https://picsum.photos/id/1016/960/720)
-![Valley](https://picsum.photos/id/1043/960/720)
-![Bridge](https://picsum.photos/id/1036/960/720)
-```
-"""
-
-
 NOTESLIST_DEMO_MARKDOWN = """# NotesList
 
 Local ads board. Search, pick a category, open a listing, then **Reply** to enter a message mailed to all group members. **Add item** sends a listing by mail. Page owners can **Edit** a listing.
@@ -822,7 +585,181 @@ text #1e293b 28 80,80 Notes
 ```
 """
 
-TABLE_DEMO_MARKDOWN = """# Table
+def upsert_page(workspace, slug, **defaults):
+    Page.objects.update_or_create(
+        workspace=workspace,
+        slug=slug,
+        deleted=False,
+        defaults=defaults,
+    )
+
+
+def ensure_folder(workspace, slug, title, parent, sort_order):
+    page, _ = Page.objects.update_or_create(
+        workspace=workspace,
+        slug=slug,
+        deleted=False,
+        defaults={
+            'parent': parent,
+            'title': title,
+            'is_folder': True,
+            'sort_order': sort_order,
+            'markdown_content': '',
+        },
+    )
+    return page
+
+
+def seed_page(workspace, parent, slug, title, sort_order, markdown):
+    upsert_page(
+        workspace,
+        slug,
+        parent=parent,
+        title=title,
+        is_folder=False,
+        sort_order=sort_order,
+        settings=PUBLIC_PAGE,
+        markdown_content=markdown,
+    )
+
+
+def markdown_for_game(slug):
+    for page_slug, _title, _order, markdown in GAMES_DEMO_PAGES:
+        if page_slug == slug:
+            return markdown
+    raise KeyError(slug)
+
+
+# Older seeds used these slugs for the same apps. Retire them so each app is one page.
+LEGACY_DEMO_SLUGS = (
+    'jigsaw-puzzle',
+    'pac-man',
+    'tic-tac-toe',
+    'connect-four',
+    'darts',
+    'space-invaders',
+    'marble-blast',
+    'photo-cube',
+    'photo-cube-1',
+    'photo-book',
+    'roller-coaster',
+    'auto-scooter',
+    'ghost-train',
+    'photo-carousel',
+    'photo-labyrinth',
+    'super-mario',
+)
+
+# Toolbar order. Dropdown buttons hold one page per item.
+TOOLBAR_GAME_SLUGS = (
+    'sudoku',
+    'tictactoe',
+    'chess',
+    'connect4',
+    'reversi',
+    'muhle',
+    'backgammon',
+    'carambole',
+    'carrom',
+    'dart',
+    'tetris',
+    'sokoban',
+    'invaders',
+    'breakout',
+    'snake',
+    'marbleblast',
+    'puzzle',
+    'pinball',
+    'pacman',
+    'mario',
+    'lemmings',
+    'rollercoast',
+    'scooter',
+    'ghosttrain',
+)
+
+BLOCKS_INDEX_MARKDOWN = """# Blocks
+
+Each app has its own page. Folders under **Demo** follow the editor tool buttons, in the same order.
+
+- **Panel**
+- **Sheet**, **Chart**, **Calcs**, **Python**
+- **Calendar**, **World clock**, **Alarm**, **Countdown**, **HP-15C**, **HP-12C**, **TI-30**
+- **Boards** — Gantt, Kanban, Mindmap, Kanban gantt
+- **Checklist**
+- **Apps** — Jukebox, Dance, Yoga
+- **Forms** — Radio, Vote, Text input, Textarea, Number, Enum
+- **Menu** — Menu, Shop, SW Shop, NotesList
+- **Voice**, **Drawing**, **Draw.io**
+- **Photos** — Gallery, Photo carousel, Photo book, Photo cube, Photo labyrinth
+- **Games** — one page per game, in toolbar order
+- **News**
+"""
+
+
+def seed_toolbar_apps(workspace, user, demo):
+    """One public page per app, grouped in folders that match the toolbar buttons."""
+    Page.objects.filter(workspace=workspace, slug='classifieds', deleted=False).update(slug='noteslist', title='NotesList')
+    folders = []
+
+    def add_folder(slug, title):
+        folder = ensure_folder(workspace, slug, title, demo, len(folders))
+        folders.append(folder)
+        return folder
+
+    panel = add_folder('tb-panel', 'Panel')
+    sheet = add_folder('tb-sheet', 'Sheet')
+    chart = add_folder('tb-chart', 'Chart')
+    calcs = add_folder('tb-calcs', 'Calcs')
+    python = add_folder('tb-python', 'Python')
+    calendar = add_folder('tb-calendar', 'Calendar')
+    worldclock = add_folder('tb-worldclock', 'World clock')
+    alarm = add_folder('tb-alarm', 'Alarm')
+    countdown = add_folder('tb-countdown', 'Countdown')
+    hp15c = add_folder('tb-hp15c', 'HP-15C')
+    hp12c = add_folder('tb-hp12c', 'HP-12C')
+    ti30 = add_folder('tb-ti30', 'TI-30')
+    boards = add_folder('tb-boards', 'Boards')
+    checklist = add_folder('tb-checklist', 'Checklist')
+    apps = add_folder('tb-apps', 'Apps')
+    forms = add_folder('tb-forms', 'Forms')
+    menu = add_folder('tb-menu', 'Menu')
+    voice = add_folder('tb-voice', 'Voice')
+    drawing = add_folder('tb-drawing', 'Drawing')
+    drawio = add_folder('tb-drawio', 'Draw.io')
+    photos = add_folder('tb-photos', 'Photos')
+    games = add_folder('games', 'Games')
+    news = add_folder('tb-news', 'News')
+
+    seed_page(workspace, panel, 'panel', 'Panel', 0, """# Panel
+
+```panel info
+# info
+Your content here.
+```
+
+```panel success
+# success
+Your content here.
+```
+
+```panel warning
+# Warning
+Your content here.
+```
+
+```panel danger
+# danger
+Your content here.
+```
+
+```panel note
+# note
+Your content here.
+```
+""")
+
+    seed_page(workspace, sheet, 'table', 'Sheet', 0, """# Sheet
 
 ```sheet
 `id=supplies
@@ -831,16 +768,346 @@ Paper	3	4.50
 Ink	2	6.00
 Ruler	1	3.20
 ```
-"""
 
+```sheet
+`id=quarterly
+Month	Sales	Costs
+Jan	100	80
+Feb	150	90
+Mar	200	110
+Apr	120	85
+```
+""")
 
-def upsert_page(workspace, slug, **defaults):
-    Page.objects.update_or_create(
-        workspace=workspace,
-        slug=slug,
-        deleted=False,
-        defaults=defaults,
+    seed_page(workspace, chart, 'chart', 'Chart', 0, """# Chart
+
+```sheet
+`id=quarterly
+Month	Sales	Costs
+Jan	100	80
+Feb	150	90
+Mar	200	110
+Apr	120	85
+```
+
+```chart
+quarterly
+bar
+Month
+Sales
+Costs
+```
+""")
+
+    seed_page(workspace, calcs, 'calcs', 'Calcs', 0, """# Calcs
+
+```calcs{fix=7;col=info}
+(* sample *)
+% Octave-style syntax
+FIX(7, true)
+V1 = [1 3 4 8]
+sum(V1)
+a = 3 + 4i
+sqr(1i)
+j = -10:10
+y3[j] = (j.*j)/100
+Plot([j, y3])
+```
+""")
+
+    seed_page(workspace, python, 'python', 'Python', 0, """# Python
+
+```python{title=Pandas;col=info}
+import pandas as pd
+
+df = pd.DataFrame({
+    "name": ["Ada", "Grace", "Alan"],
+    "score": [98, 91, 87],
+})
+print(df)
+print()
+print("mean score:", df["score"].mean())
+print(df.describe())
+```
+
+```python{title=Plot;col=info}
+import matplotlib.pyplot as plt
+import numpy as np
+
+x = np.linspace(0, 2 * np.pi, 200)
+print("points:", len(x))
+plt.plot(x, np.sin(x))
+plt.show()
+```
+""")
+
+    seed_page(workspace, calendar, 'calendar', 'Calendar', 0, CALENDAR_DEMO_MARKDOWN)
+
+    seed_page(workspace, worldclock, 'worldclock', 'World clock', 0, """# World clock
+
+```worldclock{title=World clock;col=info}
+Local | local | both
+London | Europe/London | analog
+New York | America/New_York | digital
+Tokyo | Asia/Tokyo | both
+Sydney | Australia/Sydney | digital
+CET | CET | digital
+OESZ | OESZ | analog
+```
+""")
+
+    seed_page(workspace, alarm, 'alarm', 'Alarm', 0, """# Alarm
+
+```alarm{title=Alarm;col=warning}
+Wake | 07:00 | off | analog
+Standup | 09:30 | on | digital
+```
+""")
+
+    seed_page(workspace, countdown, 'countdown', 'Countdown', 0, """# Countdown
+
+```countdowntimer{title=Countdown;col=info}
+Pomodoro | 25:00
+Short break | 5:00
+Tea | 3:00 | repeat
+```
+""")
+
+    seed_page(workspace, hp15c, 'hp15c', 'HP-15C', 0, """# HP-15C
+
+```hp15c{title=HP-15C;fullscreen;size=100%}
+```
+""")
+
+    seed_page(workspace, hp12c, 'hp12c', 'HP-12C', 0, """# HP-12C
+
+```hp12c{title=HP-12C;fullscreen;size=100%}
+```
+""")
+
+    seed_page(workspace, ti30, 'ti30', 'TI-30', 0, """# TI-30
+
+```ti30{title=TI-30;fullscreen;size=100%}
+```
+""")
+
+    seed_page(workspace, boards, 'gantt', 'Gantt', 0, """# Gantt
+
+```gantt{from=01.07.26;to=31.07.26;col=info}
+# Project plan
+Phase A | 01.07.26 | 15.07.26 | **Start**
+Phase B | 15.07.26 | 31.07.26 | Delivery
+```
+""")
+    seed_page(workspace, boards, 'kanban', 'Kanban', 1, """# Kanban
+
+```kanban{cols=Todo,Doing,Done;col=danger}
+# MidasNano Remote
+Todo | Create 488 Api | **Basis 488 Commmands**
+Todo | Build API
+Done | Kickoff | ![](media/uploads/photo.png)
+Done | Define Remote
+```
+""")
+    seed_page(workspace, boards, 'mindmap', 'Mindmap', 2, """# Mindmap
+
+```mindmap{dir=right;col=warning}
+# Ideas
+Central topic
+  Branch A | **Key point**
+    Detail A1
+    Detail A2
+  Branch B
+    Detail B1 | note
+```
+""")
+    seed_page(workspace, boards, 'sprintboard', 'Kanban gantt', 3, """# Kanban gantt
+
+```sprintboard{cols=Todo,Doing,Suspended,Done;withcost=1;rate=50;currency=EUR;col=info}
+# Sprint board
+Todo | Design wireframes | status=idle;rate=60
+Doing | Build API | status=idle;rate=75
+Suspended | On hold task | status=suspended;rate=75;elapsed=1800
+Done | Kickoff | status=stopped;rate=50;elapsed=7200
+```
+""")
+
+    seed_page(workspace, checklist, 'checklist', 'Checklist', 0, """# Checklist
+
+```checklist{align=left;col=info}
+# Packing
+- [ ] Passport
+- [x] Tickets
+- [ ] Charger
+```
+""")
+
+    seed_page(workspace, apps, 'jukebox', 'Jukebox', 0, """# Jukebox
+
+Drop MP3 files or a music folder onto the player, or use **Add tracks or folders**. Nested folders become albums. Paste a Google Drive file or folder link (**Add Drive**) — share as *Anyone with the link*. Group songs with `# Album` headings.
+
+```jukebox{title=Livia's Jukebox;fullscreen}
+```
+""")
+    seed_page(workspace, apps, 'dance', 'Dance', 1, """# Dance
+
+Footstep charts for rumba, cha-cha-cha, salsa, waltz, tango, foxtrot, disco fox, blues, and rock 'n' roll.
+
+```dance{title=Dance;col=info}
+```
+""")
+    seed_page(workspace, apps, 'yoga', 'Yoga', 2, """# Yoga
+
+```training{title=Good Morning Yoga;time=30s;col=info;endMessage="end"}
+![Mountain pose — posture](/static/notes/yoga/morning/mountain.jpg?v=3) | 30s
+![Forward bend — hamstrings](/static/notes/yoga/morning/forward-bend.jpg?v=3) | 30s
+![Downward facing dog — hamstrings, calves](/static/notes/yoga/morning/downward-dog.jpg?v=3) | 30s
+![Warrior 1 — quadriceps](/static/notes/yoga/morning/warrior-1.jpg?v=3) | 30s
+![Warrior 2 — quadriceps](/static/notes/yoga/morning/warrior-2.jpg?v=3) | 30s
+![Child's pose — lower back](/static/notes/yoga/morning/child.jpg?v=3) | 30s
+![Corpse — rest](/static/notes/yoga/morning/corpse.jpg?v=3) | 30s
+```
+""")
+
+    seed_page(workspace, forms, 'radio', 'Radio list', 0, """# Radio list
+
+```radio{col=info}
+# Color
+- Red
+- (x) Green
+- Blue
+```
+""")
+    seed_page(workspace, forms, 'vote', 'Vote', 1, """# Vote
+
+```vote{col=info}
+# Lunch
+- Pizza
+- Sushi
+- Salad
+```
+""")
+    seed_page(workspace, forms, 'textinput', 'Text input', 2, """# Text input
+
+```textinput{col=info}
+# Name
+```
+""")
+    seed_page(workspace, forms, 'textarea', 'Textarea', 3, """# Textarea
+
+```textarea{col=info}
+# Notes
+```
+""")
+    seed_page(workspace, forms, 'number', 'Number', 4, """# Number
+
+```number{min=0;max=100;step=1;col=info}
+# Count
+0
+```
+""")
+    seed_page(workspace, forms, 'enum', 'Enum', 5, """# Enum
+
+```enum{col=info}
+# Status
+- Open
+- (x) Doing
+- Done
+```
+""")
+
+    seed_page(workspace, menu, 'speisekarte', 'Menu', 0, """# Menu
+
+```menu{to=demo;title=Lunch menu;col=warning;tables=1-4}
+# Starters
+Soup of the day | 6.50
+Mixed salad | 7.90
+
+# Mains
+Wiener schnitzel | 18.50 | with fries
+Garlic spaghetti | 14.00
+
+# Desserts
+Tiramisu | 6.50
+```
+""")
+    seed_page(workspace, menu, 'shop', 'Shop', 1, """# Shop
+
+```shop{to=demo;title=Office shop;col=info;currency=EUR}
+# Stationery
+Notebook A5 | 4.50 | Lined, 80 pages — pocket notebook for daily notes | https://picsum.photos/id/24/400/300
+Pens (pack of 10) | 3.20 | Smooth black ink, office pack | https://picsum.photos/id/367/400/300
+
+# Snacks
+Coffee beans | 12.00 | 250g medium roast | https://picsum.photos/id/425/400/300
+Tea selection | 8.50 | Assorted herbal and black teas | https://picsum.photos/id/225/400/300
+```
+""")
+    seed_page(
+        workspace, menu, 'sw-shop', 'SW Shop', 2,
+        '# SW Shop\n\n'
+        'Download a build, or add a license to the cart and **Checkout**. '
+        'You are then asked to pay with **PayPal**, **Visa**, or **Mastercard**. '
+        'Visa and Mastercard ask for your **Konto** and transfer to the shop Konto in **Settings**. '
+        'Open **Additional info** for license notes. Card numbers are never stored.\n\n'
+        '```swshop{to=demo;title=SW Shop;col=info;currency=EUR;kind=sw}\n'
+        '# NotesPro\n'
+        'NotesPro source | 0.00 | Collaborative notes app — zip from GitHub | https://picsum.photos/id/180/640/400 | https://github.com/ThGSoft/NotesPro/archive/refs/heads/main.zip | Python and Django. Clone or unzip, then run locally.\n'
+        'NotesPro license | 49.00 | Single-site license, setup notes by mail | https://picsum.photos/id/0/640/400 | Windows, macOS, and Linux. PayPal, Visa, or Mastercard on checkout.\n'
+        '```\n',
     )
+    seed_page(workspace, menu, 'noteslist', 'NotesList', 3, NOTESLIST_DEMO_MARKDOWN)
+
+    seed_page(workspace, voice, 'voice', 'Voice', 0, """# Voice note
+
+Record in the browser, then Whisper tiny transcribes locally (first run downloads the open-source model).
+
+```voice{lang=auto;title=Voice note;col=info}
+```
+""")
+
+    seed_page(workspace, drawing, 'draw', 'Drawing', 0, DRAW_DEMO_MARKDOWN)
+    seed_page(workspace, drawio, 'drawio', 'Draw.io', 0, """# Draw.io
+
+```drawio{fullscreen;title=Diagram;ui=dark}
+```
+""")
+
+    seed_page(workspace, photos, 'gallery', 'Gallery', 0, build_gallery_markdown(workspace, user))
+    seed_page(workspace, photos, 'carousel', 'Photo carousel', 1, """# Photo carousel
+
+**A/D** (or drag) turns the wheel. **W/S** or the mouse wheel tilts the camera. Switch to Wheel V for a vertical ring.
+
+```carousel{title=Photo carousel;demo;col=info}
+![Lake](https://picsum.photos/id/1015/960/720)
+![Forest path](https://picsum.photos/id/1018/960/720)
+![Coast](https://picsum.photos/id/1016/960/720)
+![Valley](https://picsum.photos/id/1043/960/720)
+![Bridge](https://picsum.photos/id/1036/960/720)
+![Hills](https://picsum.photos/id/1019/960/720)
+```
+""")
+    seed_page(workspace, photos, 'photobook', 'Photo book', 2, markdown_for_game('photobook'))
+    seed_page(workspace, photos, 'photocube', 'Photo cube', 3, markdown_for_game('photocube'))
+    seed_page(workspace, photos, 'labyrinth', 'Photo labyrinth', 4, build_labyrinth_markdown(workspace, user))
+
+    game_titles = {row[0]: row[1] for row in GAMES_DEMO_PAGES}
+    for index, slug in enumerate(TOOLBAR_GAME_SLUGS):
+        seed_page(workspace, games, slug, game_titles[slug], index, markdown_for_game(slug))
+
+    seed_page(workspace, news, 'rss-feeds', 'News', 0, RSS_FEEDS_MARKDOWN)
+
+    Page.objects.filter(
+        workspace=workspace,
+        parent=games,
+        slug='photo-labyrinth',
+        deleted=False,
+    ).update(deleted=True)
+    Page.objects.filter(
+        workspace=workspace,
+        slug__in=LEGACY_DEMO_SLUGS,
+        deleted=False,
+    ).update(deleted=True)
 
 
 class Command(BaseCommand):
@@ -925,14 +1192,12 @@ class Command(BaseCommand):
                     '# Welcome\n\n'
                     'Edit in markdown, preview when you are done.\n\n'
                     'See **README** in this folder for the full project guide and screenshots.\n\n'
-                    'Open **Blocks** for interactive gantt, calendar, mindmap, kanban, sheets, charts, calcs, Python, voice notes, jukebox, gallery, and panel examples.\n\n'
-                    'Open **NotesList** for a local ads board — search, categories, Reply by mail, and Edit if you own the page.\n\n'
-                    'Open **Calendar** for day, week, month, and year views — hover a day and press **Ctrl+V** to paste a photo.\n\n'
-                    'Open the **Demo** folder for games, the shop, the drawing pad, a table, and photos. '
+                    'Each app has its own page under **Demo**. Folders there follow the editor tool buttons, in the same order: '
+                    'Panel, Sheet, Chart, Calcs, Python, Calendar, World clock, Alarm, Countdown, HP-15C, HP-12C, TI-30, '
+                    'Boards, Checklist, Apps, Forms, Menu, Voice, Drawing, Draw.io, Photos, Games, and News.\n\n'
                     'Those pages are public, so visitors can open them without signing in. '
-                    'A sketch made without login stays in that browser. '
-                    'Games include sudoku, tic-tac-toe, chess, Connect Four, Reversi, backgammon, carambole, carrom, darts, Tetris, Sokoban, Space Invaders, Breakout, Snake, marble blast, jigsaw, pinball, Pac-Man, Super Mario, Lemmings, photo cube, photo book, photo carousel, roller coaster, auto scooter, ghost train, and photo labyrinth.\n\n'
-                    'Open **RSS Feeds** for live BBC, DE, and CH news embeds.'
+                    'A sketch made without login stays in that browser.\n\n'
+                    'Open **Blocks** for the same folder list.'
                 ),
             },
         )
@@ -945,158 +1210,11 @@ class Command(BaseCommand):
                 'parent': docs,
                 'title': 'Blocks',
                 'sort_order': 2,
-                'markdown_content': BLOCKS_DEMO_MARKDOWN,
+                'markdown_content': BLOCKS_INDEX_MARKDOWN,
             },
         )
 
-        upsert_page(
-            ws,
-            'sw-shop',
-            parent=demo,
-            title='SW Shop',
-            is_folder=False,
-            sort_order=1,
-            settings=PUBLIC_PAGE,
-            markdown_content=(
-                '# SW Shop\n\n'
-                'Download a build, or add a license to the cart and **Checkout**. '
-                'You are then asked to pay with **PayPal**, **Visa**, or **Mastercard**. '
-                'Visa and Mastercard ask for your **Konto** and transfer to the shop Konto in **Settings**. '
-                'Open **Additional info** for license notes. Card numbers are never stored.\n\n'
-                '```swshop{to=demo;title=SW Shop;col=info;currency=EUR;kind=sw}\n'
-                '# NotesPro\n'
-                'NotesPro source | 0.00 | Collaborative notes app — zip from GitHub | https://picsum.photos/id/180/640/400 | https://github.com/ThGSoft/NotesPro/archive/refs/heads/main.zip | Python and Django. Clone or unzip, then run locally.\n'
-                'NotesPro license | 49.00 | Single-site license, setup notes by mail | https://picsum.photos/id/0/640/400 | Windows, macOS, and Linux. PayPal, Visa, or Mastercard on checkout.\n'
-                '```\n'
-            ),
-        )
-
-        Page.objects.filter(workspace=ws, slug='classifieds', deleted=False).update(slug='noteslist', title='NotesList')
-        upsert_page(
-            ws,
-            'noteslist',
-            parent=docs,
-            title='NotesList',
-            is_folder=False,
-            sort_order=4,
-            markdown_content=NOTESLIST_DEMO_MARKDOWN,
-        )
-
-        Page.objects.update_or_create(
-            workspace=ws,
-            slug='rss-feeds',
-            deleted=False,
-            defaults={
-                'parent': docs,
-                'title': 'RSS Feeds',
-                'sort_order': 5,
-                'markdown_content': RSS_FEEDS_MARKDOWN,
-            },
-        )
-
-        upsert_page(
-            ws,
-            'calendar',
-            parent=docs,
-            title='Calendar',
-            is_folder=False,
-            sort_order=6,
-            markdown_content=CALENDAR_DEMO_MARKDOWN,
-        )
-
-        upsert_page(
-            ws,
-            'gallery',
-            parent=demo,
-            title='Photos',
-            is_folder=False,
-            sort_order=4,
-            settings=PUBLIC_PAGE,
-            markdown_content=build_gallery_markdown(ws, user),
-        )
-
-        games, _ = Page.objects.update_or_create(
-            workspace=ws,
-            slug='games',
-            deleted=False,
-            defaults={
-                'parent': demo,
-                'title': 'Games',
-                'is_folder': True,
-                'sort_order': 0,
-                'markdown_content': '',
-            },
-        )
-
-        for slug, title, sort_order, markdown in GAMES_DEMO_PAGES:
-            upsert_page(
-                ws,
-                slug,
-                parent=games,
-                title=title,
-                is_folder=False,
-                sort_order=sort_order,
-                settings=PUBLIC_PAGE,
-                markdown_content=markdown,
-            )
-
-        upsert_page(
-            ws,
-            'labyrinth',
-            parent=games,
-            title='Photo labyrinth',
-            is_folder=False,
-            sort_order=21,
-            settings=PUBLIC_PAGE,
-            markdown_content=build_labyrinth_markdown(ws, user),
-        )
-        upsert_page(
-            ws,
-            'carousel',
-            parent=games,
-            title='Photo carousel',
-            is_folder=False,
-            sort_order=22,
-            settings=PUBLIC_PAGE,
-            markdown_content=(
-                '# Photo carousel\n\n'
-                '**A/D** (or drag) turns the wheel. **W/S** or the mouse wheel tilts the camera. Switch to Wheel V for a vertical ring.\n\n'
-                '```carousel{title=Photo carousel;demo;col=info}\n'
-                '![Lake](https://picsum.photos/id/1015/960/720)\n'
-                '![Forest path](https://picsum.photos/id/1018/960/720)\n'
-                '![Coast](https://picsum.photos/id/1016/960/720)\n'
-                '![Valley](https://picsum.photos/id/1043/960/720)\n'
-                '![Bridge](https://picsum.photos/id/1036/960/720)\n'
-                '![Hills](https://picsum.photos/id/1019/960/720)\n'
-                '```\n'
-            ),
-        )
-        upsert_page(
-            ws,
-            'draw',
-            parent=demo,
-            title='Drawing',
-            is_folder=False,
-            sort_order=2,
-            settings=PUBLIC_PAGE,
-            markdown_content=DRAW_DEMO_MARKDOWN,
-        )
-        upsert_page(
-            ws,
-            'table',
-            parent=demo,
-            title='Table',
-            is_folder=False,
-            sort_order=3,
-            settings=PUBLIC_PAGE,
-            markdown_content=TABLE_DEMO_MARKDOWN,
-        )
-        Page.objects.filter(
-            workspace=ws,
-            parent=games,
-            slug='photo-labyrinth',
-            deleted=False,
-        ).update(deleted=True)
+        seed_toolbar_apps(ws, user, demo)
 
         missing = [
             name for name in SCREENSHOT_FILES
@@ -1108,5 +1226,5 @@ class Command(BaseCommand):
             ))
 
         self.stdout.write(self.style.SUCCESS(
-            'Demo data ready. Login: demo / password — Docs for the guide, Demo for public games, shop, drawing, table, and photos',
+            'Demo data ready. Login: demo / password — Docs for the guide, Demo for one public page per toolbar app',
         ))

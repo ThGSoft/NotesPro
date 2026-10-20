@@ -12,7 +12,7 @@ from django.conf import settings as django_settings
 from django.contrib.staticfiles import finders
 from django.views.decorators.http import require_GET, require_POST
 from .forms import RegisterForm
-from .models import Page, Workspace, UploadedFile, PastedFile, \
+from .models import Page, Workspace, UploadedFile, PastedFile, script_prefixed_path, \
                     UserSettings, User, \
                     WorkspaceMembership, WorkspaceMailMessage, WorkspaceMailRecipient
 from django.shortcuts import get_object_or_404
@@ -202,6 +202,14 @@ def _set_workspace_page(user_settings, workspace_id, page_id):
     user_settings.workspace_pages = pages
 
 
+def _page_memory_seq(user_settings):
+    extra = user_settings.extra_configs if isinstance(user_settings.extra_configs, dict) else {}
+    try:
+        return int(extra.get('_page_memory_seq') or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
 def _soft_delete_page(page):
     descendant_ids = _page_subtree_ids(page)
     Page.objects.filter(id__in=descendant_ids).update(deleted=True)
@@ -320,18 +328,14 @@ def _restore_workspace(workspace):
 
 def _public_workspace_path(workspace):
     if workspace.normalized_settings().get('root'):
-        return _site_root_path()
-    path = reverse(
+        return script_prefixed_path('/')
+    return script_prefixed_path(reverse(
         'public_workspace',
         kwargs={
             'owner': workspace.owner.username,
             'workspace_slug': workspace.slug,
         },
-    )
-    base = (getattr(django_settings, 'FORCE_SCRIPT_NAME', None) or '').rstrip('/')
-    if base and not path.startswith(f'{base}/'):
-        return f'{base}{path}'
-    return path
+    ))
 
 
 def _page_visible_without_login(page):
@@ -343,25 +347,20 @@ def _page_visible_without_login(page):
 
 
 def _site_root_path():
-    base = (getattr(django_settings, 'FORCE_SCRIPT_NAME', None) or '').rstrip('/')
-    return f'{base}/' if base else '/'
+    return script_prefixed_path('/')
 
 
 def _public_page_path(page):
     if page.normalized_settings().get('root'):
-        return _site_root_path()
-    path = reverse(
+        return script_prefixed_path('/')
+    return script_prefixed_path(reverse(
         'public_page',
         kwargs={
             'owner': page.workspace.owner.username,
             'workspace_slug': page.workspace.slug,
             'page_slug': page.slug,
         },
-    )
-    base = (getattr(django_settings, 'FORCE_SCRIPT_NAME', None) or '').rstrip('/')
-    if base and not path.startswith(f'{base}/'):
-        return f'{base}{path}'
-    return path
+    ))
 
 
 def _root_public_page():
@@ -2090,79 +2089,112 @@ def debug(request):
 
 @login_required
 def updateUserSettings(request, workspace_id):
-    # print('updateUserSettings',request)
-    if request.method == 'POST':
-        try:
-            data = json.loads(request.body)
-            # print('updateUserSettings',data)
-            settings, created = UserSettings.objects.get_or_create(user=request.user)
-            # print('updateUserSettings',settings)
-            # Felder dynamisch aktualisieren
-            if 'last_workspace_id' in data:
-                settings.last_workspace_id = data['last_workspace_id']
-            if 'last_page_id' in data:
-                settings.last_page_id = data['last_page_id']
-                _set_workspace_page(settings, workspace_id, data['last_page_id'])
-            if 'workspace_pages' in data and isinstance(data['workspace_pages'], dict):
-                pages = dict(settings.workspace_pages or {}) if isinstance(settings.workspace_pages, dict) else {}
-                for key, value in data['workspace_pages'].items():
-                    ws_key = str(key)
-                    if value is None:
-                        pages.pop(ws_key, None)
-                    else:
-                        try:
-                            pages[ws_key] = int(value)
-                        except (TypeError, ValueError):
-                            continue
-                settings.workspace_pages = pages
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST required'}, status=405)
+    try:
+        data = json.loads(request.body or '{}')
+        with transaction.atomic():
+            UserSettings.objects.get_or_create(user=request.user)
+            settings = UserSettings.objects.select_for_update().get(user=request.user)
+            changed = []
+
+            incoming_seq = None
+            if 'page_memory_seq' in data:
+                try:
+                    incoming_seq = int(data['page_memory_seq'])
+                except (TypeError, ValueError):
+                    incoming_seq = None
+            # A phone hides the page list as soon as a page is opened, and that
+            # layout save can still be carrying the previous page id. Ignore page
+            # identity from any save older than the one already stored.
+            page_memory_stale = incoming_seq is not None and incoming_seq < _page_memory_seq(settings)
+
+            if not page_memory_stale:
+                if 'last_workspace_id' in data:
+                    settings.last_workspace_id = data['last_workspace_id']
+                    changed.append('last_workspace_id')
+                if 'last_page_id' in data:
+                    settings.last_page_id = data['last_page_id']
+                    _set_workspace_page(settings, workspace_id, data['last_page_id'])
+                    changed.extend(['last_page_id', 'workspace_pages'])
+                if 'workspace_pages' in data and isinstance(data['workspace_pages'], dict):
+                    pages = dict(settings.workspace_pages or {}) if isinstance(settings.workspace_pages, dict) else {}
+                    for key, value in data['workspace_pages'].items():
+                        ws_key = str(key)
+                        if value is None:
+                            pages.pop(ws_key, None)
+                        else:
+                            try:
+                                pages[ws_key] = int(value)
+                            except (TypeError, ValueError):
+                                continue
+                    settings.workspace_pages = pages
+                    if 'workspace_pages' not in changed:
+                        changed.append('workspace_pages')
             if 'theme' in data:
                 settings.theme = data['theme']
+                changed.append('theme')
             if 'sidebar_width' in data:
                 w = data['sidebar_width']
                 if w is None:
                     settings.sidebar_width = None
                 else:
                     settings.sidebar_width = max(260, min(640, int(w)))
+                changed.append('sidebar_width')
             if 'left_panel_expanded' in data:
                 settings.left_panel_expanded = bool(data['left_panel_expanded'])
+                changed.append('left_panel_expanded')
             if 'right_panel_width' in data:
                 w = data['right_panel_width']
                 if w is None:
                     settings.right_panel_width = None
                 else:
                     settings.right_panel_width = max(240, min(640, int(w)))
+                changed.append('right_panel_width')
             if 'right_panel_expanded' in data:
                 settings.right_panel_expanded = bool(data['right_panel_expanded'])
+                changed.append('right_panel_expanded')
             if 'stay_informed' in data:
                 settings.stay_informed = bool(data['stay_informed'])
+                changed.append('stay_informed')
             if 'font_size' in data:
                 try:
                     settings.font_size = max(11, min(24, int(data['font_size'])))
+                    changed.append('font_size')
                 except (TypeError, ValueError):
                     pass
-            if 'extra_configs' in data:
-                incoming = data['extra_configs']
-                if isinstance(incoming, dict):
-                    existing = settings.extra_configs if isinstance(settings.extra_configs, dict) else {}
-                    merged = dict(existing)
-                    for key, value in incoming.items():
-                        if key == 'chart_settings' and isinstance(value, dict):
-                            charts = dict(merged.get('chart_settings') or {})
-                            charts.update(value)
-                            merged['chart_settings'] = charts
-                        elif key == 'shop' and isinstance(value, dict):
-                            merged['shop'] = normalize_shop_settings(value)
-                        elif key in ('language', 'locale'):
-                            merged['language'] = normalize_app_language(value)
-                            merged.pop('locale', None)
-                        else:
-                            merged[key] = value
-                    settings.extra_configs = merged
 
-            settings.save()
-            return JsonResponse({'status': 'ok'})
-        except Exception as e:
-            return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+            existing = settings.extra_configs if isinstance(settings.extra_configs, dict) else {}
+            merged = dict(existing)
+            extra_changed = False
+            if 'extra_configs' in data and isinstance(data['extra_configs'], dict):
+                for key, value in data['extra_configs'].items():
+                    if key == '_page_memory_seq':
+                        continue
+                    if key == 'chart_settings' and isinstance(value, dict):
+                        charts = dict(merged.get('chart_settings') or {})
+                        charts.update(value)
+                        merged['chart_settings'] = charts
+                    elif key == 'shop' and isinstance(value, dict):
+                        merged['shop'] = normalize_shop_settings(value)
+                    elif key in ('language', 'locale'):
+                        merged['language'] = normalize_app_language(value)
+                        merged.pop('locale', None)
+                    else:
+                        merged[key] = value
+                extra_changed = True
+            if incoming_seq is not None and not page_memory_stale and merged.get('_page_memory_seq') != incoming_seq:
+                merged['_page_memory_seq'] = incoming_seq
+                extra_changed = True
+            if extra_changed:
+                settings.extra_configs = merged
+                changed.append('extra_configs')
+
+            if changed:
+                settings.save(update_fields=list(dict.fromkeys(changed)))
+        return JsonResponse({'status': 'ok'})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
         
 
 @login_required
