@@ -541,6 +541,8 @@
         tagWebSocketEnabled: {{ tag_websocket_enabled|yesno:"true,false" }},
         allowGames: {{ allow_games|yesno:"true,false" }},
         allowPhotos: {{ allow_photos|yesno:"true,false" }},
+        allowImages: {{ allow_images|yesno:"true,false" }},
+        allowShops: {{ allow_shops|yesno:"true,false" }},
         allowOffline: {{ allow_offline|yesno:"true,false" }},
         version: "{{ app_version|escapejs }}",
         publicView: {% if public_view %}true{% else %}false{% endif %},
