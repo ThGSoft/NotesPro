@@ -143,7 +143,7 @@ DB_ENCRYPTION_KEY=your-generated-key-here
 
 For local file links from preview, keep `LOCAL_FILE_OPEN_ENABLED=true` only on trusted local/dev hosts (default when `DEBUG=true`). Set `LOCAL_FILE_OPEN_ENABLED=false` in production.
 
-Hide **Insert game** / **Insert photos** on the editor toolbar with `allowGames=false` and `allowPhotos=false` in `.env` (aliases: `ALLOW_GAMES`, `ALLOW_PHOTOS`). Pages that already contain those blocks still render them.
+Control editor toolbar buttons in `.env` with `allowGames=false` (Insert game), `allowPhotos=false` (Insert photos), `allowImages=false` (Insert image), and `allowShops=false` (Menu / Shop / SW shop / NotesList). All default to `true`; uppercase aliases are `ALLOW_GAMES`, `ALLOW_PHOTOS`, `ALLOW_IMAGES`, and `ALLOW_SHOPS`. Existing page content still renders when a toolbar button is hidden. Restart the server after changing these settings.
 
 ### Offline mode
 

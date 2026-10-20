@@ -138,9 +138,9 @@
   let workspacePages = { ...(window.APP_BOOT?.workspacePages || {}) };
   let workspaceTreeOpen = { ...(window.APP_BOOT?.extraConfigs?.tree_open || {}) };
   let treeOpenSaveTimer = null;
-  let pageMemorySeq = 0;
+  let pageMemorySeq = Number(window.APP_BOOT?.extraConfigs?._page_memory_seq) || 0;
   let settingsWrite = Promise.resolve();
-  const OPEN_PAGE_KEY = 'notespro_open_page';
+  const OPEN_PAGE_KEY = `notespro_open_page:${appBase}:${currentUserId}`;
 
   function getWorkspacePageId(wsId) {
     if (!wsId) return null;
@@ -158,29 +158,54 @@
   }
 
   function readOpenPage() {
-    try {
-      const raw = sessionStorage.getItem(OPEN_PAGE_KEY);
-      return raw ? JSON.parse(raw) : null;
-    } catch (_) {
-      return null;
+    const candidates = [];
+    for (const storage of ['sessionStorage', 'localStorage']) {
+      try {
+        const raw = window[storage].getItem(OPEN_PAGE_KEY);
+        if (raw) candidates.push(JSON.parse(raw));
+      } catch (_) { /* storage may be unavailable in private mode */ }
     }
+    // Migrate the old tab-only page memory, after checking workspace access below.
+    if (!candidates.length) {
+      try {
+        const raw = sessionStorage.getItem('notespro_open_page');
+        if (raw) candidates.push(JSON.parse(raw));
+      } catch (_) { /* private mode */ }
+    }
+    return candidates.filter(item => item && parsePageId(item.page) && item.ws)
+      .sort((a, b) => (Number(b.seq) || 0) - (Number(a.seq) || 0))[0] || null;
   }
 
   function rememberOpenPage() {
     if (publicView || !workspaceId || !currentPageId) return;
-    try {
-      sessionStorage.setItem(OPEN_PAGE_KEY, JSON.stringify({
-        ws: String(workspaceId),
-        page: Number(currentPageId),
-        seq: pageMemorySeq,
-      }));
-    } catch (_) { /* private mode */ }
+    const value = JSON.stringify({ ws: String(workspaceId), page: Number(currentPageId), seq: pageMemorySeq });
+    for (const storage of ['sessionStorage', 'localStorage']) {
+      try { window[storage].setItem(OPEN_PAGE_KEY, value); } catch (_) { /* private mode */ }
+    }
+  }
+
+  function restoreInitialNavigation() {
+    syncWorkspaceIdFromDom();
+    // Parse the incoming URL before the history guard can rewrite it.
+    applyNavQueryFromUrl();
+    const stored = readOpenPage();
+    const url = new URL(location.href);
+    const explicitPage = parsePageId(url.searchParams.get('page'));
+    const explicitWorkspace = url.searchParams.get('ws');
+    if (explicitWorkspace && !explicitPage) currentPageId = getWorkspacePageId(workspaceId);
+    if (explicitPage || explicitWorkspace || !stored || (Number(stored.seq) || 0) < pageMemorySeq) return;
+    const select = document.getElementById('workspace-select');
+    if (!select || ![...select.options].some(option => option.value === String(stored.ws))) return;
+    select.value = String(stored.ws);
+    workspaceId = String(stored.ws);
+    currentPageId = parsePageId(stored.page);
+    pageMemorySeq = Math.max(pageMemorySeq, Number(stored.seq) || 0);
   }
 
   function rememberSelectedPage(pageId) {
     const next = parsePageId(pageId);
     if (!next) return;
-    if (String(currentPageId) !== String(next)) pageMemorySeq = Date.now();
+    if (String(currentPageId) !== String(next)) pageMemorySeq = Math.max(Date.now(), pageMemorySeq + 1);
     currentPageId = next;
     setWorkspacePageId(getWorkspaceId() || workspaceId, next);
     rememberOpenPage();
@@ -528,7 +553,7 @@
   }
 
   function applyPageToEditor(page, { fromHistory = false, statusText = 'Loaded' } = {}) {
-    if (page?.id && String(currentPageId) !== String(page.id)) pageMemorySeq = Date.now();
+    if (page?.id && String(currentPageId) !== String(page.id)) pageMemorySeq = Math.max(Date.now(), pageMemorySeq + 1);
     currentPage = page;
     currentPageId = page.id;
     setWorkspacePageId(workspaceId, currentPageId);
@@ -11304,8 +11329,26 @@
           const oldMarkdown = easyMDE.value();
           const updated = engine.rewriteFence(oldMarkdown, drawioIndex, payload || {});
           if (updated === oldMarkdown) return;
+          // Patch only the diagram source: setValue resets the Markdown cursor
+          // and scroll position, which can pull the preview away from the iframe.
+          const cm = easyMDE.codemirror;
+          const scroll = cm.getScrollInfo();
+          let from = 0;
+          while (from < oldMarkdown.length && from < updated.length && oldMarkdown[from] === updated[from]) from += 1;
+          let oldEnd = oldMarkdown.length;
+          let newEnd = updated.length;
+          while (oldEnd > from && newEnd > from && oldMarkdown[oldEnd - 1] === updated[newEnd - 1]) {
+            oldEnd -= 1;
+            newEnd -= 1;
+          }
           suppressPreviewRefresh += 1;
-          try { easyMDE.value(updated); } finally {
+          lockEditorPreviewScroll(600);
+          try {
+            cm.operation(() => {
+              cm.replaceRange(updated.slice(from, newEnd), cm.posFromIndex(from), cm.posFromIndex(oldEnd), '+drawio');
+              cm.scrollTo(scroll.left, scroll.top);
+            });
+          } finally {
             suppressPreviewRefresh = Math.max(0, suppressPreviewRefresh - 1);
           }
           scheduleSave();
@@ -21532,7 +21575,8 @@ function formatTextWithMarkup(rawText) {
         },
         '|',
         'quote', 'unordered-list', 'ordered-list', '|',
-        'link', 'image',
+        'link',
+        ...(window.APP_BOOT?.allowImages !== false ? ['image'] : []),
         {
           name: 'local-file-link',
           action: () => openLocalFileLinkInsertDialog(),
@@ -21900,7 +21944,7 @@ function formatTextWithMarkup(rawText) {
         },
         buildAddToolbarDropdown(),
         buildFormToolbarDropdown(),
-        {
+        ...(window.APP_BOOT?.allowShops !== false ? [{
           name: 'menuShopMenu',
           className: 'fa fa-cutlery',
           title: 'Insert menu / shop / SW shop / NotesList',
@@ -21984,7 +22028,7 @@ function formatTextWithMarkup(rawText) {
               },
             },
           ],
-        },
+        }] : []),
         {
           name: 'insert-voice',
           action: (editor) => {
@@ -22942,6 +22986,9 @@ function formatTextWithMarkup(rawText) {
     capturePreviewScrollPosition();
     clearTimeout(previewRefreshTimer);
     previewRefreshTimer = setTimeout(() => {
+      // Focus may have moved into Draw.io after this refresh was scheduled.
+      // Recreating its iframe here would interrupt typing and diagram selection.
+      if (document.activeElement?.closest?.('.drawio-block')) return;
       renderPreview();
       if (isMobileLayout()) {
         buildFloatingToc();
@@ -25235,6 +25282,7 @@ function formatTextWithMarkup(rawText) {
     return;
   }
 
+  restoreInitialNavigation();
   initMarked();
   sortWorkspaceSelect();
   bindUi();
@@ -25270,8 +25318,6 @@ function formatTextWithMarkup(rawText) {
   initChartInsertModal();
   initPanelInsertModal();
   initSnippetsModal();
-  syncWorkspaceIdFromDom();
-  applyNavQueryFromUrl();
   applyLayoutFromSettings();
   syncMobileLayoutClass();
   setEditing(false);
@@ -25280,22 +25326,6 @@ function formatTextWithMarkup(rawText) {
   initEditorSplitter();
   initRightSplitter();
   loadTree(currentPageId).then(() => {
-    const stored = readOpenPage();
-    const bootPage = window.APP_BOOT?.pageId;
-    if (
-      stored
-      && String(stored.ws) === String(workspaceId)
-      && stored.page
-      && String(stored.page) !== String(bootPage || '')
-      && String(stored.page) !== String(currentPageId || '')
-    ) {
-      const tree = $('#tree').jstree(true);
-      const node = tree?.get_node(String(stored.page));
-      if (node && !isTreeFolder(node)) {
-        pageMemorySeq = Math.max(pageMemorySeq, Number(stored.seq) || 0);
-        selectTreeNode(stored.page);
-      }
-    }
     if (!currentPageId) switchMode('preview');
     if (window.APP_BOOT?.openEditing) setEditing(true);
   });

@@ -1051,6 +1051,8 @@ def dashboard(request):
         'tag_websocket_enabled': getattr(django_settings, 'ENABLE_TAG_WEBSOCKET', False),
         'allow_games': getattr(django_settings, 'ALLOW_GAMES', True),
         'allow_photos': getattr(django_settings, 'ALLOW_PHOTOS', True),
+        'allow_images': getattr(django_settings, 'ALLOW_IMAGES', True),
+        'allow_shops': getattr(django_settings, 'ALLOW_SHOPS', True),
         'allow_offline': getattr(django_settings, 'ALLOW_OFFLINE', True),
         'can_write_workspace': bool(
             current_workspace and _user_has_write_access(request.user, current_workspace)
@@ -1096,6 +1098,8 @@ def _render_public_page(request, page, *, public_tree=None, public_workspace=Fal
         'tag_websocket_enabled': _public_page_ws_enabled(page) or _public_workspace_ws_enabled(workspace),
         'allow_games': getattr(django_settings, 'ALLOW_GAMES', True),
         'allow_photos': getattr(django_settings, 'ALLOW_PHOTOS', True),
+        'allow_images': getattr(django_settings, 'ALLOW_IMAGES', True),
+        'allow_shops': getattr(django_settings, 'ALLOW_SHOPS', True),
         'allow_offline': False,
         'can_write_workspace': False,
         'is_group_admin': False,
