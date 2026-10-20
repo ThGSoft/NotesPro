@@ -65,6 +65,7 @@ Share: [LinkedIn](https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2
 - **Calendar** blocks — list days, weeks, months, or years for a `from`/`to` range
 - **World clock** / **Alarm** / **Countdown** — city clocks (analog or digital, including CET and OESZ), a settable alarm, and a count-up timer with countdowns
 - **HP-15C** — RPN scientific calculator (stack, shifts, complex numbers, keystroke programs)
+- **HP-42S** — portrait RPN scientific calculator with two-line display, shifted functions, storage, and keystroke programs
 - **HP-12C** — RPN financial calculator (TVM, cash flows, percents). Fence aliases `hp12c`, `hp-12c`, `hp12s`
 - **TI-30** — algebraic scientific calculator (AOS precedence, trig, 2nd shift)
 - **Gantt** / **Kanban** / **Kanban Gantt** / **Mindmap** / **Speisekarte** / **Shop** / **SW Shop** / **NotesList** blocks — project timelines, boards, timed cost tracking, idea trees, click-to-order menus, cart checkout, software downloads, and local ads
@@ -120,7 +121,7 @@ python manage.py runserver
 
 Open:
 - http://127.0.0.1:8000/login/
-- Demo user after `seed_demo`: `demo` / `password`. **Docs → README** is this guide. **Docs → Blocks** lists the app folders. **Demo** holds one public page per toolbar app. Folders follow the editor tool buttons, in the same order: Panel, Sheet, Chart, Calcs, Python, Calendar, World clock, Alarm, Countdown, HP-15C, HP-12C, TI-30, Boards (Gantt, Kanban, Mindmap, Kanban gantt), Checklist, Apps (Jukebox, Dance, Yoga), Forms, Menu (Menu, Shop, SW Shop, NotesList), Voice, Drawing, Draw.io, Photos, Games, and News.
+- Demo user after `seed_demo`: `demo` / `password`. **Docs → README** is this guide. **Docs → Blocks** lists the app folders. **Demo** holds one public page per toolbar app. Folders follow the editor tool buttons, in the same order: Panel, Sheet, Chart, Calcs, Python, Calendar, World clock, Alarm, Countdown, HP-15C, HP-12C, HP-42S, TI-30, Boards (Gantt, Kanban, Mindmap, Kanban gantt), Checklist, Apps (Jukebox, Dance, Yoga), Forms, Menu (Menu, Shop, SW Shop, NotesList), Voice, Drawing, Draw.io, Photos, Games, and News.
 
 Copy `.env.example` to `.env.dev` (or set `DJANGO_ENV`) for local settings. See [Email invitations](#email-invitations) and [Database encryption](#database-encryption) below.
 
@@ -2172,6 +2173,19 @@ An HP-12C-style RPN financial calculator (`hp12c`, `hp-12c`, or `hp12s`). Four s
 ````
 
 Toolbar: **Insert HP-12C calculator**.
+
+### HP-42S
+
+An HP-42S-style scientific RPN calculator (fences `hp42s` or `hp-42s`) with a portrait keypad and X/Y display. Uses the shared HP scientific engine: four stack levels, trig and inverse trig, logarithms, powers, complex mode, statistics, and numbered storage registers. Press **⇧** to use the gold function above a key. **STO/RCL** followed by a digit stores/recalls a register; **⇧ E** opens DISP (FIX/SCI/ENG, then a digit); **⇧ +/−** opens MODES (DEG/RAD/GRAD). **ENTER**, number keys, arithmetic, Backspace, and **f** (shift) work from the keyboard.
+
+Basic keystroke programs use **⇧ R/S** (PRGM), **⇧ 3 → LBL** then a digit, keystrokes, **⇧ 3 → RTN**, and **⇧ R/S** to finish. **XEQ** then the label digit runs the program. The keypad follows the HP-42S physical layout, including orange shift, arrow keys, and EXIT/ON. Shifted menus expose supported functions; ALPHA, BASE, MATRIX, ASSIGN, CUSTOM, and PRINT report unavailable. Named variables and ROM compatibility are outside its scope. Calculator state survives preview refreshes during the current session.
+
+````markdown
+```hp42s{title=HP-42S;fullscreen;size=100%}
+```
+````
+
+Set `fullscreen=0` for a compact card or `size=80%` to scale its width. The **⛶** button opens monitor fullscreen. Toolbar: **Insert HP-42S calculator**.
 
 ### TI-30
 

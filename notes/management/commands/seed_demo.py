@@ -718,6 +718,7 @@ def seed_toolbar_apps(workspace, user, demo):
     countdown = add_folder('tb-countdown', 'Countdown')
     hp15c = add_folder('tb-hp15c', 'HP-15C')
     hp12c = add_folder('tb-hp12c', 'HP-12C')
+    hp42s = add_folder('tb-hp42s', 'HP-42S')
     ti30 = add_folder('tb-ti30', 'TI-30')
     boards = add_folder('tb-boards', 'Boards')
     checklist = add_folder('tb-checklist', 'Checklist')
@@ -882,6 +883,12 @@ Tea | 3:00 | repeat
     seed_page(workspace, hp12c, 'hp12c', 'HP-12C', 0, """# HP-12C
 
 ```hp12c{title=HP-12C;fullscreen;size=100%}
+```
+""")
+
+    seed_page(workspace, hp42s, 'hp42s', 'HP-42S', 0, """# HP-42S
+
+```hp42s{title=HP-42S;fullscreen;size=100%}
 ```
 """)
 

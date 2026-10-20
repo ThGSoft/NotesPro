@@ -63,7 +63,9 @@ html.is-zoomed .CodeMirror-scroll,
 html.is-zoomed .editor-wrap--preview-only .preview-content:has(> .hp15c-block--fullscreen:only-child),
 html.is-zoomed .editor-wrap--split .preview-content:has(> .hp15c-block--fullscreen:only-child),
 html.is-zoomed .editor-wrap--preview-only .preview-content:has(> .hp12c-block--fullscreen:only-child),
+html.is-zoomed .editor-wrap--preview-only .preview-content:has(> .hp42s-block--fullscreen:only-child),
 html.is-zoomed .editor-wrap--split .preview-content:has(> .hp12c-block--fullscreen:only-child),
+html.is-zoomed .editor-wrap--split .preview-content:has(> .hp42s-block--fullscreen:only-child),
 html.is-zoomed .editor-wrap--preview-only .preview-content:has(> .ti30-block--fullscreen:only-child),
 html.is-zoomed .editor-wrap--split .preview-content:has(> .ti30-block--fullscreen:only-child) {
   height: auto !important;
@@ -80,11 +82,14 @@ body.mobile-layout.editing #markdown-wrap .CodeMirror-line {
 
 html.is-zoomed .hp15c-block--fullscreen,
 html.is-zoomed .hp12c-block--fullscreen,
+html.is-zoomed .hp42s-block--fullscreen,
 html.is-zoomed .ti30-block--fullscreen,
 html.is-zoomed .editor-wrap--preview-only .preview-content > .hp15c-block--fullscreen:only-child,
 html.is-zoomed .editor-wrap--split .preview-content > .hp15c-block--fullscreen:only-child,
 html.is-zoomed .editor-wrap--preview-only .preview-content > .hp12c-block--fullscreen:only-child,
+html.is-zoomed .editor-wrap--preview-only .preview-content > .hp42s-block--fullscreen:only-child,
 html.is-zoomed .editor-wrap--split .preview-content > .hp12c-block--fullscreen:only-child,
+html.is-zoomed .editor-wrap--split .preview-content > .hp42s-block--fullscreen:only-child,
 html.is-zoomed .editor-wrap--preview-only .preview-content > .ti30-block--fullscreen:only-child,
 html.is-zoomed .editor-wrap--split .preview-content > .ti30-block--fullscreen:only-child {
   height: auto;
@@ -19331,7 +19336,9 @@ html.notespro-pseudo-fullscreen .game-block--monitor-fullscreen [class*="-stage"
 .editor-wrap--preview-only .preview-content:has(> .hp15c-block--fullscreen:only-child),
 .editor-wrap--split .preview-content:has(> .hp15c-block--fullscreen:only-child),
 .editor-wrap--preview-only .preview-content:has(> .hp12c-block--fullscreen:only-child),
+.editor-wrap--preview-only .preview-content:has(> .hp42s-block--fullscreen:only-child),
 .editor-wrap--split .preview-content:has(> .hp12c-block--fullscreen:only-child),
+.editor-wrap--split .preview-content:has(> .hp42s-block--fullscreen:only-child),
 .editor-wrap--preview-only .preview-content:has(> .ti30-block--fullscreen:only-child),
 .editor-wrap--split .preview-content:has(> .ti30-block--fullscreen:only-child) {
   padding: 0;
@@ -19343,7 +19350,9 @@ html.notespro-pseudo-fullscreen .game-block--monitor-fullscreen [class*="-stage"
 .editor-wrap--preview-only .preview-content > .hp15c-block--fullscreen:only-child,
 .editor-wrap--split .preview-content > .hp15c-block--fullscreen:only-child,
 .editor-wrap--preview-only .preview-content > .hp12c-block--fullscreen:only-child,
+.editor-wrap--preview-only .preview-content > .hp42s-block--fullscreen:only-child,
 .editor-wrap--split .preview-content > .hp12c-block--fullscreen:only-child,
+.editor-wrap--split .preview-content > .hp42s-block--fullscreen:only-child,
 .editor-wrap--preview-only .preview-content > .ti30-block--fullscreen:only-child,
 .editor-wrap--split .preview-content > .ti30-block--fullscreen:only-child {
   flex: 1;
@@ -19502,7 +19511,9 @@ html.notespro-pseudo-fullscreen .game-block--monitor-fullscreen [class*="-stage"
 }
 
 .editor-wrap--preview-only .preview-content > .hp12c-block--fullscreen:only-child,
-.editor-wrap--split .preview-content > .hp12c-block--fullscreen:only-child {
+.editor-wrap--preview-only .preview-content > .hp42s-block--fullscreen:only-child,
+.editor-wrap--split .preview-content > .hp12c-block--fullscreen:only-child ,
+.editor-wrap--split .preview-content > .hp42s-block--fullscreen:only-child {
   flex: 0 0 auto;
   height: auto;
   align-self: center;
@@ -19765,7 +19776,9 @@ html.notespro-pseudo-fullscreen .game-block--monitor-fullscreen [class*="-stage"
 }
 
 .editor-wrap--preview-only .preview-content > .hp12c-block--fullscreen.is-sized:only-child,
-.editor-wrap--split .preview-content > .hp12c-block--fullscreen.is-sized:only-child {
+.editor-wrap--preview-only .preview-content > .hp42s-block--fullscreen.is-sized:only-child,
+.editor-wrap--split .preview-content > .hp12c-block--fullscreen.is-sized:only-child ,
+.editor-wrap--split .preview-content > .hp42s-block--fullscreen.is-sized:only-child {
   flex: 0 0 auto;
   align-self: center;
   width: min(440px, calc(440px * var(--calc-num, 1)));
@@ -19899,4 +19912,79 @@ html.notespro-pseudo-fullscreen .ti30-block.is-sized.game-block--monitor-fullscr
   right: calc(8px * var(--calc-num, 1));
   width: calc(36px * var(--calc-num, 1));
   height: calc(36px * var(--calc-num, 1));
+}
+
+/* HP-42S portrait calculator — reference face and physical key arrangement. */
+.hp42s-block {
+  position:relative; box-sizing:border-box; width:var(--calc-size,100%); max-width:100%;
+  margin:16px auto; padding:16px; display:flex; justify-content:center; align-items:center;
+  color:#f3f0df; outline:none;
+}
+.hp42s-block:focus-visible { outline:2px solid #efa456; outline-offset:-2px; }
+.hp42-body {
+  box-sizing:border-box; container-type:inline-size; width:100%; max-width:470px;
+  padding:24px 17px 23px; border:2px solid #757d81; border-radius:21px 21px 27px 27px;
+  background:radial-gradient(ellipse at 25% 0%,#ffffff0c,transparent 65%),linear-gradient(100deg,#353b3e,#252b2e 48%,#33393c);
+  box-shadow:inset 0 2px 2px #c2c9ca80,inset 2px 0 3px #a2a9aa50,inset -3px -4px 5px #060b0e,0 12px 22px #0005;
+}
+.hp42-maker {
+  display:flex; align-items:center; gap:7px; width:max-content; margin:0 0 18px 22px;
+  padding:3px 6px; color:#eeeeda; background:linear-gradient(#555d5f,#272f32);
+  border:2px solid #131b1f; box-shadow:inset 1px 1px 1px #adb3b0,0 1px 2px #a0a4a4;
+  font:900 clamp(10px,3.3cqw,16px)/.98 Arial,sans-serif; letter-spacing:.03em; text-shadow:1px 2px 1px #111;
+}
+.hp42-emblem { font:italic bold 30px/1 Georgia,serif; background:#e5e6d5; color:#354041; padding:0 4px; border:1px solid #101719; }
+.hp42-display-panel {
+  border:2px solid #20262a; border-radius:17px 17px 4px 4px; padding:20px 12px 28px;
+  background:linear-gradient(115deg,#656769,#474b4e 65%,#5c6062);
+  box-shadow:inset 0 1px 2px #c2c5c7a0,0 3px 3px #0a1013;
+}
+.hp42-brand { display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin:0 9px 8px; font:italic 900 clamp(16px,5cqw,23px)/1 Arial,sans-serif; }
+.hp42-brand small { font:italic 800 clamp(11px,4cqw,18px)/1 Arial,sans-serif; white-space:nowrap; }
+.hp42-lcd-frame {
+  padding:13px 10px 12px; border:3px solid; border-color:#202a2c #9a9fa0 #d3d6d0 #4c585b;
+  border-radius:7px; background:linear-gradient(#242e2d,#7b8883); box-shadow:0 2px 3px #e8ebda75;
+}
+.hp42-lcd { background:linear-gradient(175deg,#c2cc98,#d2ddb3 48%,#becf9b); color:#526d58; padding:4px 7px 6px; border-radius:6px; box-shadow:inset 2px 4px 7px #384b32a0; font:clamp(14px,5.7cqw,26px)/1.18 'Lucida Console',Consolas,monospace; text-shadow:1px 0 #738d6850; }
+.hp42-lcd [data-role=status] { min-height:13px; font:9px/1.3 monospace; overflow-wrap:anywhere; }
+.hp42-line { display:flex; align-items:baseline; gap:4px; min-height:1.2em; }
+.hp42-line output { min-width:0; overflow-wrap:anywhere; }
+.hp42-menu { display:flex; flex-wrap:wrap; gap:3px; }
+.hp42-menu:empty { display:none; }
+.hp42-menu button { flex:1; padding:4px 3px; background:#526d58; color:#e0e6c9; border:0; border-radius:2px; font:10px monospace; cursor:pointer; }
+.hp42-keypad { padding:14px 10px 7px; background:linear-gradient(105deg,#555b5e,#393e42 65%,#51565a); border:1px solid #1a2226; border-top:0; border-radius:0 0 14px 14px; box-shadow:inset 1px 0 2px #a7adaf70,inset 0 -1px 2px #a7adaf70; }
+.hp42-top { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:11px 14px; }
+.hp42-middle { display:grid; grid-template-columns:1.65fr repeat(4,minmax(0,1fr)); gap:14px; margin-top:12px; }
+.hp42-bottom { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:14px 23px; margin-top:13px; }
+.hp42-slot { min-width:0; position:relative; text-align:center; }
+.hp42-shift-label { display:block; min-height:15px; margin-bottom:3px; color:#ffb478; text-shadow:0 0 2px #fbb07370; white-space:nowrap; font:700 clamp(7px,2.6cqw,12px)/1.2 Arial,sans-serif; }
+.hp42-key {
+  display:flex; align-items:center; justify-content:center; box-sizing:border-box; width:100%; min-width:0;
+  min-height:0; height:clamp(29px,8.8cqw,40px); padding:1px 2px 3px; border:1px solid #11181c; border-radius:8px;
+  background:linear-gradient(175deg,#7c8283 0%,#22282a 12%,#080e11 56%,#141b1f 100%);
+  color:#f4f5e9; box-shadow:inset 1px 1px 1px #b7bdbb,inset -1px -2px 2px #000,0 3px 2px #182125,0 0 0 2px #272f3360;
+  font:700 clamp(11px,4.5cqw,20px)/1 Arial,sans-serif; cursor:pointer; touch-action:manipulation;
+}
+.hp42-key:hover { filter:brightness(1.2); }
+.hp42-key:active { transform:translateY(2px); box-shadow:inset 1px 1px 2px #000; }
+.hp42-key:focus-visible, .hp42-menu button:focus-visible { outline:2px solid #ffb478; outline-offset:3px; }
+.hp42-enter .hp42-key { letter-spacing:.08em; }
+.hp42-number .hp42-key { font-size:clamp(18px,6.9cqw,30px); }
+.hp42-exit .hp42-key { font-size:clamp(12px,4cqw,18px); }
+.hp42-shift .hp42-key { font-size:0; }
+.hp42-shift .hp42-key::before { content:''; display:block; width:70%; height:75%; border-radius:4px; background:linear-gradient(#ffc57e,#ff9e40); box-shadow:inset 1px 1px 2px #ffebc3,0 0 2px #000; }
+.hp42-shift .hp42-key[aria-pressed=true]::before { background:#ffdc95; box-shadow:0 0 5px #ffbd6a; }
+.hp42-on-label { position:absolute; left:3px; top:calc(100% + 5px); font:bold 11px Arial,sans-serif; }
+.hp42s-block--fullscreen { min-height:100%; margin:0 auto; }
+.hp42s-block:fullscreen, .hp42s-block:-webkit-full-screen, .hp42s-block.game-block--monitor-fullscreen { width:100%; height:100%; max-width:none; margin:0; border-radius:0; overflow:auto; background:#202529; }
+.hp42s-block:fullscreen .hp42-body, .hp42s-block.game-block--monitor-fullscreen .hp42-body { width:var(--calc-size,100%); }
+@media(max-width:480px) {
+  .hp42s-block { padding:8px; }
+  .hp42-body { padding:16px 10px 22px; }
+  .hp42-maker { margin-left:10px; }
+  .hp42-display-panel { padding:16px 8px 23px; }
+  .hp42-keypad { padding:12px 7px 9px; }
+  .hp42-top { column-gap:9px; }
+  .hp42-middle { gap:9px; }
+  .hp42-bottom { column-gap:16px; }
 }

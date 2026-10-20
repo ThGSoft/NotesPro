@@ -2592,7 +2592,7 @@
   }
 
   function isPreviewRichBlock(el) {
-    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .form-widget, .mindmap-block, .md-news, .md-python, .voice-block, .jukebox-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .backgammon-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .carambole-block, .carrom-block, .dart-block, .draw-block, .drawio-block, .snake-block, .marbleblast-block, .gallery-block, .training-block, .worldclock-block, .alarm-block, .countdowntimer-block, .hp15c-block, .hp12c-block, .ti30-block, .dance-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .page-tags');
+    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .form-widget, .mindmap-block, .md-news, .md-python, .voice-block, .jukebox-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .backgammon-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .carambole-block, .carrom-block, .dart-block, .draw-block, .drawio-block, .snake-block, .marbleblast-block, .gallery-block, .training-block, .worldclock-block, .alarm-block, .countdowntimer-block, .hp15c-block, .hp12c-block, .hp42s-block, .ti30-block, .dance-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .page-tags');
   }
 
   function getPreviewBlockSourceLine(node) {
@@ -11648,6 +11648,29 @@
     });
   }
 
+  const HP42S_BLOCK_RE = /```(?:hp42s|hp-42s)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function parseHp42sBlocks(text) {
+    let hp42sIndex = 0;
+    HP42S_BLOCK_RE.lastIndex = 0;
+    return text.replace(HP42S_BLOCK_RE, (_, fenceAttrs, content) => {
+      const engine = window.NotesProHp42s;
+      const idx = hp42sIndex++;
+      const html = engine?.renderBlock
+        ? engine.renderBlock(content || '', fenceAttrs || '', { hp42sIndex: idx })
+        : '<div class="hp42s-block">HP-42S not loaded.</div>';
+      return wrapRichPreviewBlock(html);
+    });
+  }
+
+  function hydrateHp42sBlocks(root) {
+    const engine = window.NotesProHp42s;
+    if (!engine) return;
+    (root || document).querySelectorAll('.hp42s-block').forEach((el) => {
+      engine.hydrateBlock(el);
+    });
+  }
+
   const TI30_BLOCK_RE = /```(?:ti30xa|ti-30|ti30)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
 
   function parseTi30Blocks(text) {
@@ -12912,11 +12935,11 @@
 function formatTextWithMarkup(rawText) {
     // 1. Text an den Zeilenumbrüchen in ein Array aus einzelnen Zeilen aufteilen
     const lines = rawText.split('\n');
-    
+
     // 2. Jede Zeile einzeln verarbeiten
     const processedLines = lines.map((line, index) => {
         const trimmedLine = line.trim();
-      
+
         // Prüfen, ob die Zeile mit '#' beginnt (Markdown-Überschrift)
         if (trimmedLine.startsWith('#')) {
             // Zeile bleibt wie sie ist (wird nicht mit <br> am Ende versehen)
@@ -12926,7 +12949,7 @@ function formatTextWithMarkup(rawText) {
             return line + (index < lines.length - 1 ? '<br>' : '');
         }
     });
-    
+
     // 3. Alle Zeilen wieder zu einem einzigen String zusammenfügen
     return processedLines.join('\n');
 }
@@ -13320,7 +13343,7 @@ function formatTextWithMarkup(rawText) {
     if (!root) return;
     root.querySelectorAll('pre').forEach(pre => {
       if (pre.closest('.md-code-block')) return;
-      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .form-widget, .mindmap-block, .md-news, .md-python, .voice-block, .jukebox-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .backgammon-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .carambole-block, .carrom-block, .dart-block, .draw-block, .drawio-block, .snake-block, .marbleblast-block, .gallery-block, .training-block, .worldclock-block, .alarm-block, .countdowntimer-block, .hp15c-block, .hp12c-block, .ti30-block, .dance-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block')) {
+      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .form-widget, .mindmap-block, .md-news, .md-python, .voice-block, .jukebox-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .backgammon-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .carambole-block, .carrom-block, .dart-block, .draw-block, .drawio-block, .snake-block, .marbleblast-block, .gallery-block, .training-block, .worldclock-block, .alarm-block, .countdowntimer-block, .hp15c-block, .hp12c-block, .hp42s-block, .ti30-block, .dance-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block')) {
         return;
       }
       const wrap = document.createElement('div');
@@ -14018,6 +14041,11 @@ function formatTextWithMarkup(rawText) {
       const label = cfg.title || 'HP-12C';
       return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
     });
+    md = md.replace(/```(?:hp42s|hp-42s)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const cfg = window.NotesProHp42s?.parseFenceAttrs?.(fenceAttrs) || {};
+      const label = cfg.title || 'HP-42S';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
     md = md.replace(/```(?:ti30xa|ti-30|ti30)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
       const cfg = window.NotesProTi30?.parseFenceAttrs?.(fenceAttrs) || {};
       const label = cfg.title || 'TI-30';
@@ -14155,6 +14183,7 @@ function formatTextWithMarkup(rawText) {
       md = parseCountdownBlocks(md);
       md = parseHp15cBlocks(md);
       md = parseHp12cBlocks(md);
+      md = parseHp42sBlocks(md);
       md = parseTi30Blocks(md);
       md = parseDanceBlocks(md);
       md = parsePhotocubeBlocks(md, options);
@@ -14629,6 +14658,7 @@ function formatTextWithMarkup(rawText) {
     hydrateWorldclockBlocks(preview);
     hydrateHp15cBlocks(preview);
     hydrateHp12cBlocks(preview);
+    hydrateHp42sBlocks(preview);
     hydrateTi30Blocks(preview);
     hydrateDanceBlocks(preview);
     hydratePhotocubeBlocks(preview);
@@ -21582,7 +21612,7 @@ function formatTextWithMarkup(rawText) {
           action: (editor) => {
             const cm = editor.codemirror;
             let text, range;
-            
+
             // 1. Bereich bestimmen (Markierung oder ganze Zeile)
             if (cm.somethingSelected()) {
               text = cm.getSelection();
@@ -21595,16 +21625,16 @@ function formatTextWithMarkup(rawText) {
                 to: { line: lineNum, ch: text.length }
               };
             }
-            
+
             // 2. Aggressive Bereinigung (Regex mehrmals anwenden für verschachtelte Tags)
             let cleaned = text;
-            
+
             // Entfernt alle HTML-Tags (span, div, etc.)
             cleaned = cleaned.replace(/<\/?[^>]+(>|$)/g, "");
-            
+
             // Entfernt Markdown (Fett, Kursiv, etc.)
             cleaned = cleaned.replace(/(\*\*|__|\*|_|~~|`)/g, "");
-            
+
             // 3. Text im Editor ersetzen
             if (cm.somethingSelected()) {
                     // "around" sorgt dafür, dass die neue Auswahl die alte ersetzt
@@ -21652,23 +21682,54 @@ function formatTextWithMarkup(rawText) {
           title: 'Insert chart',
         },
         {
-          name: 'insert-calcs',
-          action: (editor) => {
-            const body = [
-              '% Octave-style calcs sample',
-              'f = 50;',
-              'A = 1;',
-              'w = 2*pi*f;',
-              'SR = 96*3;',
-              'i = 0:2*SR;',
-              'y1[i] = exp(-i/SR)*A;',
-              'y2[i] = sin(20*w*i/SR).*exp(-i/SR)*A;',
-              'Plot(y1, y2)',
-            ].join('\n');
-            insertFenceBlock(editor, 'calcs{fix=7;col=info}', body);
-          },
+          name: 'calculatorsMenu',
           className: 'fa fa-calculator',
-          title: 'Insert Calcs',
+          title: 'Insert calculator',
+          children: [
+            {
+              name: 'insert-calcs',
+              text: 'Calcs',
+              action: (editor) => {
+                const body = [
+                  '% Octave-style calcs sample',
+                  'f = 50;',
+                  'A = 1;',
+                  'w = 2*pi*f;',
+                  'SR = 96*3;',
+                  'i = 0:2*SR;',
+                  'y1[i] = exp(-i/SR)*A;',
+                  'y2[i] = sin(20*w*i/SR).*exp(-i/SR)*A;',
+                  'Plot(y1, y2)',
+                ].join('\n');
+                insertFenceBlock(editor, 'calcs{fix=7;col=info}', body);
+              },
+              title: 'Insert Calcs',
+            },
+            {
+              name: 'insert-hp15c',
+              text: "HP-15C",
+              action: (editor) => insertFenceBlock(editor, 'hp15c{title=HP-15C;fullscreen;size=100%}', ''),
+              title: 'Insert HP-15C calculator',
+            },
+            {
+              name: 'insert-hp12c',
+              text: "HP-12C",
+              action: (editor) => insertFenceBlock(editor, 'hp12c{title=HP-12C;fullscreen;size=100%}', ''),
+              title: 'Insert HP-12C calculator',
+            },
+            {
+              name: 'insert-hp42s',
+              text: "HP-42S",
+              action: (editor) => insertFenceBlock(editor, 'hp42s{title=HP-42S;fullscreen;size=100%}', ''),
+              title: 'Insert HP-42S calculator',
+            },
+            {
+              name: 'insert-ti30',
+              text: "TI-30",
+              action: (editor) => insertFenceBlock(editor, 'ti30{title=TI-30;fullscreen;size=100%}', ''),
+              title: 'Insert TI-30 calculator',
+            },
+          ],
         },
         {
           name: 'insert-python',
@@ -21743,24 +21804,6 @@ function formatTextWithMarkup(rawText) {
           },
           className: 'fa fa-hourglass-half',
           title: 'Insert countdown timer',
-        },
-        {
-          name: 'insert-hp15c',
-          action: (editor) => insertFenceBlock(editor, 'hp15c{title=HP-15C;fullscreen;size=100%}', ''),
-          className: 'fa fa-calculator',
-          title: 'Insert HP-15C calculator',
-        },
-        {
-          name: 'insert-hp12c',
-          action: (editor) => insertFenceBlock(editor, 'hp12c{title=HP-12C;fullscreen;size=100%}', ''),
-          className: 'fa fa-calculator',
-          title: 'Insert HP-12C calculator',
-        },
-        {
-          name: 'insert-ti30',
-          action: (editor) => insertFenceBlock(editor, 'ti30{title=TI-30;fullscreen;size=100%}', ''),
-          className: 'fa fa-calculator',
-          title: 'Insert TI-30 calculator',
         },
         {
           name: 'boardsMenu',
@@ -22012,7 +22055,7 @@ function formatTextWithMarkup(rawText) {
                       orientation: 'portrait'
                     }
                   }).from(element).toPdf().get('pdf').then(function (pdf) {
-                    
+
                     // ✅ add page numbers
                     const totalPages = pdf.internal.getNumberOfPages();
 
@@ -22200,7 +22243,7 @@ function formatTextWithMarkup(rawText) {
     if (document.hidden) persistOpenPageOnHide();
   });
   window.addEventListener('pagehide', persistOpenPageOnHide);
-  
+
   function isTreeFolder(node) {
     if (!node) return false;
     if (node.id === '#') return true;
@@ -24477,7 +24520,7 @@ function formatTextWithMarkup(rawText) {
     //     .then(data => {
     //       //     // Remove option block from DOM structures directly
     //           select.remove(select.selectedIndex);
-              
+
     //       //     // Automatically switch layout view to the next remaining workspace option
     //           select.dispatchEvent(new Event('change'));
     //     });
@@ -24901,7 +24944,7 @@ function formatTextWithMarkup(rawText) {
     });
 
 
- 
+
     const inviteInput = document.getElementById('invite-username');
     const datalist = document.getElementById('user-suggestions');
     let debounceTimer;
@@ -24909,7 +24952,7 @@ function formatTextWithMarkup(rawText) {
     if (inviteInput && datalist) {
         inviteInput.addEventListener('input', function() {
             const query = this.value.trim();
-            
+
             // Zurücksetzen, wenn das Feld geleert wird oder zu kurz ist
             if (query.length < 2) {
                 datalist.innerHTML = '';
@@ -24923,7 +24966,7 @@ function formatTextWithMarkup(rawText) {
                     .then(res => res.json())
                     .then(data => {
                         datalist.innerHTML = ''; // Alte Vorschläge löschen
-                        
+
                         if (data.status === 'success') {
                             data.users.forEach(user => {
                                 const option = document.createElement('option');
@@ -24938,7 +24981,7 @@ function formatTextWithMarkup(rawText) {
     }
 
     let to = null;
-    
+
     document.getElementById('toggle-left')?.addEventListener('click', toggleLeftPanel);
     document.getElementById('toggle-right')?.addEventListener('click', toggleRightPanel);
     document.getElementById('tree-search')?.addEventListener('keyup', function () {
@@ -25606,7 +25649,7 @@ function formatTextWithMarkup(rawText) {
     if (tryPasteImageUrlsIntoKeep(event)) return;
     const data = event.clipboardData || event.originalEvent?.clipboardData;
     const pasteFiles = clipboardImageFiles(data);
-    if (event.target.closest?.('.puzzle-block, .gallery-block, .training-block, .worldclock-block, .alarm-block, .countdowntimer-block, .hp15c-block, .hp12c-block, .ti30-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .backgammon-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .carambole-block, .carrom-block, .dart-block, .draw-block, .drawio-block, .snake-block, .marbleblast-block, .voice-block, .jukebox-block, .calendar-block, #calendar-note-modal')) return;
+    if (event.target.closest?.('.puzzle-block, .gallery-block, .training-block, .worldclock-block, .alarm-block, .countdowntimer-block, .hp15c-block, .hp12c-block, .hp42s-block, .ti30-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .backgammon-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .carambole-block, .carrom-block, .dart-block, .draw-block, .drawio-block, .snake-block, .marbleblast-block, .voice-block, .jukebox-block, .calendar-block, #calendar-note-modal')) return;
     if (!pasteFiles.length) {
       const text = data?.getData?.('text/plain') || '';
       const fromText = pastedPlainImageUrls(text);
