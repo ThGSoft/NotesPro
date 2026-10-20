@@ -65,6 +65,7 @@ Share: [LinkedIn](https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2
 - **Calendar** blocks — list days, weeks, months, or years for a `from`/`to` range
 - **World clock** / **Alarm** / **Countdown** — city clocks (analog or digital, including CET and OESZ), a settable alarm, and a count-up timer with countdowns
 - **HP-15C** — RPN scientific calculator (stack, shifts, complex numbers, keystroke programs)
+- **HP-42S** — portrait RPN scientific calculator with two-line display, shifted functions, storage, and keystroke programs
 - **HP-12C** — RPN financial calculator (TVM, cash flows, percents). Fence aliases `hp12c`, `hp-12c`, `hp12s`
 - **TI-30** — algebraic scientific calculator (AOS precedence, trig, 2nd shift)
 - **Gantt** / **Kanban** / **Kanban Gantt** / **Mindmap** / **Speisekarte** / **Shop** / **SW Shop** / **NotesList** blocks — project timelines, boards, timed cost tracking, idea trees, click-to-order menus, cart checkout, software downloads, and local ads
@@ -120,7 +121,7 @@ python manage.py runserver
 
 Open:
 - http://127.0.0.1:8000/login/
-- Demo user after `seed_demo`: `demo` / `password`. **Docs → README** is this guide. **Docs → Blocks** lists the app folders. **Demo** holds one public page per toolbar app. Folders follow the editor tool buttons, in the same order: Panel, Sheet, Chart, Calcs, Python, Calendar, World clock, Alarm, Countdown, HP-15C, HP-12C, TI-30, Boards (Gantt, Kanban, Mindmap, Kanban gantt), Checklist, Apps (Jukebox, Dance, Yoga), Forms, Menu (Menu, Shop, SW Shop, NotesList), Voice, Drawing, Draw.io, Photos, Games, and News.
+- Demo user after `seed_demo`: `demo` / `password`. **Docs → README** is this guide. **Docs → Blocks** lists the app folders. **Demo** holds one public page per toolbar app. Folders follow the editor tool buttons, in the same order: Panel, Sheet, Chart, Calcs, Python, Calendar, World clock, Alarm, Countdown, HP-15C, HP-12C, HP-42S, TI-30, Boards (Gantt, Kanban, Mindmap, Kanban gantt), Checklist, Apps (Jukebox, Dance, Yoga), Forms, Menu (Menu, Shop, SW Shop, NotesList), Voice, Drawing, Draw.io, Photos, Games, and News.
 
 Copy `.env.example` to `.env.dev` (or set `DJANGO_ENV`) for local settings. See [Email invitations](#email-invitations) and [Database encryption](#database-encryption) below.
 
@@ -142,7 +143,7 @@ DB_ENCRYPTION_KEY=your-generated-key-here
 
 For local file links from preview, keep `LOCAL_FILE_OPEN_ENABLED=true` only on trusted local/dev hosts (default when `DEBUG=true`). Set `LOCAL_FILE_OPEN_ENABLED=false` in production.
 
-Hide **Insert game** / **Insert photos** on the editor toolbar with `allowGames=false` and `allowPhotos=false` in `.env` (aliases: `ALLOW_GAMES`, `ALLOW_PHOTOS`). Pages that already contain those blocks still render them.
+Control editor toolbar buttons in `.env` with `allowGames=false` (Insert game), `allowPhotos=false` (Insert photos), `allowImages=false` (Insert image), and `allowShops=false` (Menu / Shop / SW shop / NotesList). All default to `true`; uppercase aliases are `ALLOW_GAMES`, `ALLOW_PHOTOS`, `ALLOW_IMAGES`, and `ALLOW_SHOPS`. Existing page content still renders when a toolbar button is hidden. Restart the server after changing these settings.
 
 ### Offline mode
 
@@ -2153,10 +2154,10 @@ Toolbar: **Insert countdown timer**.
 
 ### HP-15C
 
-An HP-15C-style RPN scientific calculator (`hp15c` / `hp-15c`). Four stack levels, gold **f** and blue **g** shifts, complex numbers, storage, statistics, and keystroke programs. **SOLVE** and **∫** run a program label. Matrix keys report Error 1. Fullscreen is on by default so a page that is only the calculator fills the preview; the **⛶** button fills the monitor. Set `fullscreen=0` for the compact card.
+An HP-15C-style RPN scientific calculator (`hp15c` / `hp-15c`). Four stack levels, gold **f** and blue **g** shifts, complex numbers, storage, statistics, and keystroke programs. **SOLVE** and **∫** run a program label. Matrix keys report Error 1. Fullscreen is on by default so a page that is only the calculator fills the preview; the **⛶** button fills the monitor. Set `fullscreen=0` for the compact card. `size=80%` (or `size=0.8`) is that share of the preview, and of the screen when **⛶** is on. `size=100%` fills the preview.
 
 ````markdown
-```hp15c{title=HP-15C;fullscreen}
+```hp15c{title=HP-15C;fullscreen;size=100%}
 ```
 ````
 
@@ -2164,21 +2165,34 @@ Toolbar: **Insert HP-15C calculator**.
 
 ### HP-12C
 
-An HP-12C-style RPN financial calculator (`hp12c`, `hp-12c`, or `hp12s`). Four stack levels, gold **f** and blue **g** shifts, and the five TVM registers. Key a number and press **n**, **i**, **PV**, **PMT**, or **FV** to store it; press the same key with no new number to solve for it. **g 12×** stores a yearly rate as a monthly rate, **g 12÷** stores years as months. **BEGIN** is **g 7**, **END** is **g 8**. Cash flows use **g CF0**, **g CFj**, and **g Nj**, then **f NPV** or **f IRR**. Percents, storage, and **Σ+** statistics are on the face. Fullscreen is on by default; the **⛶** button fills the monitor. Set `fullscreen=0` for the compact card.
+An HP-12C-style RPN financial calculator (`hp12c`, `hp-12c`, or `hp12s`). Four stack levels, gold **f** and blue **g** shifts, and the five TVM registers. Key a number and press **n**, **i**, **PV**, **PMT**, or **FV** to store it; press the same key with no new number to solve for it. **g 12×** stores a yearly rate as a monthly rate, **g 12÷** stores years as months. **BEGIN** is **g 7**, **END** is **g 8**. Cash flows use **g CF0**, **g CFj**, and **g Nj**, then **f NPV** or **f IRR**. Percents, storage, and **Σ+** statistics are on the face. Fullscreen is on by default; the **⛶** button fills the monitor. Set `fullscreen=0` for the compact card. `size=80%` scales the card, and is that share of the screen when **⛶** is on.
 
 ````markdown
-```hp12c{title=HP-12C;fullscreen}
+```hp12c{title=HP-12C;fullscreen;size=100%}
 ```
 ````
 
 Toolbar: **Insert HP-12C calculator**.
 
-### TI-30
+### HP-42S
 
-A TI-30-style algebraic scientific calculator (`ti30`, `ti-30`, or `ti30xa`). Operations follow algebraic precedence, so `2 + 3 × 4 =` is 14, and parentheses group a subexpression. **sin**, **cos**, **tan**, **log**, **ln**, **x²**, and **1/x** act on the displayed number. **2nd** selects the inverse printed above the key. **DRG** cycles degrees, radians, and grads. **STO** and **RCL** use registers 0–9. Fullscreen is on by default; the **⛶** button fills the monitor. Set `fullscreen=0` for the compact card.
+An HP-42S-style scientific RPN calculator (fences `hp42s` or `hp-42s`) with a portrait keypad and X/Y display. Uses the shared HP scientific engine: four stack levels, trig and inverse trig, logarithms, powers, complex mode, statistics, and numbered storage registers. Press **⇧** to use the gold function above a key. **STO/RCL** followed by a digit stores/recalls a register; **⇧ E** opens DISP (FIX/SCI/ENG, then a digit); **⇧ +/−** opens MODES (DEG/RAD/GRAD). **ENTER**, number keys, arithmetic, Backspace, and **f** (shift) work from the keyboard.
+
+Basic keystroke programs use **⇧ R/S** (PRGM), **⇧ 3 → LBL** then a digit, keystrokes, **⇧ 3 → RTN**, and **⇧ R/S** to finish. **XEQ** then the label digit runs the program. The keypad follows the HP-42S physical layout, including orange shift, arrow keys, and EXIT/ON. Shifted menus expose supported functions; ALPHA, BASE, MATRIX, ASSIGN, CUSTOM, and PRINT report unavailable. Named variables and ROM compatibility are outside its scope. Calculator state survives preview refreshes during the current session.
 
 ````markdown
-```ti30{title=TI-30;fullscreen}
+```hp42s{title=HP-42S;fullscreen;size=100%}
+```
+````
+
+Set `fullscreen=0` for a compact card or `size=80%` to scale its width. The **⛶** button opens monitor fullscreen. Toolbar: **Insert HP-42S calculator**.
+
+### TI-30
+
+A TI-30-style algebraic scientific calculator (`ti30`, `ti-30`, or `ti30xa`). Operations follow algebraic precedence, so `2 + 3 × 4 =` is 14, and parentheses group a subexpression. **sin**, **cos**, **tan**, **log**, **ln**, **x²**, and **1/x** act on the displayed number. **2nd** selects the inverse printed above the key. **DRG** cycles degrees, radians, and grads. **STO** and **RCL** use registers 0–9. Fullscreen is on by default; the **⛶** button fills the monitor. Set `fullscreen=0` for the compact card. `size=80%` is that share of the preview, and of the screen when **⛶** is on.
+
+````markdown
+```ti30{title=TI-30;fullscreen;size=100%}
 ```
 ````
 

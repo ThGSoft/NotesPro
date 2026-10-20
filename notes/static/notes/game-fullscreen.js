@@ -10,7 +10,7 @@
 }(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
-  const BLOCK_SELECTOR = '.sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .backgammon-block, .tetris-block, .sokoban-block, .invaders-block, .breakout-block, .carambole-block, .carrom-block, .dart-block, .draw-block, .drawio-block, .snake-block, .marbleblast-block, .gallery-block, .training-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .jukebox-block, .hp15c-block, .hp12c-block, .ti30-block';
+  const BLOCK_SELECTOR = '.sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .backgammon-block, .tetris-block, .sokoban-block, .invaders-block, .breakout-block, .carambole-block, .carrom-block, .dart-block, .draw-block, .drawio-block, .snake-block, .marbleblast-block, .gallery-block, .training-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .jukebox-block, .hp15c-block, .hp12c-block, .hp42s-block, .ti30-block';
   const bound = new WeakSet();
   let globalListener = false;
   let pseudoEl = null;

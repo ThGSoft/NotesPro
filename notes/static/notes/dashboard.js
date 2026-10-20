@@ -138,9 +138,9 @@
   let workspacePages = { ...(window.APP_BOOT?.workspacePages || {}) };
   let workspaceTreeOpen = { ...(window.APP_BOOT?.extraConfigs?.tree_open || {}) };
   let treeOpenSaveTimer = null;
-  let pageMemorySeq = 0;
+  let pageMemorySeq = Number(window.APP_BOOT?.extraConfigs?._page_memory_seq) || 0;
   let settingsWrite = Promise.resolve();
-  const OPEN_PAGE_KEY = 'notespro_open_page';
+  const OPEN_PAGE_KEY = `notespro_open_page:${appBase}:${currentUserId}`;
 
   function getWorkspacePageId(wsId) {
     if (!wsId) return null;
@@ -158,29 +158,54 @@
   }
 
   function readOpenPage() {
-    try {
-      const raw = sessionStorage.getItem(OPEN_PAGE_KEY);
-      return raw ? JSON.parse(raw) : null;
-    } catch (_) {
-      return null;
+    const candidates = [];
+    for (const storage of ['sessionStorage', 'localStorage']) {
+      try {
+        const raw = window[storage].getItem(OPEN_PAGE_KEY);
+        if (raw) candidates.push(JSON.parse(raw));
+      } catch (_) { /* storage may be unavailable in private mode */ }
     }
+    // Migrate the old tab-only page memory, after checking workspace access below.
+    if (!candidates.length) {
+      try {
+        const raw = sessionStorage.getItem('notespro_open_page');
+        if (raw) candidates.push(JSON.parse(raw));
+      } catch (_) { /* private mode */ }
+    }
+    return candidates.filter(item => item && parsePageId(item.page) && item.ws)
+      .sort((a, b) => (Number(b.seq) || 0) - (Number(a.seq) || 0))[0] || null;
   }
 
   function rememberOpenPage() {
     if (publicView || !workspaceId || !currentPageId) return;
-    try {
-      sessionStorage.setItem(OPEN_PAGE_KEY, JSON.stringify({
-        ws: String(workspaceId),
-        page: Number(currentPageId),
-        seq: pageMemorySeq,
-      }));
-    } catch (_) { /* private mode */ }
+    const value = JSON.stringify({ ws: String(workspaceId), page: Number(currentPageId), seq: pageMemorySeq });
+    for (const storage of ['sessionStorage', 'localStorage']) {
+      try { window[storage].setItem(OPEN_PAGE_KEY, value); } catch (_) { /* private mode */ }
+    }
+  }
+
+  function restoreInitialNavigation() {
+    syncWorkspaceIdFromDom();
+    // Parse the incoming URL before the history guard can rewrite it.
+    applyNavQueryFromUrl();
+    const stored = readOpenPage();
+    const url = new URL(location.href);
+    const explicitPage = parsePageId(url.searchParams.get('page'));
+    const explicitWorkspace = url.searchParams.get('ws');
+    if (explicitWorkspace && !explicitPage) currentPageId = getWorkspacePageId(workspaceId);
+    if (explicitPage || explicitWorkspace || !stored || (Number(stored.seq) || 0) < pageMemorySeq) return;
+    const select = document.getElementById('workspace-select');
+    if (!select || ![...select.options].some(option => option.value === String(stored.ws))) return;
+    select.value = String(stored.ws);
+    workspaceId = String(stored.ws);
+    currentPageId = parsePageId(stored.page);
+    pageMemorySeq = Math.max(pageMemorySeq, Number(stored.seq) || 0);
   }
 
   function rememberSelectedPage(pageId) {
     const next = parsePageId(pageId);
     if (!next) return;
-    if (String(currentPageId) !== String(next)) pageMemorySeq = Date.now();
+    if (String(currentPageId) !== String(next)) pageMemorySeq = Math.max(Date.now(), pageMemorySeq + 1);
     currentPageId = next;
     setWorkspacePageId(getWorkspaceId() || workspaceId, next);
     rememberOpenPage();
@@ -528,7 +553,7 @@
   }
 
   function applyPageToEditor(page, { fromHistory = false, statusText = 'Loaded' } = {}) {
-    if (page?.id && String(currentPageId) !== String(page.id)) pageMemorySeq = Date.now();
+    if (page?.id && String(currentPageId) !== String(page.id)) pageMemorySeq = Math.max(Date.now(), pageMemorySeq + 1);
     currentPage = page;
     currentPageId = page.id;
     setWorkspacePageId(workspaceId, currentPageId);
@@ -2592,7 +2617,7 @@
   }
 
   function isPreviewRichBlock(el) {
-    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .form-widget, .mindmap-block, .md-news, .md-python, .voice-block, .jukebox-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .backgammon-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .carambole-block, .carrom-block, .dart-block, .draw-block, .drawio-block, .snake-block, .marbleblast-block, .gallery-block, .training-block, .worldclock-block, .alarm-block, .countdowntimer-block, .hp15c-block, .hp12c-block, .ti30-block, .dance-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .page-tags');
+    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .form-widget, .mindmap-block, .md-news, .md-python, .voice-block, .jukebox-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .backgammon-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .carambole-block, .carrom-block, .dart-block, .draw-block, .drawio-block, .snake-block, .marbleblast-block, .gallery-block, .training-block, .worldclock-block, .alarm-block, .countdowntimer-block, .hp15c-block, .hp12c-block, .hp42s-block, .ti30-block, .dance-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .page-tags');
   }
 
   function getPreviewBlockSourceLine(node) {
@@ -4358,6 +4383,14 @@
     renderPageSettingsTags();
   }
 
+  function withAppBase(path) {
+    const value = String(path || '');
+    if (!value.startsWith('/')) return value;
+    if (!appBase) return value;
+    if (value === appBase || value.startsWith(`${appBase}/`)) return value;
+    return `${appBase}${value}`;
+  }
+
   function absolutePublicUrl(path) {
     const value = String(path || '').trim();
     if (!value) return '';
@@ -4373,15 +4406,15 @@
   function previewPublicPath() {
     const rootOn = !!document.getElementById('page-settings-root')?.checked
       || !!document.getElementById('page-settings-ws')?.checked;
-    if (rootOn) return '/';
+    if (rootOn) return withAppBase('/');
     const saved = String(currentPage?.public_url || '');
-    if (currentPage?.settings?.public && saved && saved !== '/') return saved;
+    if (currentPage?.settings?.public && saved && saved !== '/') return withAppBase(saved);
     const option = selectedWorkspaceOption();
     const owner = option?.dataset?.owner || currentUserName || '';
     const workspaceSlug = option?.dataset?.slug || '';
     const pageSlug = currentPage?.slug || '';
     if (owner && workspaceSlug && pageSlug) {
-      return `/p/${encodeURIComponent(owner)}/${encodeURIComponent(workspaceSlug)}/${encodeURIComponent(pageSlug)}/`;
+      return withAppBase(`/p/${encodeURIComponent(owner)}/${encodeURIComponent(workspaceSlug)}/${encodeURIComponent(pageSlug)}/`);
     }
     return saved && saved !== '/' ? saved : '';
   }
@@ -4540,14 +4573,14 @@
   function previewWorkspacePublicPath() {
     const rootOn = !!document.getElementById('ws-settings-root')?.checked
       || !!document.getElementById('ws-settings-ws')?.checked;
-    if (rootOn) return '/';
+    if (rootOn) return withAppBase('/');
     const option = selectedWorkspaceOption();
     const saved = String(option?.dataset?.publicUrl || '');
-    if (option?.dataset?.public === '1' && saved && saved !== '/') return saved;
+    if (option?.dataset?.public === '1' && saved && saved !== '/') return withAppBase(saved);
     const owner = option?.dataset?.owner || currentUserName || '';
     const workspaceSlug = option?.dataset?.slug || '';
     if (owner && workspaceSlug) {
-      return `/p/${encodeURIComponent(owner)}/${encodeURIComponent(workspaceSlug)}/`;
+      return withAppBase(`/p/${encodeURIComponent(owner)}/${encodeURIComponent(workspaceSlug)}/`);
     }
     return saved && saved !== '/' ? saved : '';
   }
@@ -11296,8 +11329,26 @@
           const oldMarkdown = easyMDE.value();
           const updated = engine.rewriteFence(oldMarkdown, drawioIndex, payload || {});
           if (updated === oldMarkdown) return;
+          // Patch only the diagram source: setValue resets the Markdown cursor
+          // and scroll position, which can pull the preview away from the iframe.
+          const cm = easyMDE.codemirror;
+          const scroll = cm.getScrollInfo();
+          let from = 0;
+          while (from < oldMarkdown.length && from < updated.length && oldMarkdown[from] === updated[from]) from += 1;
+          let oldEnd = oldMarkdown.length;
+          let newEnd = updated.length;
+          while (oldEnd > from && newEnd > from && oldMarkdown[oldEnd - 1] === updated[newEnd - 1]) {
+            oldEnd -= 1;
+            newEnd -= 1;
+          }
           suppressPreviewRefresh += 1;
-          try { easyMDE.value(updated); } finally {
+          lockEditorPreviewScroll(600);
+          try {
+            cm.operation(() => {
+              cm.replaceRange(updated.slice(from, newEnd), cm.posFromIndex(from), cm.posFromIndex(oldEnd), '+drawio');
+              cm.scrollTo(scroll.left, scroll.top);
+            });
+          } finally {
             suppressPreviewRefresh = Math.max(0, suppressPreviewRefresh - 1);
           }
           scheduleSave();
@@ -11636,6 +11687,29 @@
     const engine = window.NotesProHp12c;
     if (!engine) return;
     (root || document).querySelectorAll('.hp12c-block').forEach((el) => {
+      engine.hydrateBlock(el);
+    });
+  }
+
+  const HP42S_BLOCK_RE = /```(?:hp42s|hp-42s)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function parseHp42sBlocks(text) {
+    let hp42sIndex = 0;
+    HP42S_BLOCK_RE.lastIndex = 0;
+    return text.replace(HP42S_BLOCK_RE, (_, fenceAttrs, content) => {
+      const engine = window.NotesProHp42s;
+      const idx = hp42sIndex++;
+      const html = engine?.renderBlock
+        ? engine.renderBlock(content || '', fenceAttrs || '', { hp42sIndex: idx })
+        : '<div class="hp42s-block">HP-42S not loaded.</div>';
+      return wrapRichPreviewBlock(html);
+    });
+  }
+
+  function hydrateHp42sBlocks(root) {
+    const engine = window.NotesProHp42s;
+    if (!engine) return;
+    (root || document).querySelectorAll('.hp42s-block').forEach((el) => {
       engine.hydrateBlock(el);
     });
   }
@@ -12904,11 +12978,11 @@
 function formatTextWithMarkup(rawText) {
     // 1. Text an den Zeilenumbrüchen in ein Array aus einzelnen Zeilen aufteilen
     const lines = rawText.split('\n');
-    
+
     // 2. Jede Zeile einzeln verarbeiten
     const processedLines = lines.map((line, index) => {
         const trimmedLine = line.trim();
-      
+
         // Prüfen, ob die Zeile mit '#' beginnt (Markdown-Überschrift)
         if (trimmedLine.startsWith('#')) {
             // Zeile bleibt wie sie ist (wird nicht mit <br> am Ende versehen)
@@ -12918,7 +12992,7 @@ function formatTextWithMarkup(rawText) {
             return line + (index < lines.length - 1 ? '<br>' : '');
         }
     });
-    
+
     // 3. Alle Zeilen wieder zu einem einzigen String zusammenfügen
     return processedLines.join('\n');
 }
@@ -13312,7 +13386,7 @@ function formatTextWithMarkup(rawText) {
     if (!root) return;
     root.querySelectorAll('pre').forEach(pre => {
       if (pre.closest('.md-code-block')) return;
-      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .form-widget, .mindmap-block, .md-news, .md-python, .voice-block, .jukebox-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .backgammon-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .carambole-block, .carrom-block, .dart-block, .draw-block, .drawio-block, .snake-block, .marbleblast-block, .gallery-block, .training-block, .worldclock-block, .alarm-block, .countdowntimer-block, .hp15c-block, .hp12c-block, .ti30-block, .dance-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block')) {
+      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .form-widget, .mindmap-block, .md-news, .md-python, .voice-block, .jukebox-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .backgammon-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .carambole-block, .carrom-block, .dart-block, .draw-block, .drawio-block, .snake-block, .marbleblast-block, .gallery-block, .training-block, .worldclock-block, .alarm-block, .countdowntimer-block, .hp15c-block, .hp12c-block, .hp42s-block, .ti30-block, .dance-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block')) {
         return;
       }
       const wrap = document.createElement('div');
@@ -13387,10 +13461,16 @@ function formatTextWithMarkup(rawText) {
   }
 
   function publicPageHref(wsSlug, pageSlug) {
-    const owner = window.APP_BOOT?.publicPage?.owner || window.APP_BOOT?.username || '';
+    const select = document.getElementById('workspace-select');
+    const option = [...(select?.options || [])].find(
+      (opt) => String(opt.dataset.slug || '').toLowerCase() === String(wsSlug || '').toLowerCase()
+    );
+    const owner = option?.dataset?.owner
+      || window.APP_BOOT?.publicPage?.owner
+      || window.APP_BOOT?.username
+      || '';
     if (!owner || !wsSlug || !pageSlug) return '';
-    const path = `/p/${encodeURIComponent(owner)}/${encodeURIComponent(wsSlug)}/${encodeURIComponent(pageSlug)}/`;
-    return appBase ? `${appBase}${path}` : path;
+    return withAppBase(`/p/${encodeURIComponent(owner)}/${encodeURIComponent(wsSlug)}/${encodeURIComponent(pageSlug)}/`);
   }
 
   function markPageLinks(root) {
@@ -13405,10 +13485,8 @@ function formatTextWithMarkup(rawText) {
       anchor.dataset.pageSlug = parts[1];
       anchor.removeAttribute('target');
       anchor.removeAttribute('rel');
-      if (window.APP_BOOT?.publicView) {
-        const href = publicPageHref(parts[0], parts[1]);
-        if (href) anchor.setAttribute('href', href);
-      }
+      const href = publicPageHref(parts[0], parts[1]);
+      if (href) anchor.setAttribute('href', href);
     });
   }
 
@@ -14006,6 +14084,11 @@ function formatTextWithMarkup(rawText) {
       const label = cfg.title || 'HP-12C';
       return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
     });
+    md = md.replace(/```(?:hp42s|hp-42s)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
+      const cfg = window.NotesProHp42s?.parseFenceAttrs?.(fenceAttrs) || {};
+      const label = cfg.title || 'HP-42S';
+      return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
+    });
     md = md.replace(/```(?:ti30xa|ti-30|ti30)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
       const cfg = window.NotesProTi30?.parseFenceAttrs?.(fenceAttrs) || {};
       const label = cfg.title || 'TI-30';
@@ -14143,6 +14226,7 @@ function formatTextWithMarkup(rawText) {
       md = parseCountdownBlocks(md);
       md = parseHp15cBlocks(md);
       md = parseHp12cBlocks(md);
+      md = parseHp42sBlocks(md);
       md = parseTi30Blocks(md);
       md = parseDanceBlocks(md);
       md = parsePhotocubeBlocks(md, options);
@@ -14617,6 +14701,7 @@ function formatTextWithMarkup(rawText) {
     hydrateWorldclockBlocks(preview);
     hydrateHp15cBlocks(preview);
     hydrateHp12cBlocks(preview);
+    hydrateHp42sBlocks(preview);
     hydrateTi30Blocks(preview);
     hydrateDanceBlocks(preview);
     hydratePhotocubeBlocks(preview);
@@ -21490,7 +21575,8 @@ function formatTextWithMarkup(rawText) {
         },
         '|',
         'quote', 'unordered-list', 'ordered-list', '|',
-        'link', 'image',
+        'link',
+        ...(window.APP_BOOT?.allowImages !== false ? ['image'] : []),
         {
           name: 'local-file-link',
           action: () => openLocalFileLinkInsertDialog(),
@@ -21570,7 +21656,7 @@ function formatTextWithMarkup(rawText) {
           action: (editor) => {
             const cm = editor.codemirror;
             let text, range;
-            
+
             // 1. Bereich bestimmen (Markierung oder ganze Zeile)
             if (cm.somethingSelected()) {
               text = cm.getSelection();
@@ -21583,16 +21669,16 @@ function formatTextWithMarkup(rawText) {
                 to: { line: lineNum, ch: text.length }
               };
             }
-            
+
             // 2. Aggressive Bereinigung (Regex mehrmals anwenden für verschachtelte Tags)
             let cleaned = text;
-            
+
             // Entfernt alle HTML-Tags (span, div, etc.)
             cleaned = cleaned.replace(/<\/?[^>]+(>|$)/g, "");
-            
+
             // Entfernt Markdown (Fett, Kursiv, etc.)
             cleaned = cleaned.replace(/(\*\*|__|\*|_|~~|`)/g, "");
-            
+
             // 3. Text im Editor ersetzen
             if (cm.somethingSelected()) {
                     // "around" sorgt dafür, dass die neue Auswahl die alte ersetzt
@@ -21640,23 +21726,54 @@ function formatTextWithMarkup(rawText) {
           title: 'Insert chart',
         },
         {
-          name: 'insert-calcs',
-          action: (editor) => {
-            const body = [
-              '% Octave-style calcs sample',
-              'f = 50;',
-              'A = 1;',
-              'w = 2*pi*f;',
-              'SR = 96*3;',
-              'i = 0:2*SR;',
-              'y1[i] = exp(-i/SR)*A;',
-              'y2[i] = sin(20*w*i/SR).*exp(-i/SR)*A;',
-              'Plot(y1, y2)',
-            ].join('\n');
-            insertFenceBlock(editor, 'calcs{fix=7;col=info}', body);
-          },
+          name: 'calculatorsMenu',
           className: 'fa fa-calculator',
-          title: 'Insert Calcs',
+          title: 'Insert calculator',
+          children: [
+            {
+              name: 'insert-calcs',
+              text: 'Calcs',
+              action: (editor) => {
+                const body = [
+                  '% Octave-style calcs sample',
+                  'f = 50;',
+                  'A = 1;',
+                  'w = 2*pi*f;',
+                  'SR = 96*3;',
+                  'i = 0:2*SR;',
+                  'y1[i] = exp(-i/SR)*A;',
+                  'y2[i] = sin(20*w*i/SR).*exp(-i/SR)*A;',
+                  'Plot(y1, y2)',
+                ].join('\n');
+                insertFenceBlock(editor, 'calcs{fix=7;col=info}', body);
+              },
+              title: 'Insert Calcs',
+            },
+            {
+              name: 'insert-hp15c',
+              text: "HP-15C",
+              action: (editor) => insertFenceBlock(editor, 'hp15c{title=HP-15C;fullscreen;size=100%}', ''),
+              title: 'Insert HP-15C calculator',
+            },
+            {
+              name: 'insert-hp12c',
+              text: "HP-12C",
+              action: (editor) => insertFenceBlock(editor, 'hp12c{title=HP-12C;fullscreen;size=100%}', ''),
+              title: 'Insert HP-12C calculator',
+            },
+            {
+              name: 'insert-hp42s',
+              text: "HP-42S",
+              action: (editor) => insertFenceBlock(editor, 'hp42s{title=HP-42S;fullscreen;size=100%}', ''),
+              title: 'Insert HP-42S calculator',
+            },
+            {
+              name: 'insert-ti30',
+              text: "TI-30",
+              action: (editor) => insertFenceBlock(editor, 'ti30{title=TI-30;fullscreen;size=100%}', ''),
+              title: 'Insert TI-30 calculator',
+            },
+          ],
         },
         {
           name: 'insert-python',
@@ -21731,24 +21848,6 @@ function formatTextWithMarkup(rawText) {
           },
           className: 'fa fa-hourglass-half',
           title: 'Insert countdown timer',
-        },
-        {
-          name: 'insert-hp15c',
-          action: (editor) => insertFenceBlock(editor, 'hp15c{title=HP-15C;fullscreen;size=100%}', ''),
-          className: 'fa fa-calculator',
-          title: 'Insert HP-15C calculator',
-        },
-        {
-          name: 'insert-hp12c',
-          action: (editor) => insertFenceBlock(editor, 'hp12c{title=HP-12C;fullscreen;size=100%}', ''),
-          className: 'fa fa-calculator',
-          title: 'Insert HP-12C calculator',
-        },
-        {
-          name: 'insert-ti30',
-          action: (editor) => insertFenceBlock(editor, 'ti30{title=TI-30;fullscreen;size=100%}', ''),
-          className: 'fa fa-calculator',
-          title: 'Insert TI-30 calculator',
         },
         {
           name: 'boardsMenu',
@@ -21845,7 +21944,7 @@ function formatTextWithMarkup(rawText) {
         },
         buildAddToolbarDropdown(),
         buildFormToolbarDropdown(),
-        {
+        ...(window.APP_BOOT?.allowShops !== false ? [{
           name: 'menuShopMenu',
           className: 'fa fa-cutlery',
           title: 'Insert menu / shop / SW shop / NotesList',
@@ -21929,7 +22028,7 @@ function formatTextWithMarkup(rawText) {
               },
             },
           ],
-        },
+        }] : []),
         {
           name: 'insert-voice',
           action: (editor) => {
@@ -22000,7 +22099,7 @@ function formatTextWithMarkup(rawText) {
                       orientation: 'portrait'
                     }
                   }).from(element).toPdf().get('pdf').then(function (pdf) {
-                    
+
                     // ✅ add page numbers
                     const totalPages = pdf.internal.getNumberOfPages();
 
@@ -22188,7 +22287,7 @@ function formatTextWithMarkup(rawText) {
     if (document.hidden) persistOpenPageOnHide();
   });
   window.addEventListener('pagehide', persistOpenPageOnHide);
-  
+
   function isTreeFolder(node) {
     if (!node) return false;
     if (node.id === '#') return true;
@@ -22887,6 +22986,9 @@ function formatTextWithMarkup(rawText) {
     capturePreviewScrollPosition();
     clearTimeout(previewRefreshTimer);
     previewRefreshTimer = setTimeout(() => {
+      // Focus may have moved into Draw.io after this refresh was scheduled.
+      // Recreating its iframe here would interrupt typing and diagram selection.
+      if (document.activeElement?.closest?.('.drawio-block')) return;
       renderPreview();
       if (isMobileLayout()) {
         buildFloatingToc();
@@ -24465,7 +24567,7 @@ function formatTextWithMarkup(rawText) {
     //     .then(data => {
     //       //     // Remove option block from DOM structures directly
     //           select.remove(select.selectedIndex);
-              
+
     //       //     // Automatically switch layout view to the next remaining workspace option
     //           select.dispatchEvent(new Event('change'));
     //     });
@@ -24889,7 +24991,7 @@ function formatTextWithMarkup(rawText) {
     });
 
 
- 
+
     const inviteInput = document.getElementById('invite-username');
     const datalist = document.getElementById('user-suggestions');
     let debounceTimer;
@@ -24897,7 +24999,7 @@ function formatTextWithMarkup(rawText) {
     if (inviteInput && datalist) {
         inviteInput.addEventListener('input', function() {
             const query = this.value.trim();
-            
+
             // Zurücksetzen, wenn das Feld geleert wird oder zu kurz ist
             if (query.length < 2) {
                 datalist.innerHTML = '';
@@ -24911,7 +25013,7 @@ function formatTextWithMarkup(rawText) {
                     .then(res => res.json())
                     .then(data => {
                         datalist.innerHTML = ''; // Alte Vorschläge löschen
-                        
+
                         if (data.status === 'success') {
                             data.users.forEach(user => {
                                 const option = document.createElement('option');
@@ -24926,7 +25028,7 @@ function formatTextWithMarkup(rawText) {
     }
 
     let to = null;
-    
+
     document.getElementById('toggle-left')?.addEventListener('click', toggleLeftPanel);
     document.getElementById('toggle-right')?.addEventListener('click', toggleRightPanel);
     document.getElementById('tree-search')?.addEventListener('keyup', function () {
@@ -25012,8 +25114,7 @@ function formatTextWithMarkup(rawText) {
     const ws = page?.workspace_slug || window.APP_BOOT?.publicPage?.workspace_slug || '';
     const slug = page?.slug || '';
     if (!owner || !ws || !slug) return '';
-    const path = `/p/${encodeURIComponent(owner)}/${encodeURIComponent(ws)}/${encodeURIComponent(slug)}/`;
-    return appBase ? `${appBase}${path}` : path;
+    return withAppBase(`/p/${encodeURIComponent(owner)}/${encodeURIComponent(ws)}/${encodeURIComponent(slug)}/`);
   }
 
   function rememberPublicPage(page, { replace = false } = {}) {
@@ -25181,6 +25282,7 @@ function formatTextWithMarkup(rawText) {
     return;
   }
 
+  restoreInitialNavigation();
   initMarked();
   sortWorkspaceSelect();
   bindUi();
@@ -25216,8 +25318,6 @@ function formatTextWithMarkup(rawText) {
   initChartInsertModal();
   initPanelInsertModal();
   initSnippetsModal();
-  syncWorkspaceIdFromDom();
-  applyNavQueryFromUrl();
   applyLayoutFromSettings();
   syncMobileLayoutClass();
   setEditing(false);
@@ -25226,22 +25326,6 @@ function formatTextWithMarkup(rawText) {
   initEditorSplitter();
   initRightSplitter();
   loadTree(currentPageId).then(() => {
-    const stored = readOpenPage();
-    const bootPage = window.APP_BOOT?.pageId;
-    if (
-      stored
-      && String(stored.ws) === String(workspaceId)
-      && stored.page
-      && String(stored.page) !== String(bootPage || '')
-      && String(stored.page) !== String(currentPageId || '')
-    ) {
-      const tree = $('#tree').jstree(true);
-      const node = tree?.get_node(String(stored.page));
-      if (node && !isTreeFolder(node)) {
-        pageMemorySeq = Math.max(pageMemorySeq, Number(stored.seq) || 0);
-        selectTreeNode(stored.page);
-      }
-    }
     if (!currentPageId) switchMode('preview');
     if (window.APP_BOOT?.openEditing) setEditing(true);
   });
@@ -25595,7 +25679,7 @@ function formatTextWithMarkup(rawText) {
     if (tryPasteImageUrlsIntoKeep(event)) return;
     const data = event.clipboardData || event.originalEvent?.clipboardData;
     const pasteFiles = clipboardImageFiles(data);
-    if (event.target.closest?.('.puzzle-block, .gallery-block, .training-block, .worldclock-block, .alarm-block, .countdowntimer-block, .hp15c-block, .hp12c-block, .ti30-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .backgammon-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .carambole-block, .carrom-block, .dart-block, .draw-block, .drawio-block, .snake-block, .marbleblast-block, .voice-block, .jukebox-block, .calendar-block, #calendar-note-modal')) return;
+    if (event.target.closest?.('.puzzle-block, .gallery-block, .training-block, .worldclock-block, .alarm-block, .countdowntimer-block, .hp15c-block, .hp12c-block, .hp42s-block, .ti30-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .backgammon-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .carambole-block, .carrom-block, .dart-block, .draw-block, .drawio-block, .snake-block, .marbleblast-block, .voice-block, .jukebox-block, .calendar-block, #calendar-note-modal')) return;
     if (!pasteFiles.length) {
       const text = data?.getData?.('text/plain') || '';
       const fromText = pastedPlainImageUrls(text);
@@ -26092,12 +26176,31 @@ function formatTextWithMarkup(rawText) {
     }
   }
 
+  function issuePagePath(node, byId) {
+    const parts = [];
+    const seen = new Set();
+    let current = node;
+    while (current && !seen.has(String(current.id))) {
+      seen.add(String(current.id));
+      const title = String(current.text || current.title || '').trim();
+      if (title) parts.push(title);
+      const parentId = current.parent;
+      if (!parentId || parentId === '#') break;
+      current = byId.get(String(parentId));
+    }
+    return parts.reverse().join(' / ');
+  }
+
   async function loadIssuePages() {
     if (!workspaceId) return [];
     try {
       const tree = await api(`api/workspaces/${workspaceId}/tree/`);
       const nodes = Array.isArray(tree) ? tree : [];
-      issuePagesCache = nodes.filter(n => !(n.type === 'folder' || n.data?.is_folder));
+      const byId = new Map(nodes.map((node) => [String(node.id), node]));
+      issuePagesCache = nodes
+        .filter((node) => !(node.type === 'folder' || node.data?.is_folder))
+        .map((node) => ({ ...node, path: issuePagePath(node, byId) }))
+        .sort((a, b) => (a.path || '').localeCompare(b.path || ''));
       return issuePagesCache;
     } catch (e) {
       console.warn('issue pages', e);
@@ -26126,7 +26229,7 @@ function formatTextWithMarkup(rawText) {
       pages.forEach(p => {
         const opt = document.createElement('option');
         opt.value = String(p.id);
-        opt.textContent = p.text || p.title || `Page ${p.id}`;
+        opt.textContent = p.path || p.text || p.title || `Page ${p.id}`;
         pageSel.appendChild(opt);
       });
       pageSel.value = issue?.page ? String(issue.page) : (currentPageId ? String(currentPageId) : '');
@@ -26250,7 +26353,7 @@ function formatTextWithMarkup(rawText) {
       case 'status': return ISSUE_STATUS_ORDER[issue.status] ?? 9;
       case 'priority': return ISSUE_PRIORITY_ORDER[issue.priority] ?? 9;
       case 'assignee': return (issue.assignee_username || '').toLowerCase();
-      case 'page': return (issue.page_title || '').toLowerCase();
+      case 'page': return (issue.page_path || issue.page_title || '').toLowerCase();
       case 'labels': return (Array.isArray(issue.labels) ? issue.labels.join(', ') : '').toLowerCase();
       case 'updated_at': return issue.updated_at || '';
       default: return '';
@@ -26302,7 +26405,7 @@ function formatTextWithMarkup(rawText) {
       parts.push(ISSUE_PRIORITY_LABELS[issue.priority] || issue.priority);
     }
     if (issue.assignee_username) parts.push(`@${issue.assignee_username}`);
-    if (issue.page_title) parts.push(issue.page_title);
+    if (issue.page_path || issue.page_title) parts.push(issue.page_path || issue.page_title);
     const labels = Array.isArray(issue.labels) ? issue.labels.filter(Boolean) : [];
     if (labels.length) parts.push(labels.join(', '));
     return issueExportPlain(parts.join(' · '));
@@ -26403,7 +26506,7 @@ function formatTextWithMarkup(rawText) {
         : '';
       const updated = issue.updated_at ? new Date(issue.updated_at).toLocaleString() : '';
       const pageCell = issue.page
-        ? `<button type="button" class="issues-table-page-link" data-issue-page="${issue.page}">${escapeHtml(issue.page_title || 'Page')}</button>`
+        ? `<button type="button" class="issues-table-page-link" data-issue-page="${issue.page}">${escapeHtml(issue.page_path || issue.page_title || 'Page')}</button>`
         : '';
       const desc = issueDescriptionText(issue.body);
       const tipAttr = desc ? ` data-issue-desc="${escapeHtml(desc)}"` : '';

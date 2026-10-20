@@ -115,7 +115,45 @@ def _user_label(user):
     return user.username or user.get_username() or str(user.pk)
 
 
-def _issue_to_dict(issue):
+def _page_path_lookup(page_ids):
+    """Map page id to 'Folder / Child / Page', including folder titles."""
+    pages = {}
+    pending = {pid for pid in page_ids if pid}
+    while pending:
+        rows = list(Page.objects.filter(pk__in=pending).only('id', 'title', 'parent_id'))
+        if not rows:
+            break
+        pending = set()
+        for page in rows:
+            pages[page.id] = page
+        for page in rows:
+            if page.parent_id and page.parent_id not in pages:
+                pending.add(page.parent_id)
+
+    def build(page_id):
+        parts = []
+        seen = set()
+        current = page_id
+        while current and current not in seen:
+            seen.add(current)
+            page = pages.get(current)
+            if page is None:
+                break
+            title = (page.title or '').strip()
+            if title:
+                parts.append(title)
+            current = page.parent_id
+        return ' / '.join(reversed(parts))
+
+    return {pid: build(pid) for pid in pages}
+
+
+def _issue_to_dict(issue, page_paths=None):
+    page_path = ''
+    if issue.page_id:
+        if page_paths is None:
+            page_paths = _page_path_lookup([issue.page_id])
+        page_path = page_paths.get(issue.page_id) or (issue.page.title if issue.page_id else '')
     return {
         'id': issue.id,
         'workspace': issue.workspace_id,
@@ -129,7 +167,8 @@ def _issue_to_dict(issue):
         'reporter': issue.reporter_id,
         'reporter_username': _user_label(issue.reporter),
         'page': issue.page_id,
-        'page_title': issue.page.title if issue.page_id else '',
+        'page_title': page_path,
+        'page_path': page_path,
         'labels': issue.labels if isinstance(issue.labels, list) else [],
         'created_at': issue.created_at.isoformat(),
         'updated_at': issue.updated_at.isoformat(),
@@ -158,7 +197,8 @@ def issue_list(request, workspace_id):
         issue_rows = matched
     else:
         issue_rows = list(issues[:300])
-    items = [_issue_to_dict(i) for i in issue_rows]
+    page_paths = _page_path_lookup(issue.page_id for issue in issue_rows)
+    items = [_issue_to_dict(i, page_paths) for i in issue_rows]
     open_count = _issue_qs(request.user).filter(
         workspace_id=workspace_id,
     ).exclude(_status_q(Issue.STATUS_CLOSED)).count()

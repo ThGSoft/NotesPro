@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pricing — NotesPro</title>
+  <meta name="description" content="Evaluate NotesPro locally for free. A single-site license is 49 EUR once for one production website. No subscription.">
+  <meta property="og:title" content="NotesPro pricing">
+  <meta property="og:description" content="Free to evaluate. 49 EUR once for one production website.">
+  <meta property="og:url" content="https://thgsoft.online/DjangoNotesPro/">
+  <link rel="icon" href="favicon.ico" type="image/x-icon">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #f4f5f7;
+      --card: #ffffff;
+      --ink: #141414;
+      --muted: #5e6570;
+      --line: #e4e6eb;
+      --soft: #f7f8fa;
+      --accent: #111111;
+      --note: #f0e070;
+      --ok: #137333;
+      --shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 12px 32px rgba(16, 24, 40, 0.06);
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: Inter, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: var(--bg);
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: inherit; }
+    .wrap { width: min(1120px, calc(100% - 32px)); margin: 0 auto; }
+    .nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 18px 0;
+    }
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      text-decoration: none;
+      letter-spacing: -0.03em;
+    }
+    .brand img { width: 28px; height: 28px; }
+    .nav-links { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .nav-links a {
+      text-decoration: none;
+      color: var(--muted);
+      font-size: 0.92rem;
+      font-weight: 600;
+      padding: 8px 10px;
+      border-radius: 999px;
+    }
+    .nav-links a:hover { color: var(--ink); background: rgba(0,0,0,0.04); }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 42px;
+      padding: 0 16px;
+      border-radius: 999px;
+      border: 1px solid var(--ink);
+      background: var(--ink);
+      color: #fff;
+      font: inherit;
+      font-size: 0.92rem;
+      font-weight: 650;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .btn.ghost {
+      background: #fff;
+      color: var(--ink);
+    }
+    .btn.note { background: var(--note); color: #111; border-color: #111; }
+    .hero { text-align: center; padding: 28px 0 8px; }
+    .hero h1 {
+      margin: 0 auto 12px;
+      max-width: 18ch;
+      font-size: clamp(2.1rem, 5vw, 3.4rem);
+      line-height: 1.05;
+      letter-spacing: -0.045em;
+    }
+    .hero p.lede {
+      margin: 0 auto;
+      max-width: 42rem;
+      color: var(--muted);
+      font-size: 1.05rem;
+    }
+    .switch {
+      display: inline-flex;
+      gap: 4px;
+      margin: 28px auto 10px;
+      padding: 4px;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      box-shadow: var(--shadow);
+    }
+    .switch button {
+      border: 0;
+      background: transparent;
+      font: inherit;
+      font-size: 0.92rem;
+      font-weight: 650;
+      color: var(--muted);
+      padding: 10px 16px;
+      border-radius: 999px;
+      cursor: pointer;
+    }
+    .switch button[aria-pressed="true"] {
+      background: var(--ink);
+      color: #fff;
+    }
+    .switch .save {
+      display: inline-block;
+      margin-left: 6px;
+      padding: 2px 6px;
+      border-radius: 999px;
+      background: var(--note);
+      color: #111;
+      font-size: 0.72rem;
+      font-weight: 700;
+      vertical-align: 1px;
+    }
+    .switch button[aria-pressed="true"] .save { background: #fff; }
+    .period-note {
+      min-height: 1.4em;
+      margin: 0 0 28px;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+    .plans {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+      align-items: stretch;
+    }
+    .plan {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      padding: 22px 22px 20px;
+      box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
+      text-align: left;
+    }
+    .plan.featured {
+      background: #161616;
+      color: #f5f5f5;
+      border-color: #161616;
+    }
+    .plan .name { margin: 0; font-size: 1.05rem; font-weight: 700; }
+    .plan .blurb { margin: 6px 0 16px; color: var(--muted); font-size: 0.92rem; min-height: 2.8em; }
+    .plan.featured .blurb { color: #c8c8c8; }
+    .price { display: flex; align-items: baseline; gap: 6px; margin: 0 0 4px; }
+    .price strong { font-size: 2.4rem; letter-spacing: -0.04em; line-height: 1; }
+    .price span { color: var(--muted); font-size: 0.92rem; }
+    .plan.featured .price span { color: #c8c8c8; }
+    .tax { margin: 0 0 16px; color: var(--muted); font-size: 0.82rem; }
+    .plan.featured .tax { color: #bdbdbd; }
+    .plan .btn { width: 100%; margin-bottom: 16px; }
+    .plan ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+    .plan li { display: flex; gap: 8px; align-items: flex-start; font-size: 0.92rem; }
+    .mark { color: var(--ok); font-weight: 700; }
+    .plan.featured .mark { color: var(--note); }
+    .promise {
+      margin: 28px auto 0;
+      max-width: 46rem;
+      text-align: center;
+      color: var(--muted);
+    }
+    .pills { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; margin: 18px 0 8px; }
+    .pill {
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 999px;
+      padding: 6px 12px;
+      font-size: 0.85rem;
+      font-weight: 650;
+    }
+    .section { padding: 56px 0 8px; }
+    .section h2 { margin: 0 0 16px; font-size: 1.7rem; letter-spacing: -0.03em; }
+    .table-scroll {
+      overflow-x: auto;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      box-shadow: var(--shadow);
+    }
+    table { width: 100%; border-collapse: collapse; min-width: 680px; }
+    th, td { padding: 14px 16px; text-align: center; border-bottom: 1px solid var(--line); font-size: 0.92rem; }
+    th:first-child, td:first-child { text-align: left; color: var(--ink); font-weight: 600; }
+    thead th { font-size: 0.95rem; }
+    tbody td { color: var(--muted); }
+    tbody tr:last-child td { border-bottom: 0; }
+    td.yes { color: var(--ok); font-weight: 700; }
+    .faq { display: grid; gap: 10px; }
+    details {
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 4px 16px;
+    }
+    summary { cursor: pointer; font-weight: 650; padding: 12px 0; }
+    details p { margin: 0 0 14px; color: var(--muted); }
+    .band {
+      margin: 48px auto 32px;
+      background: #161616;
+      color: #f5f5f5;
+      border-radius: 28px;
+      padding: 36px 28px;
+      text-align: center;
+    }
+    .band h2 { margin: 0 0 8px; letter-spacing: -0.03em; }
+    .band p { margin: 0 auto 18px; max-width: 38rem; color: #c8c8c8; }
+    .band .actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+    footer { padding: 8px 0 36px; color: var(--muted); font-size: 0.88rem; }
+    footer a { color: var(--ink); }
+    @media (max-width: 860px) {
+      .plans { grid-template-columns: 1fr; }
+      .plan .blurb { min-height: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <nav class="nav" aria-label="Primary">
+      <a class="brand" href="notespro.html">
+        <img src="favicon.ico" width="28" height="28" alt="">
+        NotesPro
+      </a>
+      <div class="nav-links">
+        <a href="notespro.html">Product</a>
+        <a href="pricing.html" aria-current="page">Pricing</a>
+        <a href="https://github.com/ThGSoft/NotesPro">Source</a>
+        <a class="btn" href="https://thgsoft.online/DjangoNotesPro/">Open NotesPro</a>
+      </div>
+    </nav>
+
+    <header class="hero">
+      <h1>Your notes, on your own site. Free to evaluate.</h1>
+      <p class="lede">Start on the demo or on your machine. When a production website should run NotesPro, the site license is one payment. There is no subscription.</p>
+      <div class="switch" role="group" aria-label="Billing period">
+        <button type="button" data-period="once" aria-pressed="true">Once</button>
+        <button type="button" data-period="year" aria-pressed="false">Yearly <span class="save">not sold</span></button>
+        <button type="button" data-period="month" aria-pressed="false">Monthly</button>
+      </div>
+      <p class="period-note" id="period-note">One payment covers one production website. Tax is handled at checkout in the app.</p>
+    </header>
+
+    <section class="plans" aria-label="Plans">
+      <article class="plan">
+        <h2 class="name">Evaluate</h2>
+        <p class="blurb">Run it locally and use the public demo. The notes stay yours.</p>
+        <p class="price"><strong data-price="evaluate">€0</strong> <span data-unit="evaluate">to start</span></p>
+        <p class="tax">No card on this page</p>
+        <a class="btn ghost" href="https://thgsoft.online/DjangoNotesPro/">Get started</a>
+        <ul>
+          <li><span class="mark">✓</span> Local evaluation from source</li>
+          <li><span class="mark">✓</span> Workspaces, markdown, boards, chat</li>
+          <li><span class="mark">✓</span> Demo sign-in on the hosted app</li>
+        </ul>
+      </article>
+      <article class="plan featured">
+        <h2 class="name">Site</h2>
+        <p class="blurb">The right to run NotesPro on one production website.</p>
+        <p class="price"><strong data-price="site">€49</strong> <span data-unit="site">once</span></p>
+        <p class="tax">Single-site license · pay in the app</p>
+        <a class="btn note" id="site-cta" href="https://thgsoft.online/DjangoNotesPro/">Get the license</a>
+        <ul>
+          <li><span class="mark">✓</span> One production website</li>
+          <li><span class="mark">✓</span> Same app: shop, games, mail, 2FA</li>
+          <li><span class="mark">✓</span> PayPal, Visa, or Mastercard</li>
+        </ul>
+      </article>
+      <article class="plan">
+        <h2 class="name">Source</h2>
+        <p class="blurb">Read the code, run the tests, and keep third-party licenses intact.</p>
+        <p class="price"><strong data-price="source">€0</strong> <span data-unit="source">to inspect</span></p>
+        <p class="tax">GitHub zip · not a production license</p>
+        <a class="btn ghost" href="https://github.com/ThGSoft/NotesPro/archive/refs/heads/main.zip">Download</a>
+        <ul>
+          <li><span class="mark">✓</span> Published source</li>
+          <li><span class="mark">✓</span> Credits stay with their libraries</li>
+          <li><span class="mark">✓</span> Evaluation on your computer</li>
+        </ul>
+      </article>
+    </section>
+
+    <p class="promise">Buying a license does not rent your notes back to you. Evaluate keeps working if you never pay. A site license is permission to run the app in production on one website.</p>
+    <div class="pills" aria-label="Highlights">
+      <span class="pill">Source published</span>
+      <span class="pill">Run it yourself</span>
+      <span class="pill">One site, one payment</span>
+    </div>
+
+    <section class="section" aria-labelledby="compare-title">
+      <h2 id="compare-title">Plans &amp; features</h2>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col"></th>
+              <th scope="col">Evaluate</th>
+              <th scope="col">Site</th>
+              <th scope="col">Source</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">Price</th>
+              <td data-cell="evaluate">€0</td>
+              <td data-cell="site">€49 once</td>
+              <td data-cell="source">€0</td>
+            </tr>
+            <tr>
+              <th scope="row">Production websites</th>
+              <td>0</td>
+              <td>1</td>
+              <td>0</td>
+            </tr>
+            <tr>
+              <th scope="row">Local evaluation</th>
+              <td class="yes">✓</td>
+              <td class="yes">✓</td>
+              <td class="yes">✓</td>
+            </tr>
+            <tr>
+              <th scope="row">Markdown, sheets, boards</th>
+              <td class="yes">✓</td>
+              <td class="yes">✓</td>
+              <td class="yes">✓</td>
+            </tr>
+            <tr>
+              <th scope="row">Shop, NotesList, mail, chat</th>
+              <td class="yes">✓</td>
+              <td class="yes">✓</td>
+              <td class="yes">✓</td>
+            </tr>
+            <tr>
+              <th scope="row">Two-factor sign-in</th>
+              <td class="yes">✓</td>
+              <td class="yes">✓</td>
+              <td class="yes">✓</td>
+            </tr>
+            <tr>
+              <th scope="row">Import and export</th>
+              <td class="yes">✓</td>
+              <td class="yes">✓</td>
+              <td class="yes">✓</td>
+            </tr>
+            <tr>
+              <th scope="row">Card numbers stored here</th>
+              <td>No</td>
+              <td>No</td>
+              <td>No</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="faq-title">
+      <h2 id="faq-title">Questions</h2>
+      <div class="faq">
+        <details>
+          <summary>What happens if I do not buy a license?</summary>
+          <p>Nothing you already wrote is locked. You can keep evaluating NotesPro locally and you can keep using the hosted demo. A public production website needs the single-site license.</p>
+        </details>
+        <details>
+          <summary>Is NotesPro free?</summary>
+          <p>The source is published so you can inspect it and run it on your computer for evaluation. The single-site license is 49 EUR once.</p>
+        </details>
+        <details>
+          <summary>Is there a subscription?</summary>
+          <p>No. Monthly and yearly billing are not sold. The Site plan is one payment for one production website.</p>
+        </details>
+        <details>
+          <summary>How do I pay?</summary>
+          <p>Checkout is inside NotesPro. PayPal, Visa, and Mastercard are offered there. This page does not collect card numbers. Visa and Mastercard ask for a Konto and transfer to the shop Konto configured in the app.</p>
+        </details>
+        <details>
+          <summary>Are there setup fees or hidden fees?</summary>
+          <p>No setup fee is added on this page. You pay the license price shown in the app at checkout.</p>
+        </details>
+        <details>
+          <summary>Does one license cover every device?</summary>
+          <p>The license is for one production website, not one laptop. People who use that site sign in there. Evaluating on your own machine does not use up that site.</p>
+        </details>
+        <details>
+          <summary>Can I run it on more than one website?</summary>
+          <p>One purchased license covers one production website. A second public site needs its own license.</p>
+        </details>
+        <details>
+          <summary>I still have questions. How do I reach you?</summary>
+          <p>Open an issue on <a href="https://github.com/ThGSoft/NotesPro/issues">GitHub</a>. NotesPro is published by ThGSoft.</p>
+        </details>
+      </div>
+    </section>
+
+    <section class="band" aria-labelledby="cta-title">
+      <h2 id="cta-title">Open a notebook in a minute</h2>
+      <p>The demo is free. The source is on GitHub. Buy the site license only when a production website should run NotesPro.</p>
+      <div class="actions">
+        <a class="btn note" href="https://thgsoft.online/DjangoNotesPro/">Open NotesPro</a>
+        <a class="btn ghost" href="https://github.com/ThGSoft/NotesPro">View source</a>
+      </div>
+    </section>
+
+    <footer>
+      <a href="notespro.html">NotesPro</a>
+      · <a href="pricing.html">Pricing</a>
+      · <a href="shop.html">Shop promo</a>
+      · <a href="https://github.com/ThGSoft/NotesPro">GitHub</a>
+      · ThGSoft
+    </footer>
+  </div>
+  <script>
+    (function () {
+      var periods = {
+        once: {
+          note: 'One payment covers one production website. Tax is handled at checkout in the app.',
+          site: '€49',
+          siteUnit: 'once',
+          siteCell: '€49 once',
+          cta: 'Get the license'
+        },
+        year: {
+          note: 'Yearly billing is not sold. The site license stays €49 once.',
+          site: '€49',
+          siteUnit: 'once',
+          siteCell: '€49 once',
+          cta: 'See one-time license'
+        },
+        month: {
+          note: 'Monthly billing is not sold. The site license stays €49 once.',
+          site: '€49',
+          siteUnit: 'once',
+          siteCell: '€49 once',
+          cta: 'See one-time license'
+        }
+      };
+      var note = document.getElementById('period-note');
+      var cta = document.getElementById('site-cta');
+      document.querySelectorAll('.switch button').forEach(function (button) {
+        button.addEventListener('click', function () {
+          var period = periods[button.dataset.period];
+          document.querySelectorAll('.switch button').forEach(function (other) {
+            other.setAttribute('aria-pressed', other === button ? 'true' : 'false');
+          });
+          note.textContent = period.note;
+          document.querySelector('[data-price="site"]').textContent = period.site;
+          document.querySelector('[data-unit="site"]').textContent = period.siteUnit;
+          document.querySelector('[data-cell="site"]').textContent = period.siteCell;
+          cta.textContent = period.cta;
+        });
+      });
+    }());
+  </script>
+</body>
+</html>

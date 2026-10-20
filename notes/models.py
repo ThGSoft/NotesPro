@@ -25,6 +25,17 @@ def copy_members(apps, schema_editor):
                 defaults={'role': 'read'}
             )
 
+def script_prefixed_path(path):
+    """Prefix a site path with FORCE_SCRIPT_NAME when the app is mounted under one."""
+    base = (getattr(settings, 'FORCE_SCRIPT_NAME', None) or '').rstrip('/')
+    path = str(path or '')
+    if not path.startswith('/'):
+        path = f'/{path}' if path else '/'
+    if base and path != base and not path.startswith(f'{base}/'):
+        return f'{base}{path}'
+    return path
+
+
 class Workspace(models.Model):
     # owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='workspaces')
         # Das Feld MUSS 'owner' heissen (kleingeschrieben)
@@ -80,12 +91,12 @@ class Workspace(models.Model):
         if not settings.get('public'):
             return ''
         if settings.get('root'):
-            return '/'
+            return script_prefixed_path('/')
         from django.urls import reverse
-        return reverse(
+        return script_prefixed_path(reverse(
             'public_workspace',
             kwargs={'owner': self.owner.username, 'workspace_slug': self.slug},
-        )
+        ))
 
     def release_other_site_roots(self):
         for other in Workspace.objects.exclude(pk=self.pk).filter(settings__root=True):

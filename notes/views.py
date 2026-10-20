@@ -12,7 +12,7 @@ from django.conf import settings as django_settings
 from django.contrib.staticfiles import finders
 from django.views.decorators.http import require_GET, require_POST
 from .forms import RegisterForm
-from .models import Page, Workspace, UploadedFile, PastedFile, \
+from .models import Page, Workspace, UploadedFile, PastedFile, script_prefixed_path, \
                     UserSettings, User, \
                     WorkspaceMembership, WorkspaceMailMessage, WorkspaceMailRecipient
 from django.shortcuts import get_object_or_404
@@ -328,18 +328,14 @@ def _restore_workspace(workspace):
 
 def _public_workspace_path(workspace):
     if workspace.normalized_settings().get('root'):
-        return _site_root_path()
-    path = reverse(
+        return script_prefixed_path('/')
+    return script_prefixed_path(reverse(
         'public_workspace',
         kwargs={
             'owner': workspace.owner.username,
             'workspace_slug': workspace.slug,
         },
-    )
-    base = (getattr(django_settings, 'FORCE_SCRIPT_NAME', None) or '').rstrip('/')
-    if base and not path.startswith(f'{base}/'):
-        return f'{base}{path}'
-    return path
+    ))
 
 
 def _page_visible_without_login(page):
@@ -351,25 +347,20 @@ def _page_visible_without_login(page):
 
 
 def _site_root_path():
-    base = (getattr(django_settings, 'FORCE_SCRIPT_NAME', None) or '').rstrip('/')
-    return f'{base}/' if base else '/'
+    return script_prefixed_path('/')
 
 
 def _public_page_path(page):
     if page.normalized_settings().get('root'):
-        return _site_root_path()
-    path = reverse(
+        return script_prefixed_path('/')
+    return script_prefixed_path(reverse(
         'public_page',
         kwargs={
             'owner': page.workspace.owner.username,
             'workspace_slug': page.workspace.slug,
             'page_slug': page.slug,
         },
-    )
-    base = (getattr(django_settings, 'FORCE_SCRIPT_NAME', None) or '').rstrip('/')
-    if base and not path.startswith(f'{base}/'):
-        return f'{base}{path}'
-    return path
+    ))
 
 
 def _root_public_page():
@@ -1060,6 +1051,8 @@ def dashboard(request):
         'tag_websocket_enabled': getattr(django_settings, 'ENABLE_TAG_WEBSOCKET', False),
         'allow_games': getattr(django_settings, 'ALLOW_GAMES', True),
         'allow_photos': getattr(django_settings, 'ALLOW_PHOTOS', True),
+        'allow_images': getattr(django_settings, 'ALLOW_IMAGES', True),
+        'allow_shops': getattr(django_settings, 'ALLOW_SHOPS', True),
         'allow_offline': getattr(django_settings, 'ALLOW_OFFLINE', True),
         'can_write_workspace': bool(
             current_workspace and _user_has_write_access(request.user, current_workspace)
@@ -1105,6 +1098,8 @@ def _render_public_page(request, page, *, public_tree=None, public_workspace=Fal
         'tag_websocket_enabled': _public_page_ws_enabled(page) or _public_workspace_ws_enabled(workspace),
         'allow_games': getattr(django_settings, 'ALLOW_GAMES', True),
         'allow_photos': getattr(django_settings, 'ALLOW_PHOTOS', True),
+        'allow_images': getattr(django_settings, 'ALLOW_IMAGES', True),
+        'allow_shops': getattr(django_settings, 'ALLOW_SHOPS', True),
         'allow_offline': False,
         'can_write_workspace': False,
         'is_group_admin': False,
