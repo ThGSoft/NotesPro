@@ -108,6 +108,12 @@ if FORCE_SCRIPT_NAME:
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 MEDIA_ROOT = BASE_DIR / 'media'
 
+# Self-hosted diagrams.net editor (py manage.py fetch_drawio).
+# A plain directory, not a (prefix, path) pair: on Windows the static finder
+# compares that prefix with os.sep and misses URL paths that use '/'.
+_drawio_static = BASE_DIR / 'vendor' / 'drawio-static'
+STATICFILES_DIRS = [_drawio_static] if (_drawio_static / 'drawio' / 'index.html').is_file() else []
+
 # When Apache/nginx terminates TLS, trust X-Forwarded-Proto (set SECURE_SSL_REDIRECT=false on backend).
 USE_X_FORWARDED_HOST = _env_bool('USE_X_FORWARDED_HOST', bool(FORCE_SCRIPT_NAME))
 if _env_bool('USE_X_FORWARDED_PROTO', bool(FORCE_SCRIPT_NAME)):
@@ -156,9 +162,11 @@ INCOMING_MAIL_IMAP_SSL = _env_bool('INCOMING_MAIL_IMAP_SSL', True)
 # Tag search WebSocket (Channels/Daphne). Off by default in production — Gunicorn/WSGI cannot serve /ws/.
 ENABLE_TAG_WEBSOCKET = _env_bool('ENABLE_TAG_WEBSOCKET', DEBUG)
 
-# Editor toolbar: Insert game / Insert photos. Existing blocks still render if disabled.
+# Editor toolbar visibility. Existing content still renders if disabled.
 ALLOW_GAMES = _env_bool_any(('ALLOW_GAMES', 'allowGames'), True)
 ALLOW_PHOTOS = _env_bool_any(('ALLOW_PHOTOS', 'allowPhotos'), True)
+ALLOW_IMAGES = _env_bool_any(('ALLOW_IMAGES', 'allowImages'), True)
+ALLOW_SHOPS = _env_bool_any(('ALLOW_SHOPS', 'allowShops'), True)
 
 # Cache pages on the device and keep editing when the network drops.
 ALLOW_OFFLINE = _env_bool_any(('ALLOW_OFFLINE', 'allowOffline'), True)
