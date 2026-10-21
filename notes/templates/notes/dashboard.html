@@ -14,6 +14,8 @@
   <link rel="stylesheet" href="https://code.jquery.com/ui/1.13.2/themes/base/jquery-ui.min.css">
   <link rel="stylesheet" href="{% static 'notes/vendor/jqJigsawPuzzle/jqJigsawPuzzle.css' %}">
   <link rel="stylesheet" href="{% static 'notes/dashboard.css' %}?v={% now 'YmdHis' %}">
+<link rel="stylesheet" href="{% static 'notes/mathcad.css' %}?v={% now 'YmdHis' %}">
+<link rel="stylesheet" href="{% static 'notes/infoboard.css' %}?v={% now 'YmdHis' %}">
 </head>
 <body class="{% if public_view %}public-page{% endif %}{% if public_tree %} public-tree{% endif %}">
 <div class="app-shell">
@@ -1544,6 +1546,8 @@
 </div>
 
 <script src="{% static 'notes/dm-p2p.js' %}"></script>
+<script src="{% static 'notes/infoboard.js' %}?v={% now 'YmdHis' %}"></script>
+<script src="{% static 'notes/mathcad.js' %}?v={% now 'YmdHis' %}"></script>
 <script src="{% static 'notes/calcs.js' %}?v={% now 'YmdHis' %}"></script>
 <script src="{% static 'notes/game-fullscreen.js' %}?v={% now 'YmdHis' %}"></script>
 <script src="{% static 'notes/sudoku.js' %}?v={% now 'YmdHis' %}"></script>

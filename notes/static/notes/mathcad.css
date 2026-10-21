@@ -1,0 +1,38 @@
+.mathcad-block { position:relative; margin:18px auto; border:1px solid #ccd8e4; border-radius:14px; overflow:hidden; background:#eaf0f5; color:#253448; font:14px/1.5 system-ui,sans-serif; box-shadow:0 10px 32px #0002; }
+.mathcad-header { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:20px 26px; background:#142b43; color:#fff; }
+.mathcad-header h3 { margin:3px 0 0; font-size:21px; color:inherit; }
+.mathcad-eyebrow { font-size:10px; font-weight:700; letter-spacing:.18em; color:#89c9e6; }
+.mathcad-state { max-width:45%; font-size:12px; color:#c7deec; }
+.mathcad-toolbar { display:flex; align-items:center; flex-wrap:wrap; gap:8px; padding:12px 18px; border-bottom:1px solid #cedae5; background:#f6f9fb; }
+.mathcad-toolbar button,.mathcad-toolbar select { border:1px solid #c2d1df; background:white; color:#23425d; border-radius:5px; padding:7px 10px; font:12px system-ui; cursor:pointer; min-height:32px; }
+.mathcad-toolbar button:hover { background:#e2f0fa; }
+.mathcad-toolbar label { display:flex; align-items:center; gap:6px; font-size:12px; margin-left:auto; }
+.mathcad-toolbar .game-fullscreen-btn { position:static; width:32px; height:32px; padding:4px; color:#23425d; }
+.mathcad-help { padding:18px 24px; background:#e8f4fd; border-bottom:1px solid #ccd8e4; }
+.mathcad-help p { margin:6px 0; }
+.mathcad-help code { color:#27597e; background:#fff8; }
+.mathcad-paper { margin:22px; padding:22px 12px 36px; min-height:240px; background-color:#fff; background-image:radial-gradient(#dce5ed 0.65px,transparent 0.65px); background-size:16px 16px; border:1px solid #d5dfe8; box-shadow:0 3px 12px #25344812; }
+.mathcad-region { display:flex; gap:10px; align-items:start; margin:0 0 14px; padding:10px; border:1px solid transparent; border-radius:6px; }
+.mathcad-region:focus-within { background:#f1f8fe; border-color:#97bfdc; }
+.mathcad-region-number { width:22px; flex:none; padding-top:8px; color:#96a4b2; font:10px monospace; }
+.mathcad-region-content { flex:1; min-width:0; }
+.mathcad-input { box-sizing:border-box; width:100%; border:1px solid #dce5ed; border-radius:4px; background:#ffffffd9; color:#314b63; padding:7px 9px; font:13px/1.5 Consolas,monospace; }
+.mathcad-input:focus { outline:2px solid #67a9d4; outline-offset:1px; }
+.mathcad-input[readonly] { display:none; }
+.mathcad-output { padding:10px 5px 4px; overflow:auto; }
+.mathcad-equation { display:flex; align-items:center; flex-wrap:wrap; gap:16px; min-height:54px; font:18px/1.6 Georgia,serif; }
+.mathcad-equation math { font-size:21px; }
+.mathcad-equation output { font:17px/1.5 Consolas,monospace; color:#155a8a; overflow-wrap:anywhere; }
+.mathcad-equals { color:#698295; }
+.mathcad-error { color:#a12738; font:13px system-ui; }
+.mathcad-region[data-kind=error] { border-left:3px solid #c95363; }
+.mathcad-output h4 { margin:8px 0 0; color:#203b55; font:700 25px/1.4 Georgia,serif; }
+.mathcad-output p { color:#4e6275; margin:4px 0; white-space:pre-wrap; }
+.mathcad-region-actions { display:flex; gap:2px; padding-top:4px; }
+.mathcad-region-actions button { min-height:27px; width:24px; padding:1px; border:0; border-radius:4px; background:#eaf0f6; color:#486780; cursor:pointer; }
+.mathcad-plot { display:block; width:100%; max-width:760px; background:white; border:1px solid #dde6ee; border-radius:5px; }
+.mathcad-plot text { fill:#637688; font:11px system-ui; }
+.mathcad-legend { display:flex; gap:16px; flex-wrap:wrap; font:12px system-ui; padding:7px 0; }
+.mathcad-block:fullscreen,.mathcad-block.game-block--monitor-fullscreen { width:100%; height:100%; margin:0; overflow:auto; border-radius:0; }
+.mathcad-block button[hidden],.mathcad-help[hidden] { display:none; }
+@media(max-width:600px) { .mathcad-header { padding:16px; } .mathcad-header h3 { font-size:18px; } .mathcad-paper { margin:8px; padding:12px 2px; } .mathcad-region { gap:3px; padding:7px 3px; } .mathcad-region-number { width:15px; } .mathcad-region-actions { flex-direction:column; } .mathcad-equation { gap:8px; font-size:16px; } .mathcad-equation math { font-size:18px; } .mathcad-toolbar { padding:9px; gap:5px; } }

@@ -35,6 +35,8 @@ Share: [LinkedIn](https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2
 - **Snippets** — reusable text blocks (toolbar + sidebar); stored in your user settings
 - **Colored panels** — info / success / warning / danger / note callout blocks in markdown
 - Tab-separated `sheet` blocks (formulas) and D3 `chart` blocks linked by sheet id
+- **Infoboard** — shared announcement cards with categories, priorities, pins, expiry dates, and archives
+- **Math worksheet** — Mathcad-style editable regions, variables, units, functions, matrices, and plots
 - **Calcs** blocks — engineering calculator (real/complex, ranges, matrices, multi-curve `Plot`, SCI/ENG/FIX)
 - **Python / executecode** blocks — run in a browser Pyodide sandbox; `print`, pandas, and matplotlib plots show in the preview
 - **Voice notes** — record audio in the browser and transcribe with open-source Whisper (Transformers.js / Xenova, no cloud STT API)
@@ -2258,3 +2260,17 @@ The server fetches and caches the feed asynchronously (like MagpieRSS, non-block
 - Workspace export/import and soft-delete are available via the API and admin tools. Deleted pages and folders can be restored from the dashboard **Undo** toast (like workspaces) or from Django admin (**Restore selected pages**).
 - Layout (sidebar width, panel sizes, last page per workspace) is persisted in **User settings**.
 - Settings → About shows the NotesPro **License** and third-party credits.
+
+### Math worksheet
+
+Choose **Calculator → Math worksheet** or insert a `mathcad` fence (alias `mathworksheet`). Edit regions directly in the preview; add calculations, text, or plots, and move or delete regions. Changes save with the note. Read-only viewers can recalculate without changing the source.
+
+Use `:=` to define variables or functions, and a trailing `=` to evaluate. Definitions apply from top to bottom. `mass := 12 kg`, `force := mass * 9.81 m/s^2`, then `force to N =` gives `117.72 N`. Matrices use `[1,2;3,4]`; ranges use `t := 0,0.1..10`. Plot with `plot(sin(x), x, 0, 2*pi)` or use an array for several curves. Trig uses radians; `sin(30 deg)` accepts explicit angle units. `# Heading` and `text: Notes` add documentation.
+
+The local math.js 15.2.0 engine runs in a disposable browser worker with a time limit. This is a numeric worksheet inspired by Mathcad, without proprietary file import or full symbolic-CAS compatibility. Third-party license: `notes/static/notes/vendor/mathjs/LICENSE`.
+
+### Infoboard
+
+Choose **Boards (Kanban) → Infoboard** for a shared bulletin board. Add or edit cards directly in preview, filter by category or search, pin key updates, and archive or restore old notices. A Show until date keeps a notice visible through that day; expired cards are hidden unless Expired is checked. Archived cards are shown separately. Cards save inside the note. Viewers without write access can search and open links but cannot edit.
+
+The `infoboard` fence (aliases `info-board`, `noticeboard`) contains JSON: `{"version":1,"items":[{"id":"welcome","title":"Welcome","text":"Team update","category":"Team","priority":"normal","pinned":true}]}`. Options: `title=Team board;cols=3` (1–4 columns; responsive on mobile). Optional card fields: `until` (YYYY-MM-DD), `link` (http(s), mailto, or an internal path/query), and `archived`. The fullscreen button displays the board across the screen.

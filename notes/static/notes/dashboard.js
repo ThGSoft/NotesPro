@@ -2617,7 +2617,7 @@
   }
 
   function isPreviewRichBlock(el) {
-    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .form-widget, .mindmap-block, .md-news, .md-python, .voice-block, .jukebox-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .backgammon-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .carambole-block, .carrom-block, .dart-block, .draw-block, .drawio-block, .snake-block, .marbleblast-block, .gallery-block, .training-block, .worldclock-block, .alarm-block, .countdowntimer-block, .hp15c-block, .hp12c-block, .hp42s-block, .ti30-block, .dance-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .page-tags');
+    return !!el?.closest?.('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .form-widget, .mindmap-block, .md-news, .md-python, .voice-block, .jukebox-block, .infoboard-block, .mathcad-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .backgammon-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .carambole-block, .carrom-block, .dart-block, .draw-block, .drawio-block, .snake-block, .marbleblast-block, .gallery-block, .training-block, .worldclock-block, .alarm-block, .countdowntimer-block, .hp15c-block, .hp12c-block, .hp42s-block, .ti30-block, .dance-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block, .page-tags');
   }
 
   function getPreviewBlockSourceLine(node) {
@@ -9455,6 +9455,94 @@
     });
   }
 
+  const INFOBOARD_BLOCK_RE = /```(?:infoboard|info-board|noticeboard)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function parseInfoboardBlocks(text) {
+    let infoboardIndex = 0;
+    INFOBOARD_BLOCK_RE.lastIndex = 0;
+    return text.replace(INFOBOARD_BLOCK_RE, (_, attrs, content) => {
+      const engine = window.NotesProInfoboard;
+      return wrapRichPreviewBlock(engine?.renderBlock
+        ? engine.renderBlock(content || '', attrs || '', { infoboardIndex: infoboardIndex++ })
+        : '<div class="infoboard-block">Infoboard engine not loaded.</div>');
+    });
+  }
+
+  function hydrateInfoboardBlocks(root) {
+    const engine = window.NotesProInfoboard;
+    if (!engine) return;
+    (root || document).querySelectorAll('.infoboard-block').forEach(el => {
+      const index = Number(el.dataset.infoboardIndex);
+      engine.hydrateBlock(el, {
+        editable: !!userCanEdit,
+        onChange: userCanEdit ? source => {
+          if (!easyMDE) return;
+          const oldMarkdown = easyMDE.value();
+          const updated = engine.rewriteFence(oldMarkdown, index, source);
+          if (oldMarkdown === updated) return;
+          const cm = easyMDE.codemirror;
+          const scroll = cm.getScrollInfo();
+          let start = 0, oldEnd = oldMarkdown.length, newEnd = updated.length;
+          while (start < oldEnd && start < newEnd && oldMarkdown[start] === updated[start]) start++;
+          while (oldEnd > start && newEnd > start && oldMarkdown[oldEnd - 1] === updated[newEnd - 1]) { oldEnd--; newEnd--; }
+          suppressPreviewRefresh++;
+          lockEditorPreviewScroll(600);
+          try {
+            cm.operation(() => {
+              cm.replaceRange(updated.slice(start, newEnd), cm.posFromIndex(start), cm.posFromIndex(oldEnd), '+infoboard');
+              cm.scrollTo(scroll.left, scroll.top);
+            });
+          } finally { suppressPreviewRefresh = Math.max(0, suppressPreviewRefresh - 1); }
+          scheduleSave();
+        } : null,
+      });
+    });
+  }
+
+  const MATHCAD_BLOCK_RE = /```(?:mathcad|mathworksheet)(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
+
+  function parseMathcadBlocks(text) {
+    let mathcadIndex = 0;
+    MATHCAD_BLOCK_RE.lastIndex = 0;
+    return text.replace(MATHCAD_BLOCK_RE, (_, attrs, content) => {
+      const engine = window.NotesProMathcad;
+      return wrapRichPreviewBlock(engine?.renderBlock
+        ? engine.renderBlock(content || '', attrs || '', { mathcadIndex: mathcadIndex++ })
+        : '<div class="mathcad-block">Worksheet engine not loaded.</div>');
+    });
+  }
+
+  function hydrateMathcadBlocks(root) {
+    const engine = window.NotesProMathcad;
+    if (!engine) return;
+    (root || document).querySelectorAll('.mathcad-block').forEach(el => {
+      const index = Number(el.dataset.mathcadIndex);
+      engine.hydrateBlock(el, {
+        editable: !!userCanEdit,
+        onChange: userCanEdit ? source => {
+          if (!easyMDE) return;
+          const oldMarkdown = easyMDE.value();
+          const updated = engine.rewriteFence(oldMarkdown, index, source);
+          if (oldMarkdown === updated) return;
+          const cm = easyMDE.codemirror;
+          const scroll = cm.getScrollInfo();
+          let start = 0, oldEnd = oldMarkdown.length, newEnd = updated.length;
+          while (start < oldEnd && start < newEnd && oldMarkdown[start] === updated[start]) start++;
+          while (oldEnd > start && newEnd > start && oldMarkdown[oldEnd - 1] === updated[newEnd - 1]) { oldEnd--; newEnd--; }
+          suppressPreviewRefresh++;
+          lockEditorPreviewScroll(600);
+          try {
+            cm.operation(() => {
+              cm.replaceRange(updated.slice(start, newEnd), cm.posFromIndex(start), cm.posFromIndex(oldEnd), '+mathcad');
+              cm.scrollTo(scroll.left, scroll.top);
+            });
+          } finally { suppressPreviewRefresh = Math.max(0, suppressPreviewRefresh - 1); }
+          scheduleSave();
+        } : null,
+      });
+    });
+  }
+
   const CALCS_BLOCK_RE = /```calcs(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi;
 
   function parseCalcsBlocks(text) {
@@ -13386,7 +13474,7 @@ function formatTextWithMarkup(rawText) {
     if (!root) return;
     root.querySelectorAll('pre').forEach(pre => {
       if (pre.closest('.md-code-block')) return;
-      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .form-widget, .mindmap-block, .md-news, .md-python, .voice-block, .jukebox-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .backgammon-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .carambole-block, .carrom-block, .dart-block, .draw-block, .drawio-block, .snake-block, .marbleblast-block, .gallery-block, .training-block, .worldclock-block, .alarm-block, .countdowntimer-block, .hp15c-block, .hp12c-block, .hp42s-block, .ti30-block, .dance-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block')) {
+      if (pre.closest('.sheet-preview-block, .chart-block, .calendar-block, .gantt-block, .kanban-block, .checklist-block, .form-widget, .mindmap-block, .md-news, .md-python, .voice-block, .jukebox-block, .infoboard-block, .mathcad-block, .calcs-block, .sudoku-block, .puzzle-block, .pinball-block, .pacman-block, .mario-block, .lemmings-block, .tictactoe-block, .chess-block, .connect4-block, .reversi-block, .muhle-block, .backgammon-block, .tetris-block, .sokoban-block, .speisekarte-block, .shop-block, .cl-block, .invaders-block, .breakout-block, .carambole-block, .carrom-block, .dart-block, .draw-block, .drawio-block, .snake-block, .marbleblast-block, .gallery-block, .training-block, .worldclock-block, .alarm-block, .countdowntimer-block, .hp15c-block, .hp12c-block, .hp42s-block, .ti30-block, .dance-block, .photocube-block, .photobook-block, .carousel-block, .rollercoast-block, .scooter-block, .ghosttrain-block, .labyrinth-block')) {
         return;
       }
       const wrap = document.createElement('div');
@@ -13929,6 +14017,16 @@ function formatTextWithMarkup(rawText) {
       const label = spec.title || 'Mindmap';
       return `\n\n---\n*${label} — open full preview to view*\n---\n\n`;
     });
+    INFOBOARD_BLOCK_RE.lastIndex = 0;
+    md = md.replace(INFOBOARD_BLOCK_RE, (_, attrs) => {
+      const cfg = window.NotesProInfoboard?.parseFenceAttrs(attrs) || {};
+      return '\n\n**' + (cfg.title || 'Infoboard') + '** — open full preview to view the board.\n\n';
+    });
+    MATHCAD_BLOCK_RE.lastIndex = 0;
+    md = md.replace(MATHCAD_BLOCK_RE, (_, attrs) => {
+      const cfg = window.NotesProMathcad?.parseFenceAttrs(attrs) || {};
+      return '\n\n**' + (cfg.title || 'Math worksheet') + '** — open full preview to calculate.\n\n';
+    });
     md = md.replace(/```calcs(?:\{([^}]*)\})?[ \t]*(?:\r?\n([\s\S]*?))?```/gi, (_, fenceAttrs) => {
       const cfg = window.NotesProCalcs?.parseFenceAttrs?.(fenceAttrs) || {};
       const label = cfg.title || 'ThGMaths';
@@ -14192,6 +14290,8 @@ function formatTextWithMarkup(rawText) {
       md = parseChecklistBlocks(md, options);
       md = parseFormWidgetBlocks(md, options);
       md = parseMindmapBlocks(md, options);
+      md = parseInfoboardBlocks(md);
+      md = parseMathcadBlocks(md);
       md = parseCalcsBlocks(md);
       md = parseSudokuBlocks(md);
       md = parsePuzzleBlocks(md);
@@ -14694,6 +14794,8 @@ function formatTextWithMarkup(rawText) {
     hydrateDartBlocks(preview);
     hydrateDrawBlocks(preview);
     hydrateDrawioBlocks(preview);
+    hydrateInfoboardBlocks(preview);
+    hydrateMathcadBlocks(preview);
     hydrateSnakeBlocks(preview);
     hydrateMarbleblastBlocks(preview);
     hydrateGalleryBlocks(preview);
@@ -21731,6 +21833,12 @@ function formatTextWithMarkup(rawText) {
           title: 'Insert calculator',
           children: [
             {
+              name: 'insert-mathcad',
+              text: 'Math worksheet',
+              title: 'Insert Mathcad-style worksheet',
+              action: editor => insertFenceBlock(editor, 'mathcad{title=Engineering worksheet}', window.NotesProMathcad.sample),
+            },
+            {
               name: 'insert-calcs',
               text: 'Calcs',
               action: (editor) => {
@@ -21852,7 +21960,7 @@ function formatTextWithMarkup(rawText) {
         {
           name: 'boardsMenu',
           className: 'fa fa-th-large',
-          title: 'Insert kanban / gantt / mindmap / kanban gantt',
+          title: 'Insert kanban / gantt / mindmap / kanban gantt / infoboard',
           children: [
             {
               name: 'insert-gantt',
@@ -21885,6 +21993,12 @@ function formatTextWithMarkup(rawText) {
                 ].join('\n');
                 insertFenceBlock(editor, 'kanban{cols=Todo,Doing,Done;col=info}', body);
               },
+            },
+            {
+              name: 'add-infoboard',
+              text: 'Infoboard',
+              title: 'Add announcement board',
+              action: editor => insertFenceBlock(editor, 'infoboard{title=Team infoboard;cols=3}', window.NotesProInfoboard.sample),
             },
             {
               name: 'insert-mindmap',
@@ -22982,13 +23096,13 @@ function formatTextWithMarkup(rawText) {
     if (suppressPreviewRefresh) return;
     const active = document.activeElement;
     if (active?.classList?.contains('sheet-cell-editable')) return;
-    if (active?.closest?.('.voice-block, .jukebox-block, .checklist-block, .form-widget, .draw-block, .drawio-block')) return;
+    if (active?.closest?.('.voice-block, .jukebox-block, .checklist-block, .form-widget, .draw-block, .drawio-block, .infoboard-block, .mathcad-block')) return;
     capturePreviewScrollPosition();
     clearTimeout(previewRefreshTimer);
     previewRefreshTimer = setTimeout(() => {
       // Focus may have moved into Draw.io after this refresh was scheduled.
       // Recreating its iframe here would interrupt typing and diagram selection.
-      if (document.activeElement?.closest?.('.drawio-block')) return;
+      if (document.activeElement?.closest?.('.drawio-block, .infoboard-block, .mathcad-block')) return;
       renderPreview();
       if (isMobileLayout()) {
         buildFloatingToc();

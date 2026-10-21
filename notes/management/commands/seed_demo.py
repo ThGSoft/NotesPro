@@ -711,6 +711,7 @@ def seed_toolbar_apps(workspace, user, demo):
     sheet = add_folder('tb-sheet', 'Sheet')
     chart = add_folder('tb-chart', 'Chart')
     calcs = add_folder('tb-calcs', 'Calcs')
+    mathcad = add_folder('tb-mathcad', 'Math worksheet')
     python = add_folder('tb-python', 'Python')
     calendar = add_folder('tb-calendar', 'Calendar')
     worldclock = add_folder('tb-worldclock', 'World clock')
@@ -722,6 +723,7 @@ def seed_toolbar_apps(workspace, user, demo):
     ti30 = add_folder('tb-ti30', 'TI-30')
     boards = add_folder('tb-boards', 'Boards')
     checklist = add_folder('tb-checklist', 'Checklist')
+    infoboard = add_folder('tb-infoboard', 'Infoboard')
     apps = add_folder('tb-apps', 'Apps')
     forms = add_folder('tb-forms', 'Forms')
     menu = add_folder('tb-menu', 'Menu')
@@ -797,6 +799,57 @@ bar
 Month
 Sales
 Costs
+```
+""")
+
+    seed_page(workspace, infoboard, 'infoboard', 'Infoboard', 0, """# Infoboard
+
+```infoboard{title=Team infoboard;cols=3}
+{
+  "version": 1,
+  "items": [
+    {
+      "id": "welcome",
+      "title": "Welcome to the team board",
+      "text": "Announcements, reminders, and useful links in one place. Add a card to share an update with your workspace.",
+      "category": "Team",
+      "priority": "normal",
+      "pinned": true
+    },
+    {
+      "id": "launch",
+      "title": "Project launch",
+      "text": "Review the checklist, update your issue status, and share any blockers before our next meeting.",
+      "category": "Projects",
+      "priority": "important",
+      "pinned": false
+    },
+    {
+      "id": "guide",
+      "title": "Useful resources",
+      "text": "Keep onboarding guides, documentation, and reference links close at hand.",
+      "category": "Resources",
+      "priority": "normal",
+      "link": "https://thgsoft.online/DjangoNotesPro/"
+    }
+  ]
+}
+```
+""")
+
+    seed_page(workspace, mathcad, 'mathcad', 'Math worksheet', 0, """# Math worksheet
+
+```mathcad{title=Engineering worksheet}
+# Engineering worksheet
+text: Define quantities with :=. Results recalculate from top to bottom.
+mass := 12 kg
+acceleration := 9.81 m/s^2
+force := mass * acceleration
+force to N =
+f(x) := exp(-0.2*x) * sin(2*x)
+A := [2, 1; 1, 3]
+det(A) =
+plot(f(x), x, 0, 12)
 ```
 """)
 
